@@ -802,6 +802,7 @@ const DEFAULT_USAGE_POLICY = {
   monthlySimulationCap: null,
   defaultSimulationTokensPerUser: 50
 };
+const MAX_LIGAND_UPLOAD_BYTES = 2 * 1024 * 1024;
 
 function getCurrentMonthKey(date = new Date()) {
   const year = date.getUTCFullYear();
@@ -843,6 +844,49 @@ function normalizeMonthlyUsage(rawUsage = {}) {
       ? Math.max(0, Math.floor(Number(rawUsage.simulationsRun)))
       : 0,
     updatedAt: rawUsage.updatedAt || new Date()
+  };
+}
+
+function parseLigandUpload(rawLigandUpload, { required = false } = {}) {
+  if (!rawLigandUpload) {
+    if (required) throw new Error('Ligand file upload is required');
+    return null;
+  }
+  if (typeof rawLigandUpload !== 'object' || Array.isArray(rawLigandUpload)) {
+    throw new Error('ligandUpload must be an object');
+  }
+
+  const fileName = typeof rawLigandUpload.fileName === 'string' ? rawLigandUpload.fileName.trim() : '';
+  const contentType = typeof rawLigandUpload.contentType === 'string' && rawLigandUpload.contentType.trim()
+    ? rawLigandUpload.contentType.trim().slice(0, 128)
+    : 'application/octet-stream';
+  const contentBase64 = typeof rawLigandUpload.contentBase64 === 'string'
+    ? rawLigandUpload.contentBase64.trim()
+    : '';
+
+  if (!fileName) throw new Error('ligandUpload.fileName is required');
+  if (!contentBase64) throw new Error('ligandUpload.contentBase64 is required');
+
+  let decoded;
+  try {
+    decoded = Buffer.from(contentBase64, 'base64');
+  } catch (error) {
+    throw new Error('ligandUpload.contentBase64 must be valid base64');
+  }
+
+  if (!decoded || decoded.length === 0) {
+    throw new Error('Ligand upload content is empty');
+  }
+  if (decoded.length > MAX_LIGAND_UPLOAD_BYTES) {
+    throw new Error(`Ligand file must be ${MAX_LIGAND_UPLOAD_BYTES / (1024 * 1024)}MB or smaller`);
+  }
+
+  return {
+    fileName: fileName.slice(0, 255),
+    contentType,
+    sizeBytes: decoded.length,
+    contentBase64: decoded.toString('base64'),
+    uploadedAt: new Date()
   };
 }
 
@@ -1445,9 +1489,16 @@ app.get('/checkout-session/:sessionId', ensureMongoConnected, authenticateToken,
  *         description: Signup successful
  */
 app.post('/api/signup', authRateLimit, ensureMongoConnected, async (req, res) => {
-  const { username, password, email, organization, phoneNumber, shippingAddress, billingAddress } = req.body;
+  const { username, password, email, organization, phoneNumber, shippingAddress, billingAddress, ligandUpload } = req.body;
   if (!username || !password || !email || !organization) {
     return res.status(400).json({ error: 'Username, password, email, and company name are required' });
+  }
+
+  let normalizedLigandUpload = null;
+  try {
+    normalizedLigandUpload = parseLigandUpload(ligandUpload, { required: false });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
   }
 
   const normalizedCompanyName = normalizeCompanyName(organization);
@@ -1465,10 +1516,14 @@ app.post('/api/signup', authRateLimit, ensureMongoConnected, async (req, res) =>
 
   let company = await companiesCollection.findOne({ slug: companySlug });
   if (!company) {
+    if (!normalizedLigandUpload) {
+      return res.status(400).json({ error: 'Ligand file upload is required for company signup' });
+    }
     const createdCompany = {
       name: normalizedCompanyName,
       slug: companySlug,
       companyId: null,
+      ligandUpload: normalizedLigandUpload,
       active: true,
       usagePolicy: { ...DEFAULT_USAGE_POLICY },
       monthlyUsage: {
@@ -1504,6 +1559,14 @@ app.post('/api/signup', authRateLimit, ensureMongoConnected, async (req, res) =>
       usagePolicy: normalizeUsagePolicy(company.usagePolicy || {}),
       monthlyUsage: normalizeMonthlyUsage(company.monthlyUsage || {})
     };
+  }
+
+  if (company && normalizedLigandUpload) {
+    await companiesCollection.updateOne(
+      { _id: company._id },
+      { $set: { ligandUpload: normalizedLigandUpload, updatedAt: new Date() } }
+    );
+    company = { ...company, ligandUpload: normalizedLigandUpload };
   }
 
   const companyId = company.companyId || company._id.toString();
@@ -2902,7 +2965,15 @@ app.get('/api/company/usage', ensureMongoConnected, authenticateToken, requireCo
       company: {
         id: company.companyId,
         name: company.name,
-        active: company.active !== false
+        active: company.active !== false,
+        ligandUpload: company.ligandUpload
+          ? {
+              fileName: company.ligandUpload.fileName,
+              contentType: company.ligandUpload.contentType,
+              sizeBytes: company.ligandUpload.sizeBytes,
+              uploadedAt: company.ligandUpload.uploadedAt
+            }
+          : null
       },
       usagePolicy,
       usage: {
@@ -2985,6 +3056,46 @@ app.patch('/api/company/usage-policy', ensureMongoConnected, authenticateToken, 
     res.json({
       message: 'Usage policy updated',
       usagePolicy: nextPolicy
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch('/api/company/ligand-upload', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (req, res) => {
+  try {
+    const company = await getCompanyRecord(req.user.companyId);
+    if (!company) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+
+    let normalizedLigandUpload;
+    try {
+      normalizedLigandUpload = parseLigandUpload(req.body?.ligandUpload, { required: true });
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    await companiesCollection.updateOne(
+      { companyId: req.user.companyId },
+      { $set: { ligandUpload: normalizedLigandUpload, updatedAt: new Date() } }
+    );
+
+    await recordAuditEvent(req, 'company.ligand_upload.update', {
+      targetType: 'company',
+      targetId: req.user.companyId,
+      fileName: normalizedLigandUpload.fileName,
+      sizeBytes: normalizedLigandUpload.sizeBytes
+    });
+
+    res.json({
+      message: 'Ligand file uploaded',
+      ligandUpload: {
+        fileName: normalizedLigandUpload.fileName,
+        contentType: normalizedLigandUpload.contentType,
+        sizeBytes: normalizedLigandUpload.sizeBytes,
+        uploadedAt: normalizedLigandUpload.uploadedAt
+      }
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

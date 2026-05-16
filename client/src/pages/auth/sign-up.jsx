@@ -10,10 +10,23 @@ export function SignUp() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [shippingAddress, setShippingAddress] = useState("");
   const [billingAddress, setBillingAddress] = useState("");
+  const [ligandFile, setLigandFile] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+
+  const readFileAsBase64 = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const value = typeof reader.result === "string" ? reader.result : "";
+        const base64 = value.includes(",") ? value.split(",")[1] : value;
+        resolve(base64 || "");
+      };
+      reader.onerror = () => reject(new Error("Unable to read ligand file"));
+      reader.readAsDataURL(file);
+    });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -29,9 +42,25 @@ export function SignUp() {
       setError("Company name is required");
       return;
     }
+
+    if (!ligandFile) {
+      setError("Ligand file upload is required");
+      return;
+    }
+
+    if (ligandFile.size > 2 * 1024 * 1024) {
+      setError("Ligand file must be 2MB or smaller");
+      return;
+    }
     
     setLoading(true);
     try {
+      const ligandUpload = {
+        fileName: ligandFile.name,
+        contentType: ligandFile.type || "application/octet-stream",
+        sizeBytes: ligandFile.size,
+        contentBase64: await readFileAsBase64(ligandFile),
+      };
       const res = await fetch(API_CONFIG.buildApiUrl('/signup'), {
         method: "POST",
         headers: { "Content-Type": "application/json", accept: "*/*" },
@@ -42,7 +71,8 @@ export function SignUp() {
           organization,
           phoneNumber,
           shippingAddress,
-          billingAddress
+          billingAddress,
+          ligandUpload
         }),
       });
       const data = await res.json();
@@ -169,6 +199,18 @@ export function SignUp() {
                     onChange={(e) => setBillingAddress(e.target.value)}
                     className="cb-auth-input"
                   />
+                </div>
+
+                <div className="cb-auth-field md:col-span-2">
+                  <label className="cb-auth-label">Ligand File *</label>
+                  <input
+                    type="file"
+                    accept=".sdf,.mol,.mol2,.csv,.txt,.json"
+                    onChange={(e) => setLigandFile(e.target.files?.[0] || null)}
+                    className="cb-auth-input"
+                    required
+                  />
+                  <p className="mt-1 text-xs text-slate-500">Accepted formats: SDF, MOL, MOL2, CSV, TXT, JSON (max 2MB)</p>
                 </div>
               </div>
 
