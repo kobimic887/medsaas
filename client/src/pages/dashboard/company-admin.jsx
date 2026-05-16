@@ -21,6 +21,7 @@ import {
   UsersIcon,
 } from "@heroicons/react/24/outline";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
+import { buildLigandUploadPayload, MAX_LIGAND_FILE_SIZE_BYTES } from "@/utils/ligandUpload";
 
 const initialInviteForm = {
   username: "",
@@ -304,36 +305,19 @@ export function CompanyAdmin() {
     }
   };
 
-  const readFileAsBase64 = (file) =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const value = typeof reader.result === "string" ? reader.result : "";
-        const base64 = value.includes(",") ? value.split(",")[1] : value;
-        resolve(base64 || "");
-      };
-      reader.onerror = () => reject(new Error("Unable to read ligand file"));
-      reader.readAsDataURL(file);
-    });
-
   const handleLigandUpload = async (event) => {
     event.preventDefault();
     if (!ligandFile) {
       showMessage("red", "Choose a ligand file to upload");
       return;
     }
-    if (ligandFile.size > 2 * 1024 * 1024) {
+    if (ligandFile.size > MAX_LIGAND_FILE_SIZE_BYTES) {
       showMessage("red", "Ligand file must be 2MB or smaller");
       return;
     }
     setSaving("ligand-upload");
     try {
-      const ligandUpload = {
-        fileName: ligandFile.name,
-        contentType: ligandFile.type || "application/octet-stream",
-        sizeBytes: ligandFile.size,
-        contentBase64: await readFileAsBase64(ligandFile),
-      };
+      const ligandUpload = await buildLigandUploadPayload(ligandFile);
       const result = await companyRequest("/company/ligand-upload", {
         method: "PATCH",
         body: JSON.stringify({ ligandUpload }),

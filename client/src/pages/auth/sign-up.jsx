@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { API_CONFIG } from "@/utils/constants";
+import { buildLigandUploadPayload, MAX_LIGAND_FILE_SIZE_BYTES } from "@/utils/ligandUpload";
 
 export function SignUp() {
   const [email, setEmail] = useState("");
@@ -15,18 +16,6 @@ export function SignUp() {
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
-
-  const readFileAsBase64 = (file) =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const value = typeof reader.result === "string" ? reader.result : "";
-        const base64 = value.includes(",") ? value.split(",")[1] : value;
-        resolve(base64 || "");
-      };
-      reader.onerror = () => reject(new Error("Unable to read ligand file"));
-      reader.readAsDataURL(file);
-    });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -48,19 +37,14 @@ export function SignUp() {
       return;
     }
 
-    if (ligandFile.size > 2 * 1024 * 1024) {
+    if (ligandFile.size > MAX_LIGAND_FILE_SIZE_BYTES) {
       setError("Ligand file must be 2MB or smaller");
       return;
     }
     
     setLoading(true);
     try {
-      const ligandUpload = {
-        fileName: ligandFile.name,
-        contentType: ligandFile.type || "application/octet-stream",
-        sizeBytes: ligandFile.size,
-        contentBase64: await readFileAsBase64(ligandFile),
-      };
+      const ligandUpload = await buildLigandUploadPayload(ligandFile);
       const res = await fetch(API_CONFIG.buildApiUrl('/signup'), {
         method: "POST",
         headers: { "Content-Type": "application/json", accept: "*/*" },
