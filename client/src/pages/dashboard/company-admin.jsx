@@ -350,12 +350,23 @@ export function CompanyAdmin() {
     event.preventDefault();
     setSaving("ligand-service-config");
     try {
-      const payload = {
-        catalogApiBase: ligandServiceForm.catalogApiBase.trim(),
-        stockApiUrl: ligandServiceForm.stockApiUrl.trim(),
-        dockingApiUrl: ligandServiceForm.dockingApiUrl.trim(),
-        diffdockApiUrl: ligandServiceForm.diffdockApiUrl.trim(),
-      };
+      const currentConfig = company?.ligandServiceConfig || {};
+      const payload = {};
+      [
+        "catalogApiBase",
+        "stockApiUrl",
+        "dockingApiUrl",
+        "diffdockApiUrl",
+      ].forEach((fieldName) => {
+        const nextValue = ligandServiceForm[fieldName].trim();
+        const currentValue = (currentConfig[fieldName] || "").trim();
+        if (nextValue !== currentValue) payload[fieldName] = nextValue;
+      });
+      if (Object.keys(payload).length === 0) {
+        showMessage("blue", "No ligand service config changes to save");
+        setSaving("");
+        return;
+      }
       const result = await companyRequest("/company/ligand-service-config", {
         method: "PATCH",
         body: JSON.stringify(payload),

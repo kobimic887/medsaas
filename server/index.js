@@ -895,7 +895,7 @@ function parseLigandUpload(rawLigandUpload, { required = false } = {}) {
   try {
     decoded = Buffer.from(contentBase64, 'base64');
   } catch (error) {
-    throw new Error('ligandUpload.contentBase64 must be valid base64');
+    throw new Error(`ligandUpload.contentBase64 must be valid base64: ${error.message}`);
   }
 
   if (!decoded || decoded.length === 0) {
@@ -1005,6 +1005,17 @@ async function getRequestLigandServiceConfig(req) {
     return { ...DEFAULT_LIGAND_SERVICE_CONFIG };
   }
   return normalizeLigandServiceConfig(company.ligandServiceConfig || {});
+}
+
+function validateRequiredStringField(body, fieldName) {
+  if (!Object.prototype.hasOwnProperty.call(body, fieldName)) {
+    return undefined;
+  }
+  const value = typeof body[fieldName] === 'string' ? body[fieldName].trim() : '';
+  if (!value) {
+    throw new Error(`${fieldName} must be a non-empty string`);
+  }
+  return fieldName === 'catalogApiBase' ? value.replace(/\/$/, '') : value;
 }
 
 async function recordAuditEvent(req, action, details = {}, status = 'success') {
@@ -3154,25 +3165,13 @@ app.patch('/api/company/ligand-service-config', ensureMongoConnected, authentica
 
     const currentConfig = normalizeLigandServiceConfig(company.ligandServiceConfig || {});
     const updates = {};
-    if (Object.prototype.hasOwnProperty.call(req.body, 'catalogApiBase')) {
-      const value = typeof req.body.catalogApiBase === 'string' ? req.body.catalogApiBase.trim() : '';
-      if (!value) return res.status(400).json({ error: 'catalogApiBase must be a non-empty string' });
-      updates.catalogApiBase = value.replace(/\/$/, '');
-    }
-    if (Object.prototype.hasOwnProperty.call(req.body, 'stockApiUrl')) {
-      const value = typeof req.body.stockApiUrl === 'string' ? req.body.stockApiUrl.trim() : '';
-      if (!value) return res.status(400).json({ error: 'stockApiUrl must be a non-empty string' });
-      updates.stockApiUrl = value;
-    }
-    if (Object.prototype.hasOwnProperty.call(req.body, 'dockingApiUrl')) {
-      const value = typeof req.body.dockingApiUrl === 'string' ? req.body.dockingApiUrl.trim() : '';
-      if (!value) return res.status(400).json({ error: 'dockingApiUrl must be a non-empty string' });
-      updates.dockingApiUrl = value;
-    }
-    if (Object.prototype.hasOwnProperty.call(req.body, 'diffdockApiUrl')) {
-      const value = typeof req.body.diffdockApiUrl === 'string' ? req.body.diffdockApiUrl.trim() : '';
-      if (!value) return res.status(400).json({ error: 'diffdockApiUrl must be a non-empty string' });
-      updates.diffdockApiUrl = value;
+    try {
+      ['catalogApiBase', 'stockApiUrl', 'dockingApiUrl', 'diffdockApiUrl'].forEach((fieldName) => {
+        const value = validateRequiredStringField(req.body || {}, fieldName);
+        if (value !== undefined) updates[fieldName] = value;
+      });
+    } catch (validationError) {
+      return res.status(400).json({ error: validationError.message });
     }
 
     if (Object.keys(updates).length === 0) {
