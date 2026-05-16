@@ -83,7 +83,7 @@ export function Navbar({ brandName, routes, action }) {
 }
 
 Navbar.defaultProps = {
-  brandName: "Pyxis Discovery",
+  brandName: "ChemBench",
   action: (
     <a
       href="https://outwize.tech"

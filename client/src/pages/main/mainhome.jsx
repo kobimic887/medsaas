@@ -1,129 +1,285 @@
-import React from "react";
-import { Typography, Card, CardHeader, CardBody, Button } from "@material-tailwind/react";
-import { pyxisImages } from "@/data/pyxisImages";
+import React, { useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
 
+/* ───────────────────────── tiny intersection-observer hook ─────────────────── */
+function useReveal() {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([e]) => { if (e.isIntersecting) { el.classList.add("cb-visible"); io.unobserve(el); } },
+      { threshold: 0.15 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return ref;
+}
+
+function Reveal({ children, className = "", delay = 0 }) {
+  const ref = useReveal();
+  return (
+    <div ref={ref} className={`cb-reveal ${className}`} style={{ transitionDelay: `${delay}ms` }}>
+      {children}
+    </div>
+  );
+}
+
+/* ───────────────────────────── SVG molecule icon ──────────────────────────── */
+const MoleculeIcon = () => (
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="5" r="2.5" /><circle cx="5" cy="19" r="2.5" /><circle cx="19" cy="19" r="2.5" />
+    <line x1="12" y1="7.5" x2="5" y2="16.5" /><line x1="12" y1="7.5" x2="19" y2="16.5" />
+    <line x1="7.5" y1="19" x2="16.5" y2="19" />
+  </svg>
+);
+
+/* ───────────────────────────── step card ───────────────────────────────────── */
+function StepCard({ number, title, description, icon, delay }) {
+  return (
+    <Reveal delay={delay} className="flex-1 min-w-[260px]">
+      <div className="cb-glass-card group h-full">
+        <div className="cb-step-number">{number}</div>
+        <div className="text-3xl mb-4">{icon}</div>
+        <h3 className="text-xl font-bold text-white mb-2" style={{ fontFamily: "'Outfit', sans-serif" }}>{title}</h3>
+        <p className="text-sm text-slate-300 leading-relaxed">{description}</p>
+      </div>
+    </Reveal>
+  );
+}
+
+/* ───────────────────────────── feature card ────────────────────────────────── */
+function FeatureCard({ title, description, icon, delay }) {
+  return (
+    <Reveal delay={delay}>
+      <div className="cb-feature-card group">
+        <div className="text-4xl mb-4 cb-feature-icon">{icon}</div>
+        <h3 className="text-lg font-bold text-white mb-2" style={{ fontFamily: "'Outfit', sans-serif" }}>{title}</h3>
+        <p className="text-sm text-slate-400 leading-relaxed">{description}</p>
+      </div>
+    </Reveal>
+  );
+}
+
+/* ═══════════════════════════════ MAIN PAGE ═════════════════════════════════ */
 export function MainHome() {
   return (
-    <div className="about-us-page">
-      {/* Hero Section */}
-      <section
-        className="py-5 text-white d-flex align-items-center justify-content-center"
-        style={{
-          background:
-            `linear-gradient(rgba(0,0,0,0.5),rgba(0,0,0,0.5)), url('${pyxisImages.hero}') center/cover no-repeat`,
-          minHeight: 340,
-        }}
-      >
-        <div className="container text-center">
-          <h1 className="display-3 fw-bold mb-3">Accelerate and advance your medicine R&D process with our Compound Libraries</h1>
-          <p className="lead mx-auto mb-6" style={{ maxWidth: 700 }}>
-            Create future medicines by unlocking the potential of macrocyclic chemistry
+    <div className="cb-landing">
+
+      {/* ─── HERO ───────────────────────────────────────────────────────────── */}
+      <section className="cb-hero">
+        {/* animated background orbs */}
+        <div className="cb-orb cb-orb-1" />
+        <div className="cb-orb cb-orb-2" />
+        <div className="cb-orb cb-orb-3" />
+        {/* grid overlay */}
+        <div className="cb-grid-bg" />
+
+        <div className="cb-hero-content">
+          <Reveal>
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-purple-500/30 bg-purple-500/10 text-purple-300 text-sm mb-6 backdrop-blur-sm">
+              <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-purple-500"></span></span>
+              Now in Open Beta
+            </div>
+          </Reveal>
+
+          <Reveal delay={100}>
+            <h1 className="cb-hero-title">
+              The Ultimate <span className="cb-gradient-text">Playground</span><br />
+              for Chemistry Labs
+            </h1>
+          </Reveal>
+
+          <Reveal delay={200}>
+            <p className="cb-hero-subtitle">
+              ChemBench gives organic-research laboratories a branded digital space
+              where their customers can explore compounds, run Molstar simulations,
+              dock to protein targets, get binding scores — and purchase ligands —
+              all in one platform.
+            </p>
+          </Reveal>
+
+          <Reveal delay={300}>
+            <div className="flex flex-wrap gap-4 justify-center">
+              <Link to="/auth/sign-up" className="cb-btn-primary">
+                Register Your Lab — Free
+              </Link>
+              <Link to="/auth/sign-in" className="cb-btn-ghost">
+                Sign In →
+              </Link>
+            </div>
+          </Reveal>
+
+          {/* hero stats */}
+          <Reveal delay={400}>
+            <div className="cb-hero-stats">
+              <div><span className="cb-stat-number">10K+</span><span className="cb-stat-label">Compounds</span></div>
+              <div className="cb-stat-divider" />
+              <div><span className="cb-stat-number">50+</span><span className="cb-stat-label">Labs Onboarded</span></div>
+              <div className="cb-stat-divider" />
+              <div><span className="cb-stat-number">1M+</span><span className="cb-stat-label">Simulations Run</span></div>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ─── HOW IT WORKS ───────────────────────────────────────────────────── */}
+      <section className="cb-section">
+        <Reveal>
+          <h2 className="cb-section-title">How <span className="cb-gradient-text">ChemBench</span> Works</h2>
+          <p className="cb-section-subtitle">Four simple steps from lab registration to ligand purchase</p>
+        </Reveal>
+
+        <div className="flex flex-wrap gap-6 justify-center mt-12 max-w-6xl mx-auto">
+          <StepCard number="01" icon="🏢" title="Lab Registration" delay={0}
+            description="Your laboratory creates a branded space on ChemBench. Upload your compound libraries and define the targets you specialise in." />
+          <StepCard number="02" icon="🔬" title="Customer Exploration" delay={100}
+            description="Potential customers sign in to your lab space, browse your macrocycles, ligands, and molecular scaffolds interactively." />
+          <StepCard number="03" icon="🧬" title="Simulate & Score" delay={200}
+            description="Customers use built-in tools like Molstar to dock compounds to predefined protein chains and get real-time binding scores." />
+          <StepCard number="04" icon="🛒" title="Purchase or Quote" delay={300}
+            description="Once satisfied, customers can purchase ligands directly or request a custom quote — closing the loop from discovery to order." />
+        </div>
+      </section>
+
+      {/* ─── FEATURES ───────────────────────────────────────────────────────── */}
+      <section className="cb-section cb-section-alt">
+        <Reveal>
+          <h2 className="cb-section-title">Built for <span className="cb-gradient-text">Modern</span> Drug Discovery</h2>
+          <p className="cb-section-subtitle">Everything your lab and your customers need, in one place</p>
+        </Reveal>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-12 max-w-6xl mx-auto px-4">
+          <FeatureCard icon="🧪" title="Compound Libraries" delay={0}
+            description="Host and manage off-the-shelf and synthesis-on-demand compound libraries — from 10K macrocycles to 1B enumerated molecules." />
+          <FeatureCard icon="🎯" title="Protein Docking" delay={80}
+            description="Let customers dock compounds against your predefined target proteins with automated scoring and visualization." />
+          <FeatureCard icon="🔮" title="Molstar 3D Viewer" delay={160}
+            description="Interactive 3D molecular visualization powered by Molstar — inspect binding poses, surfaces, and electrostatics in real time." />
+          <FeatureCard icon="📊" title="Binding Scores & Analytics" delay={240}
+            description="Automated binding affinity scoring with detailed analytics dashboards for each simulation run." />
+          <FeatureCard icon="💳" title="Integrated Purchasing" delay={320}
+            description="Stripe-powered checkout and quote request system built right into the platform — no external tools needed." />
+          <FeatureCard icon="🔒" title="Lab-Branded Spaces" delay={400}
+            description="Each lab gets its own branded portal with custom branding, compound catalogs, and customer management." />
+        </div>
+      </section>
+
+      {/* ─── FOR LABS ───────────────────────────────────────────────────────── */}
+      <section className="cb-section">
+        <div className="max-w-6xl mx-auto px-4 flex flex-col lg:flex-row items-center gap-12">
+          <Reveal className="flex-1">
+            <div className="cb-showcase-card">
+              <div className="cb-showcase-inner">
+                <div className="cb-molecule-grid">
+                  {[...Array(9)].map((_, i) => (
+                    <div key={i} className="cb-molecule-cell" style={{ animationDelay: `${i * 0.2}s` }}>
+                      <MoleculeIcon />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </Reveal>
+          <Reveal delay={150} className="flex-1">
+            <span className="cb-badge">For Laboratories</span>
+            <h2 className="text-3xl lg:text-4xl font-bold text-white mb-4" style={{ fontFamily: "'Outfit', sans-serif" }}>
+              Your Compounds,<br />Their Discovery
+            </h2>
+            <p className="text-slate-400 leading-relaxed mb-6">
+              Whether you specialise in macrocyclic research, covalent inhibitors, or
+              molecular glues — ChemBench lets you showcase your entire chemical
+              space to potential customers. They interact with your molecules using
+              professional-grade tools, and when they find what they need, the
+              purchase happens right here.
+            </p>
+            <ul className="space-y-3 text-slate-300">
+              {["Drag-and-drop compound upload (SDF, SMILES, PDB)",
+                "Customisable target protein library",
+                "Real-time customer activity dashboard",
+                "Revenue analytics & order management"
+              ].map((t, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="text-emerald-400 mt-0.5">✓</span> {t}
+                </li>
+              ))}
+            </ul>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ─── FOR CUSTOMERS ──────────────────────────────────────────────────── */}
+      <section className="cb-section cb-section-alt">
+        <div className="max-w-6xl mx-auto px-4 flex flex-col lg:flex-row-reverse items-center gap-12">
+          <Reveal className="flex-1">
+            <div className="cb-showcase-card cb-showcase-blue">
+              <div className="cb-showcase-inner">
+                <div className="flex flex-col items-center justify-center h-full gap-4">
+                  <div className="text-6xl animate-pulse">🧬</div>
+                  <div className="flex gap-2">
+                    <div className="cb-score-pill cb-score-good">Score: 9.2</div>
+                    <div className="cb-score-pill cb-score-mid">ΔG: −8.4</div>
+                  </div>
+                  <div className="text-xs text-slate-500 font-mono">Docking complete • 3 conformers</div>
+                </div>
+              </div>
+            </div>
+          </Reveal>
+          <Reveal delay={150} className="flex-1">
+            <span className="cb-badge cb-badge-blue">For Customers</span>
+            <h2 className="text-3xl lg:text-4xl font-bold text-white mb-4" style={{ fontFamily: "'Outfit', sans-serif" }}>
+              Explore, Simulate,<br />Then Purchase
+            </h2>
+            <p className="text-slate-400 leading-relaxed mb-6">
+              Sign in to your partner lab's ChemBench space. Browse their compound
+              catalogue, tweak molecules with built-in editors, run docking
+              simulations against real protein targets, and — when you've found the
+              perfect ligand — buy it or request a custom quote, all without leaving
+              the platform.
+            </p>
+            <ul className="space-y-3 text-slate-300">
+              {["Browse & filter thousands of compounds interactively",
+                "3D visualization and binding-pose inspection",
+                "Automated affinity scoring against lab-defined targets",
+                "One-click purchase or custom quote request"
+              ].map((t, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="text-blue-400 mt-0.5">✓</span> {t}
+                </li>
+              ))}
+            </ul>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ─── CTA ────────────────────────────────────────────────────────────── */}
+      <section className="cb-cta-section">
+        <div className="cb-orb cb-orb-4" />
+        <Reveal>
+          <h2 className="text-3xl lg:text-5xl font-bold text-white mb-4 text-center" style={{ fontFamily: "'Outfit', sans-serif" }}>
+            Ready to open your <span className="cb-gradient-text">lab's playground</span>?
+          </h2>
+        </Reveal>
+        <Reveal delay={100}>
+          <p className="text-slate-400 text-center max-w-xl mx-auto mb-8">
+            Join the growing network of organic-chemistry labs that use ChemBench to
+            showcase compounds, run simulations, and convert researchers into paying
+            customers.
           </p>
-        </div>
+        </Reveal>
+        <Reveal delay={200}>
+          <div className="flex flex-wrap gap-4 justify-center">
+            <Link to="/auth/sign-up" className="cb-btn-primary cb-btn-lg">
+              Get Started — It's Free
+            </Link>
+            <Link to="/main/contact-us" className="cb-btn-ghost cb-btn-lg">
+              Contact Sales
+            </Link>
+          </div>
+        </Reveal>
       </section>
 
-      {/* Scaffold-based Chemical Space Section */}
-      <section className="container py-5">
-        <h2 className="fw-bold mb-4" style={{ fontSize: '3rem' }}>Pyxis embraces the concept of scaffold-based chemical space exploration</h2>
-        <p className="lead text-blue-gray-700 mb-2">
-          This library design approach offers several advantages over alternative methods of chemical space enrichment as it is easy to combine with existing machine learning and statistical modelling algorithms and chemistry process automation. All Pyxis scaffolds are drug-like and synthetically tractable, featuring Fsp3-rich linkers and ring-systems found in known drugs or natural products. The peripheral building blocks can be attached to the core scaffold in a step-by-step fashion using well-validated protocols of parallel chemistry.
-        </p>
-      </section>
-
-      {/* Macrocyclic ChemSpace Section */}
-      <section className="bg-blue-gray-50 py-5">
-        <div className="container row align-items-center mb-5 mx-auto">
-          <div className="col-lg-6 mb-4 mb-lg-0">
-            <img src={pyxisImages.macrocyclicChemspace} alt="Macrocyclic ChemSpace" className="img-fluid rounded shadow" style={{ maxHeight: 400, objectFit: "cover", width: "100%" }} />
-          </div>
-          <div className="col-lg-6">
-            <ul className="list-unstyled text-blue-gray-700 text-base mb-2">
-              <li>10,000 Off-the-shelf molecules (1mg, ready-to-ship, 10μmol format)</li>
-              <li>1,000,000 Synthesis-on-demand molecules (3-day turnaround)</li>
-              <li>1,000,000,000 Fully enumerated, synthetically feasible macrocycles</li>
-            </ul>
-            <p className="text-blue-gray-600 mb-2">
-              All scaffolds are drug-like, synthetically tractable, and compatible with machine learning and automation.
-            </p>
-            <a href="/pdbs/Macrocycles-Final-10k-Compounds.zip" download className="mt-2 btn btn-outline-primary">
-              Download 10,000 Macrocyclic ChemSpace (SDF)
-            </a>
-          </div>
-        </div>
-      </section>
-
-      {/* Macrocycles for CNS Section */}
-      <section className="py-5">
-        <div className="container row align-items-center mb-5 flex-row-reverse mx-auto">
-          <div className="col-lg-6 mb-4 mb-lg-0">
-            <img src={pyxisImages.cnsMacrocycles} alt="CNS Macrocycles" className="img-fluid rounded shadow" style={{ maxHeight: 400, objectFit: "cover", width: "100%" }} />
-          </div>
-          <div className="col-lg-6">
-            <p className="lead text-blue-gray-700 mb-2">
-              Uniquely designed macrocycles for CNS drug discovery, offering excellent solubility, cellular permeability, and diverse shapes for modulating CNS targets.
-            </p>
-            <ul className="list-unstyled text-blue-gray-700 text-base mb-2">
-              <li>2,870 in-stock macrocycles (0.5μmol in DMSO, 90% purity)</li>
-              <li>Pre-plated, ready for screening</li>
-            </ul>
-            <a href="/pdbs/Macrocycles-Final-Compounds-0.5umol.zip" download className="mt-2 btn btn-outline-primary">
-              Download CNS Macrocycles (SDF)
-            </a>
-          </div>
-        </div>
-      </section>
-
-      {/* Macrocycles as Molecular Glues Section */}
-      <section className="bg-blue-gray-50 py-5">
-        <div className="container row align-items-center mb-5 mx-auto">
-          <div className="col-lg-6 mb-4 mb-lg-0">
-            <img src={pyxisImages.molecularGlues} alt="Molecular Glues" className="img-fluid rounded shadow" style={{ maxHeight: 400, objectFit: "cover", width: "100%" }} />
-          </div>
-          <div className="col-lg-6">
-            <p className="lead text-blue-gray-700 mb-2">
-              Diversity-oriented macrocyclic library for unbiased molecular glue screening, targeting protein-protein interactions and non-traditional binding sites.
-            </p>
-            <ul className="list-unstyled text-blue-gray-700 text-base mb-2">
-              <li>1,277 in-stock macrocycles (0.5μmol in DMSO, 90% purity)</li>
-              <li>Pre-plated, ready for screening</li>
-            </ul>
-            <a href="/pdbs/protac-in-vitro-1277.zip" download className="mt-2 btn btn-outline-primary">
-              Download Molecular Glues Library (SDF)
-            </a>
-          </div>
-        </div>
-      </section>
-
-      {/* Macrocycles for Covalent Drug Discovery Section */}
-      <section className="py-5">
-        <div className="container row align-items-center mb-5 flex-row-reverse mx-auto">
-          <div className="col-lg-6 mb-4 mb-lg-0">
-            <img src={pyxisImages.covalentMacrocycles} alt="Covalent Macrocycles" className="img-fluid rounded shadow" style={{ maxHeight: 400, objectFit: "cover", width: "100%" }} />
-          </div>
-          <div className="col-lg-6">
-            <h2 className="fw-bold mb-3" style={{ fontSize: '3rem' }}>Macrocycles for Covalent Drug Discovery</h2>
-            <p className="lead text-blue-gray-700 mb-2">
-              Cysteine-oriented electrophilic macrocycles for covalent drug discovery, enabling SAR exploration and targeting challenging proteins.
-            </p>
-            <ul className="list-unstyled text-blue-gray-700 text-base mb-2">
-              <li>13,948 on-demand macrocycles (2μmol dry, 90% purity, 4-week turnaround)</li>
-            </ul>
-            <a href="/pdbs/macrocyclic-covalent-library-13948.zip" download className="mt-2 btn btn-outline-primary">
-              Download Covalent Macrocycles Library (SDF)
-            </a>
-          </div>
-        </div>
-      </section>
-
-      {/* Contact/CTA Section */}
-      <section className="bg-blue-gray-50 py-5">
-        <div className="container text-center">
-          <h2 className="fw-bold mb-3" style={{ fontSize: '3rem' }}>Looking for advice or a screening partner?</h2>
-          <a href="https://www.pyxis-discovery.com/contact/" target="_blank" rel="noreferrer" className="btn btn-success ms-2" role="button">
-            Contact Pyxis Discovery
-          </a>
-        </div>
-      </section>
     </div>
   );
 }
