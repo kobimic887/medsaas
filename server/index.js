@@ -50,11 +50,13 @@ const MONGODB_URI = process.env.MONGODB_URI;
 const APP_BASE_URL = (process.env.BASE_URL || '').replace(/\/$/, '');
 const FRONTEND_URL = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
 const TANIMOTO_API_BASE = (process.env.TANIMOTO_API_BASE || 'http://151.145.91.17:8000').replace(/\/$/, '');
-const ASINEX_API_BASE = (process.env.ASINEX_API_BASE || 'http://dev.asinex.com:58181').replace(/\/$/, '');
-const ASINEX_STOCK_API_URL = process.env.ASINEX_STOCK_API_URL || 'https://stock.asinex.com:5443/api/Shop';
-const ASINEX_DOCKING_API_URL = process.env.ASINEX_DOCKING_API_URL || 'https://services.asinex.com:8000/docking';
-const DIFFDOCK_API_URL = process.env.DIFFDOCK_API_URL || 'https://services.asinex.com:58000/molecular-docking/diffdock/generate';
 const SDF_CONVERTER_URL = process.env.SDF_CONVERTER_URL || 'http://83.229.87.94:8001/convertSTR';
+const DEFAULT_LIGAND_SERVICE_CONFIG = Object.freeze({
+  catalogApiBase: 'http://dev.asinex.com:58181',
+  stockApiUrl: 'https://stock.asinex.com:5443/api/Shop',
+  dockingApiUrl: 'https://services.asinex.com:8000/docking',
+  diffdockApiUrl: 'https://services.asinex.com:58000/molecular-docking/diffdock/generate'
+});
 
 const PLAN_CATALOG = Object.freeze({
   Trial: { displayName: 'Trial', credits: 4, priceCents: 0 },
@@ -804,6 +806,28 @@ const DEFAULT_USAGE_POLICY = {
 };
 const MAX_LIGAND_UPLOAD_BYTES = 2 * 1024 * 1024;
 
+function normalizeLigandServiceConfig(rawConfig = {}) {
+  const catalogApiBase = typeof rawConfig.catalogApiBase === 'string' && rawConfig.catalogApiBase.trim()
+    ? rawConfig.catalogApiBase.trim().replace(/\/$/, '')
+    : DEFAULT_LIGAND_SERVICE_CONFIG.catalogApiBase;
+  const stockApiUrl = typeof rawConfig.stockApiUrl === 'string' && rawConfig.stockApiUrl.trim()
+    ? rawConfig.stockApiUrl.trim()
+    : DEFAULT_LIGAND_SERVICE_CONFIG.stockApiUrl;
+  const dockingApiUrl = typeof rawConfig.dockingApiUrl === 'string' && rawConfig.dockingApiUrl.trim()
+    ? rawConfig.dockingApiUrl.trim()
+    : DEFAULT_LIGAND_SERVICE_CONFIG.dockingApiUrl;
+  const diffdockApiUrl = typeof rawConfig.diffdockApiUrl === 'string' && rawConfig.diffdockApiUrl.trim()
+    ? rawConfig.diffdockApiUrl.trim()
+    : DEFAULT_LIGAND_SERVICE_CONFIG.diffdockApiUrl;
+
+  return {
+    catalogApiBase,
+    stockApiUrl,
+    dockingApiUrl,
+    diffdockApiUrl
+  };
+}
+
 function getCurrentMonthKey(date = new Date()) {
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
@@ -914,10 +938,12 @@ async function getCompanyRecord(companyId) {
   const normalizedCompanyId = company.companyId || company._id.toString();
   const normalizedUsagePolicy = normalizeUsagePolicy(company.usagePolicy || {});
   const normalizedMonthlyUsage = normalizeMonthlyUsage(company.monthlyUsage || {});
+  const normalizedLigandServiceConfig = normalizeLigandServiceConfig(company.ligandServiceConfig || {});
 
   const patch = {};
   if (!company.companyId) patch.companyId = normalizedCompanyId;
   if (!company.usagePolicy) patch.usagePolicy = normalizedUsagePolicy;
+  if (!company.ligandServiceConfig) patch.ligandServiceConfig = normalizedLigandServiceConfig;
   if (!company.monthlyUsage || company.monthlyUsage.monthKey !== normalizedMonthlyUsage.monthKey) {
     patch.monthlyUsage = normalizedMonthlyUsage;
   }
@@ -932,7 +958,8 @@ async function getCompanyRecord(companyId) {
     ...company,
     companyId: normalizedCompanyId,
     usagePolicy: normalizeUsagePolicy(company.usagePolicy || normalizedUsagePolicy),
-    monthlyUsage: normalizeMonthlyUsage(company.monthlyUsage || normalizedMonthlyUsage)
+    monthlyUsage: normalizeMonthlyUsage(company.monthlyUsage || normalizedMonthlyUsage),
+    ligandServiceConfig: normalizeLigandServiceConfig(company.ligandServiceConfig || normalizedLigandServiceConfig)
   };
 }
 
@@ -967,6 +994,17 @@ async function incrementCompanyMonthlyUsage(companyId) {
       }
     }
   );
+}
+
+async function getRequestLigandServiceConfig(req) {
+  if (!req?.user?.companyId) {
+    return { ...DEFAULT_LIGAND_SERVICE_CONFIG };
+  }
+  const company = await getCompanyRecord(req.user.companyId);
+  if (!company) {
+    return { ...DEFAULT_LIGAND_SERVICE_CONFIG };
+  }
+  return normalizeLigandServiceConfig(company.ligandServiceConfig || {});
 }
 
 async function recordAuditEvent(req, action, details = {}, status = 'success') {
@@ -1524,6 +1562,7 @@ app.post('/api/signup', authRateLimit, ensureMongoConnected, async (req, res) =>
       slug: companySlug,
       companyId: null,
       ligandUpload: normalizedLigandUpload,
+      ligandServiceConfig: { ...DEFAULT_LIGAND_SERVICE_CONFIG },
       active: true,
       usagePolicy: { ...DEFAULT_USAGE_POLICY },
       monthlyUsage: {
@@ -2382,7 +2421,8 @@ function authenticateToken(req, res, next) {
 
 app.post('/api/shop', authenticateToken, async (req, res) => {
   try {
-    const response = await fetch(ASINEX_STOCK_API_URL, {
+    const { stockApiUrl } = await getRequestLigandServiceConfig(req);
+    const response = await fetch(stockApiUrl, {
       method: 'POST',
       headers: {
         'Accept': 'application/json, text/plain, */*',
@@ -2467,7 +2507,8 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, async (req, 
       Math.random().toString(36).charAt(2)
     ).join('');
     // Call external API
-    const url = `${ASINEX_DOCKING_API_URL}/${encodeURIComponent(pdbid)}&${encodeURIComponent(smiles)}`;
+    const { dockingApiUrl } = await getRequestLigandServiceConfig(req);
+    const url = `${dockingApiUrl}/${encodeURIComponent(pdbid)}&${encodeURIComponent(smiles)}`;
     const response = await fetch(url, {
       method: 'GET',
       headers: {
@@ -2615,7 +2656,8 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
       Math.random().toString(36).charAt(2)
     ).join('');
     // Call external API with POST method
-    const response = await fetch(ASINEX_DOCKING_API_URL, {
+    const { dockingApiUrl } = await getRequestLigandServiceConfig(req);
+    const response = await fetch(dockingApiUrl, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -2966,6 +3008,7 @@ app.get('/api/company/usage', ensureMongoConnected, authenticateToken, requireCo
         id: company.companyId,
         name: company.name,
         active: company.active !== false,
+        ligandServiceConfig: normalizeLigandServiceConfig(company.ligandServiceConfig || {}),
         ligandUpload: company.ligandUpload
           ? {
               fileName: company.ligandUpload.fileName,
@@ -3096,6 +3139,61 @@ app.patch('/api/company/ligand-upload', ensureMongoConnected, authenticateToken,
         sizeBytes: normalizedLigandUpload.sizeBytes,
         uploadedAt: normalizedLigandUpload.uploadedAt
       }
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch('/api/company/ligand-service-config', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (req, res) => {
+  try {
+    const company = await getCompanyRecord(req.user.companyId);
+    if (!company) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+
+    const currentConfig = normalizeLigandServiceConfig(company.ligandServiceConfig || {});
+    const updates = {};
+    if (Object.prototype.hasOwnProperty.call(req.body, 'catalogApiBase')) {
+      const value = typeof req.body.catalogApiBase === 'string' ? req.body.catalogApiBase.trim() : '';
+      if (!value) return res.status(400).json({ error: 'catalogApiBase must be a non-empty string' });
+      updates.catalogApiBase = value.replace(/\/$/, '');
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body, 'stockApiUrl')) {
+      const value = typeof req.body.stockApiUrl === 'string' ? req.body.stockApiUrl.trim() : '';
+      if (!value) return res.status(400).json({ error: 'stockApiUrl must be a non-empty string' });
+      updates.stockApiUrl = value;
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body, 'dockingApiUrl')) {
+      const value = typeof req.body.dockingApiUrl === 'string' ? req.body.dockingApiUrl.trim() : '';
+      if (!value) return res.status(400).json({ error: 'dockingApiUrl must be a non-empty string' });
+      updates.dockingApiUrl = value;
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body, 'diffdockApiUrl')) {
+      const value = typeof req.body.diffdockApiUrl === 'string' ? req.body.diffdockApiUrl.trim() : '';
+      if (!value) return res.status(400).json({ error: 'diffdockApiUrl must be a non-empty string' });
+      updates.diffdockApiUrl = value;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No ligand service config fields provided' });
+    }
+
+    const ligandServiceConfig = normalizeLigandServiceConfig({ ...currentConfig, ...updates });
+    await companiesCollection.updateOne(
+      { companyId: req.user.companyId },
+      { $set: { ligandServiceConfig, updatedAt: new Date() } }
+    );
+
+    await recordAuditEvent(req, 'company.ligand_service_config.update', {
+      targetType: 'company',
+      targetId: req.user.companyId,
+      updates: ligandServiceConfig
+    });
+
+    res.json({
+      message: 'Ligand service config updated',
+      ligandServiceConfig
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -3365,13 +3463,14 @@ app.get('/api/company/audit-logs', ensureMongoConnected, authenticateToken, requ
 app.get('/api/exact/:smiles', authenticateToken, async (req, res) => {
   try {
     const { smiles } = req.params;
+    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
     
     if (!smiles) {
       return res.status(400).json({ error: 'SMILES string is required' });
     }
     
     // Forward the request directly to Asinex API
-    const response = await fetch(`${ASINEX_API_BASE}/api/exact/${smiles}`, {
+    const response = await fetch(`${catalogApiBase}/api/exact/${smiles}`, {
       method: 'GET',
       headers: {
         'Accept': '*/*',
@@ -3441,9 +3540,10 @@ app.get('/api/exact/:smiles', authenticateToken, async (req, res) => {
 app.get('/api/all/:id_:pageSize', authenticateToken, async (req, res) => {
   try {
     const { id, pageSize } = req.params;
+    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
     
     // Forward the request directly to Asinex API
-    const response = await fetch(`${ASINEX_API_BASE}/api/all/${id}_${pageSize}`, {
+    const response = await fetch(`${catalogApiBase}/api/all/${id}_${pageSize}`, {
       method: 'GET',
       headers: {
         'Accept': '*/*',
@@ -3503,9 +3603,10 @@ app.get('/api/all/:id_:pageSize', authenticateToken, async (req, res) => {
 app.get('/api/id/:id_number', authenticateToken, async (req, res) => {
   try {
     const { id_number } = req.params;
+    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
     
     // Forward the request directly to Asinex API
-    const response = await fetch(`${ASINEX_API_BASE}/api/id/${id_number}`, {
+    const response = await fetch(`${catalogApiBase}/api/id/${id_number}`, {
       method: 'GET',
       headers: {
         'Accept': '*/*',
@@ -3582,7 +3683,8 @@ app.get('/api/id/:id_number', authenticateToken, async (req, res) => {
  */
 app.post('/api/api4/bas', authenticateToken, async (req, res) => {
   try {
-    const response = await fetch(`${ASINEX_API_BASE}/api4/bas`, {
+    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
+    const response = await fetch(`${catalogApiBase}/api4/bas`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -3651,7 +3753,8 @@ app.post('/api/api4/bas', authenticateToken, async (req, res) => {
  */
 app.post('/api/api4/structure', authenticateToken, async (req, res) => {
   try {
-    const response = await fetch(`${ASINEX_API_BASE}/api4/structure`, {
+    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
+    const response = await fetch(`${catalogApiBase}/api4/structure`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -3720,7 +3823,8 @@ app.post('/api/api4/structure', authenticateToken, async (req, res) => {
  */
 app.post('/api/api4/substructure', authenticateToken, async (req, res) => {
   try {
-    const response = await fetch(`${ASINEX_API_BASE}/api4/substructure`, {
+    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
+    const response = await fetch(`${catalogApiBase}/api4/substructure`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -3789,7 +3893,8 @@ app.post('/api/api4/substructure', authenticateToken, async (req, res) => {
  */
 app.post('/api/api4/similarity', authenticateToken, async (req, res) => {
   try {
-    const response = await fetch(`${ASINEX_API_BASE}/api4/similarity`, {
+    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
+    const response = await fetch(`${catalogApiBase}/api4/similarity`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -3858,7 +3963,8 @@ app.post('/api/api4/similarity', authenticateToken, async (req, res) => {
  */
 app.post('/api/api4/mw', authenticateToken, async (req, res) => {
   try {
-    const response = await fetch(`${ASINEX_API_BASE}/api4/mw`, {
+    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
+    const response = await fetch(`${catalogApiBase}/api4/mw`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -3961,6 +4067,7 @@ app.post('/api/api4/mw', authenticateToken, async (req, res) => {
  */
 app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requireActiveUser, consumeSimulationToken('diffdock'), async (req, res) => {
   try {
+    const { diffdockApiUrl } = await getRequestLigandServiceConfig(req);
     const {
       protein,
       ligandFileType = 'sdf',
@@ -4064,7 +4171,7 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
         is_staged: is_staged
       };
       logToFile('makeDiffDockRequest REQUEST: ' + JSON.stringify(requestBody));
-      const response = await fetch(DIFFDOCK_API_URL, {
+      const response = await fetch(diffdockApiUrl, {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
@@ -4224,12 +4331,13 @@ app.post('/api/diffdock/generate_file', ensureMongoConnected, authenticateToken,
 app.get('/api/asinex/all/:id_:pageSize', authenticateToken, async (req, res) => {
   try {
     const { id_, pageSize } = req.params;
+    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
     
     if (!id_ || !pageSize ) {
       return res.status(400).json({ error: '_id, pageSize are all required' });
     }
 
-    const response = await fetch(`${ASINEX_API_BASE}/api/all/${id_}_${pageSize.replace('_', '')}`, {
+    const response = await fetch(`${catalogApiBase}/api/all/${id_}_${pageSize.replace('_', '')}`, {
       method: 'GET' 
     });
     
@@ -4273,12 +4381,13 @@ app.get('/api/asinex/all/:id_:pageSize', authenticateToken, async (req, res) => 
 app.get('/api/asinex/id/:id_number', authenticateToken, async (req, res) => {
   try {
     const { id_number } = req.params;
+    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
     
     if (!id_number) {
       return res.status(400).json({ error: 'id_number is required' });
     }
     
-    const response = await fetch(`${ASINEX_API_BASE}/api/id/${encodeURIComponent(id_number)}`, {
+    const response = await fetch(`${catalogApiBase}/api/id/${encodeURIComponent(id_number)}`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -4334,12 +4443,13 @@ app.get('/api/asinex/id/:id_number', authenticateToken, async (req, res) => {
 app.get('/api/asinex/exact/:smiles', authenticateToken, async (req, res) => {
   try {
     const { smiles } = req.params;
+    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
     
     if (!smiles) {
       return res.status(400).json({ error: 'SMILES string is required' });
     }
     
-    const response = await fetch(`${ASINEX_API_BASE}/api/exact/${encodeURIComponent(smiles)}`, {
+    const response = await fetch(`${catalogApiBase}/api/exact/${encodeURIComponent(smiles)}`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -4408,11 +4518,12 @@ app.get('/api/asinex/exact/:smiles', authenticateToken, async (req, res) => {
 app.get('/api/asinex/substructure/:id_:pageSize/:smiles', authenticateToken, async (req, res) => {
   try {
     const { id_, pageSize, smiles } = req.params;
+    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
     
     if (!id_ || !pageSize || !smiles) {
       return res.status(400).json({ error: '_id, pageSize, and SMILES are all required' });
     }
-  let uri =`${ASINEX_API_BASE}/api/substructure/${id_}_${pageSize.replace('_', '')}/${encodeURIComponent(smiles)}`;
+  let uri =`${catalogApiBase}/api/substructure/${id_}_${pageSize.replace('_', '')}/${encodeURIComponent(smiles)}`;
     const response = await fetch(uri, {      method: 'GET'     });
 
     if (response.status === 404) {
@@ -4478,6 +4589,7 @@ app.get('/api/asinex/substructure/:id_:pageSize/:smiles', authenticateToken, asy
 app.post('/api/asinex/search', authenticateToken, async (req, res) => {
   try {
     const { searchType, id, pageSize, id_number, smiles } = req.body;
+    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
     
     if (!searchType) {
       return res.status(400).json({ error: 'searchType is required' });
@@ -4491,7 +4603,7 @@ app.post('/api/asinex/search', authenticateToken, async (req, res) => {
         if (!id || !pageSize) {
           return res.status(400).json({ error: 'id and pageSize are required for all search' });
         }
-        apiUrl = `${ASINEX_API_BASE}/api/all/${id}_${pageSize}`;
+        apiUrl = `${catalogApiBase}/api/all/${id}_${pageSize}`;
         searchParams = { id, pageSize };
         break;
         
@@ -4499,7 +4611,7 @@ app.post('/api/asinex/search', authenticateToken, async (req, res) => {
         if (!id_number) {
           return res.status(400).json({ error: 'id_number is required for ID search' });
         }
-        apiUrl = `${ASINEX_API_BASE}/api/id/${encodeURIComponent(id_number)}`;
+        apiUrl = `${catalogApiBase}/api/id/${encodeURIComponent(id_number)}`;
         searchParams = { id_number };
         break;
         
@@ -4507,7 +4619,7 @@ app.post('/api/asinex/search', authenticateToken, async (req, res) => {
         if (!smiles) {
           return res.status(400).json({ error: 'smiles is required for exact search' });
         }
-        apiUrl = `${ASINEX_API_BASE}/api/exact/${encodeURIComponent(smiles)}`;
+        apiUrl = `${catalogApiBase}/api/exact/${encodeURIComponent(smiles)}`;
         searchParams = { smiles };
         break;
         
@@ -4515,7 +4627,7 @@ app.post('/api/asinex/search', authenticateToken, async (req, res) => {
         if (!id || !pageSize || !smiles) {
           return res.status(400).json({ error: 'id, pageSize, and smiles are required for substructure search' });
         }
-        apiUrl = `${ASINEX_API_BASE}/api/substructure/${id}_${pageSize}/${encodeURIComponent(smiles)}`;
+        apiUrl = `${catalogApiBase}/api/substructure/${id}_${pageSize}/${encodeURIComponent(smiles)}`;
         searchParams = { id, pageSize, smiles };
         break;
         
@@ -4568,8 +4680,10 @@ app.post('/api/asinex/search', authenticateToken, async (req, res) => {
  *         description: Asinex API health status
  */
 app.get('/api/asinex/health', authenticateToken, async (req, res) => {
+  let catalogApiBase = DEFAULT_LIGAND_SERVICE_CONFIG.catalogApiBase;
   try {
-    const response = await fetch(`${ASINEX_API_BASE}/api/all/1_1`, {
+    ({ catalogApiBase } = await getRequestLigandServiceConfig(req));
+    const response = await fetch(`${catalogApiBase}/api/all/1_1`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -4583,7 +4697,7 @@ app.get('/api/asinex/health', authenticateToken, async (req, res) => {
     res.json({
       asinexApi: {
         status: isHealthy ? 'healthy' : 'unhealthy',
-        baseUrl: ASINEX_API_BASE,
+        baseUrl: catalogApiBase,
         statusCode: response.status,
         timestamp: new Date().toISOString()
       }
@@ -4592,7 +4706,7 @@ app.get('/api/asinex/health', authenticateToken, async (req, res) => {
     res.json({
       asinexApi: {
         status: 'unhealthy',
-        baseUrl: ASINEX_API_BASE,
+        baseUrl: catalogApiBase,
         error: error.message,
         timestamp: new Date().toISOString()
       }
