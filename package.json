@@ -1,0 +1,10 @@
+{
+  "name": "medsaas-unified",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "install:all": "npm --prefix material-tailwind-dashboard-react install && npm --prefix chem_beo install",
+    "build": "npm --prefix material-tailwind-dashboard-react run build",
+    "start": "npm run build && npm --prefix chem_beo run start:unified"
+  }
+}

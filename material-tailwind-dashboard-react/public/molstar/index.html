@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Molstar 3D Molecular Viewer</title>
+    <script src="https://unpkg.com/molstar@latest/build/viewer/molstar.js"></script>
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/molstar@latest/build/viewer/molstar.css" />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f8fafc;
+        }
+        
+        .container {
+            display: flex;
+            height: 100vh;
+            flex-direction: column;
+        }
+        
+        .controls {
+            background: white;
+            padding: 16px;
+            border-bottom: 1px solid #e2e8f0;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .control-group {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+        
+        input, select, button {
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        button:hover:not(:disabled) {
+            background: #2563eb;
+        }
+        
+        button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        
+        .btn-green {
+            background: #10b981;
+        }
+        
+        .btn-green:hover:not(:disabled) {
+            background: #059669;
+        }
+        
+        .examples {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .example-btn {
+            background: transparent;
+            color: #3b82f6;
+            border: 1px solid #3b82f6;
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+        
+        .example-btn:hover:not(:disabled) {
+            background: #3b82f6;
+            color: white;
+        }
+        
+        .viewer {
+            flex: 1;
+            position: relative;
+        }
+        
+        #molstar-container {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            display: none;
+        }
+        
+        .loading.show {
+            display: block;
+        }
+        
+        .status {
+            padding: 8px 16px;
+            margin: 8px 0;
+            border-radius: 4px;
+            font-size: 14px;
+            display: none;
+        }
+        
+        .status.success {
+            background: #d1fae5;
+            color: #065f46;
+            border: 1px solid #a7f3d0;
+        }
+        
+        .status.error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fca5a5;
+        }
+        
+        .status.show {
+            display: block;
+        }
+        
+        label {
+            font-size: 14px;
+            font-weight: 500;
+            color: #374151;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="controls">
+            <div class="control-group">
+                <label>Load from PDB Database:</label>
+                <input type="text" id="pdb-input" placeholder="Enter PDB ID (e.g., 1mbo)" />
+                <button onclick="loadPDB()">Load Structure</button>
+            </div>
+            
+            <!-- <div class="control-group">
+                <label>Quick Examples:</label>
+                <div class="examples">
+                    <button class="example-btn" onclick="loadPDBExample('1mbo')">1mbo (Myoglobin)</button>
+                    <button class="example-btn" onclick="loadPDBExample('2hmi')">2hmi (Hemoglobin)</button>
+                    <button class="example-btn" onclick="loadPDBExample('3j3q')">3j3q (SARS-CoV-2)</button>
+                    <button class="example-btn" onclick="loadPDBExample('1bna')">1bna (B-DNA)</button>
+                    <button class="example-btn" onclick="loadPDBExample('4hhb')">4hhb (Deoxyhemoglobin)</button>
+                </div>
+            </div> -->
+            
+            <div class="control-group">
+                <label>Load from File:</label>
+                <select id="file-format">
+                    <option value="pdb">PDB</option>
+                    <option value="mmcif">mmCIF</option>
+                    <option value="sdf">SDF</option>
+                </select>
+                <input type="file" id="file-input" accept=".pdb,.cif,.sdf,.mol" />
+                <button class="btn-green" onclick="loadFile()">Load from File</button>
+            </div>
+            
+            <div class="control-group">
+                <button onclick="resetView()">Reset View</button>
+                <button onclick="takeScreenshot()">Take Screenshot</button>
+                <button onclick="clearStructure()">Clear</button>
+            </div>
+            
+            <div class="status" id="status"></div>
+        </div>
+        
+        <div class="viewer">
+            <div id="molstar-container"></div>
+            <div class="loading" id="loading">
+                <div>Loading molecular structure...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let viewer = null;
+        
+        // Initialize Molstar viewer
+        async function initViewer() {
+            try {
+                viewer = await molstar.Viewer.create('molstar-container', {
+                    layoutIsExpanded: false,
+                    layoutShowControls: true,
+                    layoutShowRemoteState: false,
+                    layoutShowSequence: true,
+                    layoutShowLog: false,
+                    layoutShowLeftPanel: true,
+                    viewportShowExpand: true,
+                    viewportShowSelectionMode: false,
+                    viewportShowAnimation: false,
+                    pdbProvider: 'rcsb',
+                });
+                
+                showStatus('Molstar viewer initialized successfully!', 'success');
+            } catch (error) {
+                console.error('Failed to initialize Molstar:', error);
+                showStatus('Failed to initialize Molstar viewer', 'error');
+            }
+        }
+        
+        // Load PDB structure
+        async function loadPDB() {
+            const pdbId = document.getElementById('pdb-input').value.trim();
+            if (!pdbId || !viewer) return;
+            
+            showLoading(true);
+            
+            try {
+                await viewer.loadStructureFromUrl(
+                    `https://files.rcsb.org/download/${pdbId.toUpperCase()}.pdb`,
+                    'pdb'
+                );
+                showStatus(`Successfully loaded PDB structure: ${pdbId.toUpperCase()}`, 'success');
+            } catch (error) {
+                console.error('Failed to load PDB:', error);
+                showStatus(`Failed to load PDB structure: ${pdbId}`, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        // Load PDB example
+        async function loadPDBExample(pdbId) {
+            document.getElementById('pdb-input').value = pdbId;
+            await loadPDB();
+        }
+        
+        // Load file
+        async function loadFile() {
+            const fileInput = document.getElementById('file-input');
+            const format = document.getElementById('file-format').value;
+            
+            if (!fileInput.files[0] || !viewer) return;
+            
+            showLoading(true);
+            
+            try {
+                const file = fileInput.files[0];
+                const text = await file.text();
+                
+                // Create a blob URL for the file content
+                const blob = new Blob([text], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                
+                await viewer.loadStructureFromUrl(url, format);
+                showStatus(`Successfully loaded ${format.toUpperCase()} structure from file`, 'success');
+                
+                // Clean up the blob URL
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                console.error('Failed to load file:', error);
+                showStatus('Failed to load structure from file', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        // Reset view
+        function resetView() {
+            if (viewer) {
+                viewer.plugin.managers.camera.reset();
+                showStatus('View reset successfully', 'success');
+            }
+        }
+        
+        // Take screenshot
+        function takeScreenshot() {
+            if (viewer) {
+                viewer.plugin.helpers.viewportScreenshot?.download();
+                showStatus('Screenshot downloaded', 'success');
+            }
+        }
+        
+        // Clear structure
+        function clearStructure() {
+            if (viewer) {
+                viewer.plugin.clear();
+                showStatus('Structure cleared', 'success');
+            }
+        }
+        
+        // Show/hide loading indicator
+        function showLoading(show) {
+            const loading = document.getElementById('loading');
+            if (show) {
+                loading.classList.add('show');
+            } else {
+                loading.classList.remove('show');
+            }
+        }
+        
+        // Show status message
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type} show`;
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                status.classList.remove('show');
+            }, 5000);
+        }
+        
+        // Handle Enter key in PDB input
+        document.getElementById('pdb-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                loadPDB();
+            }
+        });
+
+        // Listen for postMessage events from parent React component
+        window.addEventListener('message', async function(event) {
+            if (event.data && event.data.type === 'loadStructureFromUrl') {
+                if (!viewer) {
+                    console.error('Molstar viewer not initialized');
+                    return;
+                }
+                
+                const { url, format } = event.data;
+                
+                showLoading(true);
+                
+                try {
+                    await viewer.loadStructureFromUrl(url, format);
+                    showStatus(`Successfully loaded ${format.toUpperCase()} structure from API`, 'success');
+                } catch (error) {
+                    console.error('Failed to load structure from URL:', error);
+                    showStatus(`Failed to load ${format.toUpperCase()} structure from API`, 'error');
+                } finally {
+                    showLoading(false);
+                }
+            } else if (event.data && event.data.type === 'loadSmilesStructure') {
+                if (!viewer) {
+                    console.error('Molstar viewer not initialized');
+                    return;
+                }
+                
+                const { smiles, name } = event.data;
+                
+                showLoading(true);
+                
+                try {
+                    // Use a chemical structure service to convert SMILES to 3D structure
+                    const sdfUrl = `https://cactus.nci.nih.gov/chemical/structure/${encodeURIComponent(smiles)}/sdf`;
+                    
+                    await viewer.loadStructureFromUrl(sdfUrl, 'sdf');
+                    showStatus(`Successfully loaded molecule: ${name || 'Unknown'} from SMILES`, 'success');
+                    
+                    // Send success message back to parent
+                    window.parent.postMessage({
+                        type: 'smilesLoaded',
+                        name: name || 'Unknown',
+                        smiles: smiles
+                    }, '*');
+                } catch (error) {
+                    console.error('Failed to load SMILES structure:', error);
+                    
+                    // Try alternative approach using PubChem
+                    try {
+                        const pubchemUrl = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(smiles)}/SDF`;
+                        await viewer.loadStructureFromUrl(pubchemUrl, 'sdf');
+                        showStatus(`Successfully loaded molecule: ${name || 'Unknown'} from SMILES (PubChem)`, 'success');
+                        
+                        // Send success message back to parent
+                        window.parent.postMessage({
+                            type: 'smilesLoaded',
+                            name: name || 'Unknown',
+                            smiles: smiles
+                        }, '*');
+                    } catch (pubchemError) {
+                        console.error('Failed to load from PubChem:', pubchemError);
+                        showStatus(`Failed to load molecule: ${name || 'Unknown'} from SMILES`, 'error');
+                        
+                        // Send error message back to parent
+                        window.parent.postMessage({
+                            type: 'smilesLoadError',
+                            error: `Failed to load molecule from SMILES: ${smiles}`,
+                            smiles: smiles
+                        }, '*');
+                    }
+                } finally {
+                    showLoading(false);
+                }
+            }
+        });
+
+        // Initialize viewer when page loads
+        window.addEventListener('load', initViewer);
+    </script>
+</body>
+</html>

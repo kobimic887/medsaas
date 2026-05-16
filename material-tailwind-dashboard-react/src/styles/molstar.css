@@ -1,0 +1,43 @@
+/* Molstar 3D Viewer Custom Styles */
+
+/* Ensure the molstar viewer fits well with the Material Tailwind theme */
+.msp-plugin {
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+}
+
+/* Override some Molstar default styles to match our theme */
+.msp-plugin .msp-layout-viewport {
+  background-color: #f8fafc !important;
+}
+
+/* Ensure buttons and controls have proper styling */
+.msp-plugin .msp-btn {
+  border-radius: 0.375rem;
+}
+
+/* Make sure the viewer is responsive */
+.msp-plugin .msp-layout-main {
+  min-height: 600px;
+}
+
+/* Tooltip styling to match theme */
+.msp-tooltip {
+  background-color: rgba(0, 0, 0, 0.8) !important;
+  color: white !important;
+  border-radius: 0.375rem !important;
+  font-size: 0.875rem !important;
+}
+
+/* Control panel styling */
+.msp-control-panel {
+  background-color: white !important;
+  border-radius: 0.5rem !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Make loading indicator consistent */
+.msp-plugin .msp-loader {
+  background-color: rgba(248, 250, 252, 0.9) !important;
+}
