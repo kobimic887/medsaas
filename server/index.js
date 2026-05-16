@@ -1015,7 +1015,7 @@ function validateRequiredStringField(body, fieldName) {
   if (!value) {
     throw new Error(`${fieldName} must be a non-empty string`);
   }
-  return fieldName === 'catalogApiBase' ? value.replace(/\/$/, '') : value;
+  return value;
 }
 
 async function recordAuditEvent(req, action, details = {}, status = 'success') {
@@ -1565,14 +1565,19 @@ app.post('/api/signup', authRateLimit, ensureMongoConnected, async (req, res) =>
 
   let company = await companiesCollection.findOne({ slug: companySlug });
   if (!company) {
-    if (!normalizedLigandUpload) {
-      return res.status(400).json({ error: 'Ligand file upload is required for company signup' });
+    let requiredLigandUpload = normalizedLigandUpload;
+    if (!requiredLigandUpload) {
+      try {
+        requiredLigandUpload = parseLigandUpload(ligandUpload, { required: true });
+      } catch (error) {
+        return res.status(400).json({ error: error.message });
+      }
     }
     const createdCompany = {
       name: normalizedCompanyName,
       slug: companySlug,
       companyId: null,
-      ligandUpload: normalizedLigandUpload,
+      ligandUpload: requiredLigandUpload,
       ligandServiceConfig: { ...DEFAULT_LIGAND_SERVICE_CONFIG },
       active: true,
       usagePolicy: { ...DEFAULT_USAGE_POLICY },
