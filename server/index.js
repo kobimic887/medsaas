@@ -807,17 +807,22 @@ const DEFAULT_USAGE_POLICY = {
 const MAX_LIGAND_UPLOAD_BYTES = 2 * 1024 * 1024;
 
 function normalizeLigandServiceConfig(rawConfig = {}) {
-  const catalogApiBase = typeof rawConfig.catalogApiBase === 'string' && rawConfig.catalogApiBase.trim()
-    ? rawConfig.catalogApiBase.trim().replace(/\/$/, '')
+  const rawCatalogApiBase = typeof rawConfig.catalogApiBase === 'string' ? rawConfig.catalogApiBase.trim() : '';
+  const rawStockApiUrl = typeof rawConfig.stockApiUrl === 'string' ? rawConfig.stockApiUrl.trim() : '';
+  const rawDockingApiUrl = typeof rawConfig.dockingApiUrl === 'string' ? rawConfig.dockingApiUrl.trim() : '';
+  const rawDiffdockApiUrl = typeof rawConfig.diffdockApiUrl === 'string' ? rawConfig.diffdockApiUrl.trim() : '';
+
+  const catalogApiBase = rawCatalogApiBase
+    ? rawCatalogApiBase.replace(/\/$/, '')
     : DEFAULT_LIGAND_SERVICE_CONFIG.catalogApiBase;
-  const stockApiUrl = typeof rawConfig.stockApiUrl === 'string' && rawConfig.stockApiUrl.trim()
-    ? rawConfig.stockApiUrl.trim()
+  const stockApiUrl = rawStockApiUrl
+    ? rawStockApiUrl
     : DEFAULT_LIGAND_SERVICE_CONFIG.stockApiUrl;
-  const dockingApiUrl = typeof rawConfig.dockingApiUrl === 'string' && rawConfig.dockingApiUrl.trim()
-    ? rawConfig.dockingApiUrl.trim()
+  const dockingApiUrl = rawDockingApiUrl
+    ? rawDockingApiUrl
     : DEFAULT_LIGAND_SERVICE_CONFIG.dockingApiUrl;
-  const diffdockApiUrl = typeof rawConfig.diffdockApiUrl === 'string' && rawConfig.diffdockApiUrl.trim()
-    ? rawConfig.diffdockApiUrl.trim()
+  const diffdockApiUrl = rawDiffdockApiUrl
+    ? rawDiffdockApiUrl
     : DEFAULT_LIGAND_SERVICE_CONFIG.diffdockApiUrl;
 
   return {
@@ -1543,13 +1548,6 @@ app.post('/api/signup', authRateLimit, ensureMongoConnected, async (req, res) =>
     return res.status(400).json({ error: 'Username, password, email, and company name are required' });
   }
 
-  let normalizedLigandUpload = null;
-  try {
-    normalizedLigandUpload = parseLigandUpload(ligandUpload, { required: false });
-  } catch (error) {
-    return res.status(400).json({ error: error.message });
-  }
-
   const normalizedCompanyName = normalizeCompanyName(organization);
   const companySlug = toCompanySlug(normalizedCompanyName);
   if (!normalizedCompanyName || !companySlug) {
@@ -1564,20 +1562,18 @@ app.post('/api/signup', authRateLimit, ensureMongoConnected, async (req, res) =>
   if (existing) return res.status(409).json({ error: 'User or email already exists' });
 
   let company = await companiesCollection.findOne({ slug: companySlug });
+  let normalizedLigandUpload = null;
+  try {
+    normalizedLigandUpload = parseLigandUpload(ligandUpload, { required: !company });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
   if (!company) {
-    let requiredLigandUpload = normalizedLigandUpload;
-    if (!requiredLigandUpload) {
-      try {
-        requiredLigandUpload = parseLigandUpload(ligandUpload, { required: true });
-      } catch (error) {
-        return res.status(400).json({ error: error.message });
-      }
-    }
     const createdCompany = {
       name: normalizedCompanyName,
       slug: companySlug,
       companyId: null,
-      ligandUpload: requiredLigandUpload,
+      ligandUpload: normalizedLigandUpload,
       ligandServiceConfig: { ...DEFAULT_LIGAND_SERVICE_CONFIG },
       active: true,
       usagePolicy: { ...DEFAULT_USAGE_POLICY },
