@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+dist
+**/dist
+.env
+.env.*
+!.env.example
+.git
+.legacy-git
+logs
+*.log
+.DS_Store

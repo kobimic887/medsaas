@@ -1,10 +1,16 @@
 {
-  "name": "medsaas-unified",
+  "name": "medsaas",
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "install:all": "npm --prefix material-tailwind-dashboard-react install && npm --prefix chem_beo install",
-    "build": "npm --prefix material-tailwind-dashboard-react run build",
-    "start": "npm run build && npm --prefix chem_beo run start:unified"
+    "install:all": "npm --prefix client install && npm --prefix server install",
+    "dev": "client/node_modules/.bin/concurrently \"npm --prefix server run dev\" \"npm --prefix client run dev\" --names \"api,web\" --prefix-colors \"green,blue\"",
+    "build": "npm --prefix client run build",
+    "start": "npm run build && npm --prefix server run start:unified",
+    "start:api": "npm --prefix server run start",
+    "start:web": "npm --prefix client run dev",
+    "check": "node --check server/index.js && npm --prefix client run build",
+    "services:up": "docker compose up -d mongo rabbitmq",
+    "services:down": "docker compose down"
   }
 }
