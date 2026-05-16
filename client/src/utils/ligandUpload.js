@@ -8,7 +8,8 @@ export const readFileAsBase64 = (file) =>
       const base64 = value.includes(",") ? value.split(",")[1] : value;
       resolve(base64 || "");
     };
-    reader.onerror = () => reject(new Error("Unable to read ligand file"));
+    reader.onerror = () =>
+      reject(new Error(`Unable to read ligand file: ${reader.error?.message || "Unknown error"}`));
     reader.readAsDataURL(file);
   });
 
