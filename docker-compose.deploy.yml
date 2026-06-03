@@ -1,0 +1,21 @@
+# Deploy compose for the non-prod box (151.145.91.17).
+# Runs the prebuilt public image from GHCR. Secrets come from a local .env
+# placed on the server (never baked into the image, never committed).
+#
+#   docker compose -f docker-compose.deploy.yml pull
+#   docker compose -f docker-compose.deploy.yml up -d
+services:
+  app:
+    image: ghcr.io/kobimic887/medsaas:latest
+    pull_policy: always
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
