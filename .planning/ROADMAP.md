@@ -20,12 +20,14 @@
 ### Phase 1: Branding Cleanup
 **Goal**: No file in the codebase references "Pyxis" or Pyxis-named assets — labs and customers see only ChemBench
 **Depends on**: Nothing (first phase)
-**Requirements**: BRAND-01, BRAND-02, BRAND-03, BRAND-04
+**Requirements**: BRAND-01, BRAND-02, BRAND-03, BRAND-04, BRAND-05, BRAND-06
 **Success Criteria** (what must be TRUE):
   1. Searching the client source tree for "pyxis" (case-insensitive) returns zero matches
   2. `pyxisImages.js` and `pyxisServicesImages.js` files no longer exist; `libraryImages.js` and `servicesImages.js` exist in their place and all importers compile without errors
   3. The About Us page renders without broken image references — background areas show CSS gradients, not 404 image requests
   4. Sending a test email via the server produces a subject line and body with no "Pyxis Discovery" text
+  5. `index.html` files contain no "Pyxis" in their `<title>` or meta tags.
+  6. A `test:brand` script exists in `package.json` that fails if it finds the word "pyxis" anywhere in the source code.
 **Plans**: TBD
 
 ### Phase 2: Login Code Cleanup
