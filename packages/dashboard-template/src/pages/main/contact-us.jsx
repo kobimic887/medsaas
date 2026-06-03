@@ -70,7 +70,7 @@ export default function ContactUs() {
         Send an email directly to any recipient using our email service.
       </p>
       <div className="mb-6">
-        <p className="fw-bold mb-1">Pyxis Discovery</p>
+        <p className="fw-bold mb-1">ChemBench</p>
         <p className="mb-0">
           Matrix Innovation Center
           <br />
@@ -83,10 +83,10 @@ export default function ContactUs() {
         <p className="mt-2 mb-0">
           Email:{" "}
           <a
-            href="mailto:info@pyxis-discovery.com"
+            href="mailto:info@chembench.com"
             className="text-blue-600 underline"
           >
-            info@pyxis-discovery.com
+            info@chembench.com
           </a>
         </p>
       </div>

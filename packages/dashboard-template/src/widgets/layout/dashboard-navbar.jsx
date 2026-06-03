@@ -276,7 +276,7 @@ Please contact the customer at ${userEmail} to process this order.
           name: userName,
           subject: `Shopping Cart Enquiry from ${userName}`,
           message: emailMessage,
-          recipientEmail: 'contact@pyxis-discovery.com'
+          recipientEmail: 'contact@chembench.com'
         })
       });
 

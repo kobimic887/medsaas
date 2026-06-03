@@ -21,7 +21,7 @@ export function Dashboard() {
         <Sidenav
           routes={routes}
           brandImg="/img/logo-ct.png"
-          brandName="Pyxis Discovery"
+          brandName="ChemBench"
         />
       </div>
 

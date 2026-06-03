@@ -6,13 +6,13 @@ import http from 'http';
 export function loadSSLCertificates() {
   const certPaths = [
     {
-      key: '/etc/letsencrypt/live/app.pyxis-discovery.com/privkey.pem',
-      cert: '/etc/letsencrypt/live/app.pyxis-discovery.com/fullchain.pem',
+      key: '/etc/letsencrypt/live/app.chembench.com/privkey.pem',
+      cert: '/etc/letsencrypt/live/app.chembench.com/fullchain.pem',
       name: 'Let\'s Encrypt'
     },
     {
-      key: '/etc/ssl/pyxis-combined/privkey.pem',
-      cert: '/etc/ssl/pyxis-combined/fullchain.pem',
+      key: '/etc/ssl/chembench-combined/privkey.pem',
+      cert: '/etc/ssl/chembench-combined/fullchain.pem',
       name: 'Combined Certificate'
     },
     {
@@ -48,7 +48,7 @@ export function startServer(app, PORT) {
       https.createServer(httpsOptions, app).listen(PORT, '0.0.0.0', () => {
         console.log(`🔒 HTTPS Server running on port ${PORT}`);
         console.log(`   Local: https://localhost:${PORT}`);
-        console.log(`   Network: https://app.pyxis-discovery.com:${PORT}`);
+        console.log(`   Network: https://app.chembench.com:${PORT}`);
       });
     } else {
       throw new Error('No SSL certificates found');
@@ -58,7 +58,7 @@ export function startServer(app, PORT) {
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`🌐 HTTP Server running on port ${PORT}`);
       console.log(`   Local: http://localhost:${PORT}`);
-      console.log(`   Network: http://app.pyxis-discovery.com:${PORT}`);
+      console.log(`   Network: http://app.chembench.com:${PORT}`);
     });
   }
 }

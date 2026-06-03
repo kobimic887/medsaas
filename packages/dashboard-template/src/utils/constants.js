@@ -15,7 +15,7 @@ export const getAuthToken = () => {
 };
 
 export const API_CONFIG = {
-  hostname: 'app.pyxis-discovery.com',//window.location.hostname,
+  hostname: 'app.chembench.com',//window.location.hostname,
   port: '3000',
   
   // Helper function to build API URLs using the existing api utility

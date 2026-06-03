@@ -13,7 +13,7 @@ This fork includes additional professional features:
 - Export functionality for molecular structures
 
 ### 💳 **Stripe Payment Integration**
-- Modern pricing page design inspired by pyxis-discover.com
+- Modern pricing page design inspired by chembench.com
 - Secure Stripe payment processing with pre-built checkout forms
 - Monthly/yearly billing toggle with "Most Popular" plan highlighting
 - Complete payment flow with success/failure handling

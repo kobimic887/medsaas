@@ -208,7 +208,7 @@ const swaggerOptions = {
         description: 'Local HTTPS server'
       },
       {
-        url: 'https://app.pyxis-discovery.com:3000',
+        url: 'https://app.chembench.com:3000',
         description: 'Production server'
       }
     ],
@@ -593,7 +593,7 @@ app.post('/api/signup', ensureMongoConnected, async (req, res) => {
 
   // Send verification email using helper
   const verificationToken = jwt.sign({ username, email }, process.env.JWT_SECRET || 'secret', { expiresIn: '1d' });
-  const verificationUrl = `${process.env.BASE_URL || 'https://app.pyxis-discovery.com'}:3000/api/verify-email?token=${verificationToken}`;
+  const verificationUrl = `${process.env.BASE_URL || 'https://app.chembench.com'}:3000/api/verify-email?token=${verificationToken}`;
   
   try {
     // Generate HTML email template
@@ -601,8 +601,8 @@ app.post('/api/signup', ensureMongoConnected, async (req, res) => {
     
     await sendTitanEmail({
       name: username,
-      subject: 'Verify Your Email - Pyxis Discovery',
-      message: `Welcome to Pyxis Discovery ${username}! \n\nPlease verify your email by clicking the following link: ${verificationUrl}`,
+      subject: 'Verify Your Email - ChemBench',
+      message: `Welcome to ChemBench ${username}! \n\nPlease verify your email by clicking the following link: ${verificationUrl}`,
       recipientEmail: email,
       htmlContent: htmlContent
     });
@@ -628,7 +628,7 @@ app.get('/api/verify-email', async (req, res) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Email Verified - Pyxis Discovery</title>
+        <title>Email Verified - ChemBench</title>
         <style>
             body {
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -694,12 +694,12 @@ app.get('/api/verify-email', async (req, res) => {
     </head>
     <body>
         <div class="container">
-            <div class="logo">PYXIS DISCOVERY</div>
+            <div class="logo">CHEMBENCH</div>
             <div class="success-icon">✓</div>
             <h1>Email Verified Successfully!</h1>
-            <p>Welcome to Pyxis Discovery, ${username || 'User'}! Your email has been verified and your account is now active.</p>
+            <p>Welcome to ChemBench, ${username || 'User'}! Your email has been verified and your account is now active.</p>
             <p>You can now access all features of our molecular research platform.</p>
-            <a href="https://app.pyxis-discovery.com/auth/sign-in" class="login-button">Sign In to Your Account</a>
+            <a href="https://app.chembench.com/auth/sign-in" class="login-button">Sign In to Your Account</a>
         </div>
     </body>
     </html>`;
@@ -712,7 +712,7 @@ app.get('/api/verify-email', async (req, res) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Verification Error - Pyxis Discovery</title>
+        <title>Verification Error - ChemBench</title>
         <style>
             body {
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -2876,8 +2876,8 @@ async function startServer() {
   // Try HTTPS first (for production), fallback to HTTP (for development)
   try {
     const httpsOptions = {
-      key: fs.readFileSync('/etc/letsencrypt/live/app.pyxis-discovery.com/privkey.pem'),
-      cert: fs.readFileSync('/etc/letsencrypt/live/app.pyxis-discovery.com/fullchain.pem')
+      key: fs.readFileSync('/etc/letsencrypt/live/app.chembench.com/privkey.pem'),
+      cert: fs.readFileSync('/etc/letsencrypt/live/app.chembench.com/fullchain.pem')
     };
     https.createServer(httpsOptions, app).listen(PORT, '0.0.0.0', () => {
       console.log(`✅ HTTPS Server running on port ${PORT}`);
@@ -3140,7 +3140,7 @@ app.post('/api/send-test-email', async (req, res) => {
 
     await sendTitanEmail({ 
       name: 'Test User',
-      subject: 'Test Email from Pyxis Discovery', 
+      subject: 'Test Email from ChemBench', 
       message: 'This is a test email to verify SMTP configuration.\n\nIf you receive this, your email setup is working correctly!',
       recipientEmail
     });
@@ -3180,7 +3180,7 @@ app.post('/api/send-test-email', async (req, res) => {
  *               subject:
  *                 type: string
  *                 description: Email subject line
- *                 example: "Welcome to Pyxis Discovery"
+ *                 example: "Welcome to ChemBench"
  *               message:
  *                 type: string
  *                 description: Email body/content

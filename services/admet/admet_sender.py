@@ -23,7 +23,7 @@ class AMQPAdmetReceiver:
         self.channel = None
         self.batch_mode = batch_mode
         self.model = None
-        self.api_base_url = api_base_url or "https://app.pyxis-discovery.com"
+        self.api_base_url = api_base_url or "https://app.chembench.com"
 
     def connect(self):
         url = urlparse(self.amqp_url)

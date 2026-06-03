@@ -24,11 +24,11 @@ export default async function handler(req, res) {
   // Send welcome email
   try {
     await transporter.sendMail({
-      from: '"Pyxis Discovery" <no-reply@pyxis-discovery.com>',
+      from: '"ChemBench" <no-reply@chembench.com>',
       to: email,
-      subject: 'Welcome to Pyxis Discovery!',
-      text: `Hi ${username},\n\nWelcome to Pyxis Discovery! We're excited to have you and ${organization} onboard.\n\nBest,\nThe Pyxis Team`,
-      html: `<p>Hi <b>${username}</b>,</p><p>Welcome to Pyxis Discovery! We're excited to have you and <b>${organization}</b> onboard.</p><p>Best,<br/>The Pyxis Team</p>`
+      subject: 'Welcome to ChemBench!',
+      text: `Hi ${username},\n\nWelcome to ChemBench! We're excited to have you and ${organization} onboard.\n\nBest,\nThe ChemBench Team`,
+      html: `<p>Hi <b>${username}</b>,</p><p>Welcome to ChemBench! We're excited to have you and <b>${organization}</b> onboard.</p><p>Best,<br/>The ChemBench Team</p>`
     });
     res.json({ success: true });
   } catch (err) {

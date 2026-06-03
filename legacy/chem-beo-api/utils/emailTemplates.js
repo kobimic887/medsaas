@@ -1,4 +1,4 @@
-// Email templates for Pyxis Discovery
+// Email templates for ChemBench
 
 export function generateVerificationEmailHTML(username, verificationUrl) {
   return `
@@ -7,7 +7,7 @@ export function generateVerificationEmailHTML(username, verificationUrl) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verify Your Email - Pyxis Discovery</title>
+    <title>Verify Your Email - ChemBench</title>
     <style>
         * {
             margin: 0;
@@ -201,13 +201,13 @@ export function generateVerificationEmailHTML(username, verificationUrl) {
     <div class="email-container">
         <!-- Header -->
         <div class="header">
-            <div class="logo">PYXIS DISCOVERY</div>
+            <div class="logo">CHEMBENCH</div>
             <div class="tagline">Unlocking the potential of macrocyclic chemistry</div>
         </div>
         
         <!-- Main Content -->
         <div class="content">
-            <h1 class="welcome-title">Welcome to Pyxis Discovery, ${username}!</h1>
+            <h1 class="welcome-title">Welcome to ChemBench, ${username}!</h1>
             
             <p class="welcome-text">
                 Thank you for joining our platform dedicated to advancing drug discovery through innovative macrocyclic chemistry. 
@@ -244,21 +244,21 @@ export function generateVerificationEmailHTML(username, verificationUrl) {
         <div class="footer">
             <div class="footer-content">
                 <div class="company-info">
-                    <strong>Pyxis Discovery</strong><br>
+                    <strong>ChemBench</strong><br>
                     Matrix Innovation Center<br>
                     Science Park 408, 1098XH Amsterdam<br>
                     The Netherlands
                 </div>
                 
                 <div class="social-links">
-                    <a href="https://www.pyxis-discovery.com/">Website</a>
-                    <a href="https://www.pyxis-discovery.com/contact/">Contact</a>
-                    <a href="https://www.pyxis-discovery.com/insights/">Insights</a>
+                    <a href="https://www.chembench.com/">Website</a>
+                    <a href="https://www.chembench.com/contact/">Contact</a>
+                    <a href="https://www.chembench.com/insights/">Insights</a>
                 </div>
             </div>
             
             <div class="copyright">
-                © 2025 Pyxis Discovery - All Rights Reserved<br>
+                © 2025 ChemBench - All Rights Reserved<br>
                 Create future medicines by unlocking the potential of macrocyclic chemistry
             </div>
         </div>
@@ -274,7 +274,7 @@ export function generateWelcomeEmailHTML(username) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome to Pyxis Discovery</title>
+    <title>Welcome to ChemBench</title>
     <style>
         /* Reuse the same styles as verification email */
         * {
@@ -338,7 +338,7 @@ export function generateWelcomeEmailHTML(username) {
 <body>
     <div class="email-container">
         <div class="header">
-            <div class="logo">PYXIS DISCOVERY</div>
+            <div class="logo">CHEMBENCH</div>
             <div>Welcome aboard!</div>
         </div>
         
@@ -347,10 +347,10 @@ export function generateWelcomeEmailHTML(username) {
             
             <p>Hello ${username},</p>
             
-            <p>Your email has been verified and your account is now active. You can now access all features of the Pyxis Discovery platform.</p>
+            <p>Your email has been verified and your account is now active. You can now access all features of the ChemBench platform.</p>
             
             <div style="text-align: center;">
-                <a href="https://app.pyxis-discovery.com/auth/sign-in" class="cta-button">Sign In to Your Account</a>
+                <a href="https://app.chembench.com/auth/sign-in" class="cta-button">Sign In to Your Account</a>
             </div>
         </div>
     </div>
@@ -365,7 +365,7 @@ export function generatePasswordResetEmailHTML(username, resetUrl) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reset Your Password - Pyxis Discovery</title>
+    <title>Reset Your Password - ChemBench</title>
     <style>
         /* Similar styles with red/orange theme for security */
         * {
@@ -422,7 +422,7 @@ export function generatePasswordResetEmailHTML(username, resetUrl) {
 <body>
     <div class="email-container">
         <div class="header">
-            <div class="logo">PYXIS DISCOVERY</div>
+            <div class="logo">CHEMBENCH</div>
             <div>Password Reset Request</div>
         </div>
         

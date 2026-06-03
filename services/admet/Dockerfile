@@ -13,4 +13,4 @@ COPY . .
 
 ENV PYTHONUNBUFFERED=1
 
-CMD ["python", "admetsendtopyxis.py"]
+CMD ["python", "admet_sender.py"]

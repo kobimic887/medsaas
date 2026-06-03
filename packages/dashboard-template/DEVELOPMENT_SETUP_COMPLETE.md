@@ -45,7 +45,7 @@ This command will:
 ### Key Features Implemented:
 
 #### 1. Professional Paid Plans Page
-- Modern pricing design inspired by pyxis-discovery.com
+- Modern pricing design inspired by chembench.com
 - Monthly/yearly billing toggle
 - "Most Popular" plan highlighting
 - Feature comparison lists

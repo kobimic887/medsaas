@@ -71,7 +71,7 @@ export async function sendTitanEmail({ name, subject, message, recipientEmail, h
       console.log(`✓ Connection verified for ${config.name}`);
 
       const mailOptions = {
-        from: `"Pyxis Discovery" <${process.env.EMAIL_USER}>`,
+        from: `"ChemBench" <${process.env.EMAIL_USER}>`,
         to: recipientEmail,
         subject: subject,
         text: message,
@@ -79,7 +79,7 @@ export async function sendTitanEmail({ name, subject, message, recipientEmail, h
           <h2>${subject}</h2>
           <p>${message.replace(/\n/g, '<br>')}</p>
           <hr>
-          <p><small>Sent from Pyxis Discovery Platform</small></p>
+          <p><small>Sent from ChemBench Platform</small></p>
         </div>`
       };
 

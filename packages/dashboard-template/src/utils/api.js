@@ -1,7 +1,7 @@
 // Utility functions for API calls
 
 // Centralized hostname constant
-export const API_HOSTNAME = 'app.pyxis-discovery.com' //window.location.hostname;
+export const API_HOSTNAME = 'app.chembench.com' //window.location.hostname;
 
 /**
  * Get the appropriate protocol (http/https) based on the current hostname

@@ -8,12 +8,12 @@ export default function AboutUs() {
         className="py-5 text-white d-flex align-items-center justify-content-center"
         style={{
           background:
-            "linear-gradient(rgba(0,0,0,0.5),rgba(0,0,0,0.5)), url('/img/pyxis-hero.jpg') center/cover no-repeat",
+            "linear-gradient(rgba(0,0,0,0.5),rgba(0,0,0,0.5)), url('/img/chembench-hero.jpg') center/cover no-repeat",
           minHeight: 350,
         }}
       >
         <div className="container text-center">
-          <h1 className="display-3 fw-bold mb-3">About Pyxis Discovery</h1>
+          <h1 className="display-3 fw-bold mb-3">About ChemBench</h1>
           <p className="lead mx-auto" style={{ maxWidth: 700 }}>
             Chemistry-driven innovation for macrocyclic drug discovery
           </p>
@@ -25,8 +25,8 @@ export default function AboutUs() {
         <div className="row align-items-center mb-5">
           <div className="col-lg-6 mb-4 mb-lg-0">
             <img
-              src="/img/pyxis-team.jpeg"
-              alt="Pyxis Discovery Team"
+              src="/img/chembench-team.jpeg"
+              alt="ChemBench Team"
               className="img-fluid rounded shadow"
               style={{ maxHeight: 400, objectFit: "cover", width: "100%" }}
             />
@@ -36,7 +36,7 @@ export default function AboutUs() {
               Who We Are
             </h2>
             <p className="lead">
-              Pyxis Discovery is a chemistry-driven company specializing in the
+              ChemBench is a chemistry-driven company specializing in the
               design and synthesis of macrocyclic compound libraries for drug
               discovery. Our mission is to accelerate the development of new
               medicines by providing unique, high-quality chemical space and
@@ -79,8 +79,8 @@ export default function AboutUs() {
         <div className="row align-items-center mb-5">
           <div className="col-lg-6 order-lg-2 mb-4 mb-lg-0">
             <img
-              src="/img/pyxis-lab.jpeg"
-              alt="Pyxis Discovery Lab"
+              src="/img/chembench-lab.jpeg"
+              alt="ChemBench Lab"
               className="img-fluid rounded shadow"
               style={{ maxHeight: 400, objectFit: "cover", width: "100%" }}
             />
@@ -90,7 +90,7 @@ export default function AboutUs() {
               Our Team
             </h2>
             <p>
-              Pyxis Discovery was founded by a group of experienced scientists
+              ChemBench was founded by a group of experienced scientists
               with backgrounds in medicinal chemistry, computational chemistry,
               and chemical biology. Our team combines deep scientific expertise
               with a passion for innovation and collaboration.
@@ -121,7 +121,7 @@ export default function AboutUs() {
               Contact Us
             </h2>
             <p>
-              Interested in learning more about Pyxis Discovery or collaborating
+              Interested in learning more about ChemBench or collaborating
               with us?
               <a
                 href="/main/contact-us"
