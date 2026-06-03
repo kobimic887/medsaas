@@ -1,13 +1,39 @@
-# Deploy compose for the non-prod box (151.145.91.17).
-# Runs the prebuilt public image from GHCR. Secrets come from a local .env
-# placed on the server (never baked into the image, never committed).
+# Deploy compose for the non-prod box (151.145.91.17) — GHCR/CI path.
+# Runs the prebuilt public image from GHCR alongside a local MongoDB container
+# (non-prod uses a self-hosted mongo, not Atlas). Secrets come from a local
+# .env placed on the server (never baked into the image, never committed).
 #
 #   docker compose -f docker-compose.deploy.yml pull
 #   docker compose -f docker-compose.deploy.yml up -d
+#
+# .env must set MONGO_USER / MONGO_PASSWORD and
+#   MONGODB_URI=mongodb://root:<MONGO_PASSWORD>@mongo:27017/medsaas?authSource=admin
+#
+# NOTE: the box is currently running the build-on-box variant in
+# docker-compose.box.yml (no registry); switch to this file once the GHCR
+# image is public. See .planning / memory for the deploy state.
 services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    healthcheck:
+      test: ["CMD", "mongosh", "-u", "${MONGO_USER}", "-p", "${MONGO_PASSWORD}", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
   app:
     image: ghcr.io/kobimic887/medsaas:latest
     pull_policy: always
+    depends_on:
+      mongo:
+        condition: service_healthy
     ports:
       - "3000:3000"
     env_file:
@@ -19,3 +45,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+volumes:
+  mongo-data:
