@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## GSD Project
+
+This project uses GSD for planning. See `.planning/` for context.
+
+- **Current milestone:** ChemBench Cleanup v1
+- **Roadmap:** `.planning/ROADMAP.md`
+- **State:** `.planning/STATE.md`
+- **Active phase:** Phase 1 — Branding Cleanup
+
+When starting work: read `.planning/STATE.md` for current context.
+When done with a phase: run `/gsd:verify-work` before moving on.
+
 ## Commands
 
 ```bash
