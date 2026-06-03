@@ -19,9 +19,11 @@ import { fileURLToPath } from 'url';
 
 // Import email templates
 import { generateVerificationEmailHTML } from './utils/emailTemplates.js';
+import { getBrandName, getPlatformName, getPlatformWebsiteUrl } from './config/branding.js';
 import { sendTitanEmail, testEmailConfiguration } from './utils/emailService.js';
 import { validateEmailCredentials, getTitanMailHelp } from './utils/emailDebug.js';
 import { createAdmetTask, getQueueStatus, rabbitMQHealthCheck } from './utils/rabbitMQUtils.js';
+import scientificServicesRouter from './routes/scientificServices.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1547,12 +1549,18 @@ app.post('/api/signup', authRateLimit, ensureMongoConnected, async (req, res) =>
 
   try {
     // Generate HTML email template
-    const htmlContent = generateVerificationEmailHTML(username, verificationUrl);
+    const brandName = getBrandName(company.name);
+    const htmlContent = generateVerificationEmailHTML(username, verificationUrl, {
+      companyName: company.name,
+      platformName: getPlatformName(),
+      websiteUrl: getPlatformWebsiteUrl() || appBaseUrl,
+      signInUrl: `${(process.env.FRONTEND_URL || appBaseUrl).replace(/\/$/, '')}/auth/sign-in`,
+    });
 
     await sendTitanEmail({
       name: username,
-      subject: 'Verify Your Email - Pyxis Discovery',
-      message: `Welcome to Pyxis Discovery ${username}! \n\nPlease verify your email by clicking the following link: ${verificationUrl}`,
+      subject: `Verify your email - ${brandName}`,
+      message: `Welcome to ${brandName}, ${username}!\n\nPlease verify your email by clicking the following link: ${verificationUrl}`,
       recipientEmail: email,
       htmlContent: htmlContent
     });
@@ -1580,18 +1588,19 @@ app.get('/api/verify-email', ensureMongoConnected, async (req, res) => {
   if (!token) return res.status(400).send('Invalid verification link');
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    const { email, username } = decoded;
+    const { email, username, companyName } = decoded;
     await usersCollection.updateOne({ email }, { $set: { verified: true } });
     
     // Send success HTML page
     const signInUrl = `${(process.env.FRONTEND_URL || process.env.BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '')}/auth/sign-in`;
+    const brandName = getBrandName(companyName);
     const successHTML = `
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Email Verified - Pyxis Discovery</title>
+        <title>Email Verified - ${brandName}</title>
         <style>
             body {
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -1657,10 +1666,10 @@ app.get('/api/verify-email', ensureMongoConnected, async (req, res) => {
     </head>
     <body>
         <div class="container">
-            <div class="logo">PYXIS DISCOVERY</div>
+            <div class="logo">${brandName.toUpperCase()}</div>
             <div class="success-icon">✓</div>
             <h1>Email Verified Successfully!</h1>
-            <p>Welcome to Pyxis Discovery, ${username || 'User'}! Your email has been verified and your account is now active.</p>
+            <p>Welcome to ${brandName}, ${username || 'User'}! Your email has been verified and your account is now active.</p>
             <p>You can now access all features of our molecular research platform.</p>
             <a href="${signInUrl}" class="login-button">Sign In to Your Account</a>
         </div>
@@ -1675,7 +1684,7 @@ app.get('/api/verify-email', ensureMongoConnected, async (req, res) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Verification Error - Pyxis Discovery</title>
+        <title>Verification Error - ${getPlatformName()}</title>
         <style>
             body {
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -1751,7 +1760,7 @@ app.post('/api/password-reset/request', authRateLimit, ensureMongoConnected, asy
     try {
       await sendTitanEmail({
         name: user.username,
-        subject: 'Reset your Pyxis Discovery password',
+        subject: `Reset your ${getBrandName(user.companyName)} password`,
         message: [
           'Use the link below to reset your password. This link expires in 30 minutes.',
           resetUrl,
@@ -3063,9 +3072,9 @@ app.post('/api/company/members', ensureMongoConnected, authenticateToken, requir
         : `Temporary password: ${generatedPassword}`;
       await sendTitanEmail({
         name: username,
-        subject: `${company.name} invited you to Pyxis Discovery`,
+        subject: `${company.name} invited you to ${getPlatformName()}`,
         message: [
-          `${req.user.username} invited you to join ${company.name} on Pyxis Discovery.`,
+          `${req.user.username} invited you to join ${company.name} on ${getPlatformName()}.`,
           `Role: ${role}`,
           passwordLine,
           `Sign in: ${signInUrl}`
@@ -4488,6 +4497,8 @@ app.get('/api/asinex/health', authenticateToken, async (req, res) => {
     });
   }
 });
+
+app.use('/api', scientificServicesRouter);
 
 const PORT = process.env.PORT || 3000;
 

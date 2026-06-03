@@ -27,6 +27,48 @@ services:
       timeout: 5s
       retries: 5
 
+  admet-worker:
+    profiles: ["workers"]
+    build: ./services/admet
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      ADMET_QUEUE_NAME: ${ADMET_QUEUE_NAME:-admet_processing_queue}
+      API_BASE_URL: ${BASE_URL:-http://host.docker.internal:3000}
+      ADMET_CALLBACK_SECRET: ${ADMET_CALLBACK_SECRET:-}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  gromacs-api:
+    profiles: ["science"]
+    build: ./services/gromacs-api
+    ports:
+      - "8001:8000"
+    volumes:
+      - gromacs-data:/data
+    environment:
+      WORK_DIR: /data
+      MAX_UPLOAD_SIZE: 104857600
+      JOB_TIMEOUT: 3600
+    restart: unless-stopped
+
+  glioblastoma-predictor:
+    profiles: ["science"]
+    build: ./services/glioblastoma-predictor
+    ports:
+      - "5000:5000"
+    environment:
+      FLASK_ENV: production
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
 volumes:
   mongo-data:
   rabbitmq-data:
+  gromacs-data:

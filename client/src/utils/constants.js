@@ -24,13 +24,16 @@ export const API_CONFIG = {
   
   // Helper function to build API URLs using the existing api utility
   buildApiUrl: (endpoint) => {
-    return `${getApiBaseUrl()}/api${endpoint}`;
+    const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    const base = getApiBaseUrl();
+    return `${base}/api${path}`;
   },
-  
-  // Helper function to build non-API URLs (like Stripe checkout)
+
+  // Non-/api routes (Stripe checkout, Tanimoto proxy, etc.)
   buildUrl: (endpoint) => {
-    return `${getApiBaseUrl()}${endpoint}`;
-  }
+    const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    return `${getApiBaseUrl()}${path}`;
+  },
 };
 
 // Individual exports for backward compatibility

@@ -1,10 +1,18 @@
-# MedSaaS
+# MedSaaS (unified platform)
 
-One runnable app:
+Combined monorepo for molecular research SaaS: web app, chemistry API, ADMET worker, GROMACS MD, and glioblastoma prediction. See [REPOS.md](./REPOS.md) for upstream GitHub mapping.
 
-- `server/` is the API server and production static host.
-- `client/` is only the Vite React client.
-- Root scripts are the supported way to install, run, build, and check the app.
+| Path | Purpose |
+|------|---------|
+| `server/` | API server and production static host |
+| `client/` | Vite React dashboard (Material Tailwind) |
+| `services/admet/` | RabbitMQ ADMET-AI worker |
+| `services/gromacs-api/` | GROMACS REST API |
+| `services/glioblastoma-predictor/` | Glioblastoma sensitivity API |
+| `packages/dashboard-template/` | Upstream dashboard UI reference |
+| `legacy/chem-beo-api/` | Archived standalone Chem API |
+
+Root scripts are the supported way to install, run, build, and check the app.
 
 ## Local Setup
 
@@ -32,8 +40,11 @@ One runnable app:
    npm run dev
    ```
 
-   - API: `http://localhost:3000`
-   - Web: `http://localhost:5173`
+   Open **http://localhost:5173** only. Vite proxies `/api`, checkout, and Tanimoto to the API on port 3000 — no `VITE_API_HOSTNAME` needed.
+
+   Set `FRONTEND_URL=http://localhost:5173` in `.env` for verification email links.
+
+   **Branding:** the company name at signup drives the sidebar, emails, and invites. `PLATFORM_NAME` is a fallback only.
 
 5. Build and run the production-style unified app:
 
@@ -55,6 +66,37 @@ Optional feature dependencies:
 - RabbitMQ for ADMET tasks: `RABBITMQ_URL`, `ADMET_QUEUE_NAME`, `ADMET_CALLBACK_SECRET`
 - NVIDIA MolMIM/OpenFold: `NVIDIA_MOLMIM_API_KEY`, `NVIDIA_OPENFOLD_API_KEY`
 - External chemistry services: `TANIMOTO_API_BASE`, `ASINEX_API_BASE`, `ASINEX_DOCKING_API_URL`, `DIFFDOCK_API_URL`, `SDF_CONVERTER_URL`
+- Integrated microservices: `GROMACS_API_BASE`, `GLIOBLASTOMA_API_BASE`
+
+### Scientific microservices (Docker)
+
+Core infra (Mongo + RabbitMQ):
+
+```bash
+npm run services:up
+```
+
+Optional GROMACS + glioblastoma APIs:
+
+```bash
+npm run services:science
+```
+
+ADMET worker (requires `ADMET_CALLBACK_SECRET` in `.env`):
+
+```bash
+npm run services:workers
+```
+
+All optional services:
+
+```bash
+npm run services:all
+```
+
+- GROMACS Swagger: `http://localhost:8001/docs`
+- Glioblastoma API: `http://localhost:5000/health`
+- Dashboard pages: **GROMACS MD**, **Glioblastoma predict**
 
 ## Billing Flow
 

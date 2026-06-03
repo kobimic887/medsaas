@@ -10,3 +10,5 @@ export * from "@/pages/dashboard/molstar3d";
 export { default as GenerateMolecules } from "@/pages/dashboard/generate-molecules";
 export { default as ProteinFolding } from "@/pages/dashboard/protein-folding";
 export * from "@/pages/dashboard/deep-similarity";
+export { default as GromacsMd } from "@/pages/dashboard/gromacs-md";
+export { default as GlioblastomaPredict } from "@/pages/dashboard/glioblastoma-predict";

@@ -1,0 +1,11 @@
+export * from "@/pages/dashboard/dashboardhome";
+export * from "@/pages/dashboard/profile";
+export * from "@/pages/dashboard/notifications";
+export * from "@/pages/dashboard/paidplans";
+export * from "@/pages/dashboard/controlpanel";
+export * from "@/pages/dashboard/simulation";
+export * from "@/pages/dashboard/moleculeviewer";
+export * from "@/pages/dashboard/molstar3d";
+export { default as GenerateMolecules } from "@/pages/dashboard/generate-molecules";
+export { default as ProteinFolding } from "@/pages/dashboard/protein-folding";
+export * from "@/pages/dashboard/deep-similarity";

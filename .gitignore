@@ -35,3 +35,12 @@ certs/
 
 # Preserved nested repository metadata from the pre-unified app.
 .legacy-git/
+
+# Scientific service runtime data
+services/gromacs-api/data/
+services/glioblastoma-predictor/*.key
+services/glioblastoma-predictor/*.crt
+services/glioblastoma-predictor/*.csr
+services/glioblastoma-predictor/*.p7b
+services/glioblastoma-predictor/*.ca-bundle
+packages/dashboard-template/node_modules/

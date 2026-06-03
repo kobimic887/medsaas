@@ -24,6 +24,8 @@ import {
   Molstar3D,
   GenerateMolecules,
   ProteinFolding,
+  GromacsMd,
+  GlioblastomaPredict,
   } from "@/pages/dashboard";
 import { DeepSimilarity } from "@/pages/dashboard";
 import {
@@ -177,6 +179,18 @@ export const routes = [
         name: "deep similarity",
         path: "/deep-similarity",
         element: <DeepSimilarity />,
+      },
+      {
+        icon: <ServerStackIcon {...icon} />,
+        name: "GROMACS MD",
+        path: "/gromacs-md",
+        element: <GromacsMd />,
+      },
+      {
+        icon: <BeakerIcon {...icon} />,
+        name: "Glioblastoma predict",
+        path: "/glioblastoma-predict",
+        element: <GlioblastomaPredict />,
       },
     ],
   },

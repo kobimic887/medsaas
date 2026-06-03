@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  gromacs-api:
+    build: .
+    container_name: gromacs-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    environment:
+      - WORK_DIR=/data
+      - MAX_UPLOAD_SIZE=104857600  # 100MB
+      - JOB_TIMEOUT=3600  # 1 hour
+    restart: unless-stopped

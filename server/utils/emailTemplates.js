@@ -1,13 +1,27 @@
-// Email templates for Pyxis Discovery
+// Email templates — branded per company (signup) with platform fallback
 
-export function generateVerificationEmailHTML(username, verificationUrl) {
+function resolveBrandName(companyName, platformName = 'MedSaaS') {
+  const company = typeof companyName === 'string' ? companyName.trim() : '';
+  return company || platformName;
+}
+
+export function generateVerificationEmailHTML(username, verificationUrl, options = {}) {
+  const {
+    companyName = '',
+    platformName = 'MedSaaS',
+    websiteUrl = '',
+    signInUrl = '',
+  } = options;
+  const brandName = resolveBrandName(companyName, platformName);
+  const website = websiteUrl || signInUrl || '#';
+
   return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verify Your Email - Pyxis Discovery</title>
+    <title>Verify Your Email - ${brandName}</title>
     <style>
         * {
             margin: 0;
@@ -201,13 +215,13 @@ export function generateVerificationEmailHTML(username, verificationUrl) {
     <div class="email-container">
         <!-- Header -->
         <div class="header">
-            <div class="logo">PYXIS DISCOVERY</div>
+            <div class="logo">${brandName.toUpperCase()}</div>
             <div class="tagline">Unlocking the potential of macrocyclic chemistry</div>
         </div>
         
         <!-- Main Content -->
         <div class="content">
-            <h1 class="welcome-title">Welcome to Pyxis Discovery, ${username}!</h1>
+            <h1 class="welcome-title">Welcome to ${brandName}, ${username}!</h1>
             
             <p class="welcome-text">
                 Thank you for joining our platform dedicated to advancing drug discovery through innovative macrocyclic chemistry. 
@@ -244,21 +258,19 @@ export function generateVerificationEmailHTML(username, verificationUrl) {
         <div class="footer">
             <div class="footer-content">
                 <div class="company-info">
-                    <strong>Pyxis Discovery</strong><br>
+                    <strong>${brandName}</strong><br>
                     Matrix Innovation Center<br>
                     Science Park 408, 1098XH Amsterdam<br>
                     The Netherlands
                 </div>
                 
                 <div class="social-links">
-                    <a href="https://www.pyxis-discovery.com/">Website</a>
-                    <a href="https://www.pyxis-discovery.com/contact/">Contact</a>
-                    <a href="https://www.pyxis-discovery.com/insights/">Insights</a>
+                    <a href="${website}">Open platform</a>
                 </div>
             </div>
             
             <div class="copyright">
-                © 2025 Pyxis Discovery - All Rights Reserved<br>
+                © ${new Date().getFullYear()} ${brandName} - All Rights Reserved<br>
                 Create future medicines by unlocking the potential of macrocyclic chemistry
             </div>
         </div>
@@ -267,14 +279,21 @@ export function generateVerificationEmailHTML(username, verificationUrl) {
 </html>`;
 }
 
-export function generateWelcomeEmailHTML(username) {
+export function generateWelcomeEmailHTML(username, options = {}) {
+  const {
+    companyName = '',
+    platformName = 'MedSaaS',
+    signInUrl = '#',
+  } = options;
+  const brandName = resolveBrandName(companyName, platformName);
+
   return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome to Pyxis Discovery</title>
+    <title>Welcome to ${brandName}</title>
     <style>
         /* Reuse the same styles as verification email */
         * {
@@ -338,7 +357,7 @@ export function generateWelcomeEmailHTML(username) {
 <body>
     <div class="email-container">
         <div class="header">
-            <div class="logo">PYXIS DISCOVERY</div>
+            <div class="logo">${brandName.toUpperCase()}</div>
             <div>Welcome aboard!</div>
         </div>
         
@@ -347,10 +366,10 @@ export function generateWelcomeEmailHTML(username) {
             
             <p>Hello ${username},</p>
             
-            <p>Your email has been verified and your account is now active. You can now access all features of the Pyxis Discovery platform.</p>
+            <p>Your email has been verified and your account is now active. You can now access all features of the ${brandName} workspace.</p>
             
             <div style="text-align: center;">
-                <a href="https://app.pyxis-discovery.com/auth/sign-in" class="cta-button">Sign In to Your Account</a>
+                <a href="${signInUrl}" class="cta-button">Sign In to Your Account</a>
             </div>
         </div>
     </div>
@@ -358,14 +377,17 @@ export function generateWelcomeEmailHTML(username) {
 </html>`;
 }
 
-export function generatePasswordResetEmailHTML(username, resetUrl) {
+export function generatePasswordResetEmailHTML(username, resetUrl, options = {}) {
+  const { companyName = '', platformName = 'MedSaaS' } = options;
+  const brandName = resolveBrandName(companyName, platformName);
+
   return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reset Your Password - Pyxis Discovery</title>
+    <title>Reset Your Password - ${brandName}</title>
     <style>
         /* Similar styles with red/orange theme for security */
         * {
@@ -422,7 +444,7 @@ export function generatePasswordResetEmailHTML(username, resetUrl) {
 <body>
     <div class="email-container">
         <div class="header">
-            <div class="logo">PYXIS DISCOVERY</div>
+            <div class="logo">${brandName.toUpperCase()}</div>
             <div>Password Reset Request</div>
         </div>
         

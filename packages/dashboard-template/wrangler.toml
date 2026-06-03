@@ -1,0 +1,16 @@
+name = "material-tailwind-dashboard"
+compatibility_date = "2024-06-30"
+
+[build]
+command = "npm run build"
+cwd = "."
+publish = "dist"
+
+[[pages_build_output_dir]]
+value = "dist"
+
+[env.production]
+name = "material-tailwind-dashboard"
+
+[env.preview]
+name = "material-tailwind-dashboard-preview"
