@@ -35,6 +35,18 @@ if (!process.env.STRIPE_SECRET_KEY) {
 }
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const nvidiaMolMimApiKey = process.env.NVIDIA_MOLMIM_API_KEY;
+const nvidiaOpenfoldApiKey = process.env.NVIDIA_OPENFOLD3_API_KEY;
+
+if (!nvidiaMolMimApiKey) {
+  console.error('ERROR: NVIDIA_MOLMIM_API_KEY environment variable is not set');
+  process.exit(1);
+}
+
+if (!nvidiaOpenfoldApiKey) {
+  console.error('ERROR: NVIDIA_OPENFOLD3_API_KEY environment variable is not set');
+  process.exit(1);
+}
 
 const app = express();
 app.use(express.json());
@@ -73,10 +85,6 @@ app.use(cors());
  */
 app.post('/api/generate-molecules', async (req, res) => {
   const { smi, min_similarity, num_molecules } = req.body;
-  const nvidiaMolMimApiKey = process.env.NVIDIA_MOLMIM_API_KEY;
-  if (!nvidiaMolMimApiKey) {
-    return res.status(500).json({ error: 'NVIDIA_MOLMIM_API_KEY is not configured' });
-  }
   const invoke_url = 'https://health.api.nvidia.com/v1/biology/nvidia/molmim/generate';
   const headers = {
     'Authorization': 'Bearer ' + nvidiaMolMimApiKey,
@@ -122,10 +130,6 @@ app.post('/api/generate-molecules', async (req, res) => {
  *               type: object
  */
 app.post("/api/openfold3/predict", async (req, res) => {
-  const nvidiaOpenfoldApiKey = process.env.NVIDIA_OPENFOLD3_API_KEY;
-  if (!nvidiaOpenfoldApiKey) {
-    return res.status(500).json({ error: "NVIDIA_OPENFOLD3_API_KEY is not configured" });
-  }
   const invoke_url =
     "https://health.api.nvidia.com/v1/biology/openfold/openfold3/predict";
   const headers = {
