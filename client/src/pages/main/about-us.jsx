@@ -8,7 +8,7 @@ export default function AboutUs() {
         className="py-5 text-white d-flex align-items-center justify-content-center"
         style={{
           background:
-            "linear-gradient(rgba(0,0,0,0.5),rgba(0,0,0,0.5)), url('/img/pyxis-hero.jpg') center/cover no-repeat",
+            "linear-gradient(135deg, #0d1b2a 0%, #1b4965 50%, #62b6cb 100%)",
           minHeight: 350,
         }}
       >
@@ -24,11 +24,16 @@ export default function AboutUs() {
       <section className="container py-5">
         <div className="row align-items-center mb-5">
           <div className="col-lg-6 mb-4 mb-lg-0">
-            <img
-              src="/img/pyxis-team.jpeg"
-              alt="ChemBench Team"
+            <div
+              role="img"
+              aria-label="ChemBench Team"
               className="img-fluid rounded shadow"
-              style={{ maxHeight: 400, objectFit: "cover", width: "100%" }}
+              style={{
+                height: 400,
+                width: "100%",
+                background:
+                  "linear-gradient(135deg, #0d1b2a 0%, #1b4965 50%, #62b6cb 100%)",
+              }}
             />
           </div>
           <div className="col-lg-6">
@@ -78,11 +83,16 @@ export default function AboutUs() {
         {/* Our Team */}
         <div className="row align-items-center mb-5">
           <div className="col-lg-6 order-lg-2 mb-4 mb-lg-0">
-            <img
-              src="/img/pyxis-lab.jpeg"
-              alt="ChemBench Lab"
+            <div
+              role="img"
+              aria-label="ChemBench Lab"
               className="img-fluid rounded shadow"
-              style={{ maxHeight: 400, objectFit: "cover", width: "100%" }}
+              style={{
+                height: 400,
+                width: "100%",
+                background:
+                  "linear-gradient(135deg, #0d1b2a 0%, #1b4965 50%, #62b6cb 100%)",
+              }}
             />
           </div>
           <div className="col-lg-6 order-lg-1">

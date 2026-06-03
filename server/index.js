@@ -4818,7 +4818,7 @@ app.post('/api/send-test-email', ensureMongoConnected, authenticateToken, requir
 
     await sendTitanEmail({ 
       name: 'Test User',
-      subject: 'Test Email from Pyxis Discovery', 
+      subject: 'Test Email from ChemBench',
       message: 'This is a test email to verify SMTP configuration.\n\nIf you receive this, your email setup is working correctly!',
       recipientEmail
     });
@@ -4858,7 +4858,7 @@ app.post('/api/send-test-email', ensureMongoConnected, authenticateToken, requir
  *               subject:
  *                 type: string
  *                 description: Email subject line
- *                 example: "Welcome to Pyxis Discovery"
+ *                 example: "Welcome to ChemBench"
  *               message:
  *                 type: string
  *                 description: Email body/content

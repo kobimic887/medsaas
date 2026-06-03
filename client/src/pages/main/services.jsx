@@ -1,6 +1,6 @@
 import React from "react";
 import { Typography, Button } from "@material-tailwind/react";
-import { pyxisServicesImages } from "@/data/pyxisServicesImages";
+import { servicesImages } from "@/data/servicesImages";
 
 export default function Services() {
   return (
@@ -10,7 +10,7 @@ export default function Services() {
         className="py-5 text-white d-flex align-items-center justify-content-center"
         style={{
           background:
-            "linear-gradient(rgba(0,0,0,0.5),rgba(0,0,0,0.5)), url('/img/pyx_header_small@3x-scaled.jpg') center/cover no-repeat",
+            "linear-gradient(135deg, #0d1b2a 0%, #1b4965 50%, #62b6cb 100%)",
           minHeight: 260,
         }}
       >
@@ -27,7 +27,7 @@ export default function Services() {
         <div className="row align-items-center mb-5">
           <div className="col-lg-6 mb-4 mb-lg-0">
             <img
-              src={pyxisServicesImages.structureBased}
+              src={servicesImages.structureBased}
               alt="Structure Based Selections"
               className="img-fluid rounded shadow"
               style={{ maxHeight: 400, objectFit: "cover", width: "100%" }}
@@ -49,7 +49,7 @@ export default function Services() {
         <div className="row align-items-center mb-5 flex-row-reverse">
           <div className="col-lg-6 mb-4 mb-lg-0">
             <img
-              src={pyxisServicesImages.queryBased}
+              src={servicesImages.queryBased}
               alt="Query Based Selections"
               className="img-fluid rounded shadow"
               style={{ maxHeight: 400, objectFit: "cover", width: "100%" }}
@@ -70,7 +70,7 @@ export default function Services() {
         <div className="row align-items-center mb-5">
           <div className="col-lg-6 mb-4 mb-lg-0">
             <img
-              src={pyxisServicesImages.propertyBased}
+              src={servicesImages.propertyBased}
               alt="Property Based Filtering"
               className="img-fluid rounded shadow"
               style={{ maxHeight: 400, objectFit: "cover", width: "100%" }}
@@ -91,7 +91,7 @@ export default function Services() {
         <div className="row align-items-center mb-5 flex-row-reverse">
           <div className="col-lg-6 mb-4 mb-lg-0">
             <img
-              src={pyxisServicesImages.synthesisOnDemand}
+              src={servicesImages.synthesisOnDemand}
               alt="Synthesis on Demand"
               className="img-fluid rounded shadow"
               style={{ maxHeight: 400, objectFit: "cover", width: "100%" }}
