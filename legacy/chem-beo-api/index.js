@@ -73,9 +73,13 @@ app.use(cors());
  */
 app.post('/api/generate-molecules', async (req, res) => {
   const { smi, min_similarity, num_molecules } = req.body;
+  const nvidiaMolMimApiKey = process.env.NVIDIA_MOLMIM_API_KEY;
+  if (!nvidiaMolMimApiKey) {
+    return res.status(500).json({ error: 'NVIDIA_MOLMIM_API_KEY is not configured' });
+  }
   const invoke_url = 'https://health.api.nvidia.com/v1/biology/nvidia/molmim/generate';
   const headers = {
-    'Authorization': 'Bearer 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',
+    'Authorization': 'Bearer ' + nvidiaMolMimApiKey,
     'Accept': 'application/json',
   };
   const payload = {
@@ -118,11 +122,15 @@ app.post('/api/generate-molecules', async (req, res) => {
  *               type: object
  */
 app.post("/api/openfold3/predict", async (req, res) => {
+  const nvidiaOpenfoldApiKey = process.env.NVIDIA_OPENFOLD3_API_KEY;
+  if (!nvidiaOpenfoldApiKey) {
+    return res.status(500).json({ error: "NVIDIA_OPENFOLD3_API_KEY is not configured" });
+  }
   const invoke_url =
     "https://health.api.nvidia.com/v1/biology/openfold/openfold3/predict";
   const headers = {
     Authorization:
-      "Bearer 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",
+      "Bearer " + nvidiaOpenfoldApiKey,
     "Content-Type": "application/json",
     "NVCF-POLL-SECONDS": "300",
   };
