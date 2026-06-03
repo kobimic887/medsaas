@@ -35,18 +35,18 @@ if (!process.env.STRIPE_SECRET_KEY) {
 }
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-const nvidiaMolMimApiKey = process.env.NVIDIA_MOLMIM_API_KEY;
-const nvidiaOpenfoldApiKey = process.env.NVIDIA_OPENFOLD3_API_KEY;
 
-if (!nvidiaMolMimApiKey) {
-  console.error('ERROR: NVIDIA_MOLMIM_API_KEY environment variable is not set');
-  process.exit(1);
-}
+const requireEnvVar = (name) => {
+  const value = process.env[name];
+  if (!value) {
+    console.error(`ERROR: ${name} environment variable is not set`);
+    process.exit(1);
+  }
+  return value;
+};
 
-if (!nvidiaOpenfoldApiKey) {
-  console.error('ERROR: NVIDIA_OPENFOLD3_API_KEY environment variable is not set');
-  process.exit(1);
-}
+const nvidiaMolMimApiKey = requireEnvVar('NVIDIA_MOLMIM_API_KEY');
+const nvidiaOpenfoldApiKey = requireEnvVar('NVIDIA_OPENFOLD3_API_KEY');
 
 const app = express();
 app.use(express.json());
