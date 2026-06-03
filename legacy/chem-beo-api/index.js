@@ -36,6 +36,18 @@ if (!process.env.STRIPE_SECRET_KEY) {
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
+const requireEnvVar = (name) => {
+  const value = process.env[name];
+  if (!value) {
+    console.error(`ERROR: ${name} environment variable is not set`);
+    process.exit(1);
+  }
+  return value;
+};
+
+const nvidiaMolMimApiKey = requireEnvVar('NVIDIA_MOLMIM_API_KEY');
+const nvidiaOpenfoldApiKey = requireEnvVar('NVIDIA_OPENFOLD3_API_KEY');
+
 const app = express();
 app.use(express.json());
 app.use(cors());
@@ -75,7 +87,7 @@ app.post('/api/generate-molecules', async (req, res) => {
   const { smi, min_similarity, num_molecules } = req.body;
   const invoke_url = 'https://health.api.nvidia.com/v1/biology/nvidia/molmim/generate';
   const headers = {
-    'Authorization': 'Bearer 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',
+    'Authorization': 'Bearer ' + nvidiaMolMimApiKey,
     'Accept': 'application/json',
   };
   const payload = {
@@ -122,7 +134,7 @@ app.post("/api/openfold3/predict", async (req, res) => {
     "https://health.api.nvidia.com/v1/biology/openfold/openfold3/predict";
   const headers = {
     Authorization:
-      "Bearer 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",
+      "Bearer " + nvidiaOpenfoldApiKey,
     "Content-Type": "application/json",
     "NVCF-POLL-SECONDS": "300",
   };
