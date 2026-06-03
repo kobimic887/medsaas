@@ -2,8 +2,8 @@
 
 **Project:** ChemBench Cleanup v1
 **Granularity:** Coarse
-**Total Phases:** 2
-**Requirement Coverage:** 7/7 v1 requirements mapped
+**Total Phases:** 3
+**Requirement Coverage:** 8/8 v1 requirements mapped
 
 ---
 
@@ -11,6 +11,7 @@
 
 - [ ] **Phase 1: Branding Cleanup** - Remove all Pyxis Discovery branding from client source and server
 - [ ] **Phase 2: Login Code Cleanup** - Remove debug-era IP-fetching and tester bypass code from sign-in
+- [ ] **Phase 3: CI/CD Pipeline** - Create GitHub Actions to build a Docker image of the application on merge to main
 
 ---
 
@@ -37,14 +38,25 @@
   3. A developer reading `sign-in.jsx` encounters no code paths conditioned on a hardcoded username
 **Plans**: TBD
 
+### Phase 3: CI/CD Pipeline
+**Goal**: The repository automatically builds a Docker image on merges to the main branch via GitHub Actions.
+**Depends on**: Phase 2
+**Requirements**: DEPLOY-01
+**Success Criteria** (what must be TRUE):
+  1. A `.github/workflows/docker-build.yml` file exists and is valid.
+  2. The workflow successfully builds the `medsaas` Docker image based on the `Dockerfile`.
+  3. Any code changes made in Phase 1 and 2 do not break the Docker build.
+**Plans**: TBD
+
 ---
 
 ## Progress Table
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Branding Cleanup | 0/1 | Not started | - |
+| 1. Branding Cleanup | 1/1 | Not started | - |
 | 2. Login Code Cleanup | 0/1 | Not started | - |
+| 3. CI/CD Pipeline | 0/1 | Not started | - |
 
 ---
 

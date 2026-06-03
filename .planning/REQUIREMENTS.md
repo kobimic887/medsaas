@@ -18,6 +18,10 @@
 - [ ] **LOGIN-02**: Duplicate `api.ipify.org` fetch at sign-in top removed (lines 22–30) — IP logging moved to server-side only
 - [ ] **LOGIN-03**: `console.log('Tester123 IP stored:', ...)` production leak removed
 
+### CI/CD Pipeline
+
+- [ ] **DEPLOY-01**: GitHub Actions workflow created to automatically build a Docker image of the application on merge to main. All code changes in prior phases must maintain Docker compatibility.
+
 ## v2 Requirements
 
 ### Auth Flows
@@ -51,10 +55,11 @@
 | LOGIN-01 | Phase 2 | Pending |
 | LOGIN-02 | Phase 2 | Pending |
 | LOGIN-03 | Phase 2 | Pending |
+| DEPLOY-01 | Phase 3 | Pending |
 
 **Coverage:**
-- v1 requirements: 7 total
-- Mapped to phases: 7
+- v1 requirements: 8 total
+- Mapped to phases: 8
 - Unmapped: 0 ✓
 
 ---
