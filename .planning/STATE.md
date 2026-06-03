@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Not started
-last_updated: "2026-06-03T19:29:20.603Z"
+status: In progress
+last_updated: "2026-06-04T00:00:00.000Z"
 progress:
-  total_phases: 2
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 3
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
+  percent: 33
 ---
 
 # Project State: ChemBench Cleanup v1
@@ -30,7 +30,7 @@ progress:
 **Progress:**
 
 ```
-[█████░░░░░] 50% — Phase 1 of 2 complete
+[███░░░░░░░] 33% — Phase 1 of 3 complete
 ```
 
 **Requirement Progress:** 6/7 complete (BRAND-01..06)
@@ -43,6 +43,7 @@ progress:
 |-------|--------|-------|
 | 1. Branding Cleanup | ✓ Complete | Executed inline (PLAN.md) |
 | 2. Login Code Cleanup | Not started | TBD |
+| 3. CI/CD Pipeline | Not started | TBD |
 
 ---
 
@@ -60,7 +61,9 @@ None.
 
 ### Notes for Next Session
 
-- Phase 1 scope: `client/src/data/pyxisImages.js`, `pyxisServicesImages.js`, `client/src/pages/main/about-us.jsx`, `client/src/pages/main/services.jsx`, `server/index.js` (~lines 4821, 4861)
+- Phase 1 done inline (commits d71efdf, 71e8d56, e641eaf, ee97da1). Live app + reference/archived trees rebranded; `npm run test:brand` guards regressions.
+- Open items from Phase 1: `.env` still has `EMAIL_USER=contact@pyxis-discovery.com` (gitignored live config — user's call); favicon reviewed, brand-neutral, no change needed.
+- GSD SDK discovery is broken: the phase dir is nested at `.planning/phases/1/01-branding-cleanup/` instead of flat `.planning/phases/01-branding-cleanup/`, so `/gsd-*` commands can't find it. Phase 2 will hit the same wall — fix the nesting or run inline.
 - Phase 2 scope: `client/src/pages/auth/sign-in.jsx` (~lines 22–30, 55–67)
 
 ---
@@ -68,8 +71,8 @@ None.
 ## Performance Metrics
 
 - Requirements defined: 7
-- Requirements complete: 0
-- Phases complete: 0/2
+- Requirements complete: 6 (BRAND-01..06)
+- Phases complete: 1/3
 
 ---
 
