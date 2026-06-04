@@ -65,7 +65,8 @@ Optional feature dependencies:
 
 - RabbitMQ for ADMET tasks: `RABBITMQ_URL`, `ADMET_QUEUE_NAME`, `ADMET_CALLBACK_SECRET`
 - NVIDIA MolMIM/OpenFold: `NVIDIA_MOLMIM_API_KEY`, `NVIDIA_OPENFOLD_API_KEY`
-- External chemistry services: `TANIMOTO_API_BASE`, `ASINEX_API_BASE`, `ASINEX_DOCKING_API_URL`, `DIFFDOCK_API_URL`, `SDF_CONVERTER_URL`
+- External chemistry services: `TANIMOTO_API_BASE`, `SDF_CONVERTER_URL`
+- Ligand catalog/stock/docking endpoints: `ASINEX_API_BASE`, `ASINEX_STOCK_API_URL`, `ASINEX_DOCKING_API_URL`, `DIFFDOCK_API_URL` seed the default config; each company can override them per-company from the Company Admin panel (stored in the `companies` collection)
 - Integrated microservices: `GROMACS_API_BASE`, `GLIOBLASTOMA_API_BASE`
 
 ### Scientific microservices (Docker)

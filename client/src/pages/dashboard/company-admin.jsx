@@ -21,6 +21,7 @@ import {
   UsersIcon,
 } from "@heroicons/react/24/outline";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
+import { buildLigandUploadPayload, MAX_LIGAND_FILE_SIZE_BYTES } from "@/utils/ligandUpload";
 
 const initialInviteForm = {
   username: "",
@@ -111,6 +112,14 @@ export function CompanyAdmin() {
   const [message, setMessage] = React.useState(null);
   const [inviteForm, setInviteForm] = React.useState(initialInviteForm);
   const [temporaryPassword, setTemporaryPassword] = React.useState("");
+  const [ligandFile, setLigandFile] = React.useState(null);
+  const [ligandInputKey, setLigandInputKey] = React.useState(0);
+  const [ligandServiceForm, setLigandServiceForm] = React.useState({
+    catalogApiBase: "",
+    stockApiUrl: "",
+    dockingApiUrl: "",
+    diffdockApiUrl: "",
+  });
   const [memberDrafts, setMemberDrafts] = React.useState({});
   const [policyForm, setPolicyForm] = React.useState({
     monthlySimulationCap: "",
@@ -135,6 +144,13 @@ export function CompanyAdmin() {
     setPolicyForm({
       monthlySimulationCap: usagePolicy.monthlySimulationCap ?? "",
       defaultSimulationTokensPerUser: String(usagePolicy.defaultSimulationTokensPerUser ?? 50),
+    });
+    const ligandServiceConfig = data.company?.ligandServiceConfig || {};
+    setLigandServiceForm({
+      catalogApiBase: ligandServiceConfig.catalogApiBase || "",
+      stockApiUrl: ligandServiceConfig.stockApiUrl || "",
+      dockingApiUrl: ligandServiceConfig.dockingApiUrl || "",
+      diffdockApiUrl: ligandServiceConfig.diffdockApiUrl || "",
     });
     const drafts = {};
     (data.members || []).forEach((member) => {
@@ -294,6 +310,68 @@ export function CompanyAdmin() {
       });
       setApplyTokensToMembers(false);
       showMessage("green", result.message || "Usage policy updated");
+      await Promise.all([loadUsage(), loadAudit()]);
+    } catch (error) {
+      showMessage("red", error.message);
+    } finally {
+      setSaving("");
+    }
+  };
+
+  const handleLigandUpload = async (event) => {
+    event.preventDefault();
+    if (!ligandFile) {
+      showMessage("red", "Choose a ligand file to upload");
+      return;
+    }
+    if (ligandFile.size > MAX_LIGAND_FILE_SIZE_BYTES) {
+      showMessage("red", "Ligand file must be 2MB or smaller");
+      return;
+    }
+    setSaving("ligand-upload");
+    try {
+      const ligandUpload = await buildLigandUploadPayload(ligandFile);
+      const result = await companyRequest("/company/ligand-upload", {
+        method: "PATCH",
+        body: JSON.stringify({ ligandUpload }),
+      });
+      showMessage("green", result.message || "Ligand file uploaded");
+      setLigandFile(null);
+      setLigandInputKey((value) => value + 1);
+      await Promise.all([loadUsage(), loadAudit()]);
+    } catch (error) {
+      showMessage("red", error.message);
+    } finally {
+      setSaving("");
+    }
+  };
+
+  const handleLigandServiceConfigSave = async (event) => {
+    event.preventDefault();
+    setSaving("ligand-service-config");
+    try {
+      const currentConfig = company?.ligandServiceConfig || {};
+      const payload = {};
+      [
+        "catalogApiBase",
+        "stockApiUrl",
+        "dockingApiUrl",
+        "diffdockApiUrl",
+      ].forEach((fieldName) => {
+        const nextValue = ligandServiceForm[fieldName].trim();
+        const currentValue = (currentConfig[fieldName] || "").trim();
+        if (nextValue !== currentValue) payload[fieldName] = nextValue;
+      });
+      if (Object.keys(payload).length === 0) {
+        showMessage("blue", "No ligand service config changes to save");
+        setSaving("");
+        return;
+      }
+      const result = await companyRequest("/company/ligand-service-config", {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+      showMessage("green", result.message || "Ligand service config updated");
       await Promise.all([loadUsage(), loadAudit()]);
     } catch (error) {
       showMessage("red", error.message);
@@ -570,6 +648,56 @@ export function CompanyAdmin() {
                   </table>
                 </CardBody>
               </Card>
+
+              <Card className="border border-blue-gray-100 shadow-sm">
+                <CardHeader floated={false} shadow={false} className="rounded-none">
+                  <Typography variant="h5" color="blue-gray">
+                    Company Ligand Upload
+                  </Typography>
+                </CardHeader>
+                <CardBody>
+                  <div className="mb-4 rounded-md border border-blue-gray-100 bg-blue-gray-50/40 p-3">
+                    <Typography variant="small" color="blue-gray" className="font-medium">
+                      Current ligand file
+                    </Typography>
+                    <Typography variant="small" color="gray" className="mt-1">
+                      {company?.ligandUpload?.fileName || "No ligand file uploaded"}
+                    </Typography>
+                    {company?.ligandUpload?.uploadedAt && (
+                      <Typography variant="small" color="gray" className="mt-1">
+                        Uploaded: {formatDate(company.ligandUpload.uploadedAt)}
+                      </Typography>
+                    )}
+                    {company?.ligandUpload?.sizeBytes !== undefined && (
+                      <Typography variant="small" color="gray" className="mt-1">
+                        Size: {formatNumber(company.ligandUpload.sizeBytes)} bytes
+                      </Typography>
+                    )}
+                  </div>
+
+                  <form className="space-y-4" onSubmit={handleLigandUpload}>
+                    <input
+                      key={ligandInputKey}
+                      type="file"
+                      accept=".sdf,.mol,.mol2,.csv,.txt,.json"
+                      className="w-full rounded-md border border-blue-gray-200 px-3 py-2 text-sm text-blue-gray-700"
+                      onChange={(event) => setLigandFile(event.target.files?.[0] || null)}
+                      required
+                    />
+                    <Typography variant="small" color="gray">
+                      Accepted formats: SDF, MOL, MOL2, CSV, TXT, JSON (max 2MB)
+                    </Typography>
+                    <Button
+                      type="submit"
+                      className="flex items-center justify-center gap-2"
+                      disabled={saving === "ligand-upload"}
+                    >
+                      {saving === "ligand-upload" ? <Spinner className="h-4 w-4" /> : <ArrowPathIcon className="h-4 w-4" />}
+                      Upload Ligand
+                    </Button>
+                  </form>
+                </CardBody>
+              </Card>
             </div>
           )}
 
@@ -646,6 +774,62 @@ export function CompanyAdmin() {
                         Apply default tokens to all active members
                       </Typography>
                     </label>
+                  </form>
+                </CardBody>
+              </Card>
+
+              <Card className="border border-blue-gray-100 shadow-sm">
+                <CardHeader floated={false} shadow={false} className="rounded-none">
+                  <Typography variant="h5" color="blue-gray">
+                    Ligand Service Configuration
+                  </Typography>
+                </CardHeader>
+                <CardBody>
+                  <form className="grid grid-cols-1 gap-4" onSubmit={handleLigandServiceConfigSave}>
+                    <Input
+                      label="Catalog API Base URL"
+                      value={ligandServiceForm.catalogApiBase}
+                      onChange={(event) =>
+                        setLigandServiceForm((current) => ({ ...current, catalogApiBase: event.target.value }))
+                      }
+                      required
+                    />
+                    <Input
+                      label="Stock API URL"
+                      value={ligandServiceForm.stockApiUrl}
+                      onChange={(event) =>
+                        setLigandServiceForm((current) => ({ ...current, stockApiUrl: event.target.value }))
+                      }
+                      required
+                    />
+                    <Input
+                      label="Docking API URL"
+                      value={ligandServiceForm.dockingApiUrl}
+                      onChange={(event) =>
+                        setLigandServiceForm((current) => ({ ...current, dockingApiUrl: event.target.value }))
+                      }
+                      required
+                    />
+                    <Input
+                      label="DiffDock API URL"
+                      value={ligandServiceForm.diffdockApiUrl}
+                      onChange={(event) =>
+                        setLigandServiceForm((current) => ({ ...current, diffdockApiUrl: event.target.value }))
+                      }
+                      required
+                    />
+                    <Button
+                      type="submit"
+                      className="flex items-center justify-center gap-2"
+                      disabled={saving === "ligand-service-config"}
+                    >
+                      {saving === "ligand-service-config" ? (
+                        <Spinner className="h-4 w-4" />
+                      ) : (
+                        <CheckIcon className="h-4 w-4" />
+                      )}
+                      Save Ligand Service Config
+                    </Button>
                   </form>
                 </CardBody>
               </Card>
