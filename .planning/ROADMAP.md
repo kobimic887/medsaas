@@ -37,7 +37,11 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
   1. The Express server boots under Bun on arm64 (inside `oven/bun` container) and `/health` returns 200
   2. MongoDB driver, amqplib, Stripe SDK, and @rdkit/rdkit (WASM) each complete a real operation under Bun without error
   3. Baseline Node metrics are committed to the repo: server RSS at idle and under load, cold-start time, npm install time (cold), and CI wall-clock time
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 04-01-PLAN.md — Docker-free compat: Stripe constructEventAsync (positive+negative) + RDKit WASM (CMPT-04, CMPT-05)
+- [ ] 04-02-PLAN.md — Live-service compat: MongoDB driver + amqplib publish/consume (CMPT-02, CMPT-03)
+- [ ] 04-03-PLAN.md — Express boot under Bun + oven/bun arm64 container + spike README (CMPT-01, CMPT-06)
+- [ ] 04-04-PLAN.md — Node baseline capture (median-of-N) committed to BASELINE.md (MEAS-01)
 
 ### Phase 5: Server Runtime on Bun
 **Goal**: The Express API runs on the Bun runtime in both dev and production, and measured before/after RAM and startup data gates the outcome
@@ -78,11 +82,11 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
 | 1. Branding Cleanup | v1 | 1/1 | ✅ Complete | 2026-06-04 |
 | 2. Login Code Cleanup | v1 | 1/1 | ✅ Complete | 2026-06-04 |
 | 3. CI/CD Pipeline | v1 | 1/1 | ✅ Complete | 2026-06-04 |
-| 4. Compatibility Spike + Baseline | v2 | 0/? | Not started | - |
+| 4. Compatibility Spike + Baseline | v2 | 0/4 | Planned | - |
 | 5. Server Runtime on Bun | v2 | 0/? | Not started | - |
 | 6. Package Management | v2 | 0/? | Not started | - |
 | 7. Docker, CI/CD, and Scripts | v2 | 0/? | Not started | - |
 
 ---
 
-*Roadmap updated: 2026-06-04 — v2 Bun Migration phases added (4–7)*
+*Roadmap updated: 2026-06-04 — Phase 4 planned (4 plans, 3 waves)*
