@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2
 milestone_name: — Bun Migration
 status: executing
-last_updated: "2026-06-04T16:03:09.198Z"
+last_updated: "2026-06-04T16:09:18.306Z"
 last_activity: 2026-06-04 -- Phase 04 execution started
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 4
-  completed_plans: 1
-  percent: 0
+  completed_plans: 2
+  percent: 50
 ---
 
 # Project State: ChemBench
@@ -27,11 +27,11 @@ See: `.planning/PROJECT.md` (updated 2026-06-04)
 ## Current Position
 
 Phase: 04 (compatibility-spike-baseline) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
-Last activity: 2026-06-04 -- Phase 04 execution started
+Last activity: 2026-06-04 -- Phase 04 plan 02 complete via oracle live-service verification
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -49,6 +49,7 @@ Progress: [░░░░░░░░░░] 0%
 
 *Updated after each plan completion*
 | Phase 04 P01 | 12 min | 3 tasks | 3 files |
+| Phase 04 P02 | 7 min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -58,6 +59,7 @@ Progress: [░░░░░░░░░░] 0%
 - MEAS-01 (baseline) in spike phase; MEAS-02/03 (before/after report + gate) in runtime phase
 - Node fallback retained through all v2 phases (RUN-04, PKG-02, OPS-04)
 - Vite→Bun bundler swap deferred — no server RAM win, highest risk
+- Docker-dependent compatibility checks can run from an isolated `/tmp` bundle on ssh alias `oracle` when local Docker is unavailable
 
 ### Active Blockers
 
@@ -72,7 +74,3 @@ Progress: [░░░░░░░░░░] 0%
 
 *State initialized: 2026-06-03*
 *Last updated: 2026-06-04 — v2 roadmap finalized, Phase 4 ready to plan*
-
-### Blockers
-
-- Phase 4 blocked at 04-02: docker CLI/container runtime is unavailable, so live MongoDB/RabbitMQ and oven/bun container verification cannot run.
