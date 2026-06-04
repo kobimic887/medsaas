@@ -820,13 +820,13 @@ function normalizeLigandServiceConfig(rawConfig = {}) {
     ? rawCatalogApiBase.replace(/\/$/, '')
     : DEFAULT_LIGAND_SERVICE_CONFIG.catalogApiBase;
   const stockApiUrl = rawStockApiUrl
-    ? rawStockApiUrl
+    ? rawStockApiUrl.replace(/\/$/, '')
     : DEFAULT_LIGAND_SERVICE_CONFIG.stockApiUrl;
   const dockingApiUrl = rawDockingApiUrl
-    ? rawDockingApiUrl
+    ? rawDockingApiUrl.replace(/\/$/, '')
     : DEFAULT_LIGAND_SERVICE_CONFIG.dockingApiUrl;
   const diffdockApiUrl = rawDiffdockApiUrl
-    ? rawDiffdockApiUrl
+    ? rawDiffdockApiUrl.replace(/\/$/, '')
     : DEFAULT_LIGAND_SERVICE_CONFIG.diffdockApiUrl;
 
   return {
@@ -1025,6 +1025,16 @@ function validateRequiredStringField(body, fieldName) {
     throw new Error(`${fieldName} must be a non-empty string`);
   }
   return value;
+}
+
+function assertValidHttpUrl(value, fieldName) {
+  let parsed;
+  try { parsed = new URL(value); } catch {
+    throw new Error(`${fieldName} must be a valid URL`);
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`${fieldName} must use http or https`);
+  }
 }
 
 async function recordAuditEvent(req, action, details = {}, status = 'success') {
@@ -2400,7 +2410,7 @@ function authenticateToken(req, res, next) {
   });
 }
 
-app.post('/api/shop', authenticateToken, async (req, res) => {
+app.post('/api/shop', ensureMongoConnected, authenticateToken, async (req, res) => {
   try {
     const { stockApiUrl } = await getRequestLigandServiceConfig(req);
     const response = await fetch(stockApiUrl, {
@@ -3138,7 +3148,10 @@ app.patch('/api/company/ligand-service-config', ensureMongoConnected, authentica
     try {
       ['catalogApiBase', 'stockApiUrl', 'dockingApiUrl', 'diffdockApiUrl'].forEach((fieldName) => {
         const value = validateRequiredStringField(req.body || {}, fieldName);
-        if (value !== undefined) updates[fieldName] = value;
+        if (value !== undefined) {
+          assertValidHttpUrl(value, fieldName);
+          updates[fieldName] = value;
+        }
       });
     } catch (validationError) {
       return res.status(400).json({ error: validationError.message });
@@ -3429,7 +3442,7 @@ app.get('/api/company/audit-logs', ensureMongoConnected, authenticateToken, requ
  *       500:
  *         description: Server error
  */
-app.get('/api/exact/:smiles', authenticateToken, async (req, res) => {
+app.get('/api/exact/:smiles', ensureMongoConnected, authenticateToken, async (req, res) => {
   try {
     const { smiles } = req.params;
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
@@ -3506,7 +3519,7 @@ app.get('/api/exact/:smiles', authenticateToken, async (req, res) => {
  *       500:
  *         description: Server error
  */
-app.get('/api/all/:id_:pageSize', authenticateToken, async (req, res) => {
+app.get('/api/all/:id_:pageSize', ensureMongoConnected, authenticateToken, async (req, res) => {
   try {
     const { id, pageSize } = req.params;
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
@@ -3569,7 +3582,7 @@ app.get('/api/all/:id_:pageSize', authenticateToken, async (req, res) => {
  *       500:
  *         description: Server error
  */
-app.get('/api/id/:id_number', authenticateToken, async (req, res) => {
+app.get('/api/id/:id_number', ensureMongoConnected, authenticateToken, async (req, res) => {
   try {
     const { id_number } = req.params;
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
@@ -3650,7 +3663,7 @@ app.get('/api/id/:id_number', authenticateToken, async (req, res) => {
  *       200:
  *         description: Asinex API response
  */
-app.post('/api/api4/bas', authenticateToken, async (req, res) => {
+app.post('/api/api4/bas', ensureMongoConnected, authenticateToken, async (req, res) => {
   try {
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
     const response = await fetch(`${catalogApiBase}/api4/bas`, {
@@ -3720,7 +3733,7 @@ app.post('/api/api4/bas', authenticateToken, async (req, res) => {
  *       200:
  *         description: Asinex API response
  */
-app.post('/api/api4/structure', authenticateToken, async (req, res) => {
+app.post('/api/api4/structure', ensureMongoConnected, authenticateToken, async (req, res) => {
   try {
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
     const response = await fetch(`${catalogApiBase}/api4/structure`, {
@@ -3790,7 +3803,7 @@ app.post('/api/api4/structure', authenticateToken, async (req, res) => {
  *       200:
  *         description: Asinex API response
  */
-app.post('/api/api4/substructure', authenticateToken, async (req, res) => {
+app.post('/api/api4/substructure', ensureMongoConnected, authenticateToken, async (req, res) => {
   try {
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
     const response = await fetch(`${catalogApiBase}/api4/substructure`, {
@@ -3860,7 +3873,7 @@ app.post('/api/api4/substructure', authenticateToken, async (req, res) => {
  *       200:
  *         description: Asinex API response
  */
-app.post('/api/api4/similarity', authenticateToken, async (req, res) => {
+app.post('/api/api4/similarity', ensureMongoConnected, authenticateToken, async (req, res) => {
   try {
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
     const response = await fetch(`${catalogApiBase}/api4/similarity`, {
@@ -3930,7 +3943,7 @@ app.post('/api/api4/similarity', authenticateToken, async (req, res) => {
  *       200:
  *         description: Asinex API response
  */
-app.post('/api/api4/mw', authenticateToken, async (req, res) => {
+app.post('/api/api4/mw', ensureMongoConnected, authenticateToken, async (req, res) => {
   try {
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
     const response = await fetch(`${catalogApiBase}/api4/mw`, {
@@ -4297,7 +4310,7 @@ app.post('/api/diffdock/generate_file', ensureMongoConnected, authenticateToken,
  *       500:
  *         description: Server error
  */
-app.get('/api/asinex/all/:id_:pageSize', authenticateToken, async (req, res) => {
+app.get('/api/asinex/all/:id_:pageSize', ensureMongoConnected, authenticateToken, async (req, res) => {
   try {
     const { id_, pageSize } = req.params;
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
@@ -4347,7 +4360,7 @@ app.get('/api/asinex/all/:id_:pageSize', authenticateToken, async (req, res) => 
  *       500:
  *         description: Server error
  */
-app.get('/api/asinex/id/:id_number', authenticateToken, async (req, res) => {
+app.get('/api/asinex/id/:id_number', ensureMongoConnected, authenticateToken, async (req, res) => {
   try {
     const { id_number } = req.params;
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
@@ -4409,7 +4422,7 @@ app.get('/api/asinex/id/:id_number', authenticateToken, async (req, res) => {
  *       500:
  *         description: Server error
  */
-app.get('/api/asinex/exact/:smiles', authenticateToken, async (req, res) => {
+app.get('/api/asinex/exact/:smiles', ensureMongoConnected, authenticateToken, async (req, res) => {
   try {
     const { smiles } = req.params;
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
@@ -4484,7 +4497,7 @@ app.get('/api/asinex/exact/:smiles', authenticateToken, async (req, res) => {
  *       500:
  *         description: Server error
  */
-app.get('/api/asinex/substructure/:id_:pageSize/:smiles', authenticateToken, async (req, res) => {
+app.get('/api/asinex/substructure/:id_:pageSize/:smiles', ensureMongoConnected, authenticateToken, async (req, res) => {
   try {
     const { id_, pageSize, smiles } = req.params;
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
@@ -4555,7 +4568,7 @@ app.get('/api/asinex/substructure/:id_:pageSize/:smiles', authenticateToken, asy
  *       500:
  *         description: Server error
  */
-app.post('/api/asinex/search', authenticateToken, async (req, res) => {
+app.post('/api/asinex/search', ensureMongoConnected, authenticateToken, async (req, res) => {
   try {
     const { searchType, id, pageSize, id_number, smiles } = req.body;
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
@@ -4648,7 +4661,7 @@ app.post('/api/asinex/search', authenticateToken, async (req, res) => {
  *       200:
  *         description: Asinex API health status
  */
-app.get('/api/asinex/health', authenticateToken, async (req, res) => {
+app.get('/api/asinex/health', ensureMongoConnected, authenticateToken, async (req, res) => {
   let catalogApiBase = DEFAULT_LIGAND_SERVICE_CONFIG.catalogApiBase;
   try {
     ({ catalogApiBase } = await getRequestLigandServiceConfig(req));

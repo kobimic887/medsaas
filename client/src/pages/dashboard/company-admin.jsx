@@ -676,7 +676,11 @@ export function CompanyAdmin() {
                   </div>
 
                   <form className="space-y-4" onSubmit={handleLigandUpload}>
+                    <label htmlFor="ligand-upload-input" className="sr-only">
+                      Ligand file
+                    </label>
                     <input
+                      id="ligand-upload-input"
                       key={ligandInputKey}
                       type="file"
                       accept=".sdf,.mol,.mol2,.csv,.txt,.json"
