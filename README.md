@@ -58,9 +58,12 @@ Root scripts are the supported way to install, run, build, and check the app.
 
 **Gate result: PASS — Bun is the confirmed default runtime.**
 
-Measured Bun median idle RSS: 115.1 MiB (Node Phase 4 baseline: 118.9 MiB, delta −3.8 MiB).
+Measured Bun median idle RSS: 115.1 MiB, below the locked Node Phase 4 baseline of 118.9 MiB
+(the D-06 gate threshold), so Bun stays the default. Note: on the same oracle host a back-to-back
+Node sanity run measured 115.5 MiB — Bun and Node are at parity within noise, not a memory win;
+Bun passes the gate against the fixed Phase 4 baseline.
 See `.planning/phases/05-server-runtime-on-bun/BUN-BEFORE-AFTER.md` for full per-sample distributions,
-back-to-back Node sanity run, and methodology (N=5, `/proc/<pid>/status` VmRSS, oracle aarch64 host).
+the back-to-back Node sanity run, and methodology (N=5, `/proc/<pid>/status` VmRSS, oracle aarch64 host).
 
 Phase 5 makes Bun the default API runtime while keeping npm as the script runner (D-02).
 
@@ -72,7 +75,11 @@ npm remains the script runner throughout Phase 5. Only the runtime binary change
 **Bun commands (default):**
 
 ```bash
-# API-only development with Bun
+# API-only development on Bun (hot-reload)
+npm run dev:bun
+npm --prefix server run dev:bun
+
+# Production-style unified server on Bun (builds client, then serves it)
 npm run start:bun
 npm --prefix server run start:unified:bun
 ```
