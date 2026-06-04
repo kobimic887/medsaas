@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2
 milestone_name: — Bun Migration
 status: executing
-last_updated: "2026-06-04T20:54:51.694Z"
+last_updated: "2026-06-04T21:09:12.141Z"
 last_activity: 2026-06-04
 progress:
   total_phases: 4
   completed_phases: 1
   total_plans: 7
-  completed_plans: 5
+  completed_plans: 6
   percent: 25
 ---
 
@@ -27,11 +27,11 @@ See: `.planning/PROJECT.md` (updated 2026-06-04)
 ## Current Position
 
 Phase: 05 (server-runtime-on-bun) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-06-04
 
-Progress: [███████░░░] 71%
+Progress: [█████████░] 86%
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [███████░░░] 71%
 | Phase 04 P03 | 6 min | 3 tasks | 4 files |
 | Phase 04 P04 | 14 min | 3 tasks | 3 files |
 | Phase 05-server-runtime-on-bun P01 | 18 | 3 tasks | 5 files |
+| Phase 05-server-runtime-on-bun P02 | 35 | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -65,6 +66,9 @@ Progress: [███████░░░] 71%
 - Docker-dependent compatibility checks can run from an isolated `/tmp` bundle on ssh alias `oracle` when local Docker is unavailable
 - Bun is default server runtime via server/package.json scripts; npm remains the script runner (D-01, D-02) — Phase 05 Plan 01
 - Node fallback is one-command via *:node aliases at both server and root levels (D-04) — Phase 05 Plan 01
+- constructEventAsync replaces constructEvent for Bun-compatible async Stripe webhook verification (D-08, D-09) — Phase 05 Plan 02
+- Smoke harness passes NVIDIA_MOLMIM_API_KEY='' as empty string: dotenv skips already-set vars; delete is insufficient when server re-reads .env — Phase 05 Plan 02
+- Bun FSEvents watch requires inode change (readFile+writeFile); fs.utimes mtime-only update does not trigger reload on macOS — Phase 05 Plan 02
 
 ### Active Blockers
 
