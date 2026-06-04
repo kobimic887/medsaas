@@ -6,7 +6,7 @@ const env = {
   ...process.env,
   PORT: String(port),
   JWT_SECRET: process.env.JWT_SECRET || "bun_spike_jwt_secret_at_least_32_chars",
-  STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || "sk_test_bun_spike_unused_dummy_key",
+  STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || "bun_spike_unused_dummy_stripe_key",
   MONGODB_URI: process.env.MONGODB_URI || "mongodb://localhost:27017/bun_spike_server",
   NODE_ENV: process.env.NODE_ENV || "test",
 };

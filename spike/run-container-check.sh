@@ -48,7 +48,7 @@ docker run -d \
   -e NODE_ENV=test \
   -e MONGODB_URI="mongodb://mongo:27017/${MONGO_DB}" \
   -e JWT_SECRET="${JWT_SECRET:-bun_spike_jwt_secret_at_least_32_chars}" \
-  -e STRIPE_SECRET_KEY="${STRIPE_SECRET_KEY:-sk_test_bun_spike_unused_dummy_key}" \
+  -e STRIPE_SECRET_KEY="${STRIPE_SECRET_KEY:-bun_spike_unused_dummy_stripe_key}" \
   "$IMAGE_NAME" >/dev/null
 
 for _ in $(seq 1 120); do

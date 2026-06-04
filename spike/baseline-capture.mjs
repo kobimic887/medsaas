@@ -46,7 +46,7 @@ const env = {
   PORT: String(port),
   NODE_ENV: "test",
   JWT_SECRET: process.env.JWT_SECRET || "node_baseline_jwt_secret_at_least_32_chars",
-  STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || "sk_test_node_baseline_unused_dummy_key",
+  STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY || "node_baseline_unused_dummy_stripe_key",
   MONGODB_URI: process.env.MONGODB_URI || "mongodb://localhost:27017/node_baseline",
 };
 
