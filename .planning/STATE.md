@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2
 milestone_name: — Bun Migration
-status: executing
-last_updated: "2026-06-04T21:09:12.141Z"
+status: verifying
+last_updated: "2026-06-04T21:36:22.640Z"
 last_activity: 2026-06-04
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 7
-  completed_plans: 6
-  percent: 25
+  completed_plans: 7
+  percent: 50
 ---
 
 # Project State: ChemBench
@@ -28,10 +28,10 @@ See: `.planning/PROJECT.md` (updated 2026-06-04)
 
 Phase: 05 (server-runtime-on-bun) — EXECUTING
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-06-04
 
-Progress: [█████████░] 86%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -54,6 +54,7 @@ Progress: [█████████░] 86%
 | Phase 04 P04 | 14 min | 3 tasks | 3 files |
 | Phase 05-server-runtime-on-bun P01 | 18 | 3 tasks | 5 files |
 | Phase 05-server-runtime-on-bun P02 | 35 | 3 tasks | 4 files |
+| Phase 05-server-runtime-on-bun P03 | 8 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,8 @@ Progress: [█████████░] 86%
 - constructEventAsync replaces constructEvent for Bun-compatible async Stripe webhook verification (D-08, D-09) — Phase 05 Plan 02
 - Smoke harness passes NVIDIA_MOLMIM_API_KEY='' as empty string: dotenv skips already-set vars; delete is insufficient when server re-reads .env — Phase 05 Plan 02
 - Bun FSEvents watch requires inode change (readFile+writeFile); fs.utimes mtime-only update does not trigger reload on macOS — Phase 05 Plan 02
+- Gate PASS: Bun median idle RSS 115.1 MiB < 118.9 MiB Node baseline — Bun confirmed as default server runtime (MEAS-03) — Phase 05 Plan 03
+- README updated with confirmed gate outcome; both npm run start:bun and npm run start:node documented — Phase 05 Plan 03
 
 ### Active Blockers
 

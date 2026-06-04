@@ -10,8 +10,8 @@ Requirements for the Bun Migration milestone. Each maps to a roadmap phase. "Use
 ### Measurement & Baselines (MEAS)
 
 - [x] **MEAS-01**: Baseline Node metrics are captured and recorded in the repo — server RSS at idle and under a representative request load, cold-start time, `npm install` time (cold cache), and CI pipeline wall-clock time
-- [ ] **MEAS-02**: Post-migration Bun metrics are captured with the same method and compared against the baseline in a written before/after report
-- [ ] **MEAS-03**: The migration outcome is gated on measured results — if Bun does not reduce server RAM, the report documents it and the Node fallback remains the default
+- [x] **MEAS-02**: Post-migration Bun metrics are captured with the same method and compared against the baseline in a written before/after report
+- [x] **MEAS-03**: The migration outcome is gated on measured results — if Bun does not reduce server RAM, the report documents it and the Node fallback remains the default
 
 ### Compatibility Spike (CMPT)
 
@@ -74,8 +74,8 @@ Each requirement maps to exactly one phase.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | MEAS-01 | Phase 4 | Complete |
-| MEAS-02 | Phase 5 | Pending |
-| MEAS-03 | Phase 5 | Pending |
+| MEAS-02 | Phase 5 | Complete |
+| MEAS-03 | Phase 5 | Complete |
 | CMPT-01 | Phase 4 | Complete |
 | CMPT-02 | Phase 4 | Complete |
 | CMPT-03 | Phase 4 | Complete |

@@ -23,7 +23,7 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
 **Milestone Goal:** Migrate the Node/npm toolchain to Bun, verified by before/after measurements, with a Node-compatible fallback retained for fast rollback.
 
 - [x] **Phase 4: Compatibility Spike + Baseline** - Empirically prove arm64 dep compatibility and capture Node performance baselines before committing to migration (completed 2026-06-04)
-- [ ] **Phase 5: Server Runtime on Bun** - Run the Express API on Bun in dev and prod, with before/after RAM measurement gating the outcome
+- [x] **Phase 5: Server Runtime on Bun** - Run the Express API on Bun in dev and prod, with before/after RAM measurement gating the outcome (completed 2026-06-04)
 - [ ] **Phase 6: Package Management** - Migrate root and client deps to bun install with Node fallback scripts preserved
 - [ ] **Phase 7: Docker, CI/CD, and Scripts** - Ship oven/bun Docker image, Bun-powered Actions pipeline, and Bun test/check scripts
 
@@ -70,7 +70,7 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 05-03-PLAN.md — Bun RSS/startup measurement report and MEAS-03 default-runtime gate (RUN-04, MEAS-02, MEAS-03)
+- [x] 05-03-PLAN.md — Bun RSS/startup measurement report and MEAS-03 default-runtime gate (RUN-04, MEAS-02, MEAS-03)
 
 ### Phase 6: Package Management
 
@@ -107,7 +107,7 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
 | 2. Login Code Cleanup | v1 | 1/1 | ✅ Complete | 2026-06-04 |
 | 3. CI/CD Pipeline | v1 | 1/1 | ✅ Complete | 2026-06-04 |
 | 4. Compatibility Spike + Baseline | v2 | 4/4 | Complete   | 2026-06-04 |
-| 5. Server Runtime on Bun | v2 | 2/3 | In Progress|  |
+| 5. Server Runtime on Bun | v2 | 3/3 | Complete   | 2026-06-04 |
 | 6. Package Management | v2 | 0/? | Not started | - |
 | 7. Docker, CI/CD, and Scripts | v2 | 0/? | Not started | - |
 
