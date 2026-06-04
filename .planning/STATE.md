@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v2
 milestone_name: — Bun Migration
-status: ready_to_plan
-last_updated: 2026-06-04T21:53:10.956Z
+status: planning
+last_updated: "2026-06-04T22:07:51.444Z"
 last_activity: 2026-06-04
 progress:
   total_phases: 4
@@ -11,7 +11,6 @@ progress:
   total_plans: 7
   completed_plans: 7
   percent: 50
-stopped_at: Phase 05 complete (3/3) — ready to discuss Phase 6
 ---
 
 # Project State: ChemBench
