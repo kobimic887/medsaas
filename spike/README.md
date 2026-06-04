@@ -1,0 +1,52 @@
+# Bun Compatibility Spike
+
+This directory contains throwaway compatibility scripts for Phase 4. The scripts are committed so Phase 5 can reuse the evidence and methodology, but they are not production entry points.
+
+## Prerequisites
+
+- Bun 1.3.14 for direct `bun run` checks.
+- Docker with Compose for MongoDB, RabbitMQ, and the container proof.
+- Root `.env` values may be reused, but scripts accept explicit env overrides and never require real Stripe network access.
+- When local Docker is unavailable, run the Docker-dependent checks from an isolated bundle on `ssh oracle`.
+
+## Scripts
+
+| Requirement | Command | What It Proves |
+|-------------|---------|----------------|
+| CMPT-01 | `bun run spike/01-boot-health.ts` | Boots the unmodified `server/index.js` under Bun and verifies `GET /health` returns status `OK`. |
+| CMPT-02 | `bun run spike/02-mongo.ts` | MongoDB driver connects, inserts, finds, creates an index, and drops a throwaway DB under Bun. |
+| CMPT-03 | `bun run spike/03-amqp.ts` | amqplib publishes and consumes the same payload through a throwaway queue under Bun. |
+| CMPT-04 | `bun run spike/04-stripe.ts` | Stripe `constructEventAsync` verifies a valid signature and rejects a tampered one under Bun. |
+| CMPT-05 | `bun run spike/05-rdkit.ts` | RDKit WASM loads and parses benzene under Bun. |
+| CMPT-06 | `bash spike/run-container-check.sh` | Builds `medsaas:bun-spike` from `oven/bun:1.3.14-slim`, asserts arm64, runs it on the compose network, and verifies `/health` returns 200. |
+
+## Results
+
+| Requirement | Status | Notes |
+|-------------|--------|-------|
+| CMPT-01 | PASS | Verified on `oracle` using `oven/bun:1.3.14-slim`; `/health` returned `{"status":"OK",...}`. |
+| CMPT-02 | PASS | Verified on `oracle`; Mongo inserted/found/indexed/dropped `bun_spike_test`. |
+| CMPT-03 | PASS | Verified on `oracle`; RabbitMQ round-tripped the JSON payload, no `Invalid frame` finding. |
+| CMPT-04 | PASS | Verified locally with Bun 1.3.14; tampered signature rejected. |
+| CMPT-05 | PASS | Verified locally with Bun 1.3.14; RDKit version `2025.03.4`, benzene SMILES `c1ccccc1`. |
+| CMPT-06 | PASS | Verified on `oracle`; image architecture was arm64 and container `/health` returned 200. |
+
+## Container Network
+
+`spike/run-container-check.sh` uses Docker Compose service `mongo` from `docker-compose.yml`. With `COMPOSE_PROJECT_NAME=medsaasbunspike`, the network is `medsaasbunspike_default`, and the app container connects with:
+
+```text
+MONGODB_URI=mongodb://mongo:27017/bun_spike_server
+```
+
+The script builds `medsaas:bun-spike`, runs a container named `medsaas-bun-spike`, maps host `:3000` to container `:3000` by default, polls `http://127.0.0.1:3000/health`, and removes the container on exit. If the host already has a service on port 3000, keep the app port at 3000 and override only the host binding, for example:
+
+```bash
+HOST_PORT=3300 bash spike/run-container-check.sh
+```
+
+## Notes
+
+- External science routes are intentionally excluded from these checks.
+- `spike/STRIPE-HANDOFF.md` captures the Phase 5 production Stripe webhook migration.
+- `BASELINE.md` is the durable performance artifact; `spike/` scripts can be deleted after Phase 5 once their findings have been migrated into production changes and verification docs.
