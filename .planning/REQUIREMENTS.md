@@ -24,10 +24,10 @@ Requirements for the Bun Migration milestone. Each maps to a roadmap phase. "Use
 
 ### Server Runtime (RUN)
 
-- [ ] **RUN-01**: The Express API runs in dev on `bun` (replacing `node --watch`) with working file-watch reload
-- [ ] **RUN-02**: The Express API runs in production on `bun` (the `start:unified` equivalent), serving the built frontend
+- [x] **RUN-01**: The Express API runs in dev on `bun` (replacing `node --watch`) with working file-watch reload
+- [x] **RUN-02**: The Express API runs in production on `bun` (the `start:unified` equivalent), serving the built frontend
 - [ ] **RUN-03**: Startup env-var validation and all existing middleware/routes behave identically under Bun, verified by a smoke test of auth, the Stripe billing webhook, and one token-consuming simulation endpoint
-- [ ] **RUN-04**: Node-compatible run scripts / entrypoint are retained and documented as a fast-rollback fallback
+- [x] **RUN-04**: Node-compatible run scripts / entrypoint are retained and documented as a fast-rollback fallback
 
 ### Package Management (PKG)
 
@@ -82,10 +82,10 @@ Each requirement maps to exactly one phase.
 | CMPT-04 | Phase 4 | Complete |
 | CMPT-05 | Phase 4 | Complete |
 | CMPT-06 | Phase 4 | Complete |
-| RUN-01 | Phase 5 | Pending |
-| RUN-02 | Phase 5 | Pending |
+| RUN-01 | Phase 5 | Complete |
+| RUN-02 | Phase 5 | Complete |
 | RUN-03 | Phase 5 | Pending |
-| RUN-04 | Phase 5 | Pending |
+| RUN-04 | Phase 5 | Complete |
 | PKG-01 | Phase 6 | Pending |
 | PKG-02 | Phase 6 | Pending |
 | PKG-03 | Phase 6 | Pending |

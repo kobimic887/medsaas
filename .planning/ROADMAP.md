@@ -62,7 +62,7 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
 **Plans**: 3 plans
 **Wave 1**
 
-- [ ] 05-01-PLAN.md — Runtime availability probe, Bun default scripts, and Node rollback docs (RUN-01, RUN-02, RUN-04)
+- [x] 05-01-PLAN.md — Runtime availability probe, Bun default scripts, and Node rollback docs (RUN-01, RUN-02, RUN-04)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -107,7 +107,7 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
 | 2. Login Code Cleanup | v1 | 1/1 | ✅ Complete | 2026-06-04 |
 | 3. CI/CD Pipeline | v1 | 1/1 | ✅ Complete | 2026-06-04 |
 | 4. Compatibility Spike + Baseline | v2 | 4/4 | Complete   | 2026-06-04 |
-| 5. Server Runtime on Bun | v2 | 0/3 | Not started | - |
+| 5. Server Runtime on Bun | v2 | 1/3 | In Progress|  |
 | 6. Package Management | v2 | 0/? | Not started | - |
 | 7. Docker, CI/CD, and Scripts | v2 | 0/? | Not started | - |
 
