@@ -89,8 +89,12 @@ async function main() {
   const mem = await MongoMemoryServer.create();
   const uri = mem.getUri(DB_NAME);
 
-  console.log('Spawning real server (index.js) against ephemeral DB...');
-  const child = spawn('node', ['index.js'], {
+  const BUN_PATH = process.env.BUN_PATH || `${process.env.HOME}/.bun/bin/bun`;
+  const serverRuntime = process.env.SERVER_RUNTIME || 'node';
+  const runtimeBin = serverRuntime === 'bun' ? BUN_PATH : process.execPath;
+
+  console.log(`Spawning real server (index.js) against ephemeral DB via ${serverRuntime}...`);
+  const child = spawn(runtimeBin, ['index.js'], {
     cwd: SERVER_DIR,
     env: {
       ...process.env,
