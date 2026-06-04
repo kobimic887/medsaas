@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v2
 milestone_name: Bun Migration
 status: planning
-last_updated: "2026-06-04T13:39:29.664Z"
+last_updated: "2026-06-04"
 last_activity: 2026-06-04
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,47 +20,53 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-06-04)
 
 **Core value:** Labs and customers get a professional, focused tool — not a rebranded demo with debug artifacts.
-**Current focus:** Planning next milestone (v2)
+**Current focus:** Phase 4 — Compatibility Spike + Baseline (ready to plan)
 
 ---
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 4 of 7 (Compatibility Spike + Baseline)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-06-04 — Milestone v2 started
+Status: Ready to plan
+Last activity: 2026-06-04 — v2 roadmap created (Phases 4–7)
 
-## Phase Status (v1 — archived)
+Progress: [░░░░░░░░░░] 0%
 
-| Phase | Status |
-|-------|--------|
-| 1. Branding Cleanup | ✅ Complete |
-| 2. Login Code Cleanup | ✅ Complete |
-| 3. CI/CD Pipeline | ✅ Complete |
+## Performance Metrics
 
----
+**Velocity:**
+- Total plans completed: 3 (v1)
+- Average duration: —
+- Total execution time: —
+
+**By Phase:**
+
+| Phase | Plans | Total | Avg/Plan |
+|-------|-------|-------|----------|
+| v1 (1–3) | 3 | — | — |
+
+*Updated after each plan completion*
 
 ## Accumulated Context
 
 ### Key Decisions Recorded
 
-- Replace Pyxis image backgrounds with CSS gradients (no new assets)
-- Remove client-side IP fetch entirely (server has `req.ip`)
-- Leave forgot-password link as dead `href="#"` (deferred to v2)
-- Native arm64 deploy via SSH/SCP — no QEMU, no registry
+- Compatibility spike before full migration commit — arm64 dep compat is tightest constraint
+- MEAS-01 (baseline) in spike phase; MEAS-02/03 (before/after report + gate) in runtime phase
+- Node fallback retained through all v2 phases (RUN-04, PKG-02, OPS-04)
+- Vite→Bun bundler swap deferred — no server RAM win, highest risk
 
 ### Active Blockers
 
-None.
+- Branch `feature/company-ligand-config` not yet merged to main — merge before starting Phase 4
 
 ### Notes for Next Session
 
-- Branch `feature/company-ligand-config` is one commit ahead of main: per-company ligand service config + admin ligand upload. Merge to main first.
-- `tester123` server-side bypass still exists in `server/index.js` (lines ~2406, ~2553) — SEC-V2-01, not yet removed
-- `deploy.yml` push trigger is commented out — one line to enable auto-deploy on merge to main
+- `tester123` server-side bypass still exists in `server/index.js` — SEC-V2-01 (future milestone)
+- deploy.yml push trigger is commented out — one line to enable auto-deploy
 
 ---
 
 *State initialized: 2026-06-03*
-*Last updated: 2026-06-04 after v1 milestone close*
+*Last updated: 2026-06-04 — v2 roadmap finalized, Phase 4 ready to plan*

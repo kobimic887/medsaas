@@ -69,36 +69,36 @@ Deferred to later milestones. Tracked but not in this roadmap.
 
 ## Traceability
 
-Populated during roadmap creation. Each requirement maps to exactly one phase.
+Each requirement maps to exactly one phase.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MEAS-01 | — | Pending |
-| MEAS-02 | — | Pending |
-| MEAS-03 | — | Pending |
-| CMPT-01 | — | Pending |
-| CMPT-02 | — | Pending |
-| CMPT-03 | — | Pending |
-| CMPT-04 | — | Pending |
-| CMPT-05 | — | Pending |
-| CMPT-06 | — | Pending |
-| RUN-01 | — | Pending |
-| RUN-02 | — | Pending |
-| RUN-03 | — | Pending |
-| RUN-04 | — | Pending |
-| PKG-01 | — | Pending |
-| PKG-02 | — | Pending |
-| PKG-03 | — | Pending |
-| OPS-01 | — | Pending |
-| OPS-02 | — | Pending |
-| OPS-03 | — | Pending |
-| OPS-04 | — | Pending |
+| MEAS-01 | Phase 4 | Pending |
+| MEAS-02 | Phase 5 | Pending |
+| MEAS-03 | Phase 5 | Pending |
+| CMPT-01 | Phase 4 | Pending |
+| CMPT-02 | Phase 4 | Pending |
+| CMPT-03 | Phase 4 | Pending |
+| CMPT-04 | Phase 4 | Pending |
+| CMPT-05 | Phase 4 | Pending |
+| CMPT-06 | Phase 4 | Pending |
+| RUN-01 | Phase 5 | Pending |
+| RUN-02 | Phase 5 | Pending |
+| RUN-03 | Phase 5 | Pending |
+| RUN-04 | Phase 5 | Pending |
+| PKG-01 | Phase 6 | Pending |
+| PKG-02 | Phase 6 | Pending |
+| PKG-03 | Phase 6 | Pending |
+| OPS-01 | Phase 7 | Pending |
+| OPS-02 | Phase 7 | Pending |
+| OPS-03 | Phase 7 | Pending |
+| OPS-04 | Phase 7 | Pending |
 
 **Coverage:**
 - v2 requirements: 20 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 20 ⚠️
+- Mapped to phases: 20 ✓
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-06-04*
-*Last updated: 2026-06-04 after initial v2 definition*
+*Last updated: 2026-06-04 — traceability filled after roadmap creation*
