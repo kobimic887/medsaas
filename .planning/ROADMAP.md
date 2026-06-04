@@ -44,7 +44,7 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
 
 - [x] 04-01-PLAN.md — Docker-free compat: Stripe constructEventAsync (positive+negative) + RDKit WASM (CMPT-04, CMPT-05)
 - [x] 04-02-PLAN.md — Live-service compat: MongoDB driver + amqplib publish/consume (CMPT-02, CMPT-03)
-- [ ] 04-03-PLAN.md — Express boot under Bun + oven/bun arm64 container + spike README (CMPT-01, CMPT-06)
+- [x] 04-03-PLAN.md — Express boot under Bun + oven/bun arm64 container + spike README (CMPT-01, CMPT-06)
 - [ ] 04-04-PLAN.md — Node baseline capture (median-of-N) committed to BASELINE.md (MEAS-01)
 
 ### Phase 5: Server Runtime on Bun
@@ -95,7 +95,7 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
 | 1. Branding Cleanup | v1 | 1/1 | ✅ Complete | 2026-06-04 |
 | 2. Login Code Cleanup | v1 | 1/1 | ✅ Complete | 2026-06-04 |
 | 3. CI/CD Pipeline | v1 | 1/1 | ✅ Complete | 2026-06-04 |
-| 4. Compatibility Spike + Baseline | v2 | 2/4 | In Progress|  |
+| 4. Compatibility Spike + Baseline | v2 | 3/4 | In Progress|  |
 | 5. Server Runtime on Bun | v2 | 0/? | Not started | - |
 | 6. Package Management | v2 | 0/? | Not started | - |
 | 7. Docker, CI/CD, and Scripts | v2 | 0/? | Not started | - |

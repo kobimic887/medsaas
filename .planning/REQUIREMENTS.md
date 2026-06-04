@@ -15,12 +15,12 @@ Requirements for the Bun Migration milestone. Each maps to a roadmap phase. "Use
 
 ### Compatibility Spike (CMPT)
 
-- [ ] **CMPT-01**: A runnable proof-of-concept boots the Express server under Bun on arm64 and serves the existing `/health` endpoint
+- [x] **CMPT-01**: A runnable proof-of-concept boots the Express server under Bun on arm64 and serves the existing `/health` endpoint
 - [x] **CMPT-02**: The MongoDB driver is verified working under Bun (connect, query, and index creation against a real Mongo instance)
 - [x] **CMPT-03**: `amqplib` (RabbitMQ) is verified working under Bun (publish and consume a message)
 - [x] **CMPT-04**: Stripe SDK calls and webhook signature verification are verified working under Bun
 - [x] **CMPT-05**: `@rdkit/rdkit` (WASM) loads and executes under Bun
-- [ ] **CMPT-06**: The `oven/bun` arm64 base image is confirmed to build and run the server inside a container
+- [x] **CMPT-06**: The `oven/bun` arm64 base image is confirmed to build and run the server inside a container
 
 ### Server Runtime (RUN)
 
@@ -76,12 +76,12 @@ Each requirement maps to exactly one phase.
 | MEAS-01 | Phase 4 | Pending |
 | MEAS-02 | Phase 5 | Pending |
 | MEAS-03 | Phase 5 | Pending |
-| CMPT-01 | Phase 4 | Pending |
+| CMPT-01 | Phase 4 | Complete |
 | CMPT-02 | Phase 4 | Complete |
 | CMPT-03 | Phase 4 | Complete |
 | CMPT-04 | Phase 4 | Complete |
 | CMPT-05 | Phase 4 | Complete |
-| CMPT-06 | Phase 4 | Pending |
+| CMPT-06 | Phase 4 | Complete |
 | RUN-01 | Phase 5 | Pending |
 | RUN-02 | Phase 5 | Pending |
 | RUN-03 | Phase 5 | Pending |
