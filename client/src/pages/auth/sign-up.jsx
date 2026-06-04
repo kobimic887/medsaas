@@ -243,8 +243,8 @@ export function SignUp() {
           {success && (
             <Typography color="green" className="mt-2 text-center">
               {organization.trim()
-                ? `${brandName} account created — check your email to verify.`
-                : "Signup successful — check your email to verify."}
+                ? `${brandName} account created — you can now sign in.`
+                : "Signup successful — you can now sign in."}
             </Typography>
           )}
           {/* <div className="space-y-4 mt-8">

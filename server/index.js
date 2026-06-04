@@ -1523,7 +1523,8 @@ app.post('/api/signup', authRateLimit, ensureMongoConnected, async (req, res) =>
     username,
     email,
     password: hash,
-    verified: false,
+    // Non-prod: email verification is disabled, so accounts are active immediately.
+    verified: true,
     companyId,
     companyName: company.name,
     role: userRole,
@@ -1538,38 +1539,10 @@ app.post('/api/signup', authRateLimit, ensureMongoConnected, async (req, res) =>
 
   await usersCollection.insertOne(insertDoc);
 
-  // Send verification email using helper
-  const verificationToken = jwt.sign(
-    { username, email, companyId, companyName: company.name, role: userRole },
-    JWT_SECRET,
-    { expiresIn: '1d' }
-  );
-  const appBaseUrl = (process.env.BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
-  const verificationUrl = `${appBaseUrl}/api/verify-email?token=${verificationToken}`;
-
-  try {
-    // Generate HTML email template
-    const brandName = getBrandName(company.name);
-    const htmlContent = generateVerificationEmailHTML(username, verificationUrl, {
-      companyName: company.name,
-      platformName: getPlatformName(),
-      websiteUrl: getPlatformWebsiteUrl() || appBaseUrl,
-      signInUrl: `${(process.env.FRONTEND_URL || appBaseUrl).replace(/\/$/, '')}/auth/sign-in`,
-    });
-
-    await sendTitanEmail({
-      name: username,
-      subject: `Verify your email - ${brandName}`,
-      message: `Welcome to ${brandName}, ${username}!\n\nPlease verify your email by clicking the following link: ${verificationUrl}`,
-      recipientEmail: email,
-      htmlContent: htmlContent
-    });
-  } catch (err) {
-    return res.status(500).json({ error: 'Failed to send verification email', details: err.message });
-  }
-
+  // Email verification is disabled (non-prod): accounts are created already
+  // verified, so the user can sign in immediately — no verification email sent.
   res.json({
-    message: 'Signup successful. Please check your email to verify your account.',
+    message: 'Signup successful. You can now sign in.',
     company: { id: companyId, name: company.name },
     role: userRole
   });
