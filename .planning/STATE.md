@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v2
 milestone_name: — Bun Migration
 status: executing
-last_updated: "2026-06-04T20:50:00.331Z"
+last_updated: "2026-06-04T20:54:51.694Z"
 last_activity: 2026-06-04
 progress:
   total_phases: 4
@@ -52,6 +52,7 @@ Progress: [███████░░░] 71%
 | Phase 04 P02 | 7 min | 3 tasks | 2 files |
 | Phase 04 P03 | 6 min | 3 tasks | 4 files |
 | Phase 04 P04 | 14 min | 3 tasks | 3 files |
+| Phase 05-server-runtime-on-bun P01 | 18 | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -62,6 +63,8 @@ Progress: [███████░░░] 71%
 - Node fallback retained through all v2 phases (RUN-04, PKG-02, OPS-04)
 - Vite→Bun bundler swap deferred — no server RAM win, highest risk
 - Docker-dependent compatibility checks can run from an isolated `/tmp` bundle on ssh alias `oracle` when local Docker is unavailable
+- Bun is default server runtime via server/package.json scripts; npm remains the script runner (D-01, D-02) — Phase 05 Plan 01
+- Node fallback is one-command via *:node aliases at both server and root levels (D-04) — Phase 05 Plan 01
 
 ### Active Blockers
 
