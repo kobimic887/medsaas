@@ -2970,7 +2970,6 @@ app.get('/api/company/usage', ensureMongoConnected, authenticateToken, requireCo
       { companyId: req.user.companyId },
       {
         projection: {
-          password: 0,
           username: 1,
           email: 1,
           role: 1,
