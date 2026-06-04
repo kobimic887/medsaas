@@ -6,10 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This project uses GSD for planning. See `.planning/` for context.
 
-- **Current milestone:** ChemBench Cleanup v1
+- **Current milestone:** v2 Bun Migration
 - **Roadmap:** `.planning/ROADMAP.md`
 - **State:** `.planning/STATE.md`
-- **Active phase:** Phase 1 — Branding Cleanup
+- **Active phase:** Phase 4 — Compatibility Spike + Baseline (not yet started)
 
 When starting work: read `.planning/STATE.md` for current context.
 When done with a phase: run `/gsd:verify-work` before moving on.
