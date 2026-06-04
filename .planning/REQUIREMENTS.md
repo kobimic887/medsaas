@@ -22,7 +22,7 @@
 
 ### CI/CD Pipeline
 
-- [ ] **DEPLOY-01**: GitHub Actions workflow created to automatically build a Docker image of the application on merge to main. All code changes in prior phases must maintain Docker compatibility.
+- [x] **DEPLOY-01**: GitHub Actions workflow created to automatically build a Docker image of the application on merge to main. All code changes in prior phases must maintain Docker compatibility.
 
 ## v2 Requirements
 
@@ -59,7 +59,7 @@
 | LOGIN-01 | Phase 2 | Complete |
 | LOGIN-02 | Phase 2 | Complete |
 | LOGIN-03 | Phase 2 | Complete |
-| DEPLOY-01 | Phase 3 | Pending |
+| DEPLOY-01 | Phase 3 | Complete |
 
 **Coverage:**
 - v1 requirements: 10 total
