@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v2
 milestone_name: — Bun Migration
 status: executing
-last_updated: "2026-06-04T16:01:45.093Z"
+last_updated: "2026-06-04T16:03:09.198Z"
 last_activity: 2026-06-04 -- Phase 04 execution started
 progress:
   total_phases: 4
@@ -72,3 +72,7 @@ Progress: [░░░░░░░░░░] 0%
 
 *State initialized: 2026-06-03*
 *Last updated: 2026-06-04 — v2 roadmap finalized, Phase 4 ready to plan*
+
+### Blockers
+
+- Phase 4 blocked at 04-02: docker CLI/container runtime is unavailable, so live MongoDB/RabbitMQ and oven/bun container verification cannot run.
