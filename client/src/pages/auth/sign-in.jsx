@@ -19,24 +19,10 @@ export function SignIn() {
     
     setLoading(true);
     try {
-      // Fetch user IP address
-      let userIp = null;
-      try {
-        const ipResponse = await fetch('https://api.ipify.org?format=json');
-        const ipData = await ipResponse.json();
-        userIp = ipData.ip;
-      } catch (ipErr) {
-        console.error('Failed to fetch IP address:', ipErr);
-      }
-
       const res = await fetch(API_CONFIG.buildApiUrl('/signin'), {
         method: "POST",
         headers: { "Content-Type": "application/json", accept: "*/*" },
-        body: JSON.stringify({ 
-          username, 
-          password,
-          ip_address: userIp
-        }),
+        body: JSON.stringify({ username, password }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Signin failed");
@@ -50,22 +36,6 @@ export function SignIn() {
         if (!loginResult.success) {
           throw new Error(loginResult.error || "Login failed");
         }
-        
-        // Store IP address for tester123 user
-        if (username === "tester123") {
-          try {
-            const ipResponse = await fetch('https://api.ipify.org?format=json');
-            const ipData = await ipResponse.json();
-            if (ipData.ip) {
-              sessionStorage.setItem('tester123_ip', ipData.ip);
-              sessionStorage.setItem('tester123_login_time', new Date().toISOString());
-              console.log('Tester123 IP stored:', ipData.ip);
-            }
-          } catch (ipErr) {
-            console.error('Failed to fetch IP address:', ipErr);
-          }
-        }
-        
         setSuccess(true);
         navigate("/dashboard/controlpanel");
       } else {
