@@ -14,3 +14,7 @@
   locked 118.9 MiB Phase 4 baseline → gate **PASS**, Bun stays default. On the same host Node
   measured 115.5 MiB — Bun is at parity with Node, not a memory win. See
   `.planning/phases/05-server-runtime-on-bun/BUN-BEFORE-AFTER.md`.
+
+---
+
+🤖 Phase 5 executed with [Claude Code](https://claude.com/claude-code) (Opus 4.8, 1M context).
