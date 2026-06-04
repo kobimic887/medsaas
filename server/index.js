@@ -47,7 +47,15 @@ if (process.env.JWT_SECRET.length < 32) {
 }
 
 const JWT_SECRET = process.env.JWT_SECRET;
-const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
+// Treat the .env.example placeholder as "not configured" so the webhook fails
+// with a clear message instead of a confusing signature-verification error.
+const RAW_STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
+const STRIPE_WEBHOOK_SECRET = /replace[_-]?me/i.test(RAW_STRIPE_WEBHOOK_SECRET)
+  ? ''
+  : RAW_STRIPE_WEBHOOK_SECRET;
+if (!STRIPE_WEBHOOK_SECRET) {
+  console.warn('[stripe] STRIPE_WEBHOOK_SECRET is not set — payment webhooks will be rejected and credits will NOT be granted until it is configured.');
+}
 const MONGODB_URI = process.env.MONGODB_URI;
 const APP_BASE_URL = (process.env.BASE_URL || '').replace(/\/$/, '');
 const FRONTEND_URL = (process.env.FRONTEND_URL || '').replace(/\/$/, '');

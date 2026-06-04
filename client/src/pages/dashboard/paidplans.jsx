@@ -284,11 +284,13 @@ export function PaidPlans() {
                     <div className="mb-4">
                       <div className="flex items-baseline justify-center">
                         <Typography variant="h2" className="text-4xl font-bold text-gray-900">
-                          ${ plan.price}
+                          {plan.price ? `$${plan.price}` : 'Free'}
                         </Typography>
-
+                        {plan.price ? (
+                          <Typography className="text-gray-500 ml-1">one-time</Typography>
+                        ) : null}
                       </div>
-                
+
                     </div>
                     
                     <Typography className="text-gray-600 text-sm mb-6">
@@ -331,10 +333,10 @@ export function PaidPlans() {
         {/* Additional Info Section */}
         <div className="mt-16 text-center">
           <Typography className="text-gray-600 mb-4">
-            All plans include a 14-day free trial. No credit card required to start.
+            Start free with the Trial plan, then buy credit packs as you need them. Credits are added automatically after payment.
           </Typography>
           <Typography className="text-gray-500 text-sm">
-            Questions about our plans? <a href="#" className="text-blue-600 hover:underline">Contact our sales team</a>
+            Questions about our plans? <a href="mailto:sales@asinex.com?subject=Plan%20inquiry" className="text-blue-600 hover:underline">Contact our sales team</a>
           </Typography>
         </div>
       </div>

@@ -7,7 +7,8 @@
     "start": "node index.js",
     "dev": "node --watch index.js",
     "start:unified": "FRONTEND_DIST=../client/dist node index.js",
-    "import:mol-price": "node import-mol-price.js"
+    "import:mol-price": "node import-mol-price.js",
+    "test:stripe": "node test/stripe-webhook.test.mjs"
   },
   "dependencies": {
     "@rdkit/rdkit": "^2025.3.4-1.0.0",
@@ -26,5 +27,8 @@
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "mongodb-memory-server": "^11.2.0"
   }
 }
