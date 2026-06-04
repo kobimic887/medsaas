@@ -20,6 +20,28 @@ import ProfessionalMoleculeViewer from '../../components/ProfessionalMoleculeVie
 import { API_CONFIG } from "@/utils/constants";
 import { convertPriceToEuro, formatPrice } from '@/utils/algo/algo';
 
+// Copy text to the clipboard, with a fallback for non-secure contexts.
+// navigator.clipboard only exists over HTTPS or on localhost, so on a plain
+// HTTP deployment it is undefined — fall back to a hidden-textarea + execCommand.
+async function copyToClipboard(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text);
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    const ok = document.execCommand('copy');
+    if (!ok) throw new Error('execCommand copy failed');
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
 export function Simulation() {
   // Popup state for clipboard copy
   const [showClipboardPopup, setShowClipboardPopup] = useState(false);
@@ -1099,7 +1121,7 @@ export function Simulation() {
         if (ketcher) {
           const smiles = await ketcher.getSmiles();
           if (smiles) {
-            await navigator.clipboard.writeText(smiles);
+            await copyToClipboard(smiles);
             setSearchCode(smiles); // Also update the search box
             setShowClipboardPopup(true);
             setTimeout(() => setShowClipboardPopup(false), 3000);
@@ -1772,7 +1794,7 @@ export function Simulation() {
                             const smiles = mol.SMILES_STRING || mol.SMILES || mol.smiles || "";
                             setSearchCode(smiles);
                             try {
-                              await navigator.clipboard.writeText(smiles);
+                              await copyToClipboard(smiles);
                               setShowClipboardPopup(true);
                               setTimeout(() => setShowClipboardPopup(false), 3000);
                             } catch (err) {
@@ -1791,7 +1813,7 @@ export function Simulation() {
                             const inchi = mol.INCHI || "";
                             setSearchCode(inchi);
                             try {
-                              await navigator.clipboard.writeText(inchi);
+                              await copyToClipboard(inchi);
                               setShowClipboardPopup(true);
                               setTimeout(() => setShowClipboardPopup(false), 3000);
                             } catch (err) {
