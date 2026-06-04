@@ -1,49 +1,44 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: In progress
+milestone: v2
+milestone_name: (next milestone — not yet named)
+status: Planning
 last_updated: "2026-06-04T00:00:00.000Z"
 progress:
-  total_phases: 3
-  completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
-  percent: 33
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
-# Project State: ChemBench Cleanup v1
+# Project State: ChemBench
 
 ## Project Reference
 
-**Core Value:** Labs and their customers never see any trace of the old Pyxis branding, and the login code is clean enough that the next developer isn't confused by debug special-cases.
-**Current Focus:** Phase 1 — Branding Cleanup
+See: `.planning/PROJECT.md` (updated 2026-06-04)
+
+**Core value:** Labs and customers get a professional, focused tool — not a rebranded demo with debug artifacts.
+**Current focus:** Planning next milestone (v2)
 
 ---
 
 ## Current Position
 
-**Phase:** 1 — Branding Cleanup
-**Plan:** Executed inline from phases/1/PLAN.md (freeform; not GSD-structured)
-**Status:** Complete
+**Milestone v1 complete.** All 3 phases shipped 2026-06-04.
+Archive: `.planning/milestones/v1-ROADMAP.md`
 
-**Progress:**
-
-```
-[███░░░░░░░] 33% — Phase 1 of 3 complete
-```
-
-**Requirement Progress:** 6/7 complete (BRAND-01..06)
+**Next:** Start v2 with `/gsd:new-milestone`
 
 ---
 
-## Phase Status
+## Phase Status (v1 — archived)
 
-| Phase | Status | Plans |
-|-------|--------|-------|
-| 1. Branding Cleanup | ✓ Complete | Executed inline (PLAN.md) |
-| 2. Login Code Cleanup | Not started | TBD |
-| 3. CI/CD Pipeline | Not started | TBD |
+| Phase | Status |
+|-------|--------|
+| 1. Branding Cleanup | ✅ Complete |
+| 2. Login Code Cleanup | ✅ Complete |
+| 3. CI/CD Pipeline | ✅ Complete |
 
 ---
 
@@ -52,8 +47,9 @@ progress:
 ### Key Decisions Recorded
 
 - Replace Pyxis image backgrounds with CSS gradients (no new assets)
-- Remove client-side IP fetch entirely (server has `req.ip`; browser fetch is spoofable)
-- Leave forgot-password link as dead `href="#"` (explicitly deferred)
+- Remove client-side IP fetch entirely (server has `req.ip`)
+- Leave forgot-password link as dead `href="#"` (deferred to v2)
+- Native arm64 deploy via SSH/SCP — no QEMU, no registry
 
 ### Active Blockers
 
@@ -61,20 +57,11 @@ None.
 
 ### Notes for Next Session
 
-- Phase 1 done inline (commits d71efdf, 71e8d56, e641eaf, ee97da1). Live app + reference/archived trees rebranded; `npm run test:brand` guards regressions.
-- Open items from Phase 1: `.env` still has `EMAIL_USER=contact@pyxis-discovery.com` (gitignored live config — user's call); favicon reviewed, brand-neutral, no change needed.
-- GSD SDK discovery is broken: the phase dir is nested at `.planning/phases/1/01-branding-cleanup/` instead of flat `.planning/phases/01-branding-cleanup/`, so `/gsd-*` commands can't find it. Phase 2 will hit the same wall — fix the nesting or run inline.
-- Phase 2 scope: `client/src/pages/auth/sign-in.jsx` (~lines 22–30, 55–67)
-
----
-
-## Performance Metrics
-
-- Requirements defined: 7
-- Requirements complete: 6 (BRAND-01..06)
-- Phases complete: 1/3
+- Branch `feature/company-ligand-config` is one commit ahead of main: per-company ligand service config + admin ligand upload. Merge to main first.
+- `tester123` server-side bypass still exists in `server/index.js` (lines ~2406, ~2553) — SEC-V2-01, not yet removed
+- `deploy.yml` push trigger is commented out — one line to enable auto-deploy on merge to main
 
 ---
 
 *State initialized: 2026-06-03*
-*Last updated: 2026-06-03 after roadmap creation*
+*Last updated: 2026-06-04 after v1 milestone close*
