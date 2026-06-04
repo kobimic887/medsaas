@@ -59,7 +59,11 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
   3. Bun RSS (idle and under load) and startup time are measured and compared to the Phase 4 baseline in a written before/after report
   4. If Bun does not reduce server RAM, the report documents it and Node remains the default; the Node run script is retained and documented as a one-command rollback
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+- [ ] 05-01-PLAN.md — Runtime availability probe, Bun default scripts, and Node rollback docs (RUN-01, RUN-02, RUN-04)
+- [ ] 05-02-PLAN.md — Async Stripe webhook migration plus Bun/Node runtime smoke coverage (RUN-01, RUN-02, RUN-03)
+- [ ] 05-03-PLAN.md — Bun RSS/startup measurement report and MEAS-03 default-runtime gate (RUN-04, MEAS-02, MEAS-03)
 
 ### Phase 6: Package Management
 
@@ -96,7 +100,7 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
 | 2. Login Code Cleanup | v1 | 1/1 | ✅ Complete | 2026-06-04 |
 | 3. CI/CD Pipeline | v1 | 1/1 | ✅ Complete | 2026-06-04 |
 | 4. Compatibility Spike + Baseline | v2 | 4/4 | Complete   | 2026-06-04 |
-| 5. Server Runtime on Bun | v2 | 0/? | Not started | - |
+| 5. Server Runtime on Bun | v2 | 0/3 | Not started | - |
 | 6. Package Management | v2 | 0/? | Not started | - |
 | 7. Docker, CI/CD, and Scripts | v2 | 0/? | Not started | - |
 
