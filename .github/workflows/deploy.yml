@@ -18,30 +18,28 @@ jobs:
       - uses: actions/checkout@v4
 
       # Build natively on the box (Oracle Ampere / arm64) — no registry, no
-      # QEMU emulation. Ship a clean source archive (tracked files only).
-      - name: Create source archive
-        run: git archive --format=tar.gz -o src.tar.gz HEAD
+      # QEMU. Ship a clean source archive (tracked files only) over native
+      # ssh/scp, then docker compose up --build on the box.
+      - name: Deploy to box
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$SSH_KEY" > "$HOME/.ssh/deploy_key"
+          chmod 600 "$HOME/.ssh/deploy_key"
+          SSHOPTS="-i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 -o ServerAliveInterval=15"
 
-      - name: Copy source archive to box
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          source: src.tar.gz
-          target: ~/medsaas/
-
-      - name: Build & restart on box
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script: |
-            set -e
-            cd ~/medsaas
-            rm -rf src && mkdir -p src
-            tar -xzf src.tar.gz -C src
-            rm -f src.tar.gz
-            docker compose -f docker-compose.box.yml up -d --build
-            docker image prune -f
+          git archive --format=tar.gz -o src.tar.gz HEAD
+          scp $SSHOPTS src.tar.gz "$SSH_USER@$HOST:~/medsaas/src.tar.gz"
+          ssh $SSHOPTS "$SSH_USER@$HOST" 'bash -se' <<'REMOTE'
+          set -euo pipefail
+          cd ~/medsaas
+          rm -rf src && mkdir -p src
+          tar -xzf src.tar.gz -C src
+          rm -f src.tar.gz
+          docker compose -f docker-compose.box.yml up -d --build
+          docker image prune -f
+          REMOTE
