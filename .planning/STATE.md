@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v2
 milestone_name: — Bun Migration
-status: verifying
-last_updated: "2026-06-04T21:36:22.640Z"
+status: ready_to_plan
+last_updated: 2026-06-04T21:53:10.956Z
 last_activity: 2026-06-04
 progress:
   total_phases: 4
@@ -11,6 +11,7 @@ progress:
   total_plans: 7
   completed_plans: 7
   percent: 50
+stopped_at: Phase 05 complete (3/3) — ready to discuss Phase 6
 ---
 
 # Project State: ChemBench
@@ -20,15 +21,15 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-06-04)
 
 **Core value:** Labs and customers get a professional, focused tool — not a rebranded demo with debug artifacts.
-**Current focus:** Phase 05 — server-runtime-on-bun
+**Current focus:** Phase 6 — package management
 
 ---
 
 ## Current Position
 
-Phase: 05 (server-runtime-on-bun) — EXECUTING
-Plan: 3 of 3
-Status: Phase complete — ready for verification
+Phase: 6
+Plan: Not started
+Status: Ready to plan
 Last activity: 2026-06-04
 
 Progress: [██████████] 100%
@@ -37,7 +38,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 3 (v1)
+- Total plans completed: 6 (v1)
 - Average duration: —
 - Total execution time: —
 
@@ -46,6 +47,7 @@ Progress: [██████████] 100%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | v1 (1–3) | 3 | — | — |
+| 05 | 3 | - | - |
 
 *Updated after each plan completion*
 | Phase 04 P01 | 12 min | 3 tasks | 3 files |
