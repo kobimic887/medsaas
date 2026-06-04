@@ -60,9 +60,16 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
   4. If Bun does not reduce server RAM, the report documents it and Node remains the default; the Node run script is retained and documented as a one-command rollback
 
 **Plans**: 3 plans
+**Wave 1**
 
 - [ ] 05-01-PLAN.md — Runtime availability probe, Bun default scripts, and Node rollback docs (RUN-01, RUN-02, RUN-04)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 05-02-PLAN.md — Async Stripe webhook migration plus Bun/Node runtime smoke coverage (RUN-01, RUN-02, RUN-03)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 05-03-PLAN.md — Bun RSS/startup measurement report and MEAS-03 default-runtime gate (RUN-04, MEAS-02, MEAS-03)
 
 ### Phase 6: Package Management

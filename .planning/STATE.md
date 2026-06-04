@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v2
 milestone_name: — Bun Migration
-status: Phase 04 shipped — pushed to origin/main (a3f4030)
-last_updated: "2026-06-04T16:56:56.900Z"
-last_activity: 2026-06-04 -- Phase 04 shipped (pushed to origin/main)
+status: Phase 05 planned — ready to execute
+last_updated: "2026-06-04T17:26:01.721Z"
+last_activity: 2026-06-04 -- Phase 05 planning complete (3 plans ready)
 progress:
   total_phases: 4
   completed_phases: 1
@@ -20,18 +20,18 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-06-04)
 
 **Core value:** Labs and customers get a professional, focused tool — not a rebranded demo with debug artifacts.
-**Current focus:** Phase 04 — compatibility-spike-baseline
+**Current focus:** Phase 05 — server-runtime-on-bun
 
 ---
 
 ## Current Position
 
-Phase: 04 (compatibility-spike-baseline) — VERIFIED
-Plan: 4 of 4
-Status: Phase 04 shipped — pushed to origin/main (a3f4030)
-Last activity: 2026-06-04 -- Phase 04 shipped (pushed to origin/main)
+Phase: 05 (server-runtime-on-bun) — PLANNED
+Plan: 0 of 3
+Status: Ready to execute
+Last activity: 2026-06-04 -- Phase 05 planning complete
 
-Progress: [██████████] 100%
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
