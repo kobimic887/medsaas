@@ -7,12 +7,12 @@
 
 ### Branding Cleanup
 
-- [ ] **BRAND-01**: All `pyxis` strings removed from client source files (data file exports, import references, comments)
-- [ ] **BRAND-02**: Data files renamed from `pyxisImages.js` / `pyxisServicesImages.js` to `libraryImages.js` / `servicesImages.js`; all importers updated
-- [ ] **BRAND-03**: Pyxis image filenames (`pyxis-hero.jpg`, `pyxis-team.jpeg`, `pyxis-lab.jpeg`) replaced in `about-us.jsx` with CSS gradient placeholders — no new image assets added
-- [ ] **BRAND-04**: Pyxis strings removed from `server/index.js` (email subject ~line 4821, JSDoc example ~line 4861)
-- [ ] **BRAND-05**: Update `index.html` files (titles, meta tags) and verify `favicon.png` to remove Pyxis references
-- [ ] **BRAND-06**: Add a `test:brand` script to `package.json` to prevent future regressions by failing if "pyxis" is found
+- [x] **BRAND-01**: All `pyxis` strings removed from client source files (data file exports, import references, comments)
+- [x] **BRAND-02**: Data files renamed from `pyxisImages.js` / `pyxisServicesImages.js` to `libraryImages.js` / `servicesImages.js`; all importers updated
+- [x] **BRAND-03**: Pyxis image filenames (`pyxis-hero.jpg`, `pyxis-team.jpeg`, `pyxis-lab.jpeg`) replaced in `about-us.jsx` with CSS gradient placeholders — no new image assets added
+- [x] **BRAND-04**: Pyxis strings removed from `server/index.js` (email subject ~line 4821, JSDoc example ~line 4861)
+- [x] **BRAND-05**: Update `index.html` files (titles, meta tags) and verify `favicon.png` to remove Pyxis references
+- [x] **BRAND-06**: Add a `test:brand` script to `package.json` to prevent future regressions by failing if "pyxis" is found
 
 ### Login Code Cleanup
 
@@ -50,12 +50,12 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BRAND-01 | Phase 1 | Pending |
-| BRAND-02 | Phase 1 | Pending |
-| BRAND-03 | Phase 1 | Pending |
-| BRAND-04 | Phase 1 | Pending |
-| BRAND-05 | Phase 1 | Pending |
-| BRAND-06 | Phase 1 | Pending |
+| BRAND-01 | Phase 1 | Complete |
+| BRAND-02 | Phase 1 | Complete |
+| BRAND-03 | Phase 1 | Complete |
+| BRAND-04 | Phase 1 | Complete |
+| BRAND-05 | Phase 1 | Complete |
+| BRAND-06 | Phase 1 | Complete |
 | LOGIN-01 | Phase 2 | Complete |
 | LOGIN-02 | Phase 2 | Complete |
 | LOGIN-03 | Phase 2 | Complete |
