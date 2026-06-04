@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v2
 milestone_name: — Bun Migration
 status: Phase 04 shipped — pushed to origin/main (a3f4030)
-last_updated: "2026-06-04T16:42:38.377Z"
+last_updated: "2026-06-04T16:56:56.900Z"
 last_activity: 2026-06-04 -- Phase 04 shipped (pushed to origin/main)
 progress:
   total_phases: 4
