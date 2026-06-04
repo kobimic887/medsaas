@@ -60,7 +60,7 @@ Progress: [░░░░░░░░░░] 0%
 
 ### Active Blockers
 
-- Branch `feature/company-ligand-config` not yet merged to main — merge before starting Phase 4
+- None
 
 ### Notes for Next Session
 
