@@ -4,11 +4,19 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node --watch index.js",
-    "start:unified": "FRONTEND_DIST=../client/dist node index.js",
+    "start": "bun index.js",
+    "dev": "bun --watch index.js",
+    "start:unified": "FRONTEND_DIST=../client/dist bun index.js",
+    "start:bun": "bun index.js",
+    "dev:bun": "bun --watch index.js",
+    "start:unified:bun": "FRONTEND_DIST=../client/dist bun index.js",
+    "start:node": "node index.js",
+    "dev:node": "node --watch index.js",
+    "start:unified:node": "FRONTEND_DIST=../client/dist node index.js",
     "import:mol-price": "node import-mol-price.js",
-    "test:stripe": "node test/stripe-webhook.test.mjs"
+    "test:stripe": "node test/stripe-webhook.test.mjs",
+    "test:runtime-smoke": "node test/runtime-smoke.test.mjs",
+    "test:runtime-watch": "node test/runtime-watch-smoke.mjs"
   },
   "dependencies": {
     "@rdkit/rdkit": "^2025.3.4-1.0.0",
