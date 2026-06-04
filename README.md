@@ -54,6 +54,32 @@ Root scripts are the supported way to install, run, build, and check the app.
 
    The backend serves `client/dist`.
 
+### Bun runtime and Node rollback
+
+Phase 5 makes Bun the default API runtime while keeping npm as the script runner (D-02).
+
+- `npm run dev` starts the API with `bun --watch index.js` (Bun hot-reload, Vite client unchanged).
+- `npm start` builds the client, then runs `FRONTEND_DIST=../client/dist bun index.js`.
+
+npm remains the script runner throughout Phase 5. Only the runtime binary changes from `node` to `bun`.
+
+**Node rollback (one-command):**
+
+```bash
+# API-only development on Node
+npm run dev:node
+npm --prefix server run dev:node
+
+# Production-style unified server on Node
+npm run start:node
+npm --prefix server run start:unified:node
+```
+
+The final default runtime is data-gated by the before/after RAM measurement in
+`.planning/phases/05-server-runtime-on-bun/BUN-BEFORE-AFTER.md` (per D-05, D-06, D-07).
+If Bun's median idle RSS does not fall below the Node baseline (118.9 MiB), the default
+reverts to Node and the report documents the outcome.
+
 ## Required Runtime Dependencies
 
 - MongoDB, configured with `MONGODB_URI`
