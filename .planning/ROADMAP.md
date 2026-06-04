@@ -10,7 +10,7 @@
 ## Phases
 
 - [x] **Phase 1: Branding Cleanup** - Remove all Pyxis Discovery branding from client source and server
-- [ ] **Phase 2: Login Code Cleanup** - Remove debug-era IP-fetching and tester bypass code from sign-in
+- [x] **Phase 2: Login Code Cleanup** - Remove debug-era IP-fetching and tester bypass code from sign-in (completed 2026-06-04)
 - [ ] **Phase 3: CI/CD Pipeline** - Create GitHub Actions to build a Docker image of the application on merge to main
 
 ---
@@ -57,7 +57,7 @@
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Branding Cleanup | 1/1 | ✓ Complete | 2026-06-04 |
-| 2. Login Code Cleanup | 0/1 | Not started | - |
+| 2. Login Code Cleanup | 1/1 | Complete    | 2026-06-04 |
 | 3. CI/CD Pipeline | 0/1 | Not started | - |
 
 ---

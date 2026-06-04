@@ -16,9 +16,9 @@
 
 ### Login Code Cleanup
 
-- [ ] **LOGIN-01**: `tester123`-specific IP-storage block removed from `sign-in.jsx` (success handler lines 55–67)
-- [ ] **LOGIN-02**: Duplicate `api.ipify.org` fetch at sign-in top removed (lines 22–30) — IP logging moved to server-side only
-- [ ] **LOGIN-03**: `console.log('Tester123 IP stored:', ...)` production leak removed
+- [x] **LOGIN-01**: `tester123`-specific IP-storage block removed from `sign-in.jsx` (success handler lines 55–67)
+- [x] **LOGIN-02**: Duplicate `api.ipify.org` fetch at sign-in top removed (lines 22–30) — IP logging moved to server-side only
+- [x] **LOGIN-03**: `console.log('Tester123 IP stored:', ...)` production leak removed
 
 ### CI/CD Pipeline
 
@@ -56,9 +56,9 @@
 | BRAND-04 | Phase 1 | Pending |
 | BRAND-05 | Phase 1 | Pending |
 | BRAND-06 | Phase 1 | Pending |
-| LOGIN-01 | Phase 2 | Pending |
-| LOGIN-02 | Phase 2 | Pending |
-| LOGIN-03 | Phase 2 | Pending |
+| LOGIN-01 | Phase 2 | Complete |
+| LOGIN-02 | Phase 2 | Complete |
+| LOGIN-03 | Phase 2 | Complete |
 | DEPLOY-01 | Phase 3 | Pending |
 
 **Coverage:**
