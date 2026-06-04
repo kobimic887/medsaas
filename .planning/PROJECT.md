@@ -8,6 +8,18 @@ ChemBench is a SaaS platform for chemistry laboratories to host branded digital 
 
 Labs and customers get a professional, focused tool for their chemistry work — not a rebranded demo with debug artifacts in the codebase.
 
+## Current Milestone: v2 Bun Migration
+
+**Goal:** Migrate the Node/npm toolchain to Bun to reduce server RAM and improve startup/install/CI speed — verified by before/after measurements, with a Node-compatible fallback retained for fast rollback.
+
+**Target features:**
+- Compatibility spike + performance baselines (PoC: server on Bun on arm64; validate MongoDB driver, amqplib, Stripe, RDKit-WASM, `oven/bun` image)
+- Express server running on the Bun runtime with a retained Node fallback
+- Package management migrated from npm to `bun install` / `bun.lock` (root + client)
+- Docker images on `oven/bun` (arm64) + GitHub Actions CI/CD + test/check scripts on Bun
+
+**Out of this milestone:** Python microservices (admet, gromacs-api, glioblastoma-predictor) stay as-is; the Vite→Bun bundler swap is deferred to a later milestone.
+
 ## Requirements
 
 ### Validated
@@ -22,7 +34,11 @@ Labs and customers get a professional, focused tool for their chemistry work —
 - ✓ GitHub Actions deploy pipeline to Oracle arm64 VPS — v1 (DEPLOY-01)
 - ✓ Per-company ligand service config + admin ligand upload — shipped on feature branch
 
-### Active (v2 candidates)
+### Active (v2 — Bun Migration)
+
+See `.planning/REQUIREMENTS.md` for the full scoped list (BUN-*, PKG-*, OPS-* REQ-IDs).
+
+### Future (security/auth — separate milestone)
 
 - [ ] **AUTH-V2-01**: Forgot-password flow wired up end-to-end (currently dead `href="#"`)
 - [ ] **SEC-V2-01**: `tester123` server-side token-bypass guards removed from simulation endpoints
@@ -32,6 +48,8 @@ Labs and customers get a professional, focused tool for their chemistry work —
 
 ### Out of Scope
 
+- **Vite→Bun bundler swap** — build-time tool, delivers ~none of the server RAM/speed win while carrying the most risk (HMR, dev proxy, Material Tailwind, `@` alias); deferred to its own milestone
+- **Bun migration of Python microservices** — admet/gromacs-api/glioblastoma-predictor are Python/Docker, not Node
 - Dead code removal (legacy/, packages/dashboard-template/) — bigger structural change, own milestone
 - New image assets for About Us — CSS gradients are sufficient placeholders
 - Video chat / offline mode — not relevant to core chemistry workflow
@@ -43,6 +61,13 @@ debug code, and has a working CI/CD pipeline.
 
 Tech stack: Express ESM + React 18 + Vite. MongoDB via Atlas (prod) / local container (non-prod).
 Deploy: Oracle VPS 151.145.91.17 (arm64), Docker Compose, GitHub Actions.
+
+**v2 (Bun Migration) context:** Server deps are all pure-JS or WASM (no node-gyp/native
+addons) — the highest-risk runtime deps to validate under Bun are the MongoDB driver,
+`amqplib`, and the `oven/bun` arm64 base image. `@rdkit/rdkit` is the WASM build (Bun runs
+WASM). The RAM-reduction goal is a hypothesis, not a guarantee — the milestone captures
+baseline Node metrics (RSS, startup, install/CI time) and re-measures after migrating so
+"done" is observable. Every phase keeps a Node-compatible fallback for fast rollback.
 
 Current branch `feature/company-ligand-config` has one uncommitted-to-main feature:
 per-company ligand service config + admin ligand upload. Ready to merge.
@@ -56,13 +81,33 @@ per-company ligand service config + admin ligand upload. Ready to merge.
 | Leave forgot-password link as `href="#"` | Deferred by user — build separately | — Pending (v2) |
 | Native arm64 build on box via SSH/SCP | Faster than QEMU cross-compile; no registry dependency | ✓ Good |
 | `tester123` server-side bypass left in place | Server-side security work is a separate milestone | ⚠ Revisit — SEC-V2-01 |
+| v2 = Bun runtime, not the bundler | RAM/speed win lives in the long-running server, not build-time Vite | — Pending (v2) |
+| Compatibility spike before full roadmap commit | arm64 dep compatibility is the tightest constraint; prove it empirically first | — Pending (v2 Phase 4) |
+| Keep Node fallback through v2 | Fast rollback if a dep misbehaves under Bun in prod | — Pending (v2) |
 
 ## Constraints
 
 - **Tech stack**: React 18 + Vite on client, Express ESM on server
-- **Deploy target**: Oracle arm64 VPS — Docker images must be linux/arm64
+- **Deploy target**: Oracle arm64 VPS — Docker images must be linux/arm64 (Bun base image must support arm64)
 - **No new dependencies** unless justified by a specific feature milestone
+
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd-transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd:complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
 
 ---
 
-*Last updated: 2026-06-04 after v1 milestone close*
+*Last updated: 2026-06-04 — started v2 Bun Migration milestone*

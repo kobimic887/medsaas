@@ -1,9 +1,10 @@
 ---
 gsd_state_version: 1.0
 milestone: v2
-milestone_name: (next milestone — not yet named)
-status: Planning
-last_updated: "2026-06-04T00:00:00.000Z"
+milestone_name: Bun Migration
+status: planning
+last_updated: "2026-06-04T13:39:29.664Z"
+last_activity: 2026-06-04
 progress:
   total_phases: 0
   completed_phases: 0
@@ -25,12 +26,10 @@ See: `.planning/PROJECT.md` (updated 2026-06-04)
 
 ## Current Position
 
-**Milestone v1 complete.** All 3 phases shipped 2026-06-04.
-Archive: `.planning/milestones/v1-ROADMAP.md`
-
-**Next:** Start v2 with `/gsd:new-milestone`
-
----
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-06-04 — Milestone v2 started
 
 ## Phase Status (v1 — archived)
 
