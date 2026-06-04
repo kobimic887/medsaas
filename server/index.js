@@ -125,7 +125,9 @@ app.use('/blobs', express.static(path.join(__dirname, 'blobs')));
 
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
+  // SAMEORIGIN (not DENY) so the dashboard can embed the same-origin Ketcher
+  // (/ketcher/index.html) editor and Molstar (/molstar/index.html) viewer iframes.
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   next();
 });
