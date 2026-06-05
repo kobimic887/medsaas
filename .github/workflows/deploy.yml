@@ -20,6 +20,12 @@ jobs:
       # Build natively on the box (Oracle Ampere / arm64) — no registry, no
       # QEMU. Ship a clean source archive (tracked files only) over native
       # ssh/scp, then docker compose up --build on the box.
+      #
+      # The app image is built ON THE BOX from the root Dockerfile (oven/bun
+      # base, two-stage Bun build). All package resolution happens inside the
+      # on-box image build, not on this runner — no runner-side Bun or Node
+      # build step is needed here. To preserve this: do NOT add any oven/bun
+      # runner action or runner-side build step to this job.
       - name: Deploy to box
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
