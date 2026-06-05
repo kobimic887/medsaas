@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2
 milestone_name: — Bun Migration
 status: executing
-last_updated: "2026-06-05T08:56:05.689Z"
-last_activity: 2026-06-05 -- Phase 7 planning complete
+last_updated: "2026-06-05T09:58:24.416Z"
+last_activity: 2026-06-05
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 12
-  completed_plans: 9
+  completed_plans: 10
   percent: 75
 ---
 
@@ -20,7 +20,7 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-06-04)
 
 **Core value:** Labs and customers get a professional, focused tool — not a rebranded demo with debug artifacts.
-**Current focus:** Phase 7 — Docker, CI/CD, and Scripts (not yet started)
+**Current focus:** Phase 07 — docker-ci-cd-and-scripts
 
 **Bun status:** Bun is the default server runtime (Phase 5) and the default package manager (Phase 6). npm/Node fallbacks are retained via `:node`-suffixed scripts.
 
@@ -28,12 +28,13 @@ See: `.planning/PROJECT.md` (updated 2026-06-04)
 
 ## Current Position
 
+Phase: 07 (docker-ci-cd-and-scripts) — EXECUTING
 Milestone: v2 — Bun Migration (3 of 4 phases complete, 75%)
 Completed phases: 4 (Compatibility Spike + Baseline), 5 (Server Runtime on Bun), 6 (Package Management)
 Next phase: 7 — Docker, CI/CD, and Scripts
-Plan: Not started
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-06-05 -- Phase 7 planning complete
+Last activity: 2026-06-05
 
 Milestone progress: [███████░░░] 75%
 
@@ -63,6 +64,7 @@ Milestone progress: [███████░░░] 75%
 | Phase 05-server-runtime-on-bun P03 | 8 | 3 tasks | 3 files |
 | Phase 06-package-management P01 | 10 | 2 tasks | 5 files |
 | Phase 06-package-management P02 | 23 | 2 tasks | 3 files |
+| Phase 07-docker-ci-cd-and-scripts P01 | 3 min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -89,11 +91,11 @@ Milestone progress: [███████░░░] 75%
 
 ### Notes for Next Session
 
-- **Next up: Phase 7 — Docker, CI/CD, and Scripts** (OPS-01..04). Plan with `/gsd:plan-phase 7`.
-  - OPS-01: server Dockerfile → `oven/bun` arm64 base. Reference prototype: `spike/Dockerfile.bun` + `spike/run-container-check.sh`.
-  - OPS-02: GitHub Actions deploy pipeline on Bun (`deploy.yml` push trigger is commented out — one line to enable auto-deploy).
-  - OPS-03: `check`, `test:brand`, `test:stripe` scripts run under Bun.
-  - OPS-04: one-change Node rollback path documented.
+- **Phase 7 — Docker, CI/CD, and Scripts** (OPS-01..04) is active. Plan 01 complete.
+  - OPS-01 DONE: root Dockerfile → `oven/bun:1.3.14-slim` (Plan 01)
+  - OPS-04 DONE: ROLLBACK.md created (Plan 01)
+  - OPS-02: GitHub Actions deploy pipeline on Bun (`deploy.yml` push trigger is commented out — one line to enable auto-deploy). Next: Plan 02.
+  - OPS-03: `check`, `test:brand`, `test:stripe` scripts run under Bun. Next: Plan 02.
 - `spike/` is kept as Phase-4 compatibility evidence and a Docker prototype for Phase 7; revisit deleting it after Phase 7 ships.
 - `tester123` server-side bypass still exists in `server/index.js` — SEC-V2-01 (future milestone)
 
@@ -106,3 +108,6 @@ Milestone progress: [███████░░░] 75%
 
 - [Phase 06-package-management]: Bun defaults are documented as the first command path for install, dev, build, and start; npm/Node fallback commands remain documented beside them — Phase 06 Plan 02
 - [Phase 06-package-management]: Vite remains the client bundler for PKG-03; bun run build invokes the existing Vite build through Bun's package runner — Phase 06 Plan 02
+- [Phase 07-docker-ci-cd-and-scripts]: Both Dockerfile stages pin to oven/bun:1.3.14-slim (proven arm64 tag from Phase 4 spike) — Phase 07 Plan 01
+- [Phase 07-docker-ci-cd-and-scripts]: bun install --frozen-lockfile used in both Dockerfile stages for reproducible builds from committed bun.lock — Phase 07 Plan 01
+- [Phase 07-docker-ci-cd-and-scripts]: ROLLBACK.md documents single-edit Dockerfile revert to Node and already-shipped :node script fallbacks (OPS-04) — Phase 07 Plan 01
