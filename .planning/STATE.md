@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v2
 milestone_name: — Bun Migration
-status: verifying
-last_updated: "2026-06-05T10:41:21.178Z"
-last_activity: 2026-06-05
+status: Awaiting next milestone
+last_updated: "2026-06-05T10:45:37.706Z"
+last_activity: 2026-06-05 — Milestone v2 completed and archived
 progress:
   total_phases: 4
   completed_phases: 4
@@ -17,26 +17,21 @@ progress:
 
 ## Project Reference
 
-See: `.planning/PROJECT.md` (updated 2026-06-04)
+See: `.planning/PROJECT.md` (updated 2026-06-05)
 
 **Core value:** Labs and customers get a professional, focused tool — not a rebranded demo with debug artifacts.
-**Current focus:** Phase 07 — docker-ci-cd-and-scripts
+**Current focus:** v2 — Bun Migration shipped 2026-06-05; planning next milestone (`/gsd:new-milestone`)
 
-**Bun status:** Bun is the default server runtime (Phase 5) and the default package manager (Phase 6). npm/Node fallbacks are retained via `:node`-suffixed scripts.
+**Bun status:** Bun is the default server runtime (Phase 5), package manager (Phase 6), and production Docker/CI base (Phase 7). npm/Node fallbacks are retained via `:node`-suffixed scripts and a one-change Dockerfile revert (ROLLBACK.md).
 
 ---
 
 ## Current Position
 
-Phase: 07 (docker-ci-cd-and-scripts) — COMPLETE (ready for verification)
-Milestone: v2 — Bun Migration (4 of 4 phases complete, 100%)
-Completed phases: 4 (Compatibility Spike + Baseline), 5 (Server Runtime on Bun), 6 (Package Management), 7 (Docker, CI/CD, and Scripts)
-Next: run /gsd:verify-work for Phase 7, then ship v2
-Plan: 3 of 3 (all complete)
-Status: Phase 7 complete & verified (passed) — v2 ready to close
-Last activity: 2026-06-05
-
-Milestone progress: [██████████] 100%
+Phase: Milestone v2 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-06-05 — Milestone v2 completed and archived
 
 ## Performance Metrics
 
@@ -118,3 +113,7 @@ Milestone progress: [██████████] 100%
 - [Phase 07-docker-ci-cd-and-scripts]: test:stripe sets SERVER_RUNTIME=bun to exercise the production bun-server path end-to-end (D-11) — Phase 07 Plan 02
 - [Phase 07-docker-ci-cd-and-scripts]: OPS-02 needed ZERO functional deploy.yml change — the runner does no install/build; Bun build runs inside the on-box oven/bun image build (docker compose up -d --build). deploy.yml annotated only; push trigger stays commented — Phase 07 Plan 03
 - [Phase 07-docker-ci-cd-and-scripts]: oven/bun image build + /health 200 verified on the Oracle arm64 VPS via deploy run 27009254406 (OPS-01 runtime, OPS-02). docker-inspect Cmd confirmed-by-inference (ssh sandbox-gated; source unambiguous), not directly observed — Phase 07 Plan 03
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone

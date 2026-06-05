@@ -8,17 +8,20 @@ ChemBench is a SaaS platform for chemistry laboratories to host branded digital 
 
 Labs and customers get a professional, focused tool for their chemistry work — not a rebranded demo with debug artifacts in the codebase.
 
-## Current Milestone: v2 Bun Migration
+## Current State
 
-**Goal:** Migrate the Node/npm toolchain to Bun to reduce server RAM and improve startup/install/CI speed — verified by before/after measurements, with a Node-compatible fallback retained for fast rollback.
+**Shipped v2 — Bun Migration on 2026-06-05.** Bun is now the default runtime, package manager,
+and Docker/CI base for the app; a one-change Node fallback is retained throughout. The Express
+server runs on Bun (idle RSS measured below the Node baseline — MEAS-03 gate PASS), deps install
+via `bun install` with dual lockfiles, and the production `oven/bun:1.3.14-slim` arm64 image
+builds and serves `/health` 200 on the Oracle VPS via the deploy pipeline.
 
-**Target features:**
-- Compatibility spike + performance baselines (PoC: server on Bun on arm64; validate MongoDB driver, amqplib, Stripe, RDKit-WASM, `oven/bun` image)
-- Express server running on the Bun runtime with a retained Node fallback
-- Package management migrated from npm to `bun install` / `bun.lock` (root + client)
-- Docker images on `oven/bun` (arm64) + GitHub Actions CI/CD + test/check scripts on Bun
+**Next milestone (not yet started):** candidates are the **security/auth hardening** track
+(AUTH-V2 / SEC-V2 below) and the deferred **Vite→Bun bundler swap**. Define via
+`/gsd:new-milestone`.
 
-**Out of this milestone:** Python microservices (admet, gromacs-api, glioblastoma-predictor) stay as-is; the Vite→Bun bundler swap is deferred to a later milestone.
+**Out of the v2 milestone (shipped scope):** Python microservices (admet, gromacs-api,
+glioblastoma-predictor) stayed as-is; the Vite→Bun bundler swap was deferred to a later milestone.
 
 ## Requirements
 
@@ -33,10 +36,14 @@ Labs and customers get a professional, focused tool for their chemistry work —
 - ✓ Clean sign-in page, no debug code — v1 (LOGIN-01–03)
 - ✓ GitHub Actions deploy pipeline to Oracle arm64 VPS — v1 (DEPLOY-01)
 - ✓ Per-company ligand service config + admin ligand upload — shipped on feature branch
+- ✓ arm64 dep compatibility proven under Bun (Mongo, amqplib, Stripe, RDKit-WASM, `oven/bun`) + Node baselines — v2 (CMPT-01–06, MEAS-01)
+- ✓ Express API runs on Bun in dev + prod; before/after RAM gate PASS (Bun idle RSS < Node) — v2 (RUN-01–04, MEAS-02/03)
+- ✓ Dependencies install via `bun install` with committed `bun.lock`; Bun-default scripts + `:node` fallbacks; Vite build via Bun — v2 (PKG-01–03)
+- ✓ Production Docker image on `oven/bun` arm64; CI deploy builds on Bun; `check`/`test:brand`/`test:stripe` under Bun; one-change Node rollback — v2 (OPS-01–04)
 
-### Active (v2 — Bun Migration)
+### Active (next milestone — not yet defined)
 
-See `.planning/REQUIREMENTS.md` for the full scoped list (BUN-*, PKG-*, OPS-* REQ-IDs).
+None — v2 fully shipped. Run `/gsd:new-milestone` to scope the next set (see Future below).
 
 ### Future (security/auth — separate milestone)
 
@@ -56,21 +63,22 @@ See `.planning/REQUIREMENTS.md` for the full scoped list (BUN-*, PKG-*, OPS-* RE
 
 ## Context
 
-Shipped v1 milestone on 2026-06-04. Codebase is now clean of Pyxis branding,
-debug code, and has a working CI/CD pipeline.
+Shipped v1 (cleanup) on 2026-06-04 and v2 (Bun Migration) on 2026-06-05. Codebase is clean of
+Pyxis branding/debug code, runs on Bun by default, and deploys an `oven/bun` arm64 image via CI.
 
-Tech stack: Express ESM + React 18 + Vite. MongoDB via Atlas (prod) / local container (non-prod).
-Deploy: Oracle VPS 151.145.91.17 (arm64), Docker Compose, GitHub Actions.
+Tech stack: Express ESM + React 18 + Vite, now running on **Bun** (Node retained as one-change
+fallback). MongoDB via Atlas (prod) / local `mongo:7` container (non-prod). Deploy: Oracle VPS
+151.145.91.17 (arm64), Docker Compose built **on the box** (git-archive → `docker compose --build`,
+no registry), GitHub Actions (`workflow_dispatch`).
 
-**v2 (Bun Migration) context:** Server deps are all pure-JS or WASM (no node-gyp/native
-addons) — the highest-risk runtime deps to validate under Bun are the MongoDB driver,
-`amqplib`, and the `oven/bun` arm64 base image. `@rdkit/rdkit` is the WASM build (Bun runs
-WASM). The RAM-reduction goal is a hypothesis, not a guarantee — the milestone captures
-baseline Node metrics (RSS, startup, install/CI time) and re-measures after migrating so
-"done" is observable. Every phase keeps a Node-compatible fallback for fast rollback.
+**v2 outcome:** The RAM-reduction hypothesis was validated empirically — Bun median idle RSS
+(115.1 MiB) came in below the Node baseline (118.9 MiB), so Bun is confirmed as the default
+server runtime (MEAS-03 gate PASS). All Bun-risk deps (MongoDB driver, `amqplib`, `@rdkit/rdkit`
+WASM, Stripe async webhook crypto) run cleanly under Bun on arm64. The Stripe webhook required
+the async SubtleCrypto provider (`constructEventAsync` / `generateTestHeaderStringAsync`) under
+Bun. Every phase kept a `:node` fallback for fast rollback.
 
-Current branch `feature/company-ligand-config` has one uncommitted-to-main feature:
-per-company ligand service config + admin ligand upload. Ready to merge.
+Currently on `main`, all v2 work committed and pushed.
 
 ## Key Decisions
 
@@ -83,7 +91,10 @@ per-company ligand service config + admin ligand upload. Ready to merge.
 | `tester123` server-side bypass left in place | Server-side security work is a separate milestone | ⚠ Revisit — SEC-V2-01 |
 | v2 = Bun runtime, not the bundler | RAM/speed win lives in the long-running server, not build-time Vite | ✓ Done — Bun is default runtime (Phase 5); Vite stays the bundler |
 | Compatibility spike before full roadmap commit | arm64 dep compatibility is the tightest constraint; prove it empirically first | ✓ Done — Phase 4 complete |
-| Keep Node fallback through v2 | Fast rollback if a dep misbehaves under Bun in prod | ✓ Done — `:node` fallback scripts retained (Phases 5–6) |
+| Keep Node fallback through v2 | Fast rollback if a dep misbehaves under Bun in prod | ✓ Done — `:node` fallback scripts retained (Phases 5–6) + one-change Dockerfile revert (ROLLBACK.md, Phase 7) |
+| Async Stripe crypto under Bun | Bun's SubtleCrypto is async-only; sync `constructEvent`/`generateTestHeaderString` throw | ✓ Done — `constructEventAsync` (webhook) + `generateTestHeaderStringAsync` (test), Phases 5 & 7 |
+| `bun build --target=bun` as the `check` syntax gate | Bun has no `node --check` equivalent; bundling resolves the full module graph | ✓ Done — Phase 7 (Node `check:node` retained) |
+| Production Docker image on `oven/bun:1.3.14-slim` (arm64), built on the box | Pinned tag proven on arm64 in spike; on-box build avoids QEMU/registry | ✓ Done — Phase 7; CI deploy + `/health` 200 verified on VPS |
 
 ## Constraints
 
@@ -110,4 +121,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-06-04 — started v2 Bun Migration milestone*
+*Last updated: 2026-06-05 after v2 — Bun Migration milestone*
