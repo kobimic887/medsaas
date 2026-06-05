@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v2
 milestone_name: — Bun Migration
-status: "Phase 06 shipped — PR #4"
-last_updated: "2026-06-05T07:52:31.500Z"
+status: ready_to_plan
+last_updated: "2026-06-05T08:30:00.000Z"
 last_activity: 2026-06-05
 progress:
   total_phases: 4
@@ -20,24 +20,28 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-06-04)
 
 **Core value:** Labs and customers get a professional, focused tool — not a rebranded demo with debug artifacts.
-**Current focus:** Phase 06 — package-management
+**Current focus:** Phase 7 — Docker, CI/CD, and Scripts (not yet started)
+
+**Bun status:** Bun is the default server runtime (Phase 5) and the default package manager (Phase 6). npm/Node fallbacks are retained via `:node`-suffixed scripts.
 
 ---
 
 ## Current Position
 
-Phase: 7
+Milestone: v2 — Bun Migration (3 of 4 phases complete, 75%)
+Completed phases: 4 (Compatibility Spike + Baseline), 5 (Server Runtime on Bun), 6 (Package Management)
+Next phase: 7 — Docker, CI/CD, and Scripts
 Plan: Not started
-Status: Phase 06 shipped — PR #4
+Status: Phase 6 complete and verified — Phase 7 not yet started
 Last activity: 2026-06-05
 
-Progress: [██████████] 100%
+Milestone progress: [███████░░░] 75%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 8 (v1)
+- Total v2 plans completed: 9 (Phase 4: 4, Phase 5: 3, Phase 6: 2)
 - Average duration: —
 - Total execution time: —
 
@@ -85,13 +89,18 @@ Progress: [██████████] 100%
 
 ### Notes for Next Session
 
+- **Next up: Phase 7 — Docker, CI/CD, and Scripts** (OPS-01..04). Plan with `/gsd:plan-phase 7`.
+  - OPS-01: server Dockerfile → `oven/bun` arm64 base. Reference prototype: `spike/Dockerfile.bun` + `spike/run-container-check.sh`.
+  - OPS-02: GitHub Actions deploy pipeline on Bun (`deploy.yml` push trigger is commented out — one line to enable auto-deploy).
+  - OPS-03: `check`, `test:brand`, `test:stripe` scripts run under Bun.
+  - OPS-04: one-change Node rollback path documented.
+- `spike/` is kept as Phase-4 compatibility evidence and a Docker prototype for Phase 7; revisit deleting it after Phase 7 ships.
 - `tester123` server-side bypass still exists in `server/index.js` — SEC-V2-01 (future milestone)
-- deploy.yml push trigger is commented out — one line to enable auto-deploy
 
 ---
 
 *State initialized: 2026-06-03*
-*Last updated: 2026-06-05 — Phase 06 Plan 01 completed, Plan 02 ready*
+*Last updated: 2026-06-05 — Phase 06 complete and verified; Phase 7 (Docker, CI/CD, Scripts) is next*
 
 ## Decisions
 

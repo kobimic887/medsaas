@@ -6,10 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This project uses GSD for planning. See `.planning/` for context.
 
-- **Current milestone:** v2 Bun Migration
+- **Current milestone:** v2 Bun Migration (in progress)
 - **Roadmap:** `.planning/ROADMAP.md`
 - **State:** `.planning/STATE.md`
-- **Active phase:** Phase 4 — Compatibility Spike + Baseline (not yet started)
+- **Codebase map:** `.planning/codebase/` (STACK, ARCHITECTURE, STRUCTURE, CONVENTIONS, INTEGRATIONS, TESTING, CONCERNS)
+- **Completed:** Phase 4 (Compatibility Spike), Phase 5 (Server Runtime on Bun — Bun is the default server runtime), Phase 6 (Package Management — Bun is the default package manager, npm/Node fallback retained)
+- **Active phase:** Phase 7 — Docker, CI/CD, and Scripts (not yet started)
+
+Bun is already the default runtime and package manager for this repo. npm/Node fallbacks
+are retained via `:node`-suffixed scripts. See the Commands section below.
 
 When starting work: read `.planning/STATE.md` for current context.
 When done with a phase: run `/gsd:verify-work` before moving on.

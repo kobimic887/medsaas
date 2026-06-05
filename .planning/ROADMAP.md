@@ -120,4 +120,4 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
 
 ---
 
-*Roadmap updated: 2026-06-05 — Phase 06 Plan 01 completed*
+*Roadmap updated: 2026-06-05 — Phases 4–6 complete; Phase 7 (Docker, CI/CD, Scripts) is next*

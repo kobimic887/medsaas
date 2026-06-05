@@ -81,9 +81,9 @@ per-company ligand service config + admin ligand upload. Ready to merge.
 | Leave forgot-password link as `href="#"` | Deferred by user — build separately | — Pending (v2) |
 | Native arm64 build on box via SSH/SCP | Faster than QEMU cross-compile; no registry dependency | ✓ Good |
 | `tester123` server-side bypass left in place | Server-side security work is a separate milestone | ⚠ Revisit — SEC-V2-01 |
-| v2 = Bun runtime, not the bundler | RAM/speed win lives in the long-running server, not build-time Vite | — Pending (v2) |
-| Compatibility spike before full roadmap commit | arm64 dep compatibility is the tightest constraint; prove it empirically first | — Pending (v2 Phase 4) |
-| Keep Node fallback through v2 | Fast rollback if a dep misbehaves under Bun in prod | — Pending (v2) |
+| v2 = Bun runtime, not the bundler | RAM/speed win lives in the long-running server, not build-time Vite | ✓ Done — Bun is default runtime (Phase 5); Vite stays the bundler |
+| Compatibility spike before full roadmap commit | arm64 dep compatibility is the tightest constraint; prove it empirically first | ✓ Done — Phase 4 complete |
+| Keep Node fallback through v2 | Fast rollback if a dep misbehaves under Bun in prod | ✓ Done — `:node` fallback scripts retained (Phases 5–6) |
 
 ## Constraints
 
