@@ -33,7 +33,7 @@ Requirements for the Bun Migration milestone. Each maps to a roadmap phase. "Use
 
 - [x] **PKG-01**: Root and client dependencies install via `bun install`, producing a committed `bun.lock`
 - [x] **PKG-02**: `install:all`, dev, build, and start scripts have Bun equivalents while a Node fallback path is preserved
-- [ ] **PKG-03**: The client Vite build still produces a working bundle when invoked through Bun (Vite retained; bundler swap is out of scope)
+- [x] **PKG-03**: The client Vite build still produces a working bundle when invoked through Bun (Vite retained; bundler swap is out of scope)
 
 ### Ops / CI-CD (OPS)
 
@@ -88,7 +88,7 @@ Each requirement maps to exactly one phase.
 | RUN-04 | Phase 5 | Complete |
 | PKG-01 | Phase 6 | Complete |
 | PKG-02 | Phase 6 | Complete |
-| PKG-03 | Phase 6 | Pending |
+| PKG-03 | Phase 6 | Complete |
 | OPS-01 | Phase 7 | Pending |
 | OPS-02 | Phase 7 | Pending |
 | OPS-03 | Phase 7 | Pending |

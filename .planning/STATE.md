@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2
 milestone_name: — Bun Migration
-status: executing
-last_updated: "2026-06-05T07:09:25Z"
-last_activity: 2026-06-05 -- Plan 06-01 completed
+status: verifying
+last_updated: "2026-06-05T07:26:30.191Z"
+last_activity: 2026-06-05 -- Plan 06-02 completed
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 9
-  completed_plans: 8
-  percent: 89
+  completed_plans: 9
+  percent: 75
 ---
 
 # Project State: ChemBench
@@ -26,12 +26,12 @@ See: `.planning/PROJECT.md` (updated 2026-06-04)
 
 ## Current Position
 
-Phase: 06 (package-management) — EXECUTING
+Phase: 06 (package-management) — COMPLETE
 Plan: 2 of 2
-Status: Ready for Phase 06 Plan 02
-Last activity: 2026-06-05 -- Plan 06-01 completed
+Status: Phase complete — ready for verification
+Last activity: 2026-06-05 -- Plan 06-02 completed
 
-Progress: [█████████░] 89%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Progress: [█████████░] 89%
 | Phase 05-server-runtime-on-bun P02 | 35 | 3 tasks | 4 files |
 | Phase 05-server-runtime-on-bun P03 | 8 | 3 tasks | 3 files |
 | Phase 06-package-management P01 | 10 | 2 tasks | 5 files |
+| Phase 06-package-management P02 | 23 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -90,3 +91,8 @@ Progress: [█████████░] 89%
 
 *State initialized: 2026-06-03*
 *Last updated: 2026-06-05 — Phase 06 Plan 01 completed, Plan 02 ready*
+
+## Decisions
+
+- [Phase 06-package-management]: Bun defaults are documented as the first command path for install, dev, build, and start; npm/Node fallback commands remain documented beside them — Phase 06 Plan 02
+- [Phase 06-package-management]: Vite remains the client bundler for PKG-03; bun run build invokes the existing Vite build through Bun's package runner — Phase 06 Plan 02
