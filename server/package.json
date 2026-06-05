@@ -14,7 +14,9 @@
     "dev:node": "node --watch index.js",
     "start:unified:node": "FRONTEND_DIST=../client/dist node index.js",
     "import:mol-price": "node import-mol-price.js",
-    "test:stripe": "node test/stripe-webhook.test.mjs",
+    "test:stripe": "SERVER_RUNTIME=bun bun test/stripe-webhook.test.mjs",
+    "test:stripe:bun": "SERVER_RUNTIME=bun bun test/stripe-webhook.test.mjs",
+    "test:stripe:node": "node test/stripe-webhook.test.mjs",
     "test:runtime-smoke": "node test/runtime-smoke.test.mjs",
     "test:runtime-watch": "node test/runtime-watch-smoke.mjs"
   },
