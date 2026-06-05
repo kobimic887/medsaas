@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2
 milestone_name: — Bun Migration
-status: ready_to_plan
-last_updated: 2026-06-04T21:53:10.956Z
-last_activity: 2026-06-04
+status: "Phase 06 shipped — PR #4"
+last_updated: "2026-06-05T07:52:31.500Z"
+last_activity: 2026-06-05
 progress:
   total_phases: 4
-  completed_phases: 2
-  total_plans: 7
-  completed_plans: 7
-  percent: 50
-stopped_at: Phase 05 complete (3/3) — ready to discuss Phase 6
+  completed_phases: 3
+  total_plans: 9
+  completed_plans: 9
+  percent: 75
 ---
 
 # Project State: ChemBench
@@ -21,16 +20,16 @@ stopped_at: Phase 05 complete (3/3) — ready to discuss Phase 6
 See: `.planning/PROJECT.md` (updated 2026-06-04)
 
 **Core value:** Labs and customers get a professional, focused tool — not a rebranded demo with debug artifacts.
-**Current focus:** Phase 6 — package management
+**Current focus:** Phase 06 — package-management
 
 ---
 
 ## Current Position
 
-Phase: 6
+Phase: 7
 Plan: Not started
-Status: Ready to plan
-Last activity: 2026-06-04
+Status: Phase 06 shipped — PR #4
+Last activity: 2026-06-05
 
 Progress: [██████████] 100%
 
@@ -38,7 +37,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 6 (v1)
+- Total plans completed: 8 (v1)
 - Average duration: —
 - Total execution time: —
 
@@ -48,6 +47,7 @@ Progress: [██████████] 100%
 |-------|-------|-------|----------|
 | v1 (1–3) | 3 | — | — |
 | 05 | 3 | - | - |
+| 06 | 2 | - | - |
 
 *Updated after each plan completion*
 | Phase 04 P01 | 12 min | 3 tasks | 3 files |
@@ -57,6 +57,8 @@ Progress: [██████████] 100%
 | Phase 05-server-runtime-on-bun P01 | 18 | 3 tasks | 5 files |
 | Phase 05-server-runtime-on-bun P02 | 35 | 3 tasks | 4 files |
 | Phase 05-server-runtime-on-bun P03 | 8 | 3 tasks | 3 files |
+| Phase 06-package-management P01 | 10 | 2 tasks | 5 files |
+| Phase 06-package-management P02 | 23 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -74,6 +76,8 @@ Progress: [██████████] 100%
 - Bun FSEvents watch requires inode change (readFile+writeFile); fs.utimes mtime-only update does not trigger reload on macOS — Phase 05 Plan 02
 - Gate PASS: Bun median idle RSS 115.1 MiB < 118.9 MiB Node baseline — Bun confirmed as default server runtime (MEAS-03) — Phase 05 Plan 03
 - README updated with confirmed gate outcome; both npm run start:bun and npm run start:node documented — Phase 05 Plan 03
+- Promoted concurrently to root devDependency at ^9.2.0 for root package orchestration — Phase 06 Plan 01
+- Bun package-root scripts use --cwd=<dir> because Bun 1.3.14 requires executable cwd spelling for install — Phase 06 Plan 01
 
 ### Active Blockers
 
@@ -87,4 +91,9 @@ Progress: [██████████] 100%
 ---
 
 *State initialized: 2026-06-03*
-*Last updated: 2026-06-04 — v2 roadmap finalized, Phase 4 ready to plan*
+*Last updated: 2026-06-05 — Phase 06 Plan 01 completed, Plan 02 ready*
+
+## Decisions
+
+- [Phase 06-package-management]: Bun defaults are documented as the first command path for install, dev, build, and start; npm/Node fallback commands remain documented beside them — Phase 06 Plan 02
+- [Phase 06-package-management]: Vite remains the client bundler for PKG-03; bun run build invokes the existing Vite build through Bun's package runner — Phase 06 Plan 02

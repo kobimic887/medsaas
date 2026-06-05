@@ -24,7 +24,7 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
 
 - [x] **Phase 4: Compatibility Spike + Baseline** - Empirically prove arm64 dep compatibility and capture Node performance baselines before committing to migration (completed 2026-06-04)
 - [x] **Phase 5: Server Runtime on Bun** - Run the Express API on Bun in dev and prod, with before/after RAM measurement gating the outcome (completed 2026-06-04)
-- [ ] **Phase 6: Package Management** - Migrate root and client deps to bun install with Node fallback scripts preserved
+- [x] **Phase 6: Package Management** - Migrate root and client deps to bun install with Node fallback scripts preserved (completed 2026-06-05)
 - [ ] **Phase 7: Docker, CI/CD, and Scripts** - Ship oven/bun Docker image, Bun-powered Actions pipeline, and Bun test/check scripts
 
 ## Phase Details
@@ -83,7 +83,14 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
   2. install:all, dev, build, and start scripts invoke Bun; corresponding Node-compatible fallback scripts are documented
   3. The client Vite build completes successfully when invoked through Bun and the output bundle is served correctly
 
-**Plans**: TBD
+**Plans**: 2 plans
+**Wave 1**
+
+- [x] 06-01-PLAN.md — Bun-default package scripts and dual lockfiles for root/client/server (PKG-01, PKG-02)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 06-02-PLAN.md — Developer docs plus Bun-invoked Vite build/static-serving verification (PKG-02, PKG-03)
 
 ### Phase 7: Docker, CI/CD, and Scripts
 
@@ -108,9 +115,9 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
 | 3. CI/CD Pipeline | v1 | 1/1 | ✅ Complete | 2026-06-04 |
 | 4. Compatibility Spike + Baseline | v2 | 4/4 | Complete   | 2026-06-04 |
 | 5. Server Runtime on Bun | v2 | 3/3 | Complete   | 2026-06-04 |
-| 6. Package Management | v2 | 0/? | Not started | - |
+| 6. Package Management | v2 | 2/2 | Complete    | 2026-06-05 |
 | 7. Docker, CI/CD, and Scripts | v2 | 0/? | Not started | - |
 
 ---
 
-*Roadmap updated: 2026-06-04 — Phase 4 planned (4 plans, 3 waves)*
+*Roadmap updated: 2026-06-05 — Phase 06 Plan 01 completed*

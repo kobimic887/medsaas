@@ -13,13 +13,21 @@ Combined monorepo for molecular research SaaS: web app, chemistry API, ADMET wor
 | `legacy/chem-beo-api/` | Archived standalone Chem API |
 
 Root scripts are the supported way to install, run, build, and check the app.
+Bun is the default package runner for install, dev, build, and start. npm/Node
+fallback aliases are retained for rollback.
 
 ## Local Setup
 
 1. Install dependencies:
 
    ```bash
-   npm run install:all
+   bun run install:all
+   ```
+
+   npm fallback:
+
+   ```bash
+   npm run install:all:node
    ```
 
 2. Create environment config:
@@ -37,7 +45,13 @@ Root scripts are the supported way to install, run, build, and check the app.
 4. Run the app in development:
 
    ```bash
-   npm run dev
+   bun run dev
+   ```
+
+   npm/Node fallback:
+
+   ```bash
+   npm run dev:node
    ```
 
    Open **http://localhost:5173** only. Vite proxies `/api`, checkout, and Tanimoto to the API on port 3000 — no `VITE_API_HOSTNAME` needed.
@@ -49,12 +63,20 @@ Root scripts are the supported way to install, run, build, and check the app.
 5. Build and run the production-style unified app:
 
    ```bash
-   npm start
+   bun run build
+   bun run start
+   ```
+
+   npm/Node fallback:
+
+   ```bash
+   npm run build:node
+   npm run start:node
    ```
 
    The backend serves `client/dist`.
 
-### Bun runtime and Node rollback
+### Bun package management and Node rollback
 
 **Gate result: PASS — Bun is the confirmed default runtime.**
 
@@ -65,36 +87,59 @@ Bun passes the gate against the fixed Phase 4 baseline.
 See `.planning/phases/05-server-runtime-on-bun/BUN-BEFORE-AFTER.md` for full per-sample distributions,
 the back-to-back Node sanity run, and methodology (N=5, `/proc/<pid>/status` VmRSS, oracle aarch64 host).
 
-Phase 5 makes Bun the default API runtime while keeping npm as the script runner (D-02).
+Phase 6 makes Bun the default package runner. Phase 5 already made Bun the default API runtime.
+Vite remains the client bundler: `bun run build` invokes `bun --cwd=client run build`, which runs
+the existing `vite build` script in `client/package.json`.
 
-- `npm run dev` starts the API with `bun --watch index.js` (Bun hot-reload, Vite client unchanged).
-- `npm start` builds the client, then runs `FRONTEND_DIST=../client/dist bun index.js`.
+- `bun run install:all` installs root, client, and server dependencies with Bun.
+- `bun run dev` starts the API with `bun --watch index.js` and the Vite client unchanged.
+- `bun run build` runs the retained Vite production build through Bun's package runner.
+- `bun run start` builds the client, then runs `FRONTEND_DIST=../client/dist bun index.js`.
 
-npm remains the script runner throughout Phase 5. Only the runtime binary changes from `node` to `bun`.
+Docker, CI, `check`, and test script migration remain Phase 7 scope.
 
 **Bun commands (default):**
 
 ```bash
-# API-only development on Bun (hot-reload)
-npm run dev:bun
-npm --prefix server run dev:bun
+# Install all package roots
+bun run install:all
 
-# Production-style unified server on Bun (builds client, then serves it)
-npm run start:bun
-npm --prefix server run start:unified:bun
+# Development: Bun API runtime + Vite client
+bun run dev
+
+# Build retained Vite frontend
+bun run build
+
+# Production-style unified server
+bun run start
 ```
 
-**Node rollback (one-command):**
+**npm/Node fallback (one-command):**
 
 ```bash
-# API-only development on Node
+# Install all package roots with npm ci
+npm run install:all:node
+
+# Development with Node API runtime + Vite client
 npm run dev:node
-npm --prefix server run dev:node
+
+# Build retained Vite frontend through npm
+npm run build:node
 
 # Production-style unified server on Node
 npm run start:node
-npm --prefix server run start:unified:node
 ```
+
+**Lockfile maintenance:** root, `client/`, and `server/` each retain both lockfile
+families. `bun.lock` is the default Bun install artifact; `package-lock.json` is retained
+for exact npm fallback installs. When any dependency changes, run:
+
+```bash
+bun run lockfiles:refresh
+```
+
+Commit the regenerated Bun and npm lockfiles together so the default and fallback package
+graphs do not drift.
 
 ## Required Runtime Dependencies
 
