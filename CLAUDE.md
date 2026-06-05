@@ -18,13 +18,24 @@ When done with a phase: run `/gsd:verify-work` before moving on.
 
 ```bash
 # Install all dependencies (run once after clone)
-npm run install:all
+bun run install:all
+
+# npm/Node fallback install
+npm run install:all:node
 
 # Development (runs API on :3000 + Vite on :5173 concurrently)
-npm run dev
+bun run dev
+
+# Node fallback development
+npm run dev:node
 
 # Production build + unified server
-npm start
+bun run build
+bun run start
+
+# npm/Node fallback build + unified server
+npm run build:node
+npm run start:node
 
 # Syntax-check server JS + build client (no test suite)
 npm run check
@@ -38,6 +49,15 @@ npm run services:all         # All optional services
 # Import molecule pricing data
 npm --prefix server run import:mol-price -- /path/to/mol_price.xlsx
 ```
+
+Bun is the default package runner for install, dev, build, and start. npm/Node fallback
+aliases are retained with `:node` suffixes. Vite remains the client bundler:
+`bun run build` invokes `bun --cwd=client run build`, which runs `vite build` from
+`client/package.json`. Docker, CI, `check`, and test script migration remain Phase 7 scope.
+
+Lockfile rule: root, `client/`, and `server/` keep both `bun.lock` and `package-lock.json`.
+When dependencies change, run `bun run lockfiles:refresh` and commit both lockfile families
+together so Bun defaults and npm fallbacks stay reproducible.
 
 Dev URLs: frontend at **http://localhost:5173**, API at http://localhost:3000, API docs at http://localhost:3000/api-docs.
 
