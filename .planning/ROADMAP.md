@@ -108,7 +108,7 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
 **Wave 1** *(parallel — no file overlap)*
 
 - [x] 07-01-PLAN.md — Convert both Dockerfile stages to oven/bun + ROLLBACK.md single-change Node revert (OPS-01, OPS-04)
-- [ ] 07-02-PLAN.md — Bun-default check/test:brand/test:stripe scripts (+ async Stripe test-header fix) with :node fallbacks (OPS-03)
+- [x] 07-02-PLAN.md — Bun-default check/test:brand/test:stripe scripts (+ async Stripe test-header fix) with :node fallbacks (OPS-03)
 
 **Wave 2** *(blocked on 07-01; autonomous:false — on-box VPS verification)*
 
@@ -124,7 +124,7 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
 | 4. Compatibility Spike + Baseline | v2 | 4/4 | Complete   | 2026-06-04 |
 | 5. Server Runtime on Bun | v2 | 3/3 | Complete   | 2026-06-04 |
 | 6. Package Management | v2 | 2/2 | Complete    | 2026-06-05 |
-| 7. Docker, CI/CD, and Scripts | v2 | 1/3 | In Progress|  |
+| 7. Docker, CI/CD, and Scripts | v2 | 2/3 | In Progress|  |
 
 ---
 
