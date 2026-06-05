@@ -39,7 +39,7 @@ Requirements for the Bun Migration milestone. Each maps to a roadmap phase. "Use
 
 - [x] **OPS-01**: The server Dockerfile uses an `oven/bun` arm64 base image and builds successfully
 - [x] **OPS-02**: The GitHub Actions deploy pipeline uses Bun for install/build and deploys to the Oracle arm64 VPS
-- [ ] **OPS-03**: The `check`, `test:brand`, and `test:stripe` scripts run under Bun
+- [x] **OPS-03**: The `check`, `test:brand`, and `test:stripe` scripts run under Bun
 - [x] **OPS-04**: A documented rollback path reverts to the Node image/scripts with a single change
 
 ## Future Requirements
@@ -91,7 +91,7 @@ Each requirement maps to exactly one phase.
 | PKG-03 | Phase 6 | Complete |
 | OPS-01 | Phase 7 | Complete |
 | OPS-02 | Phase 7 | Complete |
-| OPS-03 | Phase 7 | Pending |
+| OPS-03 | Phase 7 | Complete |
 | OPS-04 | Phase 7 | Complete |
 
 **Coverage:**
