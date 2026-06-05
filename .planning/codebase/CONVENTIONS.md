@@ -1,188 +1,112 @@
+---
+last_mapped_commit: 1a703a98234dd0b9b66866ec31d4d9a1a6455b55
+---
+
 # Coding Conventions
 
-_Generated: 2026-06-03_
+**Analysis Date:** 2026-06-05
 
-## Module System
-
-**Client (ESM):** `client/package.json` declares `"type": "module"`. All client files use ES module `import`/`export` syntax. Path alias `@` resolves to `client/src/` via Vite config (`resolve.alias`). Example:
-
-```js
-import { API_CONFIG } from "@/utils/constants";
-import { useAuth } from "@/context/auth";
-```
-
-**Server (ESM):** `server/package.json` also declares `"type": "module"`. All server code uses top-level `import` statements. CommonJS constructs (`require`, `module.exports`) do not appear in `server/index.js`.
-
-**Exception:** `client/prettier.config.cjs` and `client/tailwind.config.cjs` use CommonJS (`module.exports`) because those config tools require it.
-
-## Naming Conventions
+## Naming Patterns
 
 **Files:**
-- React component files: `kebab-case.jsx` (e.g., `sign-in.jsx`, `generate-molecules.jsx`, `dashboard-navbar.jsx`)
-- JS utility files: `camelCase.js` (e.g., `constants.js`, `api.js`, `useBranding.js`)
-- Context files: `camelCase.jsx` (e.g., `auth.jsx`, `blog.jsx`, `CartContext.jsx` — inconsistent, `CartContext` is PascalCase)
-- Data files: `kebab-case-data.js` (e.g., `statistics-cards-data.js`, `projects-table-data.js`)
-- Index barrel files: `index.js` or `index.jsx`
+- Use lowercase route/page filenames with hyphens for multi-word React pages and widgets: `client/src/pages/dashboard/generate-molecules.jsx`, `client/src/pages/dashboard/protein-folding.jsx`, `client/src/widgets/layout/dashboard-navbar.jsx`.
+- Use PascalCase filenames for React component modules that export named visual components: `client/src/components/MoleculeDrawer.jsx`, `client/src/components/ProfessionalMoleculeViewer.jsx`, `client/src/components/DisabledOCLViewer.jsx`.
+- Use camelCase `.js` utility/config files for shared frontend helpers: `client/src/utils/api.js`, `client/src/config/branding.js`, `server/utils/emailTemplates.js`.
+- Use `.mjs` for executable Node smoke harnesses and scripts that run directly with `node`: `server/test/runtime-smoke.test.mjs`, `server/test/stripe-webhook.test.mjs`, `scripts/check-brand.mjs`.
+- Treat committed Ketcher bundle files as generated/static assets, not style exemplars: `client/public/ketcher/static/js/main.7d7d7a03.js`, `packages/dashboard-template/public/ketcher/static/js/main.7d7d7a03.js`.
 
-**Components (exported names):** PascalCase named exports — `DashboardHome`, `SignIn`, `StatisticsCard`, `Sidenav`. Most pages export both a named export and a `default` export pointing to the same function.
+**Functions:**
+- Use camelCase for regular functions and helpers: `getApiBaseUrl` in `client/src/utils/api.js`, `getStoredUser` in `client/src/context/auth.jsx`, `createRateLimiter` in `server/index.js`, `waitForHealth` in `server/test/runtime-smoke.test.mjs`.
+- Use PascalCase only for React function components: `App` in `client/src/App.jsx`, `AuthProvider` in `client/src/context/auth.jsx`, `GenerateMolecules` in `client/src/pages/dashboard/generate-molecules.jsx`.
+- Use `handle*` names for component event handlers: `handleSubmit` in `client/src/pages/dashboard/generate-molecules.jsx`.
+- Use action-oriented names for server helpers and middleware factories: `consumeSimulationToken`, `authenticateToken`, `requireActiveUser`, and `fulfillCheckoutSession` in `server/index.js`.
 
-**Functions (non-component):** camelCase — `fetchActivities`, `handleSubmit`, `buildTenantFilter`, `normalizeCompanyName`, `createRateLimiter`.
+**Variables:**
+- Use camelCase for local mutable values and request payload fields in JavaScript: `explicitApiBase`, `baseUrl`, `authToken`, `serverRuntime`, `runtimeBin`.
+- Use UPPER_SNAKE_CASE for module constants and environment-derived configuration: `REQUIRED_ENV`, `JWT_SECRET`, `STRIPE_WEBHOOK_SECRET`, `MONGODB_URI`, `PLAN_CATALOG` in `server/index.js`; `USER_STORAGE_KEY` and `ACCESS_TOKEN_KEY` in `client/src/context/auth.jsx`.
+- Preserve API-specific snake_case where the external service contract requires it: `num_molecules`, `property_name`, `min_similarity`, and `smi` in `server/index.js`.
+- Use boolean names with `is*` or `has*` for predicates: `isLoading` in `client/src/context/auth.jsx`, `isAuthenticated` in `client/src/App.jsx`, `hasFrontendBuild` in `server/index.js`.
 
-**React hooks:** `use` prefix camelCase — `useAuth`, `useBranding`, `useMaterialTailwindController`.
+**Types:**
+- Not applicable: this repo is JavaScript/JSX, not TypeScript. Do not introduce TypeScript-specific type declarations unless a future migration phase adds TypeScript config and build support.
+- Use PropTypes for React component prop contracts where present: `AuthProvider.propTypes` in `client/src/context/auth.jsx`.
 
-**Variables/constants:**
-- Local variables: camelCase (`activityData`, `molPriceStats`)
-- Module-level constants: SCREAMING_SNAKE_CASE (`JWT_SECRET`, `PLAN_CATALOG`, `MONGODB_URI`, `TANIMOTO_API_BASE`)
-- Environment-derived configs: SCREAMING_SNAKE_CASE on server, `VITE_` prefix vars on client
+## Code Style
 
-**Server route handlers:** Inline async arrow functions or named `async function` declarations at module scope (not classes).
+**Formatting:**
+- Frontend formatting is configured through Prettier 3 with Tailwind class sorting: `client/prettier.config.cjs`.
+- The Prettier config points at `client/tailwind.config.cjs` and loads `prettier-plugin-tailwindcss`; use it for client JSX/class formatting.
+- No root Prettier config is detected. Server files such as `server/index.js` and scripts such as `scripts/check-brand.mjs` rely on the existing local style rather than an enforced formatter.
+- Quote style is mixed by area: client files commonly use double quotes in `client/src/main.jsx` and `client/src/context/auth.jsx`; server and test files commonly use single quotes in `server/index.js` and `server/test/runtime-smoke.test.mjs`. Match the file being edited.
+- Semicolons are used across active source files; keep them in new JavaScript and JSX.
 
-## Component Patterns
+**Linting:**
+- No ESLint, Biome, Jest, Vitest, or Playwright config is detected in tracked project files.
+- The current automated static check is root `npm run check`, which runs `node --check server/index.js` plus `npm --prefix client run build` from `package.json`.
+- Bun is the default package runner after Phase 6, but `check` and test-script migration to Bun remains Phase 7 scope. Do not silently rewrite `check`, `test:brand`, or server test commands to Bun until Phase 7.
+- The brand regression guard is `npm run test:brand`, implemented in `scripts/check-brand.mjs`.
 
-All React components are **function components**. No class components exist in the codebase.
+## Import Organization
 
-**Page components** (in `client/src/pages/`):
-- Declare local state with `React.useState` (or destructured `useState`) at the top
-- Define async fetch functions inside the component body
-- Trigger data fetch via `React.useEffect(fetchFn, [])` on mount
-- Export pattern: named export + default export (e.g., `export function DashboardHome() { ... }` then `export default DashboardHome;`)
+**Order:**
+1. Runtime/framework imports first: `react`, `react-dom/client`, `express`, `cors`, Node built-ins such as `node:child_process`.
+2. Third-party package imports next: `mongodb`, `stripe`, `bcryptjs`, `@material-tailwind/react`.
+3. Local app imports last, using either relative server paths or frontend aliases: `./utils/emailTemplates.js` in `server/index.js`, `@/context/auth` in `client/src/main.jsx`.
+4. Side-effect style imports stay near the entry point setup: `import 'dotenv/config'` in `server/index.js`, stylesheet imports in `client/src/main.jsx`.
 
-**Widget/UI components** (in `client/src/widgets/`):
-- Accept props explicitly, validated with `prop-types`
-- Use `PropTypes` for runtime type checking and `defaultProps` for defaults
-- Set `displayName` on the component for React DevTools (e.g., `StatisticsCard.displayName = "/src/widgets/cards/statistics-card.jsx"`)
-
-Example widget pattern:
-```jsx
-export function StatisticsCard({ color, icon, title, value, footer }) {
-  return ( /* JSX */ );
-}
-
-StatisticsCard.defaultProps = { color: "blue", footer: null };
-StatisticsCard.propTypes = { color: PropTypes.oneOf([...]), icon: PropTypes.node.isRequired, ... };
-StatisticsCard.displayName = "/src/widgets/cards/statistics-card.jsx";
-export default StatisticsCard;
-```
-
-**React import style:** Most files import React as a namespace (`import React from "react"`) and call `React.useState`, `React.useEffect` etc. Some files destructure hooks at import: `import React, { useState, useEffect } from "react"`. Both styles coexist; there is no enforced standard.
-
-## State Management
-
-**Auth state:** Managed via `AuthContext` (`client/src/context/auth.jsx`). Provides `user`, `login()`, `logout()`, `isAdmin()`, `isLoggedIn()` to all consumers via `useAuth()`. State is hydrated from `localStorage` on mount.
-
-**UI/layout state:** Managed via `MaterialTailwindControllerProvider` + `useReducer` (`client/src/context/index.jsx`). Handles sidenav open/close, sidenav color/type, navbar transparency, fixed navbar.
-
-**Feature/page state:** Entirely local `useState` inside individual page components. No global store (no Redux, Zustand, Recoil, or similar). Each page independently manages `loading`, `error`, and data state variables.
-
-**Typical local state pattern:**
-```jsx
-const [data, setData] = React.useState(null);
-const [loading, setLoading] = React.useState(false);
-const [error, setError] = React.useState(null);
-```
-
-## API Call Patterns
-
-**URL construction:** Always use `API_CONFIG.buildApiUrl(endpoint)` for `/api/*` routes, or `API_CONFIG.buildUrl(endpoint)` for top-level routes (Stripe checkout, Tanimoto). Defined in `client/src/utils/constants.js`. Never hardcode `localhost:3000` in component files.
-
-**Transport:** Native `fetch()` used throughout (no axios on the client). Axios is present on the server side only (`server/index.js`).
-
-**Auth header:** Token retrieved directly from `localStorage` in most pages:
-```js
-const token = localStorage.getItem('auth_token');
-// then passed as:
-headers: { 'Authorization': `Bearer ${token}` }
-```
-A helper `getAuthToken()` exists in `client/src/utils/constants.js` that tries both `access_token` and `auth_token` keys, but most pages bypass it and call `localStorage.getItem('auth_token')` directly — this is inconsistent.
-
-**Request pattern:**
-```js
-const response = await fetch(API_CONFIG.buildApiUrl('/endpoint'), {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-  body: JSON.stringify(payload),
-});
-if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-const data = await response.json();
-```
-
-**Vite dev proxy** (`client/vite.config.js`): `/api`, `/tanimoto`, `/create-checkout-session`, `/create-checkout-session-onetime`, and `/health` are proxied to `http://127.0.0.1:3000` in development. No base URL changes needed between dev and prod.
+**Path Aliases:**
+- Use `@` for frontend imports under `client/src` as configured in `client/vite.config.js`: `@/layouts`, `@/context`, `@/utils/constants`.
+- Server code uses relative ESM imports with explicit `.js` extensions: `./utils/emailService.js`, `./routes/scientificServices.js`.
+- Do not use the frontend `@` alias in server files; it is a Vite-only alias.
 
 ## Error Handling
 
-**Client:**
-- Async fetch calls are wrapped in `try/catch` blocks inside component event handlers and `useEffect` callbacks
-- Errors are stored in local `error` state: `setError(err.message)`
-- Displayed via Material Tailwind `<Alert>` component or inline conditional rendering
-- `console.error(...)` is used for logging caught errors (no structured error tracking library)
+**Patterns:**
+- Server startup validates required environment before binding the API and exits with explicit console errors for fatal config failures: `server/index.js`.
+- Express route handlers should wrap external calls in `try/catch`, log server-side detail, and return JSON errors with explicit status codes: `server/index.js`, `server/routes/scientificServices.js`.
+- Stripe webhook handling must use `stripe.webhooks.constructEventAsync(...)` and catch signature failures before fulfillment: `server/index.js`. This is required for Bun compatibility from Phase 5.
+- Frontend context helpers catch browser storage parse errors, log a concise message, and return a safe fallback: `client/src/context/auth.jsx`.
+- Frontend request handlers should surface user-facing error state with `setError(err.message)` or equivalent after failed fetches: `client/src/pages/dashboard/generate-molecules.jsx`.
+- CLI/smoke scripts exit nonzero on failure with `process.exit(1)` or `process.exit(failed === 0 ? 0 : 1)`: `scripts/check-brand.mjs`, `server/test/runtime-smoke.test.mjs`.
 
-**Server:**
-- All route handlers use `try/catch` wrapping the main logic
-- Errors returned as JSON: `res.status(4xx/5xx).json({ error: error.message })`
-- Detailed internal errors exposed in development only: `process.env.NODE_ENV === 'development' ? err.message : undefined`
-- HTTP status codes: 400 (bad request), 401 (no token), 403 (forbidden/invalid token), 404 (not found), 429 (rate limit), 500 (server error)
-- `console.error(...)` is the logging mechanism — no structured logger (Winston, Pino, etc.)
-- Middleware errors call `next()` on success, `res.status(...).json(...)` on failure (no `next(err)` error-forwarding pattern)
+## Logging
 
-## Styling Approach
+**Framework:** console
 
-**Utility-first CSS:** Tailwind CSS 3.3 is the primary styling mechanism. All layout, spacing, color, and typography uses Tailwind utility classes directly in JSX.
+**Patterns:**
+- Use `console.error` for server failures, webhook verification failures, startup failures, and harness errors: `server/index.js`, `server/test/stripe-webhook.test.mjs`.
+- Use `console.warn` for degraded-but-runnable configuration states: missing Stripe webhook secret in `server/index.js`, local dev environment tips in `scripts/ensure-dev.mjs`.
+- Use `console.log` for smoke-harness progress and pass/fail output: `server/test/runtime-smoke.test.mjs`, `server/test/runtime-watch-smoke.mjs`.
+- Avoid logging secret values. Redaction is expected when inspecting env-derived values, as shown by `server/utils/emailDebug.js`.
 
-**Component library:** `@material-tailwind/react` 2.1.4 provides pre-styled UI components (Card, Button, Typography, Avatar, Menu, etc.). Tailwind config wraps Material Tailwind via `withMT()` in `client/tailwind.config.cjs`.
+## Comments
 
-**No custom CSS modules or styled-components.** Two custom CSS files exist for third-party libs:
-- `client/src/styles/molecule2d.css` — molecule 2D viewer styles
-- `client/src/styles/molstar.css` — Molstar 3D viewer styles
+**When to Comment:**
+- Add comments for runtime, security, or integration behavior that is not obvious from code: Stripe placeholder handling and security headers in `server/index.js`; Bun watch reload behavior in `server/test/runtime-watch-smoke.mjs`.
+- Add comments to smoke harnesses that explain what production path is being proven: `server/test/runtime-smoke.test.mjs`, `server/test/stripe-webhook.test.mjs`.
+- Avoid comments that narrate obvious local state declarations. For example, new React `useState` declarations in files like `client/src/pages/dashboard/generate-molecules.jsx` do not need comments unless the state has non-obvious domain behavior.
 
-**Prettier with Tailwind plugin:** `prettier-plugin-tailwindcss` is installed and configured via `client/prettier.config.cjs` to auto-sort Tailwind class names. However, there is no Prettier format enforcement in CI/pre-commit hooks.
+**JSDoc/TSDoc:**
+- Swagger JSDoc blocks document server API endpoints inside `server/index.js`; keep endpoint documentation adjacent to the route handler when adding or changing public API routes.
+- Regular frontend helpers use short block comments only when explaining behavior, such as `getApiBaseUrl` in `client/src/utils/api.js`.
+- TSDoc is not applicable because the repo is not TypeScript.
 
-**Icons:** `@heroicons/react` 2.0.18 — both `24/outline` and `24/solid` variants are used. Always destructured: `import { HomeIcon } from "@heroicons/react/24/solid"`.
+## Function Design
 
-## File Organization
+**Size:** Keep new functions focused and smaller than the large existing `server/index.js` route bodies where practical. Extract shared logic into server utility modules such as `server/utils/emailService.js` or frontend utility modules such as `client/src/utils/api.js` when code is reused across routes/components.
 
-```
-client/src/
-├── App.jsx                  # Root router, RequireAuth guard
-├── main.jsx                 # React entry point
-├── routes.jsx               # All app routes defined as data (icon, name, path, element)
-├── components/              # One-off non-widget components (MoleculeDrawer, molecule viewers)
-├── config/                  # Client-side config (branding.js)
-├── configs/                 # Chart config, branding re-exports (charts-config.js, branding.js, index.js)
-├── context/                 # React contexts (auth.jsx, index.jsx, blog.jsx, CartContext.jsx)
-├── data/                    # Static data arrays for charts/tables (statistics-cards-data.js, etc.)
-├── hooks/                   # Custom React hooks (useBranding.js — only one hook exists)
-├── layouts/                 # Layout wrappers (dashboard.jsx, auth.jsx, mainpage.jsx)
-├── pages/
-│   ├── auth/                # SignIn, SignUp pages
-│   ├── dashboard/           # All dashboard feature pages + index.js barrel
-│   └── main/                # Public marketing pages
-├── styles/                  # Global/third-party CSS overrides
-├── utils/                   # Shared utilities (api.js, constants.js)
-└── widgets/
-    ├── cards/               # Card UI components (index.js barrel)
-    ├── charts/              # Chart wrapper components
-    └── layout/              # Layout widgets: Sidenav, DashboardNavbar, Footer (index.js barrel)
-```
+**Parameters:** Prefer object parameters for middleware factories and helpers with multiple configuration values, matching `createRateLimiter({ windowMs, max, name })` in `server/index.js`. Preserve external API payload names when assembling third-party requests.
 
-Each subdirectory with multiple files exports via an `index.js` barrel file.
+**Return Values:** Express handlers return through `res.status(...).json(...)` or `res.send(...)`. Frontend context actions return small result objects when callers need success/error state, matching `login` in `client/src/context/auth.jsx`. Smoke helper functions return booleans or structured `{ status, body }` objects for assertions, matching `waitForHealth` and `postEvent` in `server/test/stripe-webhook.test.mjs`.
 
-**Server:** Single-file architecture — `server/index.js` (5,821 lines) contains all Express routes, middleware, and business logic. Supporting modules:
-- `server/config/branding.js` — brand name logic
-- `server/routes/scientificServices.js` — GROMACS and Glioblastoma route proxies
-- `server/utils/` — email templates, email service, RabbitMQ utils, etc.
+## Module Design
 
-## Notable Patterns
+**Exports:** Use named exports for reusable helpers and providers: `getBrandName` in `server/config/branding.js`, `apiRequest` in `client/src/utils/api.js`, `AuthProvider` and `useAuth` in `client/src/context/auth.jsx`. Use default exports for single React page/component modules, such as `client/src/App.jsx`.
 
-**Barrel index files:** Every page group and widget group uses `index.js` (or `index.jsx`) to re-export all members, enabling clean named imports at the import site.
+**Barrel Files:** Existing barrel files re-export frontend groups: `client/src/context/index.jsx`, `client/src/layouts/index.js`, `client/src/widgets/cards/index.js`, `client/src/pages/dashboard/index.js`. Add to the relevant barrel when a new module is part of an existing imported group.
 
-**Dual export per component:** Page components export both `export function Foo()` and `export default Foo` — the named export is used internally within the module group, the default export is used by the barrel `index.js` when renaming is needed.
+**Runtime Scripts:** Root scripts in `package.json` default to Bun for install/dev/build/start after Phase 6: `install:all`, `dev`, `build`, `start`. Keep npm/Node fallbacks parallel and explicit: `install:all:node`, `dev:node`, `build:node`, `start:node`. Server scripts in `server/package.json` default to Bun runtime (`start:bun`, `dev:bun`, `start:unified:bun`) while keeping Node fallbacks (`start:node`, `dev:node`, `start:unified:node`).
 
-**Routes as data:** All application routes are defined as a plain JS array in `client/src/routes.jsx`. Layout components iterate this array to render both the sidebar navigation and the actual `<Route>` elements. Adding a new route requires only adding an entry to `routes.jsx`.
+---
 
-**Multi-tenant filtering:** On the server, `buildTenantFilter(req.user)` produces a MongoDB query filter scoped to the user's `companyId`. All multi-tenant queries must apply this filter.
-
-**Branding abstraction:** Company name is used as the brand label throughout the UI via `useBranding()` hook (client) and `getBrandName()` (server `config/branding.js`). `PLATFORM_NAME` env var is the fallback. Do not hardcode "ChemBench" or "MedSaaS" directly in UI components.
-
-**Simulation token consumption:** Protected science endpoints use the middleware chain `ensureMongoConnected → authenticateToken → requireActiveUser → consumeSimulationToken(feature)`. New simulation endpoints must follow this chain.
-
-**`displayName` on widgets:** Widget components set `ComponentName.displayName` to their file path string for easier React DevTools debugging.
+*Convention analysis: 2026-06-05*

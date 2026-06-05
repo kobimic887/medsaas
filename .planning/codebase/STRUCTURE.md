@@ -1,248 +1,342 @@
-# Directory Structure
-
-_Generated: 2026-06-03_
-
-## Root
-
-```
-medsaas/                        # Repo root
-├── package.json                # Workspace scripts (install:all, dev, start, check, services:*)
-├── docker-compose.yml          # MongoDB, RabbitMQ, and optional science/worker services
-├── Dockerfile                  # Container build for the unified server+client
-├── start.sh                    # Shell script: build + start (Linux/macOS)
-├── start-prod.sh               # Production variant of start.sh
-├── CLAUDE.md                   # Project instructions for Claude
-├── README.md                   # Project documentation
-├── REPOS.md                    # Related repositories reference
-├── .env.example                # Template for required environment variables
-├── client/                     # Vite + React 18 frontend
-├── server/                     # Express API server
-├── services/                   # Optional Docker-based scientific microservices
-├── packages/                   # Upstream UI reference template
-├── legacy/                     # Archived standalone chemistry API (not used)
-└── scripts/                    # Dev tooling scripts
-```
-
 ---
-
-## `client/`
-
-```
-client/
-├── package.json                # Frontend dependencies
-├── vite.config.js              # Vite config (envDir: '..', path alias @→src, dev proxy)
-├── tailwind.config.cjs         # Tailwind CSS configuration
-├── postcss.config.cjs          # PostCSS config
-├── index.html                  # HTML entry point
-├── public/                     # Static assets served verbatim
-│   ├── img/                    # Images (logo, etc.)
-│   ├── css/                    # Static CSS overrides
-│   ├── ketcher/                # Ketcher 2D structure editor (bundled static)
-│   ├── molstar/                # Molstar 3D viewer (bundled static)
-│   └── pdbs/                   # Sample PDB structure files
-└── src/
-    ├── main.jsx                # React app bootstrap (providers, BrowserRouter)
-    ├── App.jsx                 # Top-level router (dashboard/auth/main layouts)
-    ├── routes.jsx              # All route definitions for all layouts
-    ├── tailwind.css            # Tailwind base imports
-    ├── styles/                 # Additional CSS files
-    ├── pages/                  # Page components organized by layout
-    │   ├── dashboard/          # Authenticated app pages
-    │   │   ├── index.js        # Barrel export
-    │   │   ├── controlpanel.jsx
-    │   │   ├── simulation.jsx
-    │   │   ├── molstar3d.jsx
-    │   │   ├── dashboardhome.jsx
-    │   │   ├── company-admin.jsx   # adminOnly: true
-    │   │   ├── generate-molecules.jsx
-    │   │   ├── protein-folding.jsx
-    │   │   ├── gromacs-md.jsx
-    │   │   ├── glioblastoma-predict.jsx
-    │   │   ├── deep-similarity.jsx
-    │   │   ├── moleculeviewer.jsx
-    │   │   ├── paidplans.jsx
-    │   │   ├── profile.jsx
-    │   │   └── notifications.jsx
-    │   ├── auth/               # Public auth pages
-    │   │   ├── index.js
-    │   │   ├── sign-in.jsx
-    │   │   └── sign-up.jsx
-    │   └── main/               # Public marketing pages
-    │       ├── index.js
-    │       ├── mainhome.jsx
-    │       ├── services.jsx
-    │       ├── about-us.jsx
-    │       ├── contact-us.jsx
-    │       ├── insights.jsx
-    │       ├── paidplansdescription.jsx
-    │       └── blog.jsx
-    ├── layouts/                # Layout wrappers consumed by App.jsx
-    │   ├── index.js            # Barrel export
-    │   ├── dashboard.jsx       # Sidenav + top navbar + footer shell
-    │   ├── auth.jsx            # Minimal auth shell
-    │   └── mainpage.jsx        # Marketing site shell with MainNavbar
-    ├── widgets/                # Shared UI primitives
-    │   ├── layout/             # Chrome components
-    │   │   ├── index.js
-    │   │   ├── sidenav.jsx     # Left sidebar with route-based nav links
-    │   │   ├── dashboard-navbar.jsx
-    │   │   ├── navbar.jsx      # Auth page navbar
-    │   │   ├── main-navbar.jsx # Marketing site navbar
-    │   │   └── footer.jsx
-    │   ├── cards/              # Card UI components
-    │   │   ├── index.js
-    │   │   ├── statistics-card.jsx
-    │   │   ├── profile-info-card.jsx
-    │   │   └── message-card.jsx
-    │   └── charts/             # Chart components
-    │       ├── index.js
-    │       └── statistics-chart.jsx
-    ├── components/             # Molecule visualization components
-    │   ├── MoleculeDrawer.jsx
-    │   ├── OCLMoleculeViewer.jsx
-    │   ├── ProfessionalMoleculeViewer.jsx
-    │   ├── SimpleMoleculeViewer.jsx
-    │   └── DisabledOCLViewer.jsx
-    ├── context/                # React context providers
-    │   ├── index.jsx           # MaterialTailwindControllerProvider (sidenav UI state)
-    │   ├── auth.jsx            # AuthProvider + useAuth hook
-    │   ├── blog.jsx            # Blog context
-    │   └── CartContext.jsx     # Shopping cart context
-    ├── hooks/                  # Custom React hooks
-    │   └── useBranding.js      # Resolves brandName from user's company or platform fallback
-    ├── config/                 # Frontend config (not secrets)
-    │   └── branding.js         # getBrandName(), getPlatformName() (client-side)
-    ├── configs/                # Chart and UI configuration
-    │   ├── index.js
-    │   └── charts-config.js
-    ├── data/                   # Static mock/seed data for UI
-    │   ├── index.js
-    │   ├── statistics-cards-data.js
-    │   ├── statistics-charts-data.js
-    │   ├── projects-table-data.js
-    │   ├── authors-table-data.js
-    │   ├── conversations-data.js
-    │   ├── orders-overview-data.js
-    │   ├── platform-settings-data.js
-    │   ├── projects-data.js
-    │   ├── pyxisImages.js
-    │   └── pyxisServicesImages.js
-    └── utils/                  # Frontend utilities
-        ├── api.js              # getApiBaseUrl(), apiRequest()
-        ├── constants.js        # getAuthToken() and other constants
-        └── algo/               # Algorithm utilities (molecule-related)
-```
-
+last_mapped_commit: 1a703a98234dd0b9b66866ec31d4d9a1a6455b55
 ---
+# Codebase Structure
 
-## `server/`
+**Analysis Date:** 2026-06-05
 
-```
-server/
-├── package.json                # Server dependencies (express, mongodb, stripe, etc.)
-├── index.js                    # ENTIRE Express app: middleware, all routes, helpers (5821 lines, ESM)
-├── routes/
-│   └── scientificServices.js   # Express Router: GROMACS + Glioblastoma proxy routes
-├── config/
-│   └── branding.js             # getBrandName(), getPlatformName() (server-side, reads PLATFORM_NAME env)
-└── utils/
-    ├── emailService.js         # sendTitanEmail() via Titan Mail SMTP
-    ├── emailTemplates.js       # generateVerificationEmailHTML()
-    ├── emailDebug.js           # validateEmailCredentials(), getTitanMailHelp()
-    └── rabbitMQUtils.js        # createAdmetTask(), getQueueStatus(), rabbitMQHealthCheck()
-```
+## Directory Layout
 
----
-
-## `services/`
-
-```
-services/
-├── admet/                      # ADMET prediction worker (Python, Docker)
-│   ├── amqpadmet.py            # RabbitMQ consumer: receives tasks, runs prediction, POSTs results back
-│   ├── admentpred.py           # ADMET prediction logic
-│   ├── admetsendtopyxis.py     # Result callback to Express
-│   ├── admet_ai/               # admet-ai library integration
-│   ├── Dockerfile
-│   └── requirements.txt
-├── gromacs-api/                # GROMACS molecular dynamics (Python Flask, Docker)
-│   ├── app.py                  # Flask REST API wrapping GROMACS workflow
-│   ├── Dockerfile
-│   ├── docker-compose.yml
-│   ├── requirements.txt
-│   ├── templates_*.mdp         # GROMACS simulation parameter templates
-│   └── env.example
-└── glioblastoma-predictor/     # Glioblastoma ML prediction (Python Flask, Docker)
-    ├── app.py                  # Flask REST API
-    ├── Dockerfile
-    ├── docker-compose.yml
-    └── requirements.txt
+```text
+medsaas/
+├── package.json                 # Root orchestration scripts for install/dev/build/start/check
+├── bun.lock                     # Root Bun lockfile
+├── package-lock.json            # Root npm fallback lockfile
+├── README.md                    # Unified platform setup/runtime guidance
+├── CHANGELOG.md                 # Phase/runtime change notes
+├── Dockerfile                   # Multi-stage client build + API runtime image
+├── docker-compose.yml           # Local Mongo/RabbitMQ/scientific-service profiles
+├── docker-compose.deploy.yml    # GHCR-oriented non-prod deploy compose
+├── docker-compose.box.yml       # Build-on-box deploy compose
+├── start.sh                     # Local/start helper script
+├── start-prod.sh                # Production/start helper script
+├── client/                      # Active Vite React frontend package root
+├── server/                      # Active Express API package root
+├── services/                    # Python scientific microservices and workers
+├── packages/dashboard-template/ # Upstream dashboard reference package
+├── legacy/chem-beo-api/         # Archived standalone API code
+├── scripts/                     # Root maintenance/check scripts
+├── docs/                        # Operational documentation
+├── spike/                       # Compatibility/runtime spike scripts and notes
+└── .github/workflows/           # GitHub Actions workflows
 ```
 
----
+## Directory Purposes
 
-## `packages/`
+**Root:**
+- Purpose: Own repo-level orchestration, shared environment example, deployment files, and platform documentation.
+- Contains: `package.json`, `bun.lock`, `package-lock.json`, `README.md`, `Dockerfile`, `docker-compose.yml`, `docker-compose.deploy.yml`, `docker-compose.box.yml`, `.env.example`.
+- Key files: `package.json`, `README.md`, `Dockerfile`, `docker-compose.yml`.
 
-```
-packages/
-└── dashboard-template/         # Upstream Material Tailwind dashboard UI reference
-    ├── src/                    # Original template source (not imported by the app)
-    ├── public/
-    └── functions/              # Firebase functions (unused)
-```
+**`client/`:**
+- Purpose: Active browser application package root.
+- Contains: Vite config, React source, public static assets, generated `dist/`, package manifests, Bun/npm lockfiles.
+- Key files: `client/package.json`, `client/bun.lock`, `client/package-lock.json`, `client/vite.config.js`, `client/src/main.jsx`, `client/src/App.jsx`, `client/src/routes.jsx`.
 
-This is a reference/upstream template only. It is not imported by `client/` or `server/`.
+**`client/src/`:**
+- Purpose: Active React application source.
+- Contains: Route entry, layouts, pages, widgets, contexts, hooks, config, utility helpers, and styles.
+- Key files: `client/src/main.jsx`, `client/src/App.jsx`, `client/src/routes.jsx`, `client/src/utils/api.js`, `client/src/utils/constants.js`.
 
----
+**`client/src/pages/`:**
+- Purpose: Route-level React pages grouped by application section.
+- Contains: `client/src/pages/main/`, `client/src/pages/auth/`, `client/src/pages/dashboard/`.
+- Key files: `client/src/pages/dashboard/simulation.jsx`, `client/src/pages/dashboard/molstar3d.jsx`, `client/src/pages/dashboard/company-admin.jsx`, `client/src/pages/auth/sign-in.jsx`.
 
-## `legacy/`
+**`client/src/layouts/`:**
+- Purpose: Section shells that render routes and shared navigation.
+- Contains: `client/src/layouts/dashboard.jsx`, `client/src/layouts/mainpage.jsx`, `client/src/layouts/auth.jsx`, `client/src/layouts/index.js`.
+- Key files: `client/src/layouts/dashboard.jsx`, `client/src/layouts/mainpage.jsx`.
 
-```
-legacy/
-└── chem-beo-api/               # Archived standalone chemistry API
-    └── utils/                  # Not used by any current code
-```
+**`client/src/widgets/`:**
+- Purpose: Reusable dashboard UI components from the Material Tailwind dashboard style.
+- Contains: `client/src/widgets/layout/`, `client/src/widgets/cards/`, `client/src/widgets/charts/`.
+- Key files: `client/src/widgets/layout/sidenav.jsx`, `client/src/widgets/layout/dashboard-navbar.jsx`, `client/src/widgets/cards/statistics-card.jsx`.
 
----
+**`client/public/`:**
+- Purpose: Static browser assets copied by Vite.
+- Contains: PDB/SDF examples, Ketcher static bundle, Molstar assets, images, CSS.
+- Key files: `client/public/ketcher/iframe.html`, `client/public/molstar/`, `client/public/pdbs/one.pdb`.
 
-## Key Config Files
+**`client/dist/`:**
+- Purpose: Built frontend output served by `server/index.js` in unified production mode.
+- Contains: Built static assets generated by `vite build`.
+- Key files: `client/dist/index.html` when built.
 
-| File | Purpose |
-|------|---------|
-| `.env` (root, gitignored) | Runtime secrets and config for both server and client |
-| `.env.example` (root) | Template listing all required and optional env vars |
-| `client/vite.config.js` | Vite dev server, path alias `@`, `envDir: '..'`, proxy rules |
-| `client/tailwind.config.cjs` | Tailwind CSS theme configuration |
-| `docker-compose.yml` (root) | MongoDB, RabbitMQ, GROMACS, Glioblastoma, ADMET worker |
-| `package.json` (root) | Workspace-level npm scripts for development and production |
-| `server/package.json` | Server dependencies and `dev`/`start:unified` scripts |
-| `client/package.json` | Client dependencies |
+**`server/`:**
+- Purpose: Active API/static-host package root.
+- Contains: Express server, route modules, utility modules, config modules, test scripts, package manifests, Bun/npm lockfiles.
+- Key files: `server/package.json`, `server/bun.lock`, `server/package-lock.json`, `server/index.js`.
 
----
+**`server/routes/`:**
+- Purpose: Extracted Express routers.
+- Contains: Scientific service proxy router.
+- Key files: `server/routes/scientificServices.js`.
+
+**`server/utils/`:**
+- Purpose: Backend integration and helper utilities used by the main API server.
+- Contains: Email templates/service/debug helpers and RabbitMQ helper.
+- Key files: `server/utils/rabbitMQUtils.js`, `server/utils/emailService.js`, `server/utils/emailTemplates.js`, `server/utils/emailDebug.js`.
+
+**`server/config/`:**
+- Purpose: Server-side configuration helper modules.
+- Contains: Branding/platform label helpers.
+- Key files: `server/config/branding.js`.
+
+**`server/test/`:**
+- Purpose: Server runtime and payment smoke tests.
+- Contains: Node/Bun-compatible `.mjs` smoke and webhook tests.
+- Key files: `server/test/stripe-webhook.test.mjs`, `server/test/runtime-smoke.test.mjs`, `server/test/runtime-watch-smoke.mjs`.
+
+**`services/`:**
+- Purpose: Optional Python microservices/workers used by the platform through Docker Compose profiles.
+- Contains: `services/admet/`, `services/gromacs-api/`, `services/glioblastoma-predictor/`.
+- Key files: `services/admet/Dockerfile`, `services/gromacs-api/app.py`, `services/glioblastoma-predictor/app.py`.
+
+**`services/admet/`:**
+- Purpose: RabbitMQ ADMET worker package.
+- Contains: Worker scripts, prediction scripts, requirements, Dockerfile, service README.
+- Key files: `services/admet/amqpadmet.py`, `services/admet/admet_sender.py`, `services/admet/admentpred.py`, `services/admet/requirements.txt`.
+
+**`services/gromacs-api/`:**
+- Purpose: GROMACS FastAPI service.
+- Contains: API app, MDP templates, examples, Dockerfile, requirements, README.
+- Key files: `services/gromacs-api/app.py`, `services/gromacs-api/requirements.txt`, `services/gromacs-api/templates_md.mdp`.
+
+**`services/glioblastoma-predictor/`:**
+- Purpose: Flask glioblastoma sensitivity prediction service.
+- Contains: API app, static HTML assets, Dockerfile, requirements, tests, README.
+- Key files: `services/glioblastoma-predictor/app.py`, `services/glioblastoma-predictor/test_api.py`, `services/glioblastoma-predictor/requirements.txt`.
+
+**`packages/dashboard-template/`:**
+- Purpose: Upstream dashboard UI reference, not the active app.
+- Contains: Template source, server files, public assets, package/config files.
+- Key files: `packages/dashboard-template/src/`, `packages/dashboard-template/vite.config.js`, `packages/dashboard-template/server.js`.
+
+**`legacy/chem-beo-api/`:**
+- Purpose: Archived standalone Chem API.
+- Contains: Historical API server, utilities, package manifests, tests, README.
+- Key files: `legacy/chem-beo-api/index.js`, `legacy/chem-beo-api/utils/`, `legacy/chem-beo-api/package.json`.
+
+**`scripts/`:**
+- Purpose: Root maintenance helpers.
+- Contains: Development environment guard and brand check.
+- Key files: `scripts/ensure-dev.mjs`, `scripts/check-brand.mjs`.
+
+**`spike/`:**
+- Purpose: Runtime/package compatibility experiments and baseline capture.
+- Contains: AMQP/Mongo/Stripe/RDKit spike scripts, container checks, runtime captures.
+- Key files: `spike/01-boot-health.ts`, `spike/03-amqp.ts`, `spike/04-stripe.ts`, `spike/runtime-env-check.mjs`.
+
+**`docs/`:**
+- Purpose: Operational handoff and deployment docs.
+- Contains: Stripe live cutover guidance.
+- Key files: `docs/STRIPE_LIVE_CUTOVER.md`.
+
+**`.github/workflows/`:**
+- Purpose: Repository automation.
+- Contains: Manual non-prod deploy workflow.
+- Key files: `.github/workflows/deploy.yml`.
+
+## Key File Locations
+
+**Entry Points:**
+- `package.json`: Root command surface for Bun default and npm/Node fallback workflows.
+- `client/src/main.jsx`: React mount and provider setup.
+- `client/src/App.jsx`: Top-level browser route switch and dashboard auth guard.
+- `client/src/routes.jsx`: Route metadata and page registry.
+- `server/index.js`: Express API/static host and server startup.
+- `services/gromacs-api/app.py`: GROMACS FastAPI service.
+- `services/glioblastoma-predictor/app.py`: Glioblastoma Flask service.
+- `services/admet/amqpadmet.py`: ADMET RabbitMQ worker.
+
+**Configuration:**
+- `client/vite.config.js`: Vite React config, `@` alias, dev proxy, CSP header, dev-server filesystem guard.
+- `client/jsconfig.json`: JavaScript path alias config for `@/*`.
+- `client/tailwind.config.cjs`: Tailwind config for frontend styling.
+- `client/prettier.config.cjs`: Frontend Prettier/Tailwind formatting config.
+- `server/config/branding.js`: Server platform/company branding helper.
+- `.env.example`: Root environment example; do not read or quote `.env` contents.
+- `docker-compose.yml`: Local infra and optional scientific service profiles.
+- `docker-compose.deploy.yml`: GHCR-image deploy compose.
+- `docker-compose.box.yml`: Build-on-box deploy compose used by deploy workflow.
+- `.github/workflows/deploy.yml`: Manual non-prod deployment workflow.
+
+**Package Roots and Lockfiles:**
+- `package.json`: Root package scripts and `concurrently` dependency.
+- `bun.lock`: Root Bun package graph.
+- `package-lock.json`: Root npm fallback package graph.
+- `client/package.json`: Frontend dependencies and Vite scripts.
+- `client/bun.lock`: Frontend Bun package graph.
+- `client/package-lock.json`: Frontend npm fallback package graph.
+- `server/package.json`: API dependencies, Bun/Node runtime scripts, server tests.
+- `server/bun.lock`: API Bun package graph.
+- `server/package-lock.json`: API npm fallback package graph.
+
+**Core Logic:**
+- `server/index.js`: Main API business logic, persistence, auth, billing, chemistry proxying, ADMET endpoints, Swagger, and static hosting.
+- `server/routes/scientificServices.js`: GROMACS/glioblastoma proxy routes.
+- `server/utils/rabbitMQUtils.js`: RabbitMQ connection, queue setup, ADMET publish, queue health.
+- `server/utils/emailService.js`: SMTP send/test logic.
+- `server/utils/emailTemplates.js`: Email HTML templates.
+- `client/src/utils/constants.js`: Frontend API config and auth token helpers.
+- `client/src/utils/api.js`: Same-origin API request helper.
+- `client/src/context/auth.jsx`: Client auth state and localStorage persistence.
+- `client/src/pages/dashboard/company-admin.jsx`: Tenant administration UI.
+- `client/src/pages/dashboard/simulation.jsx`: Main molecular simulation workflow UI.
+- `client/src/pages/dashboard/molstar3d.jsx`: Molstar result viewer workflow.
+- `client/src/pages/dashboard/gromacs-md.jsx`: GROMACS UI integration.
+- `client/src/pages/dashboard/glioblastoma-predict.jsx`: Glioblastoma prediction UI integration.
+
+**Testing:**
+- `server/test/stripe-webhook.test.mjs`: Stripe webhook behavior test.
+- `server/test/runtime-smoke.test.mjs`: Runtime parity smoke test.
+- `server/test/runtime-watch-smoke.mjs`: Runtime watch smoke test.
+- `services/glioblastoma-predictor/test_api.py`: Glioblastoma service API test.
+- Root `package.json` `check` script: Runs `node --check server/index.js` and frontend build.
+
+**Deployment:**
+- `Dockerfile`: Builds frontend with npm, installs server production deps with npm, serves `client/dist` through Node.
+- `docker-compose.yml`: Local Mongo/RabbitMQ plus optional ADMET/GROMACS/glioblastoma profiles.
+- `docker-compose.deploy.yml`: Pulls GHCR image and MongoDB for non-prod.
+- `.github/workflows/deploy.yml`: Builds on remote box via SSH and `docker-compose.box.yml`.
+
+## Naming Conventions
+
+**Files:**
+- React page files use lowercase/kebab or lowercase names: `client/src/pages/dashboard/company-admin.jsx`, `client/src/pages/dashboard/generate-molecules.jsx`, `client/src/pages/main/mainhome.jsx`.
+- React widget files use lowercase/kebab names: `client/src/widgets/layout/dashboard-navbar.jsx`, `client/src/widgets/cards/statistics-card.jsx`.
+- Context files use lowercase for broad contexts and PascalCase only where already established: `client/src/context/auth.jsx`, `client/src/context/blog.jsx`, `client/src/context/CartContext.jsx`.
+- Server helper files use camelCase: `server/utils/rabbitMQUtils.js`, `server/utils/emailTemplates.js`, `server/config/branding.js`.
+- Server route modules use camelCase descriptive names: `server/routes/scientificServices.js`.
+- Python service files use lowercase or snake-style service names: `services/admet/amqpadmet.py`, `services/gromacs-api/app.py`.
+- Test files use `.test.mjs` for server tests: `server/test/stripe-webhook.test.mjs`.
+
+**Directories:**
+- Active app roots are lowercase singular nouns: `client/`, `server/`, `services/`, `scripts/`, `docs/`.
+- Frontend feature grouping uses section directories: `client/src/pages/dashboard/`, `client/src/pages/auth/`, `client/src/pages/main/`.
+- Frontend reusable UI grouping uses type directories: `client/src/widgets/layout/`, `client/src/widgets/cards/`, `client/src/widgets/charts/`.
+- Optional service directories use service names: `services/gromacs-api/`, `services/glioblastoma-predictor/`.
+- Archive/reference directories stay isolated: `legacy/chem-beo-api/`, `packages/dashboard-template/`.
 
 ## Where to Add New Code
 
-**New dashboard page:**
-1. Create component at `client/src/pages/dashboard/<page-name>.jsx`
-2. Export from `client/src/pages/dashboard/index.js`
-3. Add route entry in `client/src/routes.jsx` under `layout: "dashboard"`
+**New Frontend Page:**
+- Primary code: Add the page component under the relevant section in `client/src/pages/main/`, `client/src/pages/auth/`, or `client/src/pages/dashboard/`.
+- Export: Add it to the section barrel file such as `client/src/pages/dashboard/index.js`.
+- Route: Add route metadata to `client/src/routes.jsx`.
+- Layout: Use existing layout rendering in `client/src/layouts/dashboard.jsx`, `client/src/layouts/mainpage.jsx`, or `client/src/layouts/auth.jsx`.
 
-**New API endpoint:**
-- Add handler in `server/index.js` following the pattern: `app.<method>('/api/<route>', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => { ... })`
-- For scientific service proxies: add to `server/routes/scientificServices.js`
+**New Dashboard Tool:**
+- Primary code: `client/src/pages/dashboard/<tool-name>.jsx`.
+- Route: Add a dashboard page object in `client/src/routes.jsx`.
+- API calls: Use `API_CONFIG.buildApiUrl()` from `client/src/utils/constants.js` or `apiRequest()` from `client/src/utils/api.js`.
+- Backend: Add authenticated API endpoints in `server/index.js` or a focused router under `server/routes/` when the route group is cohesive.
 
-**New shared UI widget:**
-- Add to appropriate `client/src/widgets/<cards|charts|layout>/` subdirectory
-- Export from the `index.js` barrel in that directory
+**New Public Page:**
+- Primary code: `client/src/pages/main/<page-name>.jsx`.
+- Export: `client/src/pages/main/index.js`.
+- Route: Add a `layout: "main"` page entry in `client/src/routes.jsx`.
 
-**New server utility:**
-- Add to `server/utils/<name>.js` and import at the top of `server/index.js`
+**New Auth Flow:**
+- Primary code: `client/src/pages/auth/<flow-name>.jsx`.
+- Client auth state: Reuse `client/src/context/auth.jsx` and token helpers in `client/src/utils/constants.js`.
+- Backend: Add auth-rate-limited routes in `server/index.js` using `authRateLimit` and `ensureMongoConnected`.
 
-**New scientific microservice:**
-- Create `services/<service-name>/` with Dockerfile and app entry point
-- Add Docker Compose service to `docker-compose.yml`
-- Add proxy routes to `server/routes/scientificServices.js`
+**New API Endpoint:**
+- Primary code: Add to `server/index.js` for small additions matching existing monolithic route style.
+- Extracted router: Use `server/routes/<domainName>.js` when adding a cohesive service proxy or route family; mount it from `server/index.js`.
+- Middleware: Chain `ensureMongoConnected`, `authenticateToken`, `requireActiveUser`, `requireCompanyAdmin`, and/or `consumeSimulationToken()` as required.
+- Swagger: Add JSDoc/OpenAPI comments near route definitions in `server/index.js` when endpoints should appear in `/api-docs`.
 
-**Environment variables:**
-- Add to `.env.example` with documentation
-- Reference from `server/index.js` at startup (add to `REQUIRED_ENV` array if mandatory)
+**New Backend Utility:**
+- Shared integration helper: `server/utils/<name>.js`.
+- Server config helper: `server/config/<name>.js`.
+- Keep utilities independent of `server/index.js`; pass required data as parameters instead of importing server globals.
+
+**New External Scientific Service:**
+- Service implementation: `services/<service-name>/`.
+- Dockerfile/requirements: `services/<service-name>/Dockerfile`, `services/<service-name>/requirements.txt`.
+- Compose: Add service profile to `docker-compose.yml`.
+- API proxy: Add a focused router in `server/routes/` or extend `server/routes/scientificServices.js` if it belongs to the same scientific-service surface.
+- Frontend page: Add dashboard page under `client/src/pages/dashboard/` and route in `client/src/routes.jsx`.
+
+**New ADMET/Queue Work:**
+- API publishing: Reuse `server/utils/rabbitMQUtils.js`.
+- Worker logic: Add under `services/admet/`.
+- Callback contracts: Keep callback authentication aligned with `ADMET_CALLBACK_SECRET` handling in `server/index.js`.
+
+**New Deployment or Runtime Script:**
+- Root command: Add to root `package.json`.
+- Client-only command: Add to `client/package.json`.
+- Server-only command: Add to `server/package.json`.
+- Phase 6 rule: Preserve Bun default commands and npm/Node fallback commands where runtime/package migration risk exists.
+
+**Dependency Changes:**
+- Frontend dependency: Edit `client/package.json`.
+- Server dependency: Edit `server/package.json`.
+- Root orchestration dependency: Edit root `package.json`.
+- Lockfiles: Run `bun run lockfiles:refresh` and commit regenerated `bun.lock` and `package-lock.json` for every changed package root.
+- Phase 7 scope: Docker, CI, `check`, and test script migration are still next-scope work; do not silently convert those paths without updating the relevant docs/plans.
+
+**Utilities:**
+- Frontend API/auth helpers: `client/src/utils/`.
+- Frontend domain-specific helpers: `client/src/utils/<domain>/` or a focused file such as `client/src/utils/ligandUpload.js`.
+- Server integration helpers: `server/utils/`.
+- Root maintenance helpers: `scripts/`.
+
+## Special Directories
+
+**`client/dist/`:**
+- Purpose: Built frontend assets for unified production serving.
+- Generated: Yes.
+- Committed: Present in working tree; treat as build output and update only when deployment/build workflow requires it.
+
+**`client/node_modules/`, `server/node_modules/`, `node_modules/`:**
+- Purpose: Installed JavaScript dependencies for each package root.
+- Generated: Yes.
+- Committed: No.
+
+**`packages/dashboard-template/`:**
+- Purpose: Upstream dashboard reference.
+- Generated: No.
+- Committed: Yes.
+
+**`legacy/chem-beo-api/`:**
+- Purpose: Archived Chem API reference.
+- Generated: No.
+- Committed: Yes.
+
+**`spike/`:**
+- Purpose: Compatibility experiments and runtime evidence.
+- Generated: Mixed.
+- Committed: Yes.
+
+**`.planning/`:**
+- Purpose: GSD planning, codebase maps, phase records, requirements, roadmap, state.
+- Generated: Yes.
+- Committed: Yes.
+
+**`.github/workflows/`:**
+- Purpose: GitHub Actions automation.
+- Generated: No.
+- Committed: Yes.
+
+**`services/*`:**
+- Purpose: Optional Dockerized Python services and workers.
+- Generated: No.
+- Committed: Yes.
+
+---
+
+*Structure analysis: 2026-06-05*
