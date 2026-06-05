@@ -25,7 +25,7 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
 - [x] **Phase 4: Compatibility Spike + Baseline** - Empirically prove arm64 dep compatibility and capture Node performance baselines before committing to migration (completed 2026-06-04)
 - [x] **Phase 5: Server Runtime on Bun** - Run the Express API on Bun in dev and prod, with before/after RAM measurement gating the outcome (completed 2026-06-04)
 - [x] **Phase 6: Package Management** - Migrate root and client deps to bun install with Node fallback scripts preserved (completed 2026-06-05)
-- [ ] **Phase 7: Docker, CI/CD, and Scripts** - Ship oven/bun Docker image, Bun-powered Actions pipeline, and Bun test/check scripts
+- [x] **Phase 7: Docker, CI/CD, and Scripts** - Ship oven/bun Docker image, Bun-powered Actions pipeline, and Bun test/check scripts (completed 2026-06-05)
 
 ## Phase Details
 
@@ -112,7 +112,7 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
 
 **Wave 2** *(blocked on 07-01; autonomous:false — on-box VPS verification)*
 
-- [ ] 07-03-PLAN.md — Confirm/annotate deploy.yml + build & verify the oven/bun image on the Oracle arm64 VPS (/health 200) (OPS-02, OPS-01)
+- [x] 07-03-PLAN.md — Confirm/annotate deploy.yml + build & verify the oven/bun image on the Oracle arm64 VPS (/health 200) (OPS-02, OPS-01)
 
 ## Progress
 
@@ -124,7 +124,7 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
 | 4. Compatibility Spike + Baseline | v2 | 4/4 | Complete   | 2026-06-04 |
 | 5. Server Runtime on Bun | v2 | 3/3 | Complete   | 2026-06-04 |
 | 6. Package Management | v2 | 2/2 | Complete    | 2026-06-05 |
-| 7. Docker, CI/CD, and Scripts | v2 | 2/3 | In Progress|  |
+| 7. Docker, CI/CD, and Scripts | v2 | 3/3 | Complete   | 2026-06-05 |
 
 ---
 
