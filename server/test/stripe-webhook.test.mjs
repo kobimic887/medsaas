@@ -61,7 +61,7 @@ function buildEvent(sessionId, { username, companyId, credits, plan }) {
 
 async function postEvent(eventObj, { secret = WEBHOOK_SECRET } = {}) {
   const payload = JSON.stringify(eventObj);
-  const header = stripe.webhooks.generateTestHeaderString({ payload, secret });
+  const header = await stripe.webhooks.generateTestHeaderStringAsync({ payload, secret });
   const res = await fetch(`${BASE}/stripe/webhook`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Stripe-Signature': header },
