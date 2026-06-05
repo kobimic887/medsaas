@@ -104,7 +104,15 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
   3. The check, test:brand, and test:stripe scripts run to completion under Bun
   4. A documented rollback path reverts the Docker image and scripts to Node with a single change (one-line Dockerfile swap or equivalent)
 
-**Plans**: TBD
+**Plans**: 3 plans
+**Wave 1** *(parallel — no file overlap)*
+
+- [ ] 07-01-PLAN.md — Convert both Dockerfile stages to oven/bun + ROLLBACK.md single-change Node revert (OPS-01, OPS-04)
+- [ ] 07-02-PLAN.md — Bun-default check/test:brand/test:stripe scripts (+ async Stripe test-header fix) with :node fallbacks (OPS-03)
+
+**Wave 2** *(blocked on 07-01; autonomous:false — on-box VPS verification)*
+
+- [ ] 07-03-PLAN.md — Confirm/annotate deploy.yml + build & verify the oven/bun image on the Oracle arm64 VPS (/health 200) (OPS-02, OPS-01)
 
 ## Progress
 
@@ -116,8 +124,8 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
 | 4. Compatibility Spike + Baseline | v2 | 4/4 | Complete   | 2026-06-04 |
 | 5. Server Runtime on Bun | v2 | 3/3 | Complete   | 2026-06-04 |
 | 6. Package Management | v2 | 2/2 | Complete    | 2026-06-05 |
-| 7. Docker, CI/CD, and Scripts | v2 | 0/? | Not started | - |
+| 7. Docker, CI/CD, and Scripts | v2 | 0/3 | Planned | - |
 
 ---
 
-*Roadmap updated: 2026-06-05 — Phases 4–6 complete; Phase 7 (Docker, CI/CD, Scripts) is next*
+*Roadmap updated: 2026-06-05 — Phase 7 (Docker, CI/CD, Scripts) planned: 3 plans in 2 waves*
