@@ -45,6 +45,7 @@ jobs:
           cd ~/medsaas
           rm -rf src && mkdir -p src
           tar -xzf src.tar.gz -C src
+          cp src/docker-compose.box.yml docker-compose.box.yml
           rm -f src.tar.gz
           docker compose -f docker-compose.box.yml up -d --build
           docker image prune -f
