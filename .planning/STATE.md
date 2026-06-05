@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2
 milestone_name: — Bun Migration
 status: executing
-last_updated: "2026-06-05T07:03:37.931Z"
-last_activity: 2026-06-05 -- Phase 06 execution started
+last_updated: "2026-06-05T07:09:25Z"
+last_activity: 2026-06-05 -- Plan 06-01 completed
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 9
-  completed_plans: 7
-  percent: 50
+  completed_plans: 8
+  percent: 89
 ---
 
 # Project State: ChemBench
@@ -27,11 +27,11 @@ See: `.planning/PROJECT.md` (updated 2026-06-04)
 ## Current Position
 
 Phase: 06 (package-management) — EXECUTING
-Plan: 1 of 2
-Status: Executing Phase 06
-Last activity: 2026-06-05 -- Phase 06 execution started
+Plan: 2 of 2
+Status: Ready for Phase 06 Plan 02
+Last activity: 2026-06-05 -- Plan 06-01 completed
 
-Progress: [██████████] 100%
+Progress: [█████████░] 89%
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Progress: [██████████] 100%
 | Phase 05-server-runtime-on-bun P01 | 18 | 3 tasks | 5 files |
 | Phase 05-server-runtime-on-bun P02 | 35 | 3 tasks | 4 files |
 | Phase 05-server-runtime-on-bun P03 | 8 | 3 tasks | 3 files |
+| Phase 06-package-management P01 | 10 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -73,6 +74,8 @@ Progress: [██████████] 100%
 - Bun FSEvents watch requires inode change (readFile+writeFile); fs.utimes mtime-only update does not trigger reload on macOS — Phase 05 Plan 02
 - Gate PASS: Bun median idle RSS 115.1 MiB < 118.9 MiB Node baseline — Bun confirmed as default server runtime (MEAS-03) — Phase 05 Plan 03
 - README updated with confirmed gate outcome; both npm run start:bun and npm run start:node documented — Phase 05 Plan 03
+- Promoted concurrently to root devDependency at ^9.2.0 for root package orchestration — Phase 06 Plan 01
+- Bun package-root scripts use --cwd=<dir> because Bun 1.3.14 requires executable cwd spelling for install — Phase 06 Plan 01
 
 ### Active Blockers
 
@@ -86,4 +89,4 @@ Progress: [██████████] 100%
 ---
 
 *State initialized: 2026-06-03*
-*Last updated: 2026-06-04 — v2 roadmap finalized, Phase 4 ready to plan*
+*Last updated: 2026-06-05 — Phase 06 Plan 01 completed, Plan 02 ready*

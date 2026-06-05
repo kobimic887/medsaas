@@ -86,7 +86,7 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
 **Plans**: 2 plans
 **Wave 1**
 
-- [ ] 06-01-PLAN.md — Bun-default package scripts and dual lockfiles for root/client/server (PKG-01, PKG-02)
+- [x] 06-01-PLAN.md — Bun-default package scripts and dual lockfiles for root/client/server (PKG-01, PKG-02)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -115,9 +115,9 @@ Full archive: `.planning/milestones/v1-ROADMAP.md`
 | 3. CI/CD Pipeline | v1 | 1/1 | ✅ Complete | 2026-06-04 |
 | 4. Compatibility Spike + Baseline | v2 | 4/4 | Complete   | 2026-06-04 |
 | 5. Server Runtime on Bun | v2 | 3/3 | Complete   | 2026-06-04 |
-| 6. Package Management | v2 | 0/2 | Not started | - |
+| 6. Package Management | v2 | 1/2 | In Progress | - |
 | 7. Docker, CI/CD, and Scripts | v2 | 0/? | Not started | - |
 
 ---
 
-*Roadmap updated: 2026-06-04 — Phase 4 planned (4 plans, 3 waves)*
+*Roadmap updated: 2026-06-05 — Phase 06 Plan 01 completed*
