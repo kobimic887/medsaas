@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v2
 milestone_name: — Bun Migration
-status: verifying
-last_updated: "2026-06-05T07:35:18.220Z"
+status: "Phase 06 shipped — PR #4"
+last_updated: "2026-06-05T07:52:31.500Z"
 last_activity: 2026-06-05
 progress:
   total_phases: 4
@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-06-04)
 
 Phase: 7
 Plan: Not started
-Status: Phase complete — ready for verification
+Status: Phase 06 shipped — PR #4
 Last activity: 2026-06-05
 
 Progress: [██████████] 100%
