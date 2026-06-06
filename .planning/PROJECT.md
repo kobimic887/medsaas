@@ -8,6 +8,25 @@ ChemBench is a SaaS platform for chemistry laboratories to host branded digital 
 
 Labs and customers get a professional, focused tool for their chemistry work — not a rebranded demo with debug artifacts in the codebase.
 
+## Current Milestone: v3 Company Brand Colour
+
+**Goal:** Each company controls its own brand palette (logo-driven), replacing the hardcoded
+green and theming the dashboard, emails, and invites per-tenant.
+
+**Target features:**
+- Admin uploads a company logo (stored in MongoDB as a binary field — under the 16 MB BSON limit, GridFS not needed)
+- In-process palette extraction from that logo (`node-vibrant`/`sharp`) — no AI/OpenRouter/n8n
+- Admin can tweak/override the extracted palette (full palette + manual edit; the fallback when extraction returns garbage)
+- Runtime theming refactor: move the ~51 hardcoded green call-sites onto a company-driven CSS-variable mechanism so an arbitrary hex re-themes the dashboard
+- Email/invite theming: colour inlined per-send into email HTML (email clients strip CSS variables — a separate mechanism from the dashboard)
+- Branding set/managed in admin settings only (no colour step at signup)
+
+**Deferred (out of this milestone):** custom subdomain; website/domain colour scraping; signup-time colour entry.
+
+**Key risk:** Phase 1 must be a compatibility spike for `node-vibrant`/`sharp` under Bun on
+arm64 (native image bindings — the same class of constraint v2 was built around). Mirror the
+v2 spike-before-commit precedent.
+
 ## Current State
 
 **Shipped v2 — Bun Migration on 2026-06-05.** Bun is now the default runtime, package manager,
@@ -16,9 +35,12 @@ server runs on Bun (idle RSS measured below the Node baseline — MEAS-03 gate P
 via `bun install` with dual lockfiles, and the production `oven/bun:1.3.14-slim` arm64 image
 builds and serves `/health` 200 on the Oracle VPS via the deploy pipeline.
 
-**Next milestone (not yet started):** candidates are the **security/auth hardening** track
-(AUTH-V2 / SEC-V2 below) and the deferred **Vite→Bun bundler swap**. Define via
-`/gsd:new-milestone`.
+**v3 Phase 1 complete — Company Brand Colour compatibility proven:** `node-vibrant@4.0.4`
+and `sharp@0.34.5` install and extract raster and SVG-derived palettes under Bun in the native
+arm64 production container. Phase 2 Branding Management is next. The dashboard's brand colour
+still comes from ~14 Material Tailwind `color="green"` props plus ~37 hardcoded
+`green/emerald` Tailwind utility classes, so the core feature work remains a runtime
+CSS-variable refactor rather than a config swap.
 
 **Out of the v2 milestone (shipped scope):** Python microservices (admet, gromacs-api,
 glioblastoma-predictor) stayed as-is; the Vite→Bun bundler swap was deferred to a later milestone.
@@ -40,10 +62,14 @@ glioblastoma-predictor) stayed as-is; the Vite→Bun bundler swap was deferred t
 - ✓ Express API runs on Bun in dev + prod; before/after RAM gate PASS (Bun idle RSS < Node) — v2 (RUN-01–04, MEAS-02/03)
 - ✓ Dependencies install via `bun install` with committed `bun.lock`; Bun-default scripts + `:node` fallbacks; Vite build via Bun — v2 (PKG-01–03)
 - ✓ Production Docker image on `oven/bun` arm64; CI deploy builds on Bun; `check`/`test:brand`/`test:stripe` under Bun; one-change Node rollback — v2 (OPS-01–04)
+- ✓ `node-vibrant@4.0.4` + `sharp@0.34.5` install and extract structured raster/SVG-derived palettes under Bun on native linux/arm64 — v3 Phase 1 (COMPAT-01)
 
-### Active (next milestone — not yet defined)
+### Active (v3 — Company Brand Colour)
 
-None — v2 fully shipped. Run `/gsd:new-milestone` to scope the next set (see Future below).
+Requirements being defined in `.planning/REQUIREMENTS.md` (logo upload, in-process palette
+extraction, manual palette override, runtime CSS-variable theming refactor, email/invite
+inlined theming, admin-settings management). Phase 1 compatibility is complete; Phase 2
+implements branding management.
 
 ### Future (security/auth — separate milestone)
 
@@ -95,6 +121,11 @@ Currently on `main`, all v2 work committed and pushed.
 | Async Stripe crypto under Bun | Bun's SubtleCrypto is async-only; sync `constructEvent`/`generateTestHeaderString` throw | ✓ Done — `constructEventAsync` (webhook) + `generateTestHeaderStringAsync` (test), Phases 5 & 7 |
 | `bun build --target=bun` as the `check` syntax gate | Bun has no `node --check` equivalent; bundling resolves the full module graph | ✓ Done — Phase 7 (Node `check:node` retained) |
 | Production Docker image on `oven/bun:1.3.14-slim` (arm64), built on the box | Pinned tag proven on arm64 in spike; on-box build avoids QEMU/registry | ✓ Done — Phase 7; CI deploy + `/health` 200 verified on VPS |
+| v3 logo→palette via in-process image library, not an AI/LLM | `node-vibrant`/`sharp` extract dominant colours deterministically; OpenRouter/n8n add cost, latency, flakiness for marginal gain | ✓ Proven on native arm64 in v3 Phase 1 |
+| Logo stored in MongoDB binary field, not GridFS/object storage | Logos sit under the 16 MB BSON limit; no new infra or credentials (honours "no new deps" constraint) | — Planned (v3) |
+| v3 is a runtime theming refactor, not a CSS-variable swap | Dashboard green lives in ~14 Material Tailwind `color="green"` props + ~37 hardcoded `green/emerald` utility classes (compiled, not runtime-driven) | — Planned (v3) |
+| Email/invite colour inlined per-send, separate from dashboard | Email clients strip CSS variables; the dashboard CSS-variable path can't theme emails | — Planned (v3) |
+| `--reset-phase-numbers` for v3; archive v2 phase dirs first | Clean phase numbering for a new feature milestone; v2 phase dirs moved to `.planning/milestones/v2-phases/` to avoid `04-*` collision | ✓ Done — archived during new-milestone |
 
 ## Constraints
 
@@ -121,4 +152,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-06-05 after v2 — Bun Migration milestone*
+*Last updated: 2026-06-06 — completed v3 Phase 1 compatibility spike*

@@ -1,0 +1,16 @@
+# COMPAT-01 spike image — minimal oven/bun:1.3.14-slim (matches the production
+# Dockerfile base exactly) that installs node-vibrant + sharp and runs the
+# extraction spike once. Build context is the repo root:
+#   docker build -f spike/Dockerfile.vibrant -t medsaas:vibrant-spike .
+FROM oven/bun:1.3.14-slim
+
+WORKDIR /app
+
+# Throwaway dependency set (node-vibrant + sharp at confirmed Bun-compatible majors).
+COPY spike/vibrant-package.json ./package.json
+RUN bun install
+
+COPY spike/06-vibrant.ts ./
+COPY spike/fixtures ./fixtures
+
+CMD ["bun", "06-vibrant.ts"]
