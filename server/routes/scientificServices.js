@@ -22,7 +22,11 @@ async function proxyJson(req, res, targetUrl, options = {}) {
       ? await response.json()
       : await response.text();
 
-    return res.status(response.status).send(payload);
+    // Remap an upstream 401 to 502: the caller already passed our auth, so a
+    // 401 here means the SERVICE's credentials failed, not the user's session.
+    // Forwarding 401 verbatim would trip the client's auth interceptor and log
+    // the user out for an upstream problem.
+    return res.status(response.status === 401 ? 502 : response.status).send(payload);
   } catch (error) {
     console.error(`Proxy error for ${targetUrl}:`, error);
     return res.status(502).json({

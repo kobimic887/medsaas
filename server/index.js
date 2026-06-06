@@ -47,6 +47,11 @@ if (process.env.JWT_SECRET.length < 32) {
 }
 
 const JWT_SECRET = process.env.JWT_SECRET;
+// Session token lifetime. Override with JWT_EXPIRES_IN (any value accepted by
+// jsonwebtoken's `expiresIn`, e.g. '12h', '7d', '30d'). Defaults to 7 days so a
+// login doesn't silently die after 24h; the client also auto-redirects to
+// sign-in on a 401 when a token does expire.
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 // Treat the .env.example placeholder as "not configured" so the webhook fails
 // with a clear message instead of a confusing signature-verification error.
 const RAW_STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
@@ -1953,7 +1958,7 @@ app.post('/api/signin', authRateLimit, ensureMongoConnected, async (req, res) =>
     companyName: user.companyName || null,
     role: user.role || 'member'
   };
-  const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '1d' });
+  const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
   res.json({
     message: 'Signin successful',
     token,
@@ -2000,7 +2005,10 @@ app.post('/api/change-password', authRateLimit, ensureMongoConnected, authentica
     }
     const currentPasswordValid = await bcrypt.compare(currentPassword, user.password);
     if (!currentPasswordValid) {
-      return res.status(401).json({ error: 'Current password is incorrect' });
+      // 400, not 401: the session is valid; only the submitted currentPassword
+      // field is wrong. A 401 here would trip the client's auth interceptor and
+      // wrongly log the user out for a typo.
+      return res.status(400).json({ error: 'Current password is incorrect' });
     }
   }
 
@@ -2409,12 +2417,24 @@ app.get('/api/mol-price-stats', ensureMongoConnected, async (req, res) => {
   }
 });
 
+// Map an upstream proxy response status for relaying to the client. These routes
+// already ran authenticateToken, so a 401 from the upstream means the SERVER's
+// credentials to that service failed — surface it as 502 (Bad Gateway) rather
+// than forwarding 401, which would trip the client's auth interceptor and log
+// the authenticated user out for an upstream problem.
+function relayUpstreamStatus(status) {
+  return status === 401 ? 502 : status;
+}
+
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'No token provided' });
   jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ error: 'Invalid token' });
+    // 401 (not 403): the token is missing/expired/invalid, so the client should
+    // re-authenticate. Authorization failures (wrong role, disabled account, no
+    // tokens left) deliberately stay 403 — the client must NOT log out on those.
+    if (err) return res.status(401).json({ error: 'Invalid token' });
     req.user = user;
     next();
   });
@@ -3480,7 +3500,7 @@ app.get('/api/exact/:smiles', ensureMongoConnected, authenticateToken, async (re
       responseData = data;
     }
     
-    res.status(response.status);
+    res.status(relayUpstreamStatus(response.status));
     
     // Set appropriate content type based on response
     if (response.headers.get('content-type')) {
@@ -3550,7 +3570,7 @@ app.get('/api/all/:id_:pageSize', ensureMongoConnected, authenticateToken, async
       responseData = data;
     }
     
-    res.status(response.status);
+    res.status(relayUpstreamStatus(response.status));
     if (response.headers.get('content-type')) {
       res.setHeader('Content-Type', response.headers.get('content-type'));
     }
@@ -3613,7 +3633,7 @@ app.get('/api/id/:id_number', ensureMongoConnected, authenticateToken, async (re
       responseData = data;
     }
     
-    res.status(response.status);
+    res.status(relayUpstreamStatus(response.status));
     if (response.headers.get('content-type')) {
       res.setHeader('Content-Type', response.headers.get('content-type'));
     }
@@ -3688,7 +3708,7 @@ app.post('/api/api4/bas', ensureMongoConnected, authenticateToken, async (req, r
     let data;
     try { data = JSON.parse(text); } catch { data = text; }
 
-    res.status(response.status);
+    res.status(relayUpstreamStatus(response.status));
     if (response.headers.get('content-type')) {
       res.setHeader('Content-Type', response.headers.get('content-type'));
     }
@@ -3758,7 +3778,7 @@ app.post('/api/api4/structure', ensureMongoConnected, authenticateToken, async (
     let data;
     try { data = JSON.parse(text); } catch { data = text; }
 
-    res.status(response.status);
+    res.status(relayUpstreamStatus(response.status));
     if (response.headers.get('content-type')) {
       res.setHeader('Content-Type', response.headers.get('content-type'));
     }
@@ -3828,7 +3848,7 @@ app.post('/api/api4/substructure', ensureMongoConnected, authenticateToken, asyn
     let data;
     try { data = JSON.parse(text); } catch { data = text; }
 
-    res.status(response.status);
+    res.status(relayUpstreamStatus(response.status));
     if (response.headers.get('content-type')) {
       res.setHeader('Content-Type', response.headers.get('content-type'));
     }
@@ -3898,7 +3918,7 @@ app.post('/api/api4/similarity', ensureMongoConnected, authenticateToken, async 
     let data;
     try { data = JSON.parse(text); } catch { data = text; }
 
-    res.status(response.status);
+    res.status(relayUpstreamStatus(response.status));
     if (response.headers.get('content-type')) {
       res.setHeader('Content-Type', response.headers.get('content-type'));
     }
@@ -3968,7 +3988,7 @@ app.post('/api/api4/mw', ensureMongoConnected, authenticateToken, async (req, re
     let data;
     try { data = JSON.parse(text); } catch { data = text; }
 
-    res.status(response.status);
+    res.status(relayUpstreamStatus(response.status));
     if (response.headers.get('content-type')) {
       res.setHeader('Content-Type', response.headers.get('content-type'));
     }
@@ -4186,7 +4206,7 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
       ({ response, data } = await makeDiffDockRequest(ligand_raw));
     }
 
-    res.status(response.status);
+    res.status(relayUpstreamStatus(response.status));
     if (response.headers.get('content-type')) {
       res.setHeader('Content-Type', response.headers.get('content-type'));
     }

@@ -18,6 +18,42 @@ export const getAuthToken = () => {
   return localStorage.getItem('access_token') || localStorage.getItem('auth_token');
 };
 
+// Decode a JWT payload without verifying the signature (client-side only — used
+// purely to read `exp` so we don't mount authed pages with an already-dead token).
+export const decodeTokenPayload = (token) => {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const json = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+};
+
+// True if a token exists and its `exp` is in the future (with a small skew margin).
+export const hasValidToken = () => {
+  const payload = decodeTokenPayload(getAuthToken());
+  if (!payload || typeof payload.exp !== 'number') return false;
+  // 10s skew so a token that's about to expire is treated as already dead.
+  return payload.exp * 1000 > Date.now() + 10_000;
+};
+
+// Remove every auth-related key. Mirrors AuthContext.logout() for use outside React.
+export const clearAuthStorage = () => {
+  localStorage.removeItem('user_info');
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('auth_token');
+  localStorage.removeItem('user'); // legacy key
+};
+
 export const API_CONFIG = {
   hostname: RESOLVED_API_HOSTNAME,
   port: RESOLVED_API_PORT,
