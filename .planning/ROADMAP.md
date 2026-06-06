@@ -93,7 +93,7 @@ every layer. Full archive: `.planning/milestones/v2-ROADMAP.md`
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 1. Branding Cleanup | v1 | 1/1 | Complete   | 2026-06-06 |
+| 1. Branding Cleanup | v1 | 1/1 | Complete   | 2026-06-04 |
 | 2. Login Code Cleanup | v1 | 1/1 | ✅ Complete | 2026-06-04 |
 | 3. CI/CD Pipeline | v1 | 1/1 | ✅ Complete | 2026-06-04 |
 | 4. Compatibility Spike + Baseline | v2 | 4/4 | ✅ Complete | 2026-06-04 |

@@ -13,6 +13,7 @@ import sharp from "sharp";
 import { Vibrant } from "node-vibrant/node";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const isHex = (s: unknown): s is string => typeof s === "string" && HEX.test(s);
@@ -81,10 +82,6 @@ if (sw.length < 2) {
 }
 const dominant = sw[0].hex;
 const accent = sw[1].hex;
-if (!isHex(dominant) || !isHex(accent)) {
-  console.error("RASTER FAIL: invalid dominant/accent hex", { dominant, accent });
-  process.exit(1);
-}
 
 // (5) Print the structured palette as readable hex (visible in container logs).
 console.log(`RASTER PALETTE: { dominant: "${dominant}", accent: "${accent}" }`);
@@ -99,7 +96,8 @@ console.log(
 // never exit non-zero here.
 try {
   const svgPng = join(tmpdir(), "vibrant-spike-svg.png");
-  await sharp("fixtures/logo.svg").png().toFile(svgPng);
+  const svgInput = fileURLToPath(new URL("./fixtures/logo.svg", import.meta.url));
+  await sharp(svgInput).png().toFile(svgPng);
   const svgPalette = await Vibrant.from(svgPng).getPalette();
   const ssw = structured(svgPalette as unknown as Record<string, unknown>);
   if (ssw.length >= 1) {

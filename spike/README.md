@@ -1,6 +1,8 @@
 # Bun Compatibility Spike
 
-This directory contains throwaway compatibility scripts for Phase 4. The scripts are committed so Phase 5 can reuse the evidence and methodology, but they are not production entry points.
+This directory contains throwaway compatibility scripts for dependency and runtime
+spikes across milestones. The scripts preserve evidence and methodology for later
+feature phases, but they are not production entry points.
 
 ## Prerequisites
 
