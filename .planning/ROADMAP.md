@@ -52,7 +52,8 @@ every layer. Full archive: `.planning/milestones/v2-ROADMAP.md`
   1. Running the spike script inside the `oven/bun` arm64 container exits 0 with a non-empty palette object printed to stdout
   2. `bun install` with `node-vibrant` and `sharp` added completes without native-binding errors on linux/arm64
   3. A documented go/no-go decision exists: either both libraries are confirmed, or an alternative is chosen, before Phase 2 begins
-**Plans**: TBD
+**Plans**: 1 plan
+  - [ ] 01-01-PLAN.md — Prove node-vibrant/sharp install + extract a structured palette under Bun on arm64; record GO/NO-GO
 
 ### Phase 2: Branding Management
 **Goal**: Owner/admin can upload a company logo, see an automatically extracted palette, edit or set it manually, save it to MongoDB, and see the logo displayed in the dashboard chrome — with the admin settings page gated to owner/admin and members denied both in the UI and on the server
