@@ -4,7 +4,7 @@
 
 - ✅ **v1 — ChemBench Cleanup** — Phases 1–3 (shipped 2026-06-04)
 - ✅ **v2 — Bun Migration** — Phases 4–7 (shipped 2026-06-05)
-- 📋 **Next milestone** — not yet defined (`/gsd:new-milestone`)
+- 🚧 **v3 — Company Brand Colour** — Phases 1–4 (in progress)
 
 ## Phases
 
@@ -33,6 +33,61 @@ every layer. Full archive: `.planning/milestones/v2-ROADMAP.md`
 
 </details>
 
+### 🚧 v3 — Company Brand Colour (In Progress)
+
+**Milestone Goal:** Each company controls its own brand palette (logo-driven), replacing the hardcoded green and theming the dashboard, emails, and invites per-tenant.
+
+- [ ] **Phase 1: Compatibility Spike** - Prove `node-vibrant`/`sharp` installs and extracts a palette under Bun on linux/arm64 in `oven/bun` before any feature depends on it
+- [ ] **Phase 2: Branding Management** - Admin can upload a logo, extract and edit a palette, and persist branding per-company, gated to owner/admin
+- [ ] **Phase 3: Dashboard Theming Refactor** - The ~51 hardcoded green call-sites are migrated onto a runtime CSS-variable layer driven by the company palette
+- [ ] **Phase 4: Email Theming** - Branded emails use the company's colour, inlined per-send into the HTML
+
+## Phase Details
+
+### Phase 1: Compatibility Spike
+**Goal**: Prove that `node-vibrant` and `sharp` install under Bun on linux/arm64 in the `oven/bun` production container and can extract a colour palette from a sample logo image — before any feature code depends on the library
+**Depends on**: Nothing (first phase)
+**Requirements**: COMPAT-01
+**Success Criteria** (what must be TRUE):
+  1. Running the spike script inside the `oven/bun` arm64 container exits 0 with a non-empty palette object printed to stdout
+  2. `bun install` with `node-vibrant` and `sharp` added completes without native-binding errors on linux/arm64
+  3. A documented go/no-go decision exists: either both libraries are confirmed, or an alternative is chosen, before Phase 2 begins
+**Plans**: TBD
+
+### Phase 2: Branding Management
+**Goal**: Owner/admin can upload a company logo, see an automatically extracted palette, edit or set it manually, save it to MongoDB, and see the logo displayed in the dashboard chrome — with the admin settings page gated to owner/admin and members denied both in the UI and on the server
+**Depends on**: Phase 1
+**Requirements**: LOGO-01, LOGO-02, LOGO-03, LOGO-04, PALETTE-01, PALETTE-02, PALETTE-03, PALETTE-04, ADMIN-01, ADMIN-02, ADMIN-03
+**Success Criteria** (what must be TRUE):
+  1. An owner or admin can open a branding-settings page, upload a PNG/JPG/SVG logo, and see an automatically extracted palette offered for review
+  2. The admin can override any extracted colour or set the palette from scratch (no logo required) and save it; the palette persists after logout and redeploy
+  3. An invalid file (wrong type or oversized) is rejected immediately with a clear error message
+  4. The company's logo appears in the dashboard navbar/sidebar for all users of that company after upload
+  5. A member (non-admin) attempting to reach the branding-settings page or call the upload/palette API receives an access-denied response — neither the UI nor the server permits the action
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 3: Dashboard Theming Refactor
+**Goal**: The dashboard's brand colour is fully runtime-variable — the ~14 Material Tailwind `color="green"` props and ~37 `green/emerald` Tailwind utility classes are replaced with a CSS-variable mechanism fed by the logged-in user's company palette, and tenant colour isolation is guaranteed
+**Depends on**: Phase 2
+**Requirements**: THEME-01, THEME-02, THEME-03, THEME-04
+**Success Criteria** (what must be TRUE):
+  1. Logging in as a company with a custom palette (e.g. blue) shows all previously-green brand chrome (buttons, highlights, accents) in that company's colour, without a page reload
+  2. Logging in as a company with no custom palette shows the same green appearance as before v3 — the default fallback is visually identical to the current app
+  3. Changing company A's palette does not alter the colour seen by users of company B — tenants are visually isolated
+  4. No hardcoded `color="green"`, `green-`, or `emerald-` brand-colour occurrences remain in the migrated call-sites
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 4: Email Theming
+**Goal**: Branded emails sent by the platform (invite, verification, and other company-branded sends) use the company's saved brand colour, inlined directly into the email HTML per-send — separate from the CSS-variable dashboard mechanism
+**Depends on**: Phase 2
+**Requirements**: EMAIL-01, EMAIL-02
+**Success Criteria** (what must be TRUE):
+  1. An invite or verification email received by a user of a company with a custom palette contains the company's brand colour as an inline style attribute (not a CSS class or variable)
+  2. The same email for a company with no saved palette uses the default brand colour — no broken or unstyled fallback
+**Plans**: TBD
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -44,7 +99,11 @@ every layer. Full archive: `.planning/milestones/v2-ROADMAP.md`
 | 5. Server Runtime on Bun | v2 | 3/3 | ✅ Complete | 2026-06-04 |
 | 6. Package Management | v2 | 2/2 | ✅ Complete | 2026-06-05 |
 | 7. Docker, CI/CD, and Scripts | v2 | 3/3 | ✅ Complete | 2026-06-05 |
+| 1. Compatibility Spike | v3 | 0/TBD | Not started | - |
+| 2. Branding Management | v3 | 0/TBD | Not started | - |
+| 3. Dashboard Theming Refactor | v3 | 0/TBD | Not started | - |
+| 4. Email Theming | v3 | 0/TBD | Not started | - |
 
 ---
 
-*Roadmap updated: 2026-06-05 — v2 Bun Migration shipped (Phases 4–7); next milestone not yet defined*
+*Roadmap updated: 2026-06-06 — v3 Company Brand Colour milestone started (Phases 1–4)*

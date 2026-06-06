@@ -70,30 +70,30 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| COMPAT-01 | TBD | Pending |
-| LOGO-01 | TBD | Pending |
-| LOGO-02 | TBD | Pending |
-| LOGO-03 | TBD | Pending |
-| LOGO-04 | TBD | Pending |
-| PALETTE-01 | TBD | Pending |
-| PALETTE-02 | TBD | Pending |
-| PALETTE-03 | TBD | Pending |
-| PALETTE-04 | TBD | Pending |
-| THEME-01 | TBD | Pending |
-| THEME-02 | TBD | Pending |
-| THEME-03 | TBD | Pending |
-| THEME-04 | TBD | Pending |
-| EMAIL-01 | TBD | Pending |
-| EMAIL-02 | TBD | Pending |
-| ADMIN-01 | TBD | Pending |
-| ADMIN-02 | TBD | Pending |
-| ADMIN-03 | TBD | Pending |
+| COMPAT-01 | Phase 1 | Pending |
+| LOGO-01 | Phase 2 | Pending |
+| LOGO-02 | Phase 2 | Pending |
+| LOGO-03 | Phase 2 | Pending |
+| LOGO-04 | Phase 2 | Pending |
+| PALETTE-01 | Phase 2 | Pending |
+| PALETTE-02 | Phase 2 | Pending |
+| PALETTE-03 | Phase 2 | Pending |
+| PALETTE-04 | Phase 2 | Pending |
+| THEME-01 | Phase 3 | Pending |
+| THEME-02 | Phase 3 | Pending |
+| THEME-03 | Phase 3 | Pending |
+| THEME-04 | Phase 3 | Pending |
+| EMAIL-01 | Phase 4 | Pending |
+| EMAIL-02 | Phase 4 | Pending |
+| ADMIN-01 | Phase 2 | Pending |
+| ADMIN-02 | Phase 2 | Pending |
+| ADMIN-03 | Phase 2 | Pending |
 
 **Coverage:**
 - v3 requirements: 18 total
-- Mapped to phases: 0 (set during roadmap)
-- Unmapped: 18 ⚠️ (resolved by roadmapper)
+- Mapped to phases: 18
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-06*
-*Last updated: 2026-06-06 after initial v3 definition*
+*Last updated: 2026-06-06 — traceability filled during roadmap creation (18/18 mapped)*
