@@ -37,7 +37,7 @@ every layer. Full archive: `.planning/milestones/v2-ROADMAP.md`
 
 **Milestone Goal:** Each company controls its own brand palette (logo-driven), replacing the hardcoded green and theming the dashboard, emails, and invites per-tenant.
 
-- [ ] **Phase 1: Compatibility Spike** - Prove `node-vibrant`/`sharp` installs and extracts a palette under Bun on linux/arm64 in `oven/bun` before any feature depends on it
+- [x] **Phase 1: Compatibility Spike** - Prove `node-vibrant`/`sharp` installs and extracts a palette under Bun on linux/arm64 in `oven/bun` before any feature depends on it (completed 2026-06-06)
 - [ ] **Phase 2: Branding Management** - Admin can upload a logo, extract and edit a palette, and persist branding per-company, gated to owner/admin
 - [ ] **Phase 3: Dashboard Theming Refactor** - The ~51 hardcoded green call-sites are migrated onto a runtime CSS-variable layer driven by the company palette
 - [ ] **Phase 4: Email Theming** - Branded emails use the company's colour, inlined per-send into the HTML
@@ -53,7 +53,7 @@ every layer. Full archive: `.planning/milestones/v2-ROADMAP.md`
   2. `bun install` with `node-vibrant` and `sharp` added completes without native-binding errors on linux/arm64
   3. A documented go/no-go decision exists: either both libraries are confirmed, or an alternative is chosen, before Phase 2 begins
 **Plans**: 1 plan
-  - [ ] 01-01-PLAN.md — Prove node-vibrant/sharp install + extract a structured palette under Bun on arm64; record GO/NO-GO
+  - [x] 01-01-PLAN.md — Prove node-vibrant/sharp install + extract a structured palette under Bun on arm64; record GO/NO-GO
 
 ### Phase 2: Branding Management
 **Goal**: Owner/admin can upload a company logo, see an automatically extracted palette, edit or set it manually, save it to MongoDB, and see the logo displayed in the dashboard chrome — with the admin settings page gated to owner/admin and members denied both in the UI and on the server
@@ -93,7 +93,7 @@ every layer. Full archive: `.planning/milestones/v2-ROADMAP.md`
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 1. Branding Cleanup | v1 | 1/1 | ✅ Complete | 2026-06-04 |
+| 1. Branding Cleanup | v1 | 1/1 | Complete   | 2026-06-06 |
 | 2. Login Code Cleanup | v1 | 1/1 | ✅ Complete | 2026-06-04 |
 | 3. CI/CD Pipeline | v1 | 1/1 | ✅ Complete | 2026-06-04 |
 | 4. Compatibility Spike + Baseline | v2 | 4/4 | ✅ Complete | 2026-06-04 |
