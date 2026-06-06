@@ -35,10 +35,12 @@ server runs on Bun (idle RSS measured below the Node baseline — MEAS-03 gate P
 via `bun install` with dual lockfiles, and the production `oven/bun:1.3.14-slim` arm64 image
 builds and serves `/health` 200 on the Oracle VPS via the deploy pipeline.
 
-**Now starting v3 — Company Brand Colour:** per-tenant brand theming driven by a company logo
-upload. The dashboard's brand colour currently comes from ~14 Material Tailwind `color="green"`
-props plus ~37 hardcoded `green/emerald` Tailwind utility classes — compiled, not runtime-variable
-driven — so the core of v3 is a theming refactor onto a runtime CSS-variable layer, not a config swap.
+**v3 Phase 1 complete — Company Brand Colour compatibility proven:** `node-vibrant@4.0.4`
+and `sharp@0.34.5` install and extract raster and SVG-derived palettes under Bun in the native
+arm64 production container. Phase 2 Branding Management is next. The dashboard's brand colour
+still comes from ~14 Material Tailwind `color="green"` props plus ~37 hardcoded
+`green/emerald` Tailwind utility classes, so the core feature work remains a runtime
+CSS-variable refactor rather than a config swap.
 
 **Out of the v2 milestone (shipped scope):** Python microservices (admet, gromacs-api,
 glioblastoma-predictor) stayed as-is; the Vite→Bun bundler swap was deferred to a later milestone.
@@ -60,13 +62,14 @@ glioblastoma-predictor) stayed as-is; the Vite→Bun bundler swap was deferred t
 - ✓ Express API runs on Bun in dev + prod; before/after RAM gate PASS (Bun idle RSS < Node) — v2 (RUN-01–04, MEAS-02/03)
 - ✓ Dependencies install via `bun install` with committed `bun.lock`; Bun-default scripts + `:node` fallbacks; Vite build via Bun — v2 (PKG-01–03)
 - ✓ Production Docker image on `oven/bun` arm64; CI deploy builds on Bun; `check`/`test:brand`/`test:stripe` under Bun; one-change Node rollback — v2 (OPS-01–04)
+- ✓ `node-vibrant@4.0.4` + `sharp@0.34.5` install and extract structured raster/SVG-derived palettes under Bun on native linux/arm64 — v3 Phase 1 (COMPAT-01)
 
 ### Active (v3 — Company Brand Colour)
 
 Requirements being defined in `.planning/REQUIREMENTS.md` (logo upload, in-process palette
 extraction, manual palette override, runtime CSS-variable theming refactor, email/invite
-inlined theming, admin-settings management). Phase 1 is a `node-vibrant`/`sharp` Bun+arm64
-compatibility spike.
+inlined theming, admin-settings management). Phase 1 compatibility is complete; Phase 2
+implements branding management.
 
 ### Future (security/auth — separate milestone)
 
@@ -118,7 +121,7 @@ Currently on `main`, all v2 work committed and pushed.
 | Async Stripe crypto under Bun | Bun's SubtleCrypto is async-only; sync `constructEvent`/`generateTestHeaderString` throw | ✓ Done — `constructEventAsync` (webhook) + `generateTestHeaderStringAsync` (test), Phases 5 & 7 |
 | `bun build --target=bun` as the `check` syntax gate | Bun has no `node --check` equivalent; bundling resolves the full module graph | ✓ Done — Phase 7 (Node `check:node` retained) |
 | Production Docker image on `oven/bun:1.3.14-slim` (arm64), built on the box | Pinned tag proven on arm64 in spike; on-box build avoids QEMU/registry | ✓ Done — Phase 7; CI deploy + `/health` 200 verified on VPS |
-| v3 logo→palette via in-process image library, not an AI/LLM | `node-vibrant`/`sharp` extract dominant colours deterministically; OpenRouter/n8n add cost, latency, flakiness for marginal gain | — Planned (v3 Phase 1 spike) |
+| v3 logo→palette via in-process image library, not an AI/LLM | `node-vibrant`/`sharp` extract dominant colours deterministically; OpenRouter/n8n add cost, latency, flakiness for marginal gain | ✓ Proven on native arm64 in v3 Phase 1 |
 | Logo stored in MongoDB binary field, not GridFS/object storage | Logos sit under the 16 MB BSON limit; no new infra or credentials (honours "no new deps" constraint) | — Planned (v3) |
 | v3 is a runtime theming refactor, not a CSS-variable swap | Dashboard green lives in ~14 Material Tailwind `color="green"` props + ~37 hardcoded `green/emerald` utility classes (compiled, not runtime-driven) | — Planned (v3) |
 | Email/invite colour inlined per-send, separate from dashboard | Email clients strip CSS variables; the dashboard CSS-variable path can't theme emails | — Planned (v3) |
@@ -149,4 +152,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-06-06 — started v3 Company Brand Colour milestone*
+*Last updated: 2026-06-06 — completed v3 Phase 1 compatibility spike*

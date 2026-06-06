@@ -100,7 +100,7 @@ every layer. Full archive: `.planning/milestones/v2-ROADMAP.md`
 | 5. Server Runtime on Bun | v2 | 3/3 | ✅ Complete | 2026-06-04 |
 | 6. Package Management | v2 | 2/2 | ✅ Complete | 2026-06-05 |
 | 7. Docker, CI/CD, and Scripts | v2 | 3/3 | ✅ Complete | 2026-06-05 |
-| 1. Compatibility Spike | v3 | 0/TBD | Not started | - |
+| 1. Compatibility Spike | v3 | 1/1 | ✅ Complete | 2026-06-06 |
 | 2. Branding Management | v3 | 0/TBD | Not started | - |
 | 3. Dashboard Theming Refactor | v3 | 0/TBD | Not started | - |
 | 4. Email Theming | v3 | 0/TBD | Not started | - |

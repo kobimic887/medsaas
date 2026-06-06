@@ -9,7 +9,7 @@ Requirements for the Company Brand Colour milestone. Each maps to exactly one ro
 
 ### Compatibility (COMPAT)
 
-- [ ] **COMPAT-01**: The chosen palette-extraction library (`node-vibrant`/`sharp`) installs and extracts a palette from a sample logo under Bun on linux/arm64 in the `oven/bun` production container — proven before any feature code depends on it (mirrors the v2 spike-before-commit precedent)
+- [x] **COMPAT-01**: The chosen palette-extraction library (`node-vibrant`/`sharp`) installs and extracts a palette from a sample logo under Bun on linux/arm64 in the `oven/bun` production container — proven before any feature code depends on it (mirrors the v2 spike-before-commit precedent)
 
 ### Logo (LOGO)
 
@@ -70,7 +70,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| COMPAT-01 | Phase 1 | Pending |
+| COMPAT-01 | Phase 1 | Complete |
 | LOGO-01 | Phase 2 | Pending |
 | LOGO-02 | Phase 2 | Pending |
 | LOGO-03 | Phase 2 | Pending |
@@ -88,6 +88,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | ADMIN-01 | Phase 2 | Pending |
 | ADMIN-02 | Phase 2 | Pending |
 | ADMIN-03 | Phase 2 | Pending |
+| SUBDM-01 | Future milestone | Deferred |
+| SUBDM-02 | Future milestone | Deferred |
 
 **Coverage:**
 - v3 requirements: 18 total
