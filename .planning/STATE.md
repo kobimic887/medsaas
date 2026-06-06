@@ -4,7 +4,7 @@ milestone: v3
 milestone_name: Company Brand Colour
 status: executing
 last_updated: "2026-06-06T09:33:27.194Z"
-last_activity: 2026-06-06 -- Phase 01 complete; Phase 02 ready for planning
+last_activity: 2026-06-06 -- Phase 01 shipped in PR #5; Phase 02 ready for planning
 progress:
   total_phases: 4
   completed_phases: 1
@@ -28,8 +28,8 @@ See: `.planning/PROJECT.md` (updated 2026-06-06)
 
 Phase: 2
 Plan: Not started
-Status: Ready for planning
-Last activity: 2026-06-06 -- Phase 01 complete; Phase 02 ready for planning
+Status: Ready for planning (Phase 01 shipped in PR #5)
+Last activity: 2026-06-06 -- Phase 01 shipped in PR #5; Phase 02 ready for planning
 
 Progress: [██░░░░░░░░] 25%
 
