@@ -13,17 +13,17 @@ Requirements for the Company Brand Colour milestone. Each maps to exactly one ro
 
 ### Logo (LOGO)
 
-- [ ] **LOGO-01**: Owner/admin can upload a company logo image (PNG/JPG/SVG) from the admin branding settings
-- [ ] **LOGO-02**: An uploaded logo is stored in MongoDB (binary field on the company) and persists across sessions and deploys
-- [ ] **LOGO-03**: Logo uploads are validated for file type and size, and an invalid file is rejected with a clear error message
-- [ ] **LOGO-04**: A company's logo is displayed in the dashboard chrome (navbar/sidebar) for that company's users, alongside or in place of the text brand label
+- [x] **LOGO-01**: Owner/admin can upload a company logo image (PNG/JPG/SVG) from the admin branding settings
+- [x] **LOGO-02**: An uploaded logo is stored in MongoDB (binary field on the company) and persists across sessions and deploys
+- [x] **LOGO-03**: Logo uploads are validated for file type and size, and an invalid file is rejected with a clear error message
+- [x] **LOGO-04**: A company's logo is displayed in the dashboard chrome (navbar/sidebar) for that company's users, alongside or in place of the text brand label
 
 ### Palette (PALETTE)
 
-- [ ] **PALETTE-01**: On logo upload, the system automatically extracts a brand palette (dominant + accent colours) from the image in-process
-- [ ] **PALETTE-02**: Owner/admin can manually edit or override any colour in the extracted palette before saving
-- [ ] **PALETTE-03**: Owner/admin can set the brand palette manually without uploading a logo (fallback when there is no logo or extraction is poor)
-- [ ] **PALETTE-04**: A company's saved palette persists per-company in MongoDB and is loaded for that company's users
+- [x] **PALETTE-01**: On logo upload, the system automatically extracts a brand palette (dominant + accent colours) from the image in-process
+- [x] **PALETTE-02**: Owner/admin can manually edit or override any colour in the extracted palette before saving
+- [x] **PALETTE-03**: Owner/admin can set the brand palette manually without uploading a logo (fallback when there is no logo or extraction is poor)
+- [x] **PALETTE-04**: A company's saved palette persists per-company in MongoDB and is loaded for that company's users
 
 ### Theming (THEME)
 
@@ -39,9 +39,9 @@ Requirements for the Company Brand Colour milestone. Each maps to exactly one ro
 
 ### Admin (ADMIN)
 
-- [ ] **ADMIN-01**: Branding (logo + palette) is managed from an admin branding-settings page, gated to owner/admin via `requireCompanyAdmin`
-- [ ] **ADMIN-02**: Admin can preview how the palette looks before saving it
-- [ ] **ADMIN-03**: Members (non owner/admin) cannot upload a logo or change the palette — both UI and server enforce the restriction
+- [x] **ADMIN-01**: Branding (logo + palette) is managed from an admin branding-settings page, gated to owner/admin via `requireCompanyAdmin`
+- [x] **ADMIN-02**: Admin can preview how the palette looks before saving it
+- [x] **ADMIN-03**: Members (non owner/admin) cannot upload a logo or change the palette — both UI and server enforce the restriction
 
 ## Future Requirements
 
@@ -71,23 +71,23 @@ Which phases cover which requirements. Populated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | COMPAT-01 | Phase 1 | Complete |
-| LOGO-01 | Phase 2 | Pending |
-| LOGO-02 | Phase 2 | Pending |
-| LOGO-03 | Phase 2 | Pending |
-| LOGO-04 | Phase 2 | Pending |
-| PALETTE-01 | Phase 2 | Pending |
-| PALETTE-02 | Phase 2 | Pending |
-| PALETTE-03 | Phase 2 | Pending |
-| PALETTE-04 | Phase 2 | Pending |
+| LOGO-01 | Phase 2 | Complete |
+| LOGO-02 | Phase 2 | Complete |
+| LOGO-03 | Phase 2 | Complete |
+| LOGO-04 | Phase 2 | Complete |
+| PALETTE-01 | Phase 2 | Complete |
+| PALETTE-02 | Phase 2 | Complete |
+| PALETTE-03 | Phase 2 | Complete |
+| PALETTE-04 | Phase 2 | Complete |
 | THEME-01 | Phase 3 | Pending |
 | THEME-02 | Phase 3 | Pending |
 | THEME-03 | Phase 3 | Pending |
 | THEME-04 | Phase 3 | Pending |
 | EMAIL-01 | Phase 4 | Pending |
 | EMAIL-02 | Phase 4 | Pending |
-| ADMIN-01 | Phase 2 | Pending |
-| ADMIN-02 | Phase 2 | Pending |
-| ADMIN-03 | Phase 2 | Pending |
+| ADMIN-01 | Phase 2 | Complete |
+| ADMIN-02 | Phase 2 | Complete |
+| ADMIN-03 | Phase 2 | Complete |
 | SUBDM-01 | Future milestone | Deferred |
 | SUBDM-02 | Future milestone | Deferred |
 
@@ -98,4 +98,4 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 ---
 *Requirements defined: 2026-06-06*
-*Last updated: 2026-06-06 — traceability filled during roadmap creation (18/18 mapped)*
+*Last updated: 2026-06-09 — Phase 2 branding requirements verified complete*
