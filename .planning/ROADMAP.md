@@ -67,7 +67,7 @@ every layer. Full archive: `.planning/milestones/v2-ROADMAP.md`
   5. A member (non-admin) attempting to reach the branding-settings page or call the upload/palette API receives an access-denied response — neither the UI nor the server permits the action
 **Plans**: 3 plans
 **Wave 1**
-  - [ ] 02-01-PLAN.md — Secure branding persistence, palette extraction, and API coverage
+  - [x] 02-01-PLAN.md — Secure branding persistence, palette extraction, and API coverage
 **Wave 2** *(blocked on Wave 1 completion)*
   - [ ] 02-02-PLAN.md — Shared branding state and dashboard sidebar identity
 **Wave 3** *(blocked on Waves 1–2 completion)*
@@ -107,10 +107,10 @@ every layer. Full archive: `.planning/milestones/v2-ROADMAP.md`
 | 6. Package Management | v2 | 2/2 | ✅ Complete | 2026-06-05 |
 | 7. Docker, CI/CD, and Scripts | v2 | 3/3 | ✅ Complete | 2026-06-05 |
 | 1. Compatibility Spike | v3 | 1/1 | ✅ Complete | 2026-06-06 |
-| 2. Branding Management | v3 | 0/3 | Planned | - |
+| 2. Branding Management | v3 | 1/3 | In progress | - |
 | 3. Dashboard Theming Refactor | v3 | 0/TBD | Not started | - |
 | 4. Email Theming | v3 | 0/TBD | Not started | - |
 
 ---
 
-*Roadmap updated: 2026-06-09 — Phase 2 Branding Management planned (3 plans)*
+*Roadmap updated: 2026-06-09 — Phase 2 Branding Management plan 1 of 3 complete*
