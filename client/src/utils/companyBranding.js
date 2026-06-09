@@ -52,7 +52,10 @@ export async function buildLogoUploadPayload(file) {
   const extension = getExtension(file.name);
   const expectedType = MIME_BY_EXTENSION.get(extension);
   const suppliedType = (file.type || "").toLowerCase();
-  if (!expectedType || (suppliedType && suppliedType !== expectedType)) {
+  const acceptedTypes = expectedType === "image/jpeg"
+    ? new Set(["image/jpeg", "image/jpg"])
+    : new Set([expectedType]);
+  if (!expectedType || (suppliedType && !acceptedTypes.has(suppliedType))) {
     throw new Error("Choose a PNG, JPG, or SVG logo.");
   }
 

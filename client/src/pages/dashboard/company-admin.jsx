@@ -1,4 +1,5 @@
 import React from "react";
+import { Navigate } from "react-router-dom";
 import {
   Alert,
   Button,
@@ -16,11 +17,21 @@ import {
   ChartBarIcon,
   CheckIcon,
   ClipboardDocumentListIcon,
+  SwatchIcon,
   TrashIcon,
   UserPlusIcon,
   UsersIcon,
 } from "@heroicons/react/24/outline";
+import { BrandingPreview } from "@/components/BrandingPreview";
+import { useAuth } from "@/context/auth";
+import { useBranding } from "@/hooks/useBranding";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
+import {
+  buildLogoUploadPayload,
+  DEFAULT_BRAND_PALETTE,
+  isValidBrandHex,
+  normalizeBrandHex,
+} from "@/utils/companyBranding";
 import { buildLigandUploadPayload, MAX_LIGAND_FILE_SIZE_BYTES } from "@/utils/ligandUpload";
 
 const initialInviteForm = {
@@ -32,8 +43,16 @@ const initialInviteForm = {
 
 const tabs = [
   { key: "members", label: "Members", icon: UsersIcon },
+  { key: "branding", label: "Branding", icon: SwatchIcon },
   { key: "usage", label: "Usage", icon: ChartBarIcon },
   { key: "audit", label: "Audit", icon: ClipboardDocumentListIcon },
+];
+
+const paletteFields = [
+  { key: "primary", label: "Primary" },
+  { key: "accent", label: "Accent" },
+  { key: "light", label: "Light" },
+  { key: "dark", label: "Dark" },
 ];
 
 function formatDate(value) {
@@ -104,6 +123,16 @@ async function companyRequest(endpoint, options = {}) {
 }
 
 export function CompanyAdmin() {
+  const { isAdmin, isLoading: authLoading } = useAuth();
+  const canManageCompany = isAdmin();
+  const {
+    companyName,
+    palette: savedPalette,
+    logo: savedLogo,
+    brandingLoading,
+    brandingError,
+    refreshBranding,
+  } = useBranding();
   const [activeTab, setActiveTab] = React.useState("members");
   const [usageData, setUsageData] = React.useState(null);
   const [auditLogs, setAuditLogs] = React.useState([]);
@@ -131,6 +160,15 @@ export function CompanyAdmin() {
     status: "",
     limit: "100",
   });
+  const [brandingPalette, setBrandingPalette] = React.useState({ ...DEFAULT_BRAND_PALETTE });
+  const [brandingInitialized, setBrandingInitialized] = React.useState(false);
+  const [brandingDirty, setBrandingDirty] = React.useState(false);
+  const [extractingPalette, setExtractingPalette] = React.useState(false);
+  const [pendingLogoUpload, setPendingLogoUpload] = React.useState(null);
+  const [pendingLogoName, setPendingLogoName] = React.useState("");
+  const [logoPreviewUrl, setLogoPreviewUrl] = React.useState(null);
+  const [logoInputKey, setLogoInputKey] = React.useState(0);
+  const pendingLogoUrlRef = React.useRef(null);
 
   const showMessage = (type, text) => {
     setMessage({ type, text });
@@ -180,8 +218,134 @@ export function CompanyAdmin() {
   }, [loadAudit, loadUsage]);
 
   React.useEffect(() => {
-    refreshAll();
-  }, [refreshAll]);
+    if (!authLoading && canManageCompany) {
+      refreshAll();
+    }
+  }, [authLoading, canManageCompany, refreshAll]);
+
+  React.useEffect(() => {
+    if (brandingLoading || brandingDirty) return;
+    setBrandingPalette({
+      ...DEFAULT_BRAND_PALETTE,
+      ...(savedPalette || {}),
+    });
+    setLogoPreviewUrl(savedLogo?.dataUrl || null);
+    setBrandingInitialized(true);
+  }, [brandingDirty, brandingLoading, savedLogo, savedPalette]);
+
+  React.useEffect(() => () => {
+    if (pendingLogoUrlRef.current) {
+      URL.revokeObjectURL(pendingLogoUrlRef.current);
+    }
+  }, []);
+
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center gap-3 py-16">
+        <Spinner className="h-6 w-6" />
+        <Typography variant="small" color="gray">
+          Loading company data...
+        </Typography>
+      </div>
+    );
+  }
+
+  if (!canManageCompany) {
+    return <Navigate to="/dashboard/dashboardHome" replace />;
+  }
+
+  const replacePendingLogoPreview = (file) => {
+    if (pendingLogoUrlRef.current) {
+      URL.revokeObjectURL(pendingLogoUrlRef.current);
+    }
+    const nextUrl = file ? URL.createObjectURL(file) : null;
+    pendingLogoUrlRef.current = nextUrl;
+    setLogoPreviewUrl(nextUrl || savedLogo?.dataUrl || null);
+  };
+
+  const handleLogoSelection = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setExtractingPalette(true);
+    try {
+      const logoUpload = await buildLogoUploadPayload(file);
+      replacePendingLogoPreview(file);
+      setPendingLogoUpload(logoUpload);
+      setPendingLogoName(file.name);
+      setBrandingDirty(true);
+
+      try {
+        const result = await companyRequest("/company/branding/extract", {
+          method: "POST",
+          body: JSON.stringify({ logoUpload }),
+        });
+        setBrandingPalette({
+          ...DEFAULT_BRAND_PALETTE,
+          ...(result.palette || {}),
+        });
+      } catch {
+        showMessage(
+          "red",
+          "We could not extract colors from this logo. Enter the palette manually or choose another file.",
+        );
+      }
+    } catch (error) {
+      showMessage("red", error.message);
+      setLogoInputKey((value) => value + 1);
+    } finally {
+      setExtractingPalette(false);
+    }
+  };
+
+  const updateBrandingColor = (field, value) => {
+    setBrandingPalette((current) => ({
+      ...current,
+      [field]: value.toUpperCase(),
+    }));
+    setBrandingDirty(true);
+  };
+
+  const handleBrandingSave = async () => {
+    const palette = {};
+    for (const { key } of paletteFields) {
+      const normalized = normalizeBrandHex(brandingPalette[key]);
+      if (!normalized) return;
+      palette[key] = normalized;
+    }
+
+    setSaving("branding");
+    try {
+      const payload = { palette };
+      if (pendingLogoUpload) payload.logoUpload = pendingLogoUpload;
+      const result = await companyRequest("/company/branding", {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+      const refreshed = await refreshBranding();
+      const nextBranding = refreshed || result.branding;
+
+      if (pendingLogoUrlRef.current) {
+        URL.revokeObjectURL(pendingLogoUrlRef.current);
+        pendingLogoUrlRef.current = null;
+      }
+      setBrandingPalette({
+        ...DEFAULT_BRAND_PALETTE,
+        ...(nextBranding?.palette || palette),
+      });
+      setLogoPreviewUrl(nextBranding?.logo?.dataUrl || result.branding?.logo?.dataUrl || null);
+      setPendingLogoUpload(null);
+      setPendingLogoName("");
+      setLogoInputKey((value) => value + 1);
+      setBrandingDirty(false);
+      showMessage("green", "Branding saved.");
+      loadAudit().catch(() => {});
+    } catch (error) {
+      showMessage("red", `${error.message} Try again.`);
+    } finally {
+      setSaving("");
+    }
+  };
 
   const updateInviteForm = (field, value) => {
     setInviteForm((current) => ({ ...current, [field]: value }));
@@ -385,6 +549,12 @@ export function CompanyAdmin() {
   const members = usageData?.members || [];
   const monthlyCap = usage.monthlySimulationCap;
   const monthlyPercent = usage.monthlyUsagePercent ?? 0;
+  const brandingFieldErrors = Object.fromEntries(
+    paletteFields.map(({ key }) => [key, !isValidBrandHex(brandingPalette[key])]),
+  );
+  const hasBrandingErrors = Object.values(brandingFieldErrors).some(Boolean);
+  const brandingBusy = extractingPalette || saving === "branding";
+  const brandingCompanyName = company?.name || companyName || "Company";
 
   const statCards = [
     { label: "Monthly runs", value: formatNumber(usage.simulationsRun), sub: usage.monthKey || "Current month" },
@@ -703,6 +873,160 @@ export function CompanyAdmin() {
                 </CardBody>
               </Card>
             </div>
+          )}
+
+          {activeTab === "branding" && (
+            brandingLoading || !brandingInitialized ? (
+              <div className="flex items-center justify-center gap-3 py-16">
+                <Spinner className="h-6 w-6" />
+                <Typography variant="small" color="gray">
+                  Loading branding...
+                </Typography>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+                <div className="space-y-6 xl:col-start-1 xl:row-start-1">
+                  {brandingError && (
+                    <Alert color="red" className="text-sm">
+                      {brandingError} Try again.
+                    </Alert>
+                  )}
+
+                  <Card className="border border-blue-gray-100 shadow-sm">
+                    <CardHeader floated={false} shadow={false} className="rounded-none">
+                      <Typography variant="h5" color="blue-gray">
+                        Company logo
+                      </Typography>
+                    </CardHeader>
+                    <CardBody>
+                      {logoPreviewUrl ? (
+                        <div className="mb-6 rounded-xl border border-blue-gray-100 bg-blue-gray-50/40 p-5">
+                          <img
+                            src={logoPreviewUrl}
+                            alt={`${brandingCompanyName} logo`}
+                            className="mx-auto h-20 w-auto max-w-[240px] object-contain"
+                          />
+                          <Typography variant="small" color="gray" className="mt-3 text-center">
+                            {pendingLogoName || savedLogo?.fileName || "Saved company logo"}
+                          </Typography>
+                        </div>
+                      ) : (
+                        <div className="mb-6 rounded-xl border border-dashed border-blue-gray-200 bg-blue-gray-50/40 px-6 py-12 text-center">
+                          <Typography variant="h6" color="blue-gray">
+                            No company logo yet
+                          </Typography>
+                          <Typography variant="small" color="gray" className="mx-auto mt-2 max-w-lg font-normal">
+                            Upload a PNG, JPG, or SVG logo to extract a starting palette, or enter colors manually.
+                          </Typography>
+                        </div>
+                      )}
+
+                      <label htmlFor="company-logo-input" className="mb-2 block text-sm font-medium text-blue-gray-700">
+                        Choose logo
+                      </label>
+                      <input
+                        id="company-logo-input"
+                        key={logoInputKey}
+                        type="file"
+                        accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml"
+                        className="min-h-[44px] w-full rounded-md border border-blue-gray-200 px-3 py-2 text-sm text-blue-gray-700"
+                        onChange={handleLogoSelection}
+                        disabled={brandingBusy}
+                      />
+                      <Typography variant="small" color="gray" className="mt-2 font-normal">
+                        PNG, JPG, or SVG. Maximum 5 MB.
+                      </Typography>
+                      {extractingPalette && (
+                        <div className="mt-4 flex items-center gap-2">
+                          <Spinner className="h-4 w-4" />
+                          <Typography variant="small" color="blue-gray">
+                            Extracting palette...
+                          </Typography>
+                        </div>
+                      )}
+                    </CardBody>
+                  </Card>
+
+                  <Card className="border border-blue-gray-100 shadow-sm">
+                    <CardHeader floated={false} shadow={false} className="rounded-none">
+                      <Typography variant="h5" color="blue-gray">
+                        Brand palette
+                      </Typography>
+                    </CardHeader>
+                    <CardBody>
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        {paletteFields.map(({ key, label }) => {
+                          const normalizedValue = normalizeBrandHex(brandingPalette[key]);
+                          return (
+                            <div key={key}>
+                              <label
+                                htmlFor={`branding-${key}-text`}
+                                className="mb-2 block text-sm font-medium text-blue-gray-700"
+                              >
+                                {label}
+                              </label>
+                              <div className="flex items-center gap-3">
+                                <input
+                                  type="color"
+                                  aria-label={`${label} color picker`}
+                                  value={normalizedValue || DEFAULT_BRAND_PALETTE[key]}
+                                  onChange={(event) => updateBrandingColor(key, event.target.value)}
+                                  className="h-11 w-11 shrink-0 cursor-pointer rounded-lg border border-blue-gray-200 bg-white p-1"
+                                  disabled={saving === "branding"}
+                                />
+                                <Input
+                                  id={`branding-${key}-text`}
+                                  label={`${label} hex`}
+                                  value={brandingPalette[key]}
+                                  onChange={(event) => updateBrandingColor(key, event.target.value)}
+                                  className="font-mono uppercase"
+                                  error={brandingFieldErrors[key]}
+                                  disabled={saving === "branding"}
+                                />
+                              </div>
+                              {brandingFieldErrors[key] && (
+                                <Typography variant="small" color="red" className="mt-1 font-normal">
+                                  Enter a color as #RRGGBB.
+                                </Typography>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </CardBody>
+                  </Card>
+                </div>
+
+                <div className="xl:col-start-2 xl:row-span-2 xl:row-start-1">
+                  <div className="xl:sticky xl:top-24">
+                    <BrandingPreview
+                      companyName={brandingCompanyName}
+                      logoSrc={logoPreviewUrl}
+                      palette={brandingPalette}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between xl:col-start-1">
+                  <Typography variant="small" color="gray" className="font-normal">
+                    {brandingDirty ? "You have unsaved branding changes." : "Branding is up to date."}
+                  </Typography>
+                  <Button
+                    type="button"
+                    className="flex w-full items-center justify-center gap-2 !bg-[#b4b239] sm:w-auto"
+                    onClick={handleBrandingSave}
+                    disabled={
+                      !brandingDirty
+                      || hasBrandingErrors
+                      || brandingBusy
+                    }
+                  >
+                    {saving === "branding" ? <Spinner className="h-4 w-4" /> : <CheckIcon className="h-4 w-4" />}
+                    {saving === "branding" ? "Saving..." : "Save branding"}
+                  </Button>
+                </div>
+              </div>
+            )
           )}
 
           {activeTab === "usage" && (
