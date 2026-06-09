@@ -53,7 +53,7 @@ last_mapped_commit: 1a703a98234dd0b9b66866ec31d4d9a1a6455b55
 ## Known Bugs
 
 **Forgot-password flow is a dead link:**
-- Symptoms: The sign-in form renders `Forgot password?` as `href="#"` with no route or handler.
+- Symptoms: The sign-in form renders `Forgot password?` as `href="#"` with no route or handler. The server endpoints exist (`/api/password-reset/request`, `/api/password-reset/confirm` in `server/index.js`) but no client page calls them.
 - Files: `client/src/pages/auth/sign-in.jsx`, `.planning/REQUIREMENTS.md`
 - Trigger: Open the sign-in page and click `Forgot password?`.
 - Workaround: None in the UI. This is tracked as `AUTH-V2-01` for a future milestone.
@@ -239,7 +239,7 @@ last_mapped_commit: 1a703a98234dd0b9b66866ec31d4d9a1a6455b55
 ## Missing Critical Features
 
 **Password reset:**
-- Problem: Forgot-password UI exists but has no implementation.
+- Problem: Server endpoints are implemented (`/api/password-reset/request|confirm`), but the client has no forgot/reset pages and the sign-in link is dead.
 - Blocks: Users cannot recover accounts through self-service.
 
 **Bun-powered production ops:**

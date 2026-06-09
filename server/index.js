@@ -809,6 +809,10 @@ function toCompanySlug(name) {
     .replace(/^-+|-+$/g, '');
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function buildTenantFilter(user) {
   if (user?.companyId) {
     return { companyId: user.companyId };
@@ -1558,6 +1562,9 @@ app.get('/checkout-session/:sessionId', ensureMongoConnected, authenticateToken,
  *                 type: string
  *               email:
  *                 type: string
+ *               organization:
+ *                 type: string
+ *                 description: Company name (required) — drives multi-tenant branding
  *               phoneNumber:
  *                 type: string
  *                 description: Optional phone number for contact
@@ -1572,7 +1579,11 @@ app.get('/checkout-session/:sessionId', ensureMongoConnected, authenticateToken,
  *         description: Signup successful
  */
 app.post('/api/signup', authRateLimit, ensureMongoConnected, async (req, res) => {
-  const { username, password, email, organization, phoneNumber, shippingAddress, billingAddress } = req.body;
+  const { password, phoneNumber, shippingAddress, billingAddress, organization } = req.body;
+  // Trim identity fields: stray whitespace from autofill/mobile keyboards
+  // otherwise gets stored verbatim and makes signin impossible.
+  const username = typeof req.body.username === 'string' ? req.body.username.trim() : '';
+  const email = typeof req.body.email === 'string' ? req.body.email.trim() : '';
   if (!username || !password || !email || !organization) {
     return res.status(400).json({ error: 'Username, password, email, and company name are required' });
   }
@@ -1587,7 +1598,12 @@ app.post('/api/signup', authRateLimit, ensureMongoConnected, async (req, res) =>
     return res.status(400).json({ error: 'Password must be at least 8 characters and include uppercase, lowercase, digit, and special character.' });
   }
 
-  const existing = await usersCollection.findOne({ $or: [{ username }, { email }] });
+  const existing = await usersCollection.findOne({
+    $or: [
+      { username },
+      { email: { $regex: `^${escapeRegExp(email)}$`, $options: 'i' } }
+    ]
+  });
   if (existing) return res.status(409).json({ error: 'User or email already exists' });
 
   let company = await companiesCollection.findOne({ slug: companySlug });
@@ -1663,12 +1679,33 @@ app.post('/api/signup', authRateLimit, ensureMongoConnected, async (req, res) =>
   if (cleanedShipping) insertDoc.shippingAddress = cleanedShipping;
   if (cleanedBilling) insertDoc.billingAddress = cleanedBilling;
 
-  await usersCollection.insertOne(insertDoc);
+  const insertResult = await usersCollection.insertOne(insertDoc);
 
   // Email verification is disabled (non-prod): accounts are created already
-  // verified, so the user can sign in immediately — no verification email sent.
+  // verified, so the user is signed in immediately — same token/user shape
+  // as /api/signin so the client can log in without a second round trip.
+  const tokenPayload = {
+    username,
+    email,
+    userId: insertResult.insertedId.toString(),
+    companyId,
+    companyName: company.name,
+    role: userRole
+  };
+  const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
   res.json({
-    message: 'Signup successful. You can now sign in.',
+    message: 'Signup successful.',
+    token,
+    user: {
+      username,
+      email,
+      companyId,
+      companyName: company.name,
+      role: userRole,
+      simulationTokens: insertDoc.simulationTokens,
+      verified: true,
+      mustChangePassword: false
+    },
     company: { id: companyId, name: company.name },
     role: userRole
   });
@@ -1935,10 +1972,20 @@ app.post('/api/password-reset/confirm', authRateLimit, ensureMongoConnected, asy
  *         description: Signin successful
  */
 app.post('/api/signin', authRateLimit, ensureMongoConnected, async (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
+  const { password } = req.body;
+  // Identifier may be a username or an email; trim it and match email
+  // case-insensitively so autofill quirks don't lock users out.
+  const identifier = typeof req.body.username === 'string' ? req.body.username.trim() : '';
+  if (!identifier || !password) return res.status(400).json({ error: 'Username and password required' });
+  // Whitespace-tolerant regexes also match legacy records stored with padding
+  // before signup started trimming inputs.
+  const idPattern = `^\\s*${escapeRegExp(identifier)}\\s*$`;
   const user = await usersCollection.findOne({
-    $or: [{ username }, { email: username }]
+    $or: [
+      { username: identifier },
+      { username: { $regex: idPattern } },
+      { email: { $regex: idPattern, $options: 'i' } }
+    ]
   });
   if (!user) return res.status(401).json({ error: 'Invalid credentials' });
   if (user.active === false) return res.status(403).json({ error: 'User account is disabled' });

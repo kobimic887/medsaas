@@ -131,7 +131,7 @@ last_mapped_commit: 1a703a98234dd0b9b66866ec31d4d9a1a6455b55
 ### Authentication and Tenant Path
 
 1. Auth pages submit signup/signin requests to `/api/signup` and `/api/signin` (`client/src/pages/auth/sign-up.jsx`, `client/src/pages/auth/sign-in.jsx`).
-2. `server/index.js` validates input, hashes passwords with bcrypt, writes users/companies to MongoDB, and issues JWTs.
+2. `server/index.js` validates input (username/email trimmed; email matched case-insensitively), hashes passwords with bcrypt, writes users/companies to MongoDB, and issues JWTs. Both endpoints return the same `{ token, user }` payload; signup signs the new user in immediately (email verification is disabled in non-prod) and the client redirects to the dashboard.
 3. Client auth helpers store tokens and user info in localStorage (`client/src/context/auth.jsx`, `client/src/utils/constants.js`).
 4. Protected API routes call `authenticateToken`, then optional `requireActiveUser` or `requireCompanyAdmin` in `server/index.js`.
 5. Tenant filtering uses `companyId` when present, otherwise falls back to username-scoped records.

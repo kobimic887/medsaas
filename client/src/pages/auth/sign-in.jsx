@@ -22,7 +22,7 @@ export function SignIn() {
       const res = await fetch(API_CONFIG.buildApiUrl('/signin'), {
         method: "POST",
         headers: { "Content-Type": "application/json", accept: "*/*" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username: username.trim(), password }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Signin failed");

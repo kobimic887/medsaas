@@ -6,9 +6,10 @@ import {
   Button,
   Typography,
 } from "@material-tailwind/react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { API_CONFIG } from "@/utils/constants";
 import { useBranding } from "@/hooks/useBranding";
+import { useAuth } from "@/context/auth";
 
 export function SignUp() {
   const [email, setEmail] = useState("");
@@ -23,6 +24,8 @@ export function SignUp() {
   const [loading, setLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const { brandName, platformName } = useBranding(organization);
+  const { login } = useAuth();
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -44,11 +47,11 @@ export function SignUp() {
       const res = await fetch(API_CONFIG.buildApiUrl('/signup'), {
         method: "POST",
         headers: { "Content-Type": "application/json", accept: "*/*" },
-        body: JSON.stringify({ 
-          username, 
-          password, 
-          email, 
-          organization,
+        body: JSON.stringify({
+          username: username.trim(),
+          password,
+          email: email.trim(),
+          organization: organization.trim(),
           phoneNumber,
           shippingAddress,
           billingAddress
@@ -57,6 +60,13 @@ export function SignUp() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Signup failed");
       setSuccess(true);
+      if (data.token && data.user) {
+        const loginResult = login(data.user, data.token);
+        if (loginResult.success) {
+          navigate("/dashboard/controlpanel");
+          return;
+        }
+      }
     } catch (err) {
       setError(err.message);
     } finally {
