@@ -5,6 +5,7 @@ import { BrowserRouter } from "react-router-dom";
 import { ThemeProvider } from "@material-tailwind/react";
 import { MaterialTailwindControllerProvider } from "@/context";
 import { AuthProvider } from "@/context/auth";
+import { BrandingProvider } from "@/context/branding";
 import { BlogProvider } from "@/context/blog";
 import { installAuthInterceptor } from "@/utils/authInterceptor";
 import "./tailwind.css";
@@ -20,9 +21,11 @@ ReactDOM.createRoot(document.getElementById("root")).render(
       <ThemeProvider>
         <MaterialTailwindControllerProvider>
           <AuthProvider>
-            <BlogProvider>
-              <App />
-            </BlogProvider>
+            <BrandingProvider>
+              <BlogProvider>
+                <App />
+              </BlogProvider>
+            </BrandingProvider>
           </AuthProvider>
         </MaterialTailwindControllerProvider>
       </ThemeProvider>
