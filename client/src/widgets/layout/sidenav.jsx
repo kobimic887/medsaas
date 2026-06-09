@@ -1,8 +1,8 @@
+import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
 import { Link, NavLink } from "react-router-dom";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import {
-  Avatar,
   Button,
   IconButton,
   Typography,
@@ -13,12 +13,19 @@ import { useAuth } from "@/context/auth";
 export function Sidenav({ brandImg, brandName, routes }) {
   const [controller, dispatch] = useMaterialTailwindController();
   const { isAdmin } = useAuth();
+  const [brandImageFailed, setBrandImageFailed] = useState(false);
   const { sidenavColor, sidenavType, openSidenav } = controller;
   const sidenavTypes = {
     dark: "bg-gradient-to-br from-gray-800 to-gray-900",
     white: "bg-white shadow-sm",
     transparent: "bg-transparent",
   };
+
+  useEffect(() => {
+    setBrandImageFailed(false);
+  }, [brandImg]);
+
+  const showBrandImage = Boolean(brandImg) && !brandImageFailed;
 
   return (
     <>
@@ -38,7 +45,15 @@ export function Sidenav({ brandImg, brandName, routes }) {
       >
         {/* Sidebar Header */}
         <div id="sidebar-header" className="relative z-50">
-          <Link to="/" className="py-6 px-8 text-center">
+          <Link to="/" className="flex min-h-[104px] flex-col items-center justify-center gap-2 px-8 py-5 text-center">
+            {showBrandImage && (
+              <img
+                src={brandImg}
+                alt={`${brandName} logo`}
+                className="h-12 w-auto max-w-[160px] object-contain"
+                onError={() => setBrandImageFailed(true)}
+              />
+            )}
             <Typography
               variant="h6"
               color={sidenavType === "dark" ? "white" : "blue-gray"}
@@ -113,7 +128,7 @@ export function Sidenav({ brandImg, brandName, routes }) {
 }
 
 Sidenav.defaultProps = {
-  brandImg: "/img/logo-ct.png",
+  brandImg: null,
   brandName: "MedSaaS",
 };
 

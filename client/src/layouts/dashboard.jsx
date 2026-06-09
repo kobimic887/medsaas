@@ -11,7 +11,7 @@ import { useBranding } from "@/hooks/useBranding";
 export function Dashboard() {
   const [controller] = useMaterialTailwindController();
   const { openSidenav } = controller;
-  const { brandName } = useBranding();
+  const { brandName, logo } = useBranding();
 
   return (
     <div id="dashboard-layout" className="min-h-screen bg-blue-gray-50/50 flex">
@@ -19,7 +19,7 @@ export function Dashboard() {
       <div id="sidebar-container" className="relative">
         <Sidenav
           routes={routes}
-          brandImg="/img/logo-ct.png"
+          brandImg={logo?.dataUrl || null}
           brandName={brandName}
         />
       </div>
