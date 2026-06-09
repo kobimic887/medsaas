@@ -240,7 +240,9 @@ export function serializeCompanyBranding(company) {
   return {
     palette,
     logo,
-    isCustom: Boolean(savedBranding.palette || logo),
+    isCustom: typeof savedBranding.isCustom === 'boolean'
+      ? savedBranding.isCustom
+      : Boolean(savedBranding.palette || logo),
     updatedAt: savedBranding.updatedAt || null
   };
 }

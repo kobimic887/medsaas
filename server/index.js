@@ -23,6 +23,12 @@ import { getBrandName, getPlatformName, getPlatformWebsiteUrl } from './config/b
 import { sendTitanEmail, testEmailConfiguration } from './utils/emailService.js';
 import { validateEmailCredentials, getTitanMailHelp } from './utils/emailDebug.js';
 import { createAdmetTask, getQueueStatus, rabbitMQHealthCheck } from './utils/rabbitMQUtils.js';
+import {
+  extractBrandPalette,
+  normalizeBrandPalette,
+  parseAndNormalizeLogoUpload,
+  serializeCompanyBranding
+} from './utils/companyBranding.js';
 import scientificServicesRouter from './routes/scientificServices.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -124,7 +130,7 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
 
 const allowedOrigins = new Set([APP_BASE_URL, FRONTEND_URL].filter(Boolean));
 
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({ limit: '8mb' }));
 app.use(cors({
   origin(origin, callback) {
     if (!origin || allowedOrigins.size === 0 || allowedOrigins.has(origin)) {
@@ -987,7 +993,12 @@ async function getCompanyRecord(companyId) {
     companyId: normalizedCompanyId,
     usagePolicy: normalizeUsagePolicy(company.usagePolicy || normalizedUsagePolicy),
     monthlyUsage: normalizeMonthlyUsage(company.monthlyUsage || normalizedMonthlyUsage),
-    ligandServiceConfig: normalizeLigandServiceConfig(company.ligandServiceConfig || normalizedLigandServiceConfig)
+    ligandServiceConfig: normalizeLigandServiceConfig(company.ligandServiceConfig || normalizedLigandServiceConfig),
+    branding: {
+      ...(company.branding || {}),
+      palette: normalizeBrandPalette(company.branding?.palette || {}),
+      isCustom: Boolean(company.branding?.palette || company.branding?.logo)
+    }
   };
 }
 
@@ -3030,6 +3041,98 @@ app.post('/api/validate-token', ensureMongoConnected, async (req, res) => {
       }
     });
   });
+});
+
+app.get('/api/company/branding', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+  try {
+    const company = await getCompanyRecord(req.user.companyId);
+    if (!company) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+    res.json({ branding: serializeCompanyBranding(company) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/company/branding/extract', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (req, res) => {
+  try {
+    const company = await getCompanyRecord(req.user.companyId);
+    if (!company) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+    if (company.active === false) {
+      return res.status(403).json({ error: 'Company is disabled' });
+    }
+
+    try {
+      const normalizedLogo = await parseAndNormalizeLogoUpload(req.body?.logoUpload);
+      const palette = await extractBrandPalette(normalizedLogo.data);
+      return res.json({ palette });
+    } catch (validationError) {
+      return res.status(400).json({ error: validationError.message });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.patch('/api/company/branding', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (req, res) => {
+  try {
+    const company = await getCompanyRecord(req.user.companyId);
+    if (!company) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+    if (company.active === false) {
+      return res.status(403).json({ error: 'Company is disabled' });
+    }
+
+    const paletteFields = ['primary', 'accent', 'light', 'dark'];
+    if (
+      !req.body?.palette
+      || paletteFields.some((field) => !Object.prototype.hasOwnProperty.call(req.body.palette, field))
+    ) {
+      return res.status(400).json({ error: 'A complete primary, accent, light, and dark palette is required' });
+    }
+
+    let palette;
+    let normalizedLogo = null;
+    try {
+      palette = normalizeBrandPalette(req.body.palette);
+      if (Object.prototype.hasOwnProperty.call(req.body, 'logoUpload')) {
+        normalizedLogo = await parseAndNormalizeLogoUpload(req.body.logoUpload);
+      }
+    } catch (validationError) {
+      return res.status(400).json({ error: validationError.message });
+    }
+
+    const updatedAt = new Date();
+    const branding = { palette, updatedAt };
+    const logo = normalizedLogo || company.branding?.logo || null;
+    if (logo) {
+      branding.logo = logo;
+    }
+
+    await companiesCollection.updateOne(
+      { companyId: req.user.companyId },
+      { $set: { branding, updatedAt } }
+    );
+
+    await recordAuditEvent(req, 'company.branding.update', {
+      targetType: 'company',
+      targetId: req.user.companyId,
+      updatedFields: normalizedLogo ? ['palette', 'logo'] : ['palette'],
+      logoFileName: normalizedLogo?.fileName || null,
+      logoSizeBytes: normalizedLogo?.sizeBytes || null
+    });
+
+    res.json({
+      message: 'Branding saved',
+      branding: serializeCompanyBranding({ branding })
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.get('/api/company/usage', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (req, res) => {
