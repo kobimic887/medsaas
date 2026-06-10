@@ -18,6 +18,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dns from 'dns/promises';
 import net from 'net';
+import os from 'os';
 
 // Import email templates
 import { generateVerificationEmailHTML } from './utils/emailTemplates.js';
@@ -353,7 +354,7 @@ app.get('/', (req, res) => {
  *       200:
  *         description: Health status
  */
-app.get('/tanimoto/health', authenticateToken, async (req, res) => {
+app.get('/tanimoto/health', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const response = await axios.get(`${TANIMOTO_API_BASE}/health`);
     res.json(response.data);
@@ -379,7 +380,7 @@ app.get('/tanimoto/health', authenticateToken, async (req, res) => {
  *       200:
  *         description: Upload response
  */
-app.post('/tanimoto/v1/upload', authenticateToken, async (req, res) => {
+app.post('/tanimoto/v1/upload', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const response = await axios.post(`${TANIMOTO_API_BASE}/v1/upload`, req.body, {
       headers: { 'Content-Type': 'application/json' },
@@ -407,7 +408,7 @@ app.post('/tanimoto/v1/upload', authenticateToken, async (req, res) => {
  *       200:
  *         description: Exact match result
  */
-app.get('/tanimoto/v1/search/exact', authenticateToken, async (req, res) => {
+app.get('/tanimoto/v1/search/exact', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const response = await axios.get(`${TANIMOTO_API_BASE}/v1/search/exact`, { params: req.query });
     res.json(response.data);
@@ -450,7 +451,7 @@ app.get('/tanimoto/v1/search/exact', authenticateToken, async (req, res) => {
  *       200:
  *         description: Similarity search result
  */
-app.get('/tanimoto/v1/search/similarity', authenticateToken, async (req, res) => {
+app.get('/tanimoto/v1/search/similarity', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const response = await axios.get(`${TANIMOTO_API_BASE}/v1/search/similarity`, { params: req.query });
     res.json(response.data);
@@ -476,7 +477,7 @@ app.get('/tanimoto/v1/search/similarity', authenticateToken, async (req, res) =>
  *       200:
  *         description: Substructure search result
  */
-app.get('/tanimoto/v1/search/substructure', authenticateToken, async (req, res) => {
+app.get('/tanimoto/v1/search/substructure', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const response = await axios.get(`${TANIMOTO_API_BASE}/v1/search/substructure`, { params: req.query });
     res.json(response.data);
@@ -518,7 +519,7 @@ app.get('/tanimoto/v1/search/substructure', authenticateToken, async (req, res) 
  *       200:
  *         description: Batch search result
  */
-app.post('/tanimoto/v1/search/batch', authenticateToken, async (req, res) => {
+app.post('/tanimoto/v1/search/batch', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const response = await axios.post(`${TANIMOTO_API_BASE}/v1/search/batch`, req.body, {
       headers: { 'Content-Type': 'application/json' },
@@ -540,7 +541,7 @@ app.post('/tanimoto/v1/search/batch', authenticateToken, async (req, res) => {
  *       200:
  *         description: List of datasets
  */
-app.get('/tanimoto/v1/datasets', authenticateToken, async (req, res) => {
+app.get('/tanimoto/v1/datasets', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const response = await axios.get(`${TANIMOTO_API_BASE}/v1/datasets`, { params: req.query });
     res.json(response.data);
@@ -567,7 +568,7 @@ app.get('/tanimoto/v1/datasets', authenticateToken, async (req, res) => {
  *       200:
  *         description: Dataset details
  */
-app.get('/tanimoto/v1/datasets/:dataset_id', authenticateToken, async (req, res) => {
+app.get('/tanimoto/v1/datasets/:dataset_id', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const response = await axios.get(`${TANIMOTO_API_BASE}/v1/datasets/${req.params.dataset_id}`);
     res.json(response.data);
@@ -594,7 +595,7 @@ app.get('/tanimoto/v1/datasets/:dataset_id', authenticateToken, async (req, res)
  *       200:
  *         description: Dataset deleted
  */
-app.delete('/tanimoto/v1/datasets/:dataset_id', authenticateToken, async (req, res) => {
+app.delete('/tanimoto/v1/datasets/:dataset_id', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const response = await axios.delete(`${TANIMOTO_API_BASE}/v1/datasets/${req.params.dataset_id}`);
     res.json(response.data);
@@ -2567,7 +2568,7 @@ function authenticateToken(req, res, next) {
   });
 }
 
-app.post('/api/shop', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.post('/api/shop', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { stockApiUrl } = await getRequestLigandServiceConfig(req);
     const response = await fetch(stockApiUrl, {
@@ -2587,7 +2588,7 @@ app.post('/api/shop', ensureMongoConnected, authenticateToken, async (req, res) 
 
 
 
-app.get('/api/simulation', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.get('/api/simulation', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   const { pdbid, smiles } = req.query;
   if (!pdbid || !smiles) {
     return res.status(400).json({ error: 'pdbid and smiles are required as query parameters' });
@@ -2666,7 +2667,6 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, async (req, 
     const data = await response.json();
     // Record invocation in MongoDB, including the result and simulationKey
     await simulationLogs.insertOne({
-      user: req.user, // Store the full decoded JWT payload
       username: req.user.username,
       companyId: req.user.companyId || null,
       companyName: req.user.companyName || null,
@@ -2734,7 +2734,7 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, async (req, 
  *       500:
  *         description: Server error
  */
-app.post('/api/simulation', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.post('/api/simulation', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   const { pdbid, smiles } = req.body;
   if (!pdbid || !smiles) {
     return res.status(400).json({ error: 'pdbid and smiles are required in request body' });
@@ -2816,7 +2816,6 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
     const data = await response.json();
     // Record invocation in MongoDB, including the result and simulationKey
     await simulationLogs.insertOne({
-      user: req.user, // Store the full decoded JWT payload
       username: req.user.username,
       companyId: req.user.companyId || null,
       companyName: req.user.companyName || null,
@@ -2852,7 +2851,7 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
   }
 });
 
-app.get('/api/simulation-logs', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.get('/api/simulation-logs', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const simulationLogs = client.db().collection('simulation_logs');
     const tenantFilter = buildTenantFilter(req.user);
@@ -2863,7 +2862,7 @@ app.get('/api/simulation-logs', ensureMongoConnected, authenticateToken, async (
   }
 });
 
-app.get('/api/sanitizedpdb/:simulationKey', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.get('/api/sanitizedpdb/:simulationKey', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   const { simulationKey } = req.params;
   try {
     const simulationLogs = client.db().collection('simulation_logs');
@@ -2909,7 +2908,7 @@ app.get('/api/sanitizedpdb/:simulationKey', ensureMongoConnected, authenticateTo
  *       500:
  *         description: Server error
  */
-app.get('/api/sanitizedsdf/:simulationKey', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.get('/api/sanitizedsdf/:simulationKey', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   const { simulationKey } = req.params;
   try {
     const simulationLogs = client.db().collection('simulation_logs');
@@ -2955,7 +2954,7 @@ app.get('/api/sanitizedsdf/:simulationKey', ensureMongoConnected, authenticateTo
  *       500:
  *         description: Server error
  */
-app.get('/api/sanitizedminimalsdf/:simulationKey', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.get('/api/sanitizedminimalsdf/:simulationKey', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
  const { simulationKey } = req.params;
   try {
     const simulationLogs = client.db().collection('simulation_logs');
@@ -3031,7 +3030,7 @@ app.get('/api/sanitizedminimalsdf/:simulationKey', ensureMongoConnected, authent
  *       500:
  *         description: Server error
  */
-app.get('/api/sanitizedspecificsdf/:simulationKey/:smiles', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.get('/api/sanitizedspecificsdf/:simulationKey/:smiles', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
  const { simulationKey, smiles } = req.params;
   try {
     const simulationLogs = client.db().collection('simulation_logs');
@@ -3687,7 +3686,7 @@ app.get('/api/company/audit-logs', ensureMongoConnected, authenticateToken, requ
  *       500:
  *         description: Server error
  */
-app.get('/api/exact/:smiles', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.get('/api/exact/:smiles', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { smiles } = req.params;
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
@@ -3764,7 +3763,7 @@ app.get('/api/exact/:smiles', ensureMongoConnected, authenticateToken, async (re
  *       500:
  *         description: Server error
  */
-app.get('/api/all/:id_:pageSize', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.get('/api/all/:id_:pageSize', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { id, pageSize } = req.params;
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
@@ -3827,7 +3826,7 @@ app.get('/api/all/:id_:pageSize', ensureMongoConnected, authenticateToken, async
  *       500:
  *         description: Server error
  */
-app.get('/api/id/:id_number', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.get('/api/id/:id_number', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { id_number } = req.params;
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
@@ -3908,7 +3907,7 @@ app.get('/api/id/:id_number', ensureMongoConnected, authenticateToken, async (re
  *       200:
  *         description: Asinex API response
  */
-app.post('/api/api4/bas', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.post('/api/api4/bas', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
     const response = await fetch(`${catalogApiBase}/api4/bas`, {
@@ -3978,7 +3977,7 @@ app.post('/api/api4/bas', ensureMongoConnected, authenticateToken, async (req, r
  *       200:
  *         description: Asinex API response
  */
-app.post('/api/api4/structure', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.post('/api/api4/structure', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
     const response = await fetch(`${catalogApiBase}/api4/structure`, {
@@ -4048,7 +4047,7 @@ app.post('/api/api4/structure', ensureMongoConnected, authenticateToken, async (
  *       200:
  *         description: Asinex API response
  */
-app.post('/api/api4/substructure', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.post('/api/api4/substructure', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
     const response = await fetch(`${catalogApiBase}/api4/substructure`, {
@@ -4118,7 +4117,7 @@ app.post('/api/api4/substructure', ensureMongoConnected, authenticateToken, asyn
  *       200:
  *         description: Asinex API response
  */
-app.post('/api/api4/similarity', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.post('/api/api4/similarity', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
     const response = await fetch(`${catalogApiBase}/api4/similarity`, {
@@ -4188,7 +4187,7 @@ app.post('/api/api4/similarity', ensureMongoConnected, authenticateToken, async 
  *       200:
  *         description: Asinex API response
  */
-app.post('/api/api4/mw', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.post('/api/api4/mw', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
     const response = await fetch(`${catalogApiBase}/api4/mw`, {
@@ -4481,28 +4480,33 @@ app.post('/api/diffdock/generate_file', ensureMongoConnected, authenticateToken,
     if (!protein || !ligand) {
       return res.status(400).json({ error: 'protein and ligand are required' });
     }
+    // protein is a PDB entry id, ligand a chemical component id. Reject anything
+    // else before it reaches the shell script.
+    if (!/^[A-Za-z0-9]{4}$/.test(protein)) {
+      return res.status(400).json({ error: 'protein must be a 4-character PDB ID' });
+    }
+    if (!/^[A-Za-z0-9]{1,8}$/.test(ligand)) {
+      return res.status(400).json({ error: 'ligand must be an alphanumeric component ID' });
+    }
 
-    // Execute the diff_dock.sh script with protein and ligand parameters
-    execFile('./diff_dock.sh', [protein, ligand], { cwd: process.cwd() }, (error, stdout, stderr) => {
+    // Each request gets its own work dir — a shared output.json let concurrent
+    // requests read each other's docking results.
+    const workDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'diffdock-'));
+    const cleanup = () => fs.promises.rm(workDir, { recursive: true, force: true }).catch(() => {});
+
+    execFile('./diff_dock.sh', [protein, ligand, workDir], { cwd: process.cwd() }, (error, stdout, stderr) => {
       if (error) {
         console.error('Script execution error:', error);
         console.error('stderr:', stderr);
-        return res.status(500).json({ 
-          error: 'Failed to execute DiffDock script', 
-          details: error.message,
-          stderr: stderr
-        });
+        cleanup();
+        return res.status(500).json({ error: 'Failed to execute DiffDock script' });
       }
 
-      // Read the output.json file
-      const outputPath = path.join(process.cwd(), 'output.json');
-      fs.readFile(outputPath, 'utf8', (readError, data) => {
+      fs.readFile(path.join(workDir, 'output.json'), 'utf8', (readError, data) => {
         if (readError) {
           console.error('File read error:', readError);
-          return res.status(500).json({ 
-            error: 'Failed to read output.json file', 
-            details: readError.message 
-          });
+          cleanup();
+          return res.status(500).json({ error: 'DiffDock produced no output' });
         }
 
         try {
@@ -4515,16 +4519,15 @@ app.post('/api/diffdock/generate_file', ensureMongoConnected, authenticateToken,
           });
         } catch (parseError) {
           console.error('JSON parse error:', parseError);
-          res.status(500).json({ 
-            error: 'Failed to parse output.json file', 
-            details: parseError.message 
-          });
+          res.status(500).json({ error: 'DiffDock output could not be parsed' });
+        } finally {
+          cleanup();
         }
       });
     });
   } catch (error) {
     console.error('DiffDock script API error:', error);
-    res.status(500).json({ error: 'Failed to execute DiffDock script', details: error.message });
+    res.status(500).json({ error: 'Failed to execute DiffDock script' });
   }
 });
 
@@ -4555,7 +4558,7 @@ app.post('/api/diffdock/generate_file', ensureMongoConnected, authenticateToken,
  *       500:
  *         description: Server error
  */
-app.get('/api/asinex/all/:id_:pageSize', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.get('/api/asinex/all/:id_:pageSize', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { id_, pageSize } = req.params;
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
@@ -4605,7 +4608,7 @@ app.get('/api/asinex/all/:id_:pageSize', ensureMongoConnected, authenticateToken
  *       500:
  *         description: Server error
  */
-app.get('/api/asinex/id/:id_number', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.get('/api/asinex/id/:id_number', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { id_number } = req.params;
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
@@ -4667,7 +4670,7 @@ app.get('/api/asinex/id/:id_number', ensureMongoConnected, authenticateToken, as
  *       500:
  *         description: Server error
  */
-app.get('/api/asinex/exact/:smiles', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.get('/api/asinex/exact/:smiles', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { smiles } = req.params;
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
@@ -4742,7 +4745,7 @@ app.get('/api/asinex/exact/:smiles', ensureMongoConnected, authenticateToken, as
  *       500:
  *         description: Server error
  */
-app.get('/api/asinex/substructure/:id_:pageSize/:smiles', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.get('/api/asinex/substructure/:id_:pageSize/:smiles', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { id_, pageSize, smiles } = req.params;
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
@@ -4813,7 +4816,7 @@ app.get('/api/asinex/substructure/:id_:pageSize/:smiles', ensureMongoConnected, 
  *       500:
  *         description: Server error
  */
-app.post('/api/asinex/search', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.post('/api/asinex/search', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { searchType, id, pageSize, id_number, smiles } = req.body;
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
@@ -4906,7 +4909,7 @@ app.post('/api/asinex/search', ensureMongoConnected, authenticateToken, async (r
  *       200:
  *         description: Asinex API health status
  */
-app.get('/api/asinex/health', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.get('/api/asinex/health', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   let catalogApiBase = DEFAULT_LIGAND_SERVICE_CONFIG.catalogApiBase;
   try {
     ({ catalogApiBase } = await getRequestLigandServiceConfig(req));
@@ -5428,7 +5431,7 @@ app.post('/api/send-email', publicEmailRateLimit, async (req, res) => {
  *       200:
  *         description: Project created
  */
-app.post('/api/projects', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.post('/api/projects', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   const { name } = req.body;
   if (!name) return res.status(400).json({ error: 'Project name is required' });
   try {
@@ -5463,7 +5466,7 @@ app.post('/api/projects', ensureMongoConnected, authenticateToken, async (req, r
  *       200:
  *         description: Latest activity
  */
-app.get('/api/activity', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.get('/api/activity', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const db = client.db();
     const userFilter = req.user.companyId
@@ -5956,7 +5959,7 @@ app.put('/api/simulation/:simulationKey/admet', ensureMongoConnected, requireAdm
  *       500:
  *         description: Server error
  */
-app.get('/api/simulation/:simulationKey/admet', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.get('/api/simulation/:simulationKey/admet', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { simulationKey } = req.params;
     
@@ -6081,7 +6084,7 @@ app.get('/api/simulation/:simulationKey/admet', ensureMongoConnected, authentica
  *       500:
  *         description: Server error
  */
-app.delete('/api/simulation/:simulationKey/admet', ensureMongoConnected, authenticateToken, async (req, res) => {
+app.delete('/api/simulation/:simulationKey/admet', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { simulationKey } = req.params;
     

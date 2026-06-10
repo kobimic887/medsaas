@@ -4,7 +4,7 @@ Audit of the MedSaaS server (`server/index.js` and friends). Items are grouped b
 status: **what's already fixed in code**, then **open items** with severity and
 concrete fix guidance.
 
-_Last updated: 2026-06-09. Line numbers drift as the file changes — search by
+_Last updated: 2026-06-10. Line numbers drift as the file changes — search by
 symbol/route, not by number._
 
 ---
@@ -24,6 +24,9 @@ built, and deployed** to the box to take effect in production.
 | Cross-tenant user enumeration (`/api/test-user/:username`) | Medium | Scoped lookup to the caller's `companyId`. |
 | CORS allow-all when allowlist empty | Medium | Permissive only when `NODE_ENV !== 'production'`. |
 | Path traversal in GROMACS proxy params | Medium (defense-in-depth) | `:workflow` / `:jobId` validated + `encodeURIComponent`'d. |
+| `diff_dock.sh` shared output file + unvalidated args (was open item #3) | High | Per-request `mkdtemp` work dir passed to the script (no more shared `output.json`); `protein`/`ligand` validated (`^[A-Za-z0-9]{4}$` / `^[A-Za-z0-9]{1,8}$`); error responses no longer leak `stderr`/details. |
+| `simulation_logs` stored full decoded JWT (was open item #5) | Medium | `user: req.user` field dropped from both `/api/simulation` inserts; discrete `username`/`companyId`/`companyName` columns remain. |
+| Stale authorization on `authenticateToken`-only routes (was open item #7) | Medium | `requireActiveUser` added to every formerly token-only route (simulation, simulation-logs, shop, sanitized*, catalog proxies, api4, Asinex, Tanimoto, projects, activity, admet) — DB is now the per-request source of truth for active/role/tenant. |
 
 ### Residual risk on the SSRF fix — read this
 The DNS check runs **at configuration time** (when an admin saves the URL). It does
@@ -77,28 +80,7 @@ who controls DNS for their hostname and flips the answer to an internal IP betwe
   fixed, server-configured upstream.
 
 ### 3. `diff_dock.sh` — shared output file + latent command injection
-**Where:** `/api/diffdock/generate_file` → `execFile('./diff_dock.sh', [protein, ligand])`,
-which writes/reads a single `output.json` in the process CWD.
-**Why it matters:**
-- **Race / cross-user data leak:** concurrent requests clobber the same
-  `output.json`; user A can receive user B's docking result.
-- **Latent injection:** the current script hardcodes 8G43/ZU6 and ignores `$1`/`$2`,
-  so there's no injection *today* — but `protein`/`ligand` are unvalidated user
-  input, and the moment the script starts using its args inside a shell, it's a
-  command-injection hole.
-
-**How to fix:**
-- Write to a unique per-request path (`mkdtemp`) and read that back; never a shared
-  filename.
-- Validate `protein` (PDB ID: `^[A-Za-z0-9]{4}$`) and `ligand` before use.
-- Keep `execFile` with an args array (no shell). If the script must use the args,
-  ensure it quotes them and never passes them to `eval`/`sh -c`.
-- Consider replacing the shell-out with the in-process DiffDock path that
-  `/api/diffdock/generate` already uses.
-
----
-
-## 🟠 Open — medium / lower effort
+**✅ Fixed (2026-06-10)** — per-request `mkdtemp` work dir, validated inputs, no leaked stderr. See "Already fixed" table.
 
 ### 4. Internal error messages leaked to clients
 **Where:** nearly every `catch` block: `res.status(500).json({ error: error.message })`,
@@ -117,12 +99,7 @@ function fail(res, status, publicMsg, err) {
 Then sweep the handlers. Gate any verbose detail behind `NODE_ENV !== 'production'`.
 
 ### 5. `simulation_logs` stores the full decoded JWT
-**Where:** both `/api/simulation` handlers insert `user: req.user` alongside the
-already-stored `username`/`companyId`/`companyName`.
-**Why it matters:** persists email/PII (and token claims) into a collection that
-doesn't need them.
-**How to fix:** drop the `user: req.user` field; the discrete columns already cover
-tenancy/filtering. If you need the actor, store just `username`.
+**✅ Fixed (2026-06-10)** — `user: req.user` dropped from both inserts. See "Already fixed" table.
 
 ### 6. Temporary password returned in API response + emailed in plaintext
 **Where:** `/api/company/members` (create) returns `temporaryPassword` in JSON and
@@ -134,17 +111,7 @@ browser history / network logs / proxies.
 password on first use; the server never transmits a usable password.
 
 ### 7. Stale authorization on `authenticateToken`-only routes
-**Where:** routes guarded by `authenticateToken` but **not** `requireActiveUser`
-(e.g. `/api/simulation`, `/api/simulation-logs`, Asinex proxies) trust
-`companyId`/`role` from the 7-day JWT.
-**Why it matters:** a disabled user (or one removed from a company / demoted) keeps
-read access until the token expires — up to 7 days.
-**How to fix:**
-- Add `requireActiveUser` to data-bearing routes so the DB is the source of truth
-  for active/role/tenant on each request (it already re-reads the user).
-- Optionally shorten `JWT_EXPIRES_IN` and add a refresh flow, or add a
-  `tokenVersion`/`passwordChangedAt` check to invalidate old tokens on
-  disable/password-change.
+**✅ Fixed (2026-06-10)** — `requireActiveUser` added to all formerly token-only routes. See "Already fixed" table.
 
 ### 8. Catalog/pricing endpoints are fully public
 **Where:** `/api/mol-price*`, `/api/molecules*` have only `ensureMongoConnected`.
