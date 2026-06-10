@@ -238,9 +238,9 @@ export function Blog() {
                           <>
                             <IconButton
                               variant="text"
-                              color="green"
                               size="sm"
                               onClick={() => openEditDialog(post)}
+                              className="text-brand-500 hover:bg-brand-500/10 active:bg-brand-500/30"
                             >
                               <PencilIcon className="h-4 w-4" />
                             </IconButton>
@@ -322,7 +322,11 @@ export function Blog() {
           >
             Cancel
           </Button>
-          <Button variant="gradient" color="green" onClick={handleCreatePost}>
+          <Button
+            variant="gradient"
+            onClick={handleCreatePost}
+            className="bg-gradient-to-tr from-brand-600 to-brand-400 text-white shadow-md shadow-brand-500/20 hover:shadow-lg hover:shadow-brand-500/40 active:opacity-[0.85]"
+          >
             Create Post
           </Button>
         </DialogFooter>
