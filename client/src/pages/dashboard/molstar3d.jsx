@@ -1010,7 +1010,7 @@ const HideMenu =()=>{
                                   <Typography variant="small" color="blue-gray" className="font-medium text-xs">
                                     ID: {moleculePrices[molecule.smiles].id}
                                   </Typography>
-                                  <Typography variant="small" color="green" className="font-bold text-xs">
+                                  <Typography variant="small" className="font-bold text-xs text-brand-500">
                                     1mg: ${moleculePrices[molecule.smiles].price1mg}
                                   </Typography>
                                   <Typography variant="small" color="gray" className="text-xs">
@@ -1074,7 +1074,7 @@ const HideMenu =()=>{
                   <Typography variant="small" color="gray">
                     {getCartItemCount()} items
                   </Typography>
-                  <Typography variant="h6" color="green">
+                  <Typography variant="h6" className="text-brand-500">
                     Total: ${getCartTotal()}
                   </Typography>
                 </div>
@@ -1139,7 +1139,7 @@ const HideMenu =()=>{
                             </Typography>
                           </td>
                           <td className={classes}>
-                            <Typography variant="small" color="green" className="font-bold">
+                            <Typography variant="small" className="font-bold text-brand-500">
                               ${item.totalPrice.toFixed(2)}
                             </Typography>
                           </td>

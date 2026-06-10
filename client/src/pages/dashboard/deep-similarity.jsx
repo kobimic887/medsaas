@@ -148,7 +148,7 @@ export function DeepSimilarity() {
                   ID: {item.molecule_id}
                 </Typography>
                 {item.similarity && (
-                  <Typography variant="small" color="green" className="font-semibold">
+                  <Typography variant="small" className="font-semibold text-brand-500">
                     {(item.similarity * 100).toFixed(1)}%
                   </Typography>
                 )}
