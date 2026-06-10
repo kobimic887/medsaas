@@ -458,7 +458,7 @@ Please contact the customer at ${userEmail} to process this order.
                   <Typography variant="small" color="blue-gray" className="font-normal">
                     Total Amount: {cartItems.reduce((sum, item) => sum + (item.amount || 0), 0)}mg
                   </Typography>
-                  <Typography variant="small" color="green" className="font-bold text-lg">
+                  <Typography variant="small" className="font-bold text-lg text-brand-500">
                     Total: ${cartTotal.toFixed(2)}
                   </Typography>
                 </div>
@@ -481,7 +481,7 @@ Please contact the customer at ${userEmail} to process this order.
                           <Typography variant="small" color="blue-gray" className="font-normal text-xs">
                             {item.amount}mg
                           </Typography>
-                          <Typography variant="small" color="green" className="font-bold text-xs">
+                          <Typography variant="small" className="font-bold text-xs text-brand-500">
                             ${(item.totalPrice || item.price || 0).toFixed(2)}
                           </Typography>
                         </div>
@@ -513,11 +513,11 @@ Please contact the customer at ${userEmail} to process this order.
                   >
                     Checkout with Stripe
                   </Button>
-                  <Button 
-                    fullWidth 
-                    color="green" 
+                  <Button
+                    fullWidth
                     size="sm"
                     onClick={handleSendEnquiry}
+                    className="bg-brand-500 text-white shadow-md shadow-brand-500/20 hover:shadow-lg hover:shadow-brand-500/40 focus:opacity-[0.85] focus:shadow-none active:opacity-[0.85] active:shadow-none"
                   >
                     Send Enquiry
                   </Button>
