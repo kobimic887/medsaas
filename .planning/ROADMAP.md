@@ -109,7 +109,7 @@ every layer. Full archive: `.planning/milestones/v2-ROADMAP.md`
 | 1. Branding Cleanup | v1 | 1/1 | Complete   | 2026-06-04 |
 | 2. Login Code Cleanup | v1 | 1/1 | ✅ Complete | 2026-06-04 |
 | 3. CI/CD Pipeline | v1 | 3/3 | Complete    | 2026-06-10 |
-| 4. Compatibility Spike + Baseline | v2 | 1/1 | Complete   | 2026-06-10 |
+| 4. Compatibility Spike + Baseline | v2 | 1/1 | Complete    | 2026-06-10 |
 | 5. Server Runtime on Bun | v2 | 3/3 | ✅ Complete | 2026-06-04 |
 | 6. Package Management | v2 | 2/2 | ✅ Complete | 2026-06-05 |
 | 7. Docker, CI/CD, and Scripts | v2 | 3/3 | ✅ Complete | 2026-06-05 |
