@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v3
 milestone_name: Company Brand Colour
 status: executing
-last_updated: "2026-06-10T15:32:17.063Z"
+last_updated: "2026-06-10T15:39:31.152Z"
 last_activity: 2026-06-10
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 7
-  completed_plans: 5
+  completed_plans: 6
   percent: 50
 ---
 
@@ -27,11 +27,11 @@ See: `.planning/PROJECT.md` (updated 2026-06-06)
 ## Current Position
 
 Phase: 3 (Dashboard Theming Refactor) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
-Last activity: 2026-06-10 -- Completed 03-01 (runtime CSS-variable theming layer)
+Last activity: 2026-06-10 -- Completed 03-02 (feature-page brand-site migration)
 
-Progress: [███████░░░] 71%
+Progress: [█████████░] 86%
 
 ## Performance Metrics
 
@@ -50,6 +50,7 @@ Progress: [███████░░░] 71%
 | 03 | 1/3 | ~5 min | ~5 min (P03-01: 3 tasks, 4 files) |
 
 *Updated after each plan completion*
+| Phase 03 P02 | 4min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -66,6 +67,7 @@ Progress: [███████░░░] 71%
 - Branding management is the second local-state Company Admin tab; member direct access redirects to dashboardHome
 - Brand theming uses a Tailwind `brand-*` family in `rgb(var(--brand-N) / <alpha-value>)` channel form so opacity modifiers work; `:root` defaults are MD-green channels (76 175 80...) overridden at runtime by BrandingProvider (Phase 3 Plan 1)
 - Tenant palette is written to `document.documentElement` and removed on logout/company-switch; never persisted to localStorage (THEME-04) (Phase 3 Plan 1)
+- Feature-page brand chrome (CTAs, cart icons, search header, MW slider, price/cart-total, similarity readout, highlight panel, download button) migrated to `brand-*`; semantic-success/categorical/terminal greens kept green per documented exclusion list (Phase 3 Plan 2)
 
 ### Active Blockers
 

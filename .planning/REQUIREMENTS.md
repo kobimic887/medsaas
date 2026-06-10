@@ -28,7 +28,7 @@ Requirements for the Company Brand Colour milestone. Each maps to exactly one ro
 ### Theming (THEME)
 
 - [x] **THEME-01**: The dashboard's brand colour is driven by a runtime CSS-variable layer fed from the logged-in user's company palette (no hardcoded brand colour)
-- [ ] **THEME-02**: The existing hardcoded brand colour usages (~14 Material Tailwind `color="green"` props + ~37 `green/emerald` utility classes) are migrated onto the company-driven theming mechanism
+- [x] **THEME-02**: The existing hardcoded brand colour usages (~14 Material Tailwind `color="green"` props + ~37 `green/emerald` utility classes) are migrated onto the company-driven theming mechanism
 - [x] **THEME-03**: A company with no custom palette falls back to a sensible default theme (current appearance preserved)
 - [x] **THEME-04**: Changing one company's palette re-themes only that company's users — tenants are visually isolated from each other
 
@@ -80,7 +80,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | PALETTE-03 | Phase 2 | Complete |
 | PALETTE-04 | Phase 2 | Complete |
 | THEME-01 | Phase 3 | Complete |
-| THEME-02 | Phase 3 | Pending |
+| THEME-02 | Phase 3 | Complete |
 | THEME-03 | Phase 3 | Complete |
 | THEME-04 | Phase 3 | Complete |
 | EMAIL-01 | Phase 4 | Pending |

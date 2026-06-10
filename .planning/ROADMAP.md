@@ -87,7 +87,7 @@ every layer. Full archive: `.planning/milestones/v2-ROADMAP.md`
 **Wave 1**
   - [x] 03-01-PLAN.md — Theming infrastructure: brand Tailwind family, MD-green :root defaults, shade-derivation utility, BrandingProvider variable-writer (THEME-01/03/04)
 **Wave 2** *(blocked on Wave 1 completion; 03-02 and 03-03 run in parallel — no file overlap)*
-  - [ ] 03-02-PLAN.md — Migrate brand call-sites on the six dashboard feature pages; semantic-green exclusions documented (THEME-02)
+  - [x] 03-02-PLAN.md — Migrate brand call-sites on the six dashboard feature pages; semantic-green exclusions documented (THEME-02)
   - [ ] 03-03-PLAN.md — Migrate brand call-sites in the dashboard navbar chrome and blog admin page (THEME-02)
 **UI hint**: yes
 
@@ -106,7 +106,7 @@ every layer. Full archive: `.planning/milestones/v2-ROADMAP.md`
 |-------|-----------|----------------|--------|-----------|
 | 1. Branding Cleanup | v1 | 1/1 | Complete   | 2026-06-04 |
 | 2. Login Code Cleanup | v1 | 1/1 | ✅ Complete | 2026-06-04 |
-| 3. CI/CD Pipeline | v1 | 1/3 | In Progress|  |
+| 3. CI/CD Pipeline | v1 | 2/3 | In Progress|  |
 | 4. Compatibility Spike + Baseline | v2 | 4/4 | ✅ Complete | 2026-06-04 |
 | 5. Server Runtime on Bun | v2 | 3/3 | ✅ Complete | 2026-06-04 |
 | 6. Package Management | v2 | 2/2 | ✅ Complete | 2026-06-05 |
