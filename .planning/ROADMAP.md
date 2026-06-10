@@ -40,7 +40,7 @@ every layer. Full archive: `.planning/milestones/v2-ROADMAP.md`
 - [x] **Phase 1: Compatibility Spike** - Prove `node-vibrant`/`sharp` installs and extracts a palette under Bun on linux/arm64 in `oven/bun` before any feature depends on it (completed 2026-06-06)
 - [x] **Phase 2: Branding Management** - Admin can upload a logo, extract and edit a palette, and persist branding per-company, gated to owner/admin (completed 2026-06-09)
 - [x] **Phase 3: Dashboard Theming Refactor** - The ~51 hardcoded green call-sites are migrated onto a runtime CSS-variable layer driven by the company palette (completed 2026-06-10)
-- [ ] **Phase 4: Email Theming** - Branded emails use the company's colour, inlined per-send into the HTML
+- [x] **Phase 4: Email Theming** - Branded emails use the company's colour, inlined per-send into the HTML (completed 2026-06-10)
 
 ## Phase Details
 
@@ -100,7 +100,7 @@ every layer. Full archive: `.planning/milestones/v2-ROADMAP.md`
   2. The same email for a company with no saved palette uses the default brand colour — no broken or unstyled fallback
 **Plans**: 1 plan
 **Wave 1**
-  - [ ] 04-01-PLAN.md — Palette-driven email templates + wire branded HTML into the live invite and password-reset sends (fail-open to default), with a rendering verification script (EMAIL-01/02)
+  - [x] 04-01-PLAN.md — Palette-driven email templates + wire branded HTML into the live invite and password-reset sends (fail-open to default), with a rendering verification script (EMAIL-01/02)
 
 ## Progress
 
@@ -109,7 +109,7 @@ every layer. Full archive: `.planning/milestones/v2-ROADMAP.md`
 | 1. Branding Cleanup | v1 | 1/1 | Complete   | 2026-06-04 |
 | 2. Login Code Cleanup | v1 | 1/1 | ✅ Complete | 2026-06-04 |
 | 3. CI/CD Pipeline | v1 | 3/3 | Complete    | 2026-06-10 |
-| 4. Compatibility Spike + Baseline | v2 | 4/4 | ✅ Complete | 2026-06-04 |
+| 4. Compatibility Spike + Baseline | v2 | 1/1 | Complete   | 2026-06-10 |
 | 5. Server Runtime on Bun | v2 | 3/3 | ✅ Complete | 2026-06-04 |
 | 6. Package Management | v2 | 2/2 | ✅ Complete | 2026-06-05 |
 | 7. Docker, CI/CD, and Scripts | v2 | 3/3 | ✅ Complete | 2026-06-05 |

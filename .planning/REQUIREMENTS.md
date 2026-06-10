@@ -34,8 +34,8 @@ Requirements for the Company Brand Colour milestone. Each maps to exactly one ro
 
 ### Email (EMAIL)
 
-- [ ] **EMAIL-01**: Branded emails (invite, verification, and other company-branded sends) use the company's brand colour, inlined into the email HTML per-send
-- [ ] **EMAIL-02**: Emails for a company with no custom palette fall back to the default brand colour
+- [x] **EMAIL-01**: Branded emails (invite, verification, and other company-branded sends) use the company's brand colour, inlined into the email HTML per-send
+- [x] **EMAIL-02**: Emails for a company with no custom palette fall back to the default brand colour
 
 ### Admin (ADMIN)
 
@@ -83,8 +83,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | THEME-02 | Phase 3 | Complete |
 | THEME-03 | Phase 3 | Complete |
 | THEME-04 | Phase 3 | Complete |
-| EMAIL-01 | Phase 4 | Pending |
-| EMAIL-02 | Phase 4 | Pending |
+| EMAIL-01 | Phase 4 | Complete |
+| EMAIL-02 | Phase 4 | Complete |
 | ADMIN-01 | Phase 2 | Complete |
 | ADMIN-02 | Phase 2 | Complete |
 | ADMIN-03 | Phase 2 | Complete |

@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v3
 milestone_name: Company Brand Colour
-status: executing
-last_updated: "2026-06-10T18:48:17.035Z"
-last_activity: 2026-06-10 -- Phase 4 planning complete
+status: verifying
+last_updated: "2026-06-10T18:58:27.790Z"
+last_activity: 2026-06-10
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 8
-  completed_plans: 7
-  percent: 75
+  completed_plans: 8
+  percent: 100
 ---
 
 # Project State: ChemBench
@@ -20,18 +20,18 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-06-06)
 
 **Core value:** Labs and customers get a professional, focused tool — each company's space reflects its own brand, not a shared hardcoded green.
-**Current focus:** Phase 4 — email theming
+**Current focus:** Phase 4 — Email Theming
 
 ---
 
 ## Current Position
 
-Phase: 4
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-06-10 -- Phase 4 planning complete
+Phase: 4 (Email Theming) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-06-10 -- Completed 04-01-PLAN.md (email theming)
 
-Progress: [█████████░] 86%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [█████████░] 86%
 
 *Updated after each plan completion*
 | Phase 03 P02 | 4min | 3 tasks | 6 files |
+| Phase 04 P01 | 5 min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,8 @@ Progress: [█████████░] 86%
 - Brand theming uses a Tailwind `brand-*` family in `rgb(var(--brand-N) / <alpha-value>)` channel form so opacity modifiers work; `:root` defaults are MD-green channels (76 175 80...) overridden at runtime by BrandingProvider (Phase 3 Plan 1)
 - Tenant palette is written to `document.documentElement` and removed on logout/company-switch; never persisted to localStorage (THEME-04) (Phase 3 Plan 1)
 - Feature-page brand chrome (CTAs, cart icons, search header, MW slider, price/cart-total, similarity readout, highlight panel, download button) migrated to `brand-*`; semantic-success/categorical/terminal greens kept green per documented exclusion list (Phase 3 Plan 2)
+- Branded emails inline the sending company's palette per-send via `style="..."` attributes (not CSS classes/variables, which email clients strip); palette resolution fails open to DEFAULT_BRAND_PALETTE so a send never breaks on missing/malformed branding (Phase 4 Plan 1)
+- A dedicated `generateInviteEmailHTML` was added (rather than reusing verification copy) so invite emails carry invite-specific text while sharing the inline palette helpers; the temp-password text fallback is untouched (Phase 4 Plan 1)
 
 ### Active Blockers
 
