@@ -98,7 +98,9 @@ every layer. Full archive: `.planning/milestones/v2-ROADMAP.md`
 **Success Criteria** (what must be TRUE):
   1. An invite or verification email received by a user of a company with a custom palette contains the company's brand colour as an inline style attribute (not a CSS class or variable)
   2. The same email for a company with no saved palette uses the default brand colour — no broken or unstyled fallback
-**Plans**: TBD
+**Plans**: 1 plan
+**Wave 1**
+  - [ ] 04-01-PLAN.md — Palette-driven email templates + wire branded HTML into the live invite and password-reset sends (fail-open to default), with a rendering verification script (EMAIL-01/02)
 
 ## Progress
 
@@ -114,8 +116,8 @@ every layer. Full archive: `.planning/milestones/v2-ROADMAP.md`
 | 1. Compatibility Spike | v3 | 1/1 | ✅ Complete | 2026-06-06 |
 | 2. Branding Management | v3 | 3/3 | ✅ Complete | 2026-06-09 |
 | 3. Dashboard Theming Refactor | v3 | 0/3 | Planned | - |
-| 4. Email Theming | v3 | 0/TBD | Not started | - |
+| 4. Email Theming | v3 | 0/1 | Planned | - |
 
 ---
 
-*Roadmap updated: 2026-06-10 — Phase 3 Dashboard Theming Refactor planned (3 plans, 2 waves)*
+*Roadmap updated: 2026-06-10 — Phase 4 Email Theming planned (1 plan, 1 wave)*
