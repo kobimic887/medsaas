@@ -16,6 +16,8 @@ import { configDotenv } from 'dotenv';
 import Stripe from 'stripe';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dns from 'dns/promises';
+import net from 'net';
 
 // Import email templates
 import { generateVerificationEmailHTML } from './utils/emailTemplates.js';
@@ -133,7 +135,13 @@ const allowedOrigins = new Set([APP_BASE_URL, FRONTEND_URL].filter(Boolean));
 app.use(express.json({ limit: '8mb' }));
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.size === 0 || allowedOrigins.has(origin)) {
+    // No Origin header (same-origin requests, curl, server-to-server) — allow.
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.has(origin)) return callback(null, true);
+    // An empty allowlist used to reflect ANY origin with credentials. Only keep
+    // that permissive behavior outside production (local dev convenience); in
+    // production an unconfigured allowlist must not turn into allow-all.
+    if (allowedOrigins.size === 0 && process.env.NODE_ENV !== 'production') {
       return callback(null, true);
     }
     return callback(new Error('CORS origin is not allowed'));
@@ -1057,13 +1065,67 @@ function validateRequiredStringField(body, fieldName) {
   return value;
 }
 
-function assertValidHttpUrl(value, fieldName) {
+// Returns true if an IP literal is loopback / private / link-local / unique-local
+// / unspecified — i.e. an address a company-configured upstream must never point
+// at. Used to keep admin-supplied service URLs from reaching internal hosts or
+// the cloud metadata endpoint (169.254.169.254). Covers IPv4, IPv6, and
+// IPv4-mapped IPv6 (::ffff:a.b.c.d).
+function isDisallowedAddress(ip) {
+  const v = net.isIP(ip);
+  if (v === 4) {
+    const o = ip.split('.').map(Number);
+    if (o.length !== 4 || o.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return true;
+    if (o[0] === 0) return true;                                   // 0.0.0.0/8 (unspecified)
+    if (o[0] === 10) return true;                                  // 10.0.0.0/8
+    if (o[0] === 127) return true;                                 // 127.0.0.0/8 (loopback)
+    if (o[0] === 169 && o[1] === 254) return true;                 // 169.254.0.0/16 (link-local + metadata)
+    if (o[0] === 172 && o[1] >= 16 && o[1] <= 31) return true;     // 172.16.0.0/12
+    if (o[0] === 192 && o[1] === 168) return true;                 // 192.168.0.0/16
+    if (o[0] === 100 && o[1] >= 64 && o[1] <= 127) return true;    // 100.64.0.0/10 (CGNAT)
+    if (o[0] === 255 && o[1] === 255 && o[2] === 255 && o[3] === 255) return true; // broadcast
+    return false;
+  }
+  if (v === 6) {
+    const lower = ip.toLowerCase();
+    // IPv4-mapped / -compatible: re-check the embedded IPv4.
+    const mapped = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/) || lower.match(/^::(\d+\.\d+\.\d+\.\d+)$/);
+    if (mapped) return isDisallowedAddress(mapped[1]);
+    if (lower === '::' || lower === '::1') return true;            // unspecified / loopback
+    if (lower.startsWith('fe8') || lower.startsWith('fe9') || lower.startsWith('fea') || lower.startsWith('feb')) return true; // fe80::/10 link-local
+    if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // fc00::/7 unique-local
+    return false;
+  }
+  // Not a parseable IP — treat as disallowed (caller resolves hostnames first).
+  return true;
+}
+
+// Validates an admin-supplied upstream URL: must be http(s) AND resolve to a
+// public address. Async because it performs DNS resolution. Note: this checks
+// at configuration time; a fully rebinding-proof guard would also re-validate
+// the resolved IP at fetch time.
+async function assertValidHttpUrl(value, fieldName) {
   let parsed;
   try { parsed = new URL(value); } catch {
     throw new Error(`${fieldName} must be a valid URL`);
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new Error(`${fieldName} must use http or https`);
+  }
+
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, ''); // strip IPv6 brackets
+  let addresses;
+  if (net.isIP(hostname)) {
+    addresses = [hostname];
+  } else {
+    try {
+      const resolved = await dns.lookup(hostname, { all: true });
+      addresses = resolved.map((entry) => entry.address);
+    } catch {
+      throw new Error(`${fieldName} host could not be resolved`);
+    }
+  }
+  if (!addresses.length || addresses.some(isDisallowedAddress)) {
+    throw new Error(`${fieldName} must point to a public host (private/internal addresses are not allowed)`);
   }
 }
 
@@ -2099,7 +2161,12 @@ app.get('/api/hello', (req, res) => {
 app.get('/api/test-user/:username', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (req, res) => {
   try {
     const { username } = req.params;
-    const user = await usersCollection.findOne({ username }, { projection: { password: 0 } });
+    // Scope the lookup to the admin's own company — this endpoint must not
+    // disclose the existence of users in other tenants.
+    const user = await usersCollection.findOne(
+      { username, companyId: req.user.companyId },
+      { projection: { password: 0 } }
+    );
     
     if (user) {
       res.json({ 
@@ -2174,14 +2241,15 @@ app.get('/api/mol-price', ensureMongoConnected, async (req, res) => {
     
     let filter = {};
     if (search) {
+      const safe = escapeRegExp(String(search));
       filter = {
         $or: [
-          { ASINEX_ID: { $regex: search, $options: 'i' } },
-          { IUPAC_NAME: { $regex: search, $options: 'i' } },
-          { SMILES_STRING: { $regex: search, $options: 'i' } },
-           { INCHI: { $regex: search, $options: 'i' } },
-           { INCHIKEY: { $regex: search, $options: 'i' } },
-          { BRUTTO_FORMULA: { $regex: search, $options: 'i' } }
+          { ASINEX_ID: { $regex: safe, $options: 'i' } },
+          { IUPAC_NAME: { $regex: safe, $options: 'i' } },
+          { SMILES_STRING: { $regex: safe, $options: 'i' } },
+           { INCHI: { $regex: safe, $options: 'i' } },
+           { INCHIKEY: { $regex: safe, $options: 'i' } },
+          { BRUTTO_FORMULA: { $regex: safe, $options: 'i' } }
         ]
       };
     }
@@ -2298,13 +2366,14 @@ app.get('/api/mol-price/search', ensureMongoConnected, async (req, res) => {
     
     let filter = {};
     if (query) {
+      const safe = escapeRegExp(String(query));
       filter = {
         $or: [
-          { ASINEX_ID: { $regex: query, $options: 'i' } },
-          { IUPAC_NAME: { $regex: query, $options: 'i' } },
-          { INCHI: { $regex: query, $options: 'i' } },
-          { INCHIKEY: { $regex: query, $options: 'i' } },
-          { SMILES_STRING: { $regex: query, $options: 'i' } },
+          { ASINEX_ID: { $regex: safe, $options: 'i' } },
+          { IUPAC_NAME: { $regex: safe, $options: 'i' } },
+          { INCHI: { $regex: safe, $options: 'i' } },
+          { INCHIKEY: { $regex: safe, $options: 'i' } },
+          { SMILES_STRING: { $regex: safe, $options: 'i' } },
           { ASINEX_ID: query },
           { IUPAC_NAME:  query },
           { INCHI:   query  },
@@ -2318,7 +2387,7 @@ app.get('/api/mol-price/search', ensureMongoConnected, async (req, res) => {
       filter.SMILES_STRING = smiles; // value only, not an object
     }
     if (formula) {
-      filter.BRUTTO_FORMULA = { $regex: formula, $options: 'i' };
+      filter.BRUTTO_FORMULA = { $regex: escapeRegExp(String(formula)), $options: 'i' };
     }
     
     const totalCount = await molPriceCollection.countDocuments(filter);
@@ -2576,11 +2645,10 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, async (req, 
     if (!userDoc || typeof userDoc.simulationTokens !== 'number' || userDoc.simulationTokens <= 0) {
       return res.status(403).json({ error: 'No simulation tokens left' });
     }
-    if (userDoc.username !== "tester123")
-      await usersCollection.updateOne(
-        userQuery,
-        { $inc: { simulationTokens: -1 } }
-      );
+    await usersCollection.updateOne(
+      userQuery,
+      { $inc: { simulationTokens: -1 } }
+    );
     // Generate a 12-character random key
     const simulationKey = Array.from({length: 12}, () =>
       Math.random().toString(36).charAt(2)
@@ -2724,12 +2792,10 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
     if (!userDoc || typeof userDoc.simulationTokens !== 'number' || userDoc.simulationTokens <= 0) {
       return res.status(403).json({ error: 'No simulation tokens left' });
     }
-    if (userDoc.username !== "tester123") {
-      await usersCollection.updateOne(
-        userQuery,
-        { $inc: { simulationTokens: -1 } }
-      );
-    }
+    await usersCollection.updateOne(
+      userQuery,
+      { $inc: { simulationTokens: -1 } }
+    );
     // Generate a 12-character random key
     const simulationKey = Array.from({length: 12}, () =>
       Math.random().toString(36).charAt(2)
@@ -3325,13 +3391,13 @@ app.patch('/api/company/ligand-service-config', ensureMongoConnected, authentica
     const currentConfig = normalizeLigandServiceConfig(company.ligandServiceConfig || {});
     const updates = {};
     try {
-      ['catalogApiBase', 'stockApiUrl', 'dockingApiUrl', 'diffdockApiUrl'].forEach((fieldName) => {
+      for (const fieldName of ['catalogApiBase', 'stockApiUrl', 'dockingApiUrl', 'diffdockApiUrl']) {
         const value = validateRequiredStringField(req.body || {}, fieldName);
         if (value !== undefined) {
-          assertValidHttpUrl(value, fieldName);
+          await assertValidHttpUrl(value, fieldName);
           updates[fieldName] = value;
         }
-      });
+      }
     } catch (validationError) {
       return res.status(400).json({ error: validationError.message });
     }
@@ -4875,7 +4941,10 @@ app.get('/api/asinex/health', ensureMongoConnected, authenticateToken, async (re
   }
 });
 
-app.use('/api', scientificServicesRouter);
+// Require a valid session for the scientific microservice proxies. These were
+// previously mounted with no auth, exposing compute (GROMACS/glioblastoma) and
+// the upstream URL path params to anonymous callers.
+app.use('/api', ensureMongoConnected, authenticateToken, requireActiveUser, scientificServicesRouter);
 
 const PORT = process.env.PORT || 3000;
 
@@ -5295,19 +5364,45 @@ app.post('/api/send-test-email', ensureMongoConnected, authenticateToken, requir
 app.post('/api/send-email', publicEmailRateLimit, async (req, res) => {
   try {
     const { name, subject, message, recipientEmail } = req.body;
-    if (!name || !subject || !message || !recipientEmail) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'All fields including recipient email are required' 
+    if (!name || !subject || !message) {
+      return res.status(400).json({
+        success: false,
+        error: 'name, subject, and message are required'
       });
     }
-    await sendTitanEmail({ name, subject, message, recipientEmail });
+
+    // SECURITY: this endpoint is public (contact form). The destination is
+    // server-controlled — NOT taken from the request — so it cannot be abused
+    // as an open relay to send mail to arbitrary recipients. Any client-supplied
+    // recipientEmail is treated only as the visitor's own contact address and
+    // surfaced in the body for the support team to reply to.
+    const destination = process.env.CONTACT_RECIPIENT || process.env.EMAIL_USER;
+    if (!destination) {
+      console.error('send-email: no CONTACT_RECIPIENT/EMAIL_USER configured');
+      return res.status(500).json({ success: false, error: 'Email destination is not configured' });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const senderContact = typeof recipientEmail === 'string' && emailRegex.test(recipientEmail.trim())
+      ? recipientEmail.trim()
+      : null;
+
+    const bodyWithContact = senderContact
+      ? `From: ${name} <${senderContact}>\n\n${message}`
+      : `From: ${name}\n\n${message}`;
+
+    await sendTitanEmail({
+      name,
+      subject: `[Contact] ${subject}`,
+      message: bodyWithContact,
+      recipientEmail: destination
+    });
     res.json({ success: true, message: 'Email sent successfully' });
   } catch (error) {
     console.error('Email sending error:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Failed to send email. Please check email configuration.' 
+    res.status(500).json({
+      success: false,
+      error: 'Failed to send email. Please check email configuration.'
     });
   }
 });
@@ -5463,11 +5558,12 @@ app.get('/api/molecules', ensureMongoConnected, async (req, res) => {
     let filter = {};
     
     if (search) {
+      const safe = escapeRegExp(String(search));
       filter.$or = [
-        { ASINEX_ID: { $regex: search, $options: 'i' } },
-        { IUPAC_NAME: { $regex: search, $options: 'i' } },
-        { SMILES_STRING: { $regex: search, $options: 'i' } },
-        { BRUTTO_FORMULA: { $regex: search, $options: 'i' } }
+        { ASINEX_ID: { $regex: safe, $options: 'i' } },
+        { IUPAC_NAME: { $regex: safe, $options: 'i' } },
+        { SMILES_STRING: { $regex: safe, $options: 'i' } },
+        { BRUTTO_FORMULA: { $regex: safe, $options: 'i' } }
       ];
     }
     
@@ -5616,8 +5712,8 @@ app.get('/api/molecules/search/smiles', ensureMongoConnected, async (req, res) =
     }
     
     const molecules = await molPriceCollection
-      .find({ 
-        SMILES_STRING: { $regex: pattern, $options: 'i' } 
+      .find({
+        SMILES_STRING: { $regex: escapeRegExp(String(pattern)), $options: 'i' }
       })
       .limit(limit)
       .toArray();

@@ -77,12 +77,20 @@ router.get('/gromacs/info', async (req, res) => {
 
 router.post('/gromacs/workflows/:workflow', async (req, res) => {
   const { workflow } = req.params;
-  return proxyJson(req, res, `${GROMACS_API_BASE}/workflows/${workflow}`, { method: 'POST' });
+  // Encode the path segment so it can't traverse (../) or inject into the
+  // upstream URL. Restrict to a sane identifier shape as well.
+  if (!/^[\w.-]{1,128}$/.test(workflow)) {
+    return res.status(400).json({ error: 'Invalid workflow identifier' });
+  }
+  return proxyJson(req, res, `${GROMACS_API_BASE}/workflows/${encodeURIComponent(workflow)}`, { method: 'POST' });
 });
 
 router.get('/gromacs/jobs/:jobId', async (req, res) => {
   const { jobId } = req.params;
-  return proxyJson(req, res, `${GROMACS_API_BASE}/jobs/${jobId}`, { method: 'GET' });
+  if (!/^[\w.-]{1,128}$/.test(jobId)) {
+    return res.status(400).json({ error: 'Invalid job identifier' });
+  }
+  return proxyJson(req, res, `${GROMACS_API_BASE}/jobs/${encodeURIComponent(jobId)}`, { method: 'GET' });
 });
 
 export default router;
