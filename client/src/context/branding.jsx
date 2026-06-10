@@ -9,6 +9,10 @@ import React, {
 import PropTypes from "prop-types";
 import { useAuth } from "@/context/auth";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
+import { deriveBrandScale } from "@/utils/brandTheme";
+
+// --brand-50..900 — the variables the Tailwind `brand` family resolves to.
+const BRAND_SHADE_KEYS = ["50", "100", "200", "300", "400", "500", "600", "700", "800", "900"];
 
 const DEFAULT_PALETTE = Object.freeze({
   primary: "#B4B239",
@@ -105,6 +109,25 @@ export function BrandingProvider({ children }) {
       requestVersion.current += 1;
     };
   }, [authLoading, companyId, refreshBranding]);
+
+  // Variable-writer effect: reflect the in-memory branding state onto
+  // document.documentElement so the `brand-*` Tailwind utilities re-theme
+  // without a page reload. The palette is NEVER persisted (THEME-04) — this
+  // effect only reads the in-memory `branding` state. Removing the inline vars
+  // (rather than re-writing the defaults) lets the :root stylesheet defaults
+  // show through byte-identically on logout/company-switch (THEME-03/THEME-04).
+  useEffect(() => {
+    if (branding.isCustom) {
+      const scale = deriveBrandScale(branding.palette);
+      for (const key of BRAND_SHADE_KEYS) {
+        document.documentElement.style.setProperty(`--brand-${key}`, scale[key]);
+      }
+    } else {
+      for (const key of BRAND_SHADE_KEYS) {
+        document.documentElement.style.removeProperty(`--brand-${key}`);
+      }
+    }
+  }, [branding]);
 
   return (
     <BrandingContext.Provider value={{ branding, loading, error, refreshBranding }}>
