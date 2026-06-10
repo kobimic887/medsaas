@@ -13,6 +13,15 @@ findings:
   info: 1
   total: 4
 status: issues_found
+fixed:
+  critical: 1
+  warning: 2
+  info: 1
+finding_status:
+  CR-01: fixed (0d0cb5b source, 2b174ea regression test)
+  WR-01: fixed (2b174ea)
+  WR-02: fixed (0d0cb5b)
+  IN-01: fixed (0d0cb5b)
 ---
 
 # Phase 4 Code Review — Email Theming
