@@ -83,7 +83,12 @@ every layer. Full archive: `.planning/milestones/v2-ROADMAP.md`
   2. Logging in as a company with no custom palette shows the same green appearance as before v3 — the default fallback is visually identical to the current app
   3. Changing company A's palette does not alter the colour seen by users of company B — tenants are visually isolated
   4. No hardcoded `color="green"`, `green-`, or `emerald-` brand-colour occurrences remain in the migrated call-sites
-**Plans**: TBD
+**Plans**: 3 plans
+**Wave 1**
+  - [ ] 03-01-PLAN.md — Theming infrastructure: brand Tailwind family, MD-green :root defaults, shade-derivation utility, BrandingProvider variable-writer (THEME-01/03/04)
+**Wave 2** *(blocked on Wave 1 completion; 03-02 and 03-03 run in parallel — no file overlap)*
+  - [ ] 03-02-PLAN.md — Migrate brand call-sites on the six dashboard feature pages; semantic-green exclusions documented (THEME-02)
+  - [ ] 03-03-PLAN.md — Migrate brand call-sites in the dashboard navbar chrome and blog admin page (THEME-02)
 **UI hint**: yes
 
 ### Phase 4: Email Theming
@@ -108,9 +113,9 @@ every layer. Full archive: `.planning/milestones/v2-ROADMAP.md`
 | 7. Docker, CI/CD, and Scripts | v2 | 3/3 | ✅ Complete | 2026-06-05 |
 | 1. Compatibility Spike | v3 | 1/1 | ✅ Complete | 2026-06-06 |
 | 2. Branding Management | v3 | 3/3 | ✅ Complete | 2026-06-09 |
-| 3. Dashboard Theming Refactor | v3 | 0/TBD | Not started | - |
+| 3. Dashboard Theming Refactor | v3 | 0/3 | Planned | - |
 | 4. Email Theming | v3 | 0/TBD | Not started | - |
 
 ---
 
-*Roadmap updated: 2026-06-09 — Phase 2 Branding Management complete (3/3 plans)*
+*Roadmap updated: 2026-06-10 — Phase 3 Dashboard Theming Refactor planned (3 plans, 2 waves)*
