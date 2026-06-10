@@ -1,8 +1,41 @@
 // Email templates — branded per company (signup) with platform fallback
 
+import { DEFAULT_BRAND_PALETTE, normalizeBrandPalette } from './companyBranding.js';
+
 function resolveBrandName(companyName, platformName = 'MedSaaS') {
   const company = typeof companyName === 'string' ? companyName.trim() : '';
   return company || platformName;
+}
+
+// Resolve a four-field brand palette from the caller-supplied options.
+// The template must NEVER throw because of branding: a malformed palette
+// (e.g. normalizeBrandPalette throwing on a present-but-bad hex) fails open
+// to DEFAULT_BRAND_PALETTE so every rendered colour is a valid #RRGGBB string.
+function resolveBrandPalette(rawPalette) {
+  try {
+    return normalizeBrandPalette(rawPalette || {});
+  } catch {
+    return DEFAULT_BRAND_PALETTE;
+  }
+}
+
+// Inline-style builders. Brand colours are emitted as inline `style="..."`
+// attributes (never CSS classes or variables) so they survive email-client
+// CSS stripping.
+function headerStyle(brand) {
+  return `background: linear-gradient(135deg, ${brand.primary} 0%, ${brand.accent} 100%); color: #ffffff; padding: 40px 30px; text-align: center;`;
+}
+
+function primaryButtonStyle(brand) {
+  return `display: inline-block; background: linear-gradient(135deg, ${brand.primary} 0%, ${brand.dark} 100%); color: #ffffff; padding: 16px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; margin: 20px 0; text-align: center;`;
+}
+
+function accentTextStyle(brand) {
+  return `color: ${brand.accent};`;
+}
+
+function titleStyle(brand) {
+  return `font-size: 24px; color: ${brand.accent}; margin-bottom: 20px; font-weight: 600;`;
 }
 
 export function generateVerificationEmailHTML(username, verificationUrl, options = {}) {
@@ -11,9 +44,11 @@ export function generateVerificationEmailHTML(username, verificationUrl, options
     platformName = 'MedSaaS',
     websiteUrl = '',
     signInUrl = '',
+    palette,
   } = options;
   const brandName = resolveBrandName(companyName, platformName);
   const website = websiteUrl || signInUrl || '#';
+  const brand = resolveBrandPalette(palette);
 
   return `
 <!DOCTYPE html>
@@ -44,19 +79,18 @@ export function generateVerificationEmailHTML(username, verificationUrl, options
         }
         
         .header {
-            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
             color: white;
             padding: 40px 30px;
             text-align: center;
         }
-        
+
         .logo {
             font-size: 28px;
             font-weight: bold;
             margin-bottom: 10px;
             letter-spacing: 1px;
         }
-        
+
         .tagline {
             font-size: 14px;
             opacity: 0.9;
@@ -69,11 +103,10 @@ export function generateVerificationEmailHTML(username, verificationUrl, options
         
         .welcome-title {
             font-size: 24px;
-            color: #1e3a8a;
             margin-bottom: 20px;
             font-weight: 600;
         }
-        
+
         .welcome-text {
             font-size: 16px;
             color: #4b5563;
@@ -83,7 +116,6 @@ export function generateVerificationEmailHTML(username, verificationUrl, options
         
         .verify-button {
             display: inline-block;
-            background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
             color: white;
             padding: 16px 32px;
             text-decoration: none;
@@ -93,14 +125,8 @@ export function generateVerificationEmailHTML(username, verificationUrl, options
             margin: 20px 0;
             text-align: center;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
         }
-        
-        .verify-button:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
-        }
-        
+
         .features {
             background-color: #f1f5f9;
             padding: 25px;
@@ -109,7 +135,6 @@ export function generateVerificationEmailHTML(username, verificationUrl, options
         }
         
         .features h3 {
-            color: #1e3a8a;
             font-size: 18px;
             margin-bottom: 15px;
         }
@@ -214,26 +239,26 @@ export function generateVerificationEmailHTML(username, verificationUrl, options
 <body>
     <div class="email-container">
         <!-- Header -->
-        <div class="header">
+        <div class="header" style="${headerStyle(brand)}">
             <div class="logo">${brandName.toUpperCase()}</div>
             <div class="tagline">Unlocking the potential of macrocyclic chemistry</div>
         </div>
-        
+
         <!-- Main Content -->
         <div class="content">
-            <h1 class="welcome-title">Welcome to ${brandName}, ${username}!</h1>
-            
+            <h1 class="welcome-title" style="${titleStyle(brand)}">Welcome to ${brandName}, ${username}!</h1>
+
             <p class="welcome-text">
-                Thank you for joining our platform dedicated to advancing drug discovery through innovative macrocyclic chemistry. 
+                Thank you for joining our platform dedicated to advancing drug discovery through innovative macrocyclic chemistry.
                 To complete your registration and start exploring our compound libraries and research tools, please verify your email address.
             </p>
-            
+
             <div style="text-align: center;">
-                <a href="${verificationUrl}" class="verify-button">Verify Your Email Address</a>
+                <a href="${verificationUrl}" class="verify-button" style="${primaryButtonStyle(brand)}">Verify Your Email Address</a>
             </div>
-            
+
             <div class="features">
-                <h3>What you'll get access to:</h3>
+                <h3 style="${accentTextStyle(brand)}">What you'll get access to:</h3>
                 <ul class="feature-list">
                     <li>Comprehensive molecular compound database and pricing</li>
                     <li>Advanced molecular docking simulations</li>
@@ -250,7 +275,7 @@ export function generateVerificationEmailHTML(username, verificationUrl, options
             
             <div class="alt-link">
                 <strong>Can't click the button?</strong> Copy and paste this link into your browser:<br>
-                <span style="color: #3b82f6;">${verificationUrl}</span>
+                <span style="${accentTextStyle(brand)}">${verificationUrl}</span>
             </div>
         </div>
         
@@ -284,8 +309,10 @@ export function generateWelcomeEmailHTML(username, options = {}) {
     companyName = '',
     platformName = 'MedSaaS',
     signInUrl = '#',
+    palette,
   } = options;
   const brandName = resolveBrandName(companyName, platformName);
+  const brand = resolveBrandPalette(palette);
 
   return `
 <!DOCTYPE html>
@@ -317,33 +344,30 @@ export function generateWelcomeEmailHTML(username, options = {}) {
         }
         
         .header {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
             color: white;
             padding: 40px 30px;
             text-align: center;
         }
-        
+
         .logo {
             font-size: 28px;
             font-weight: bold;
             margin-bottom: 10px;
             letter-spacing: 1px;
         }
-        
+
         .content {
             padding: 40px 30px;
         }
-        
+
         .success-title {
             font-size: 24px;
-            color: #059669;
             margin-bottom: 20px;
             font-weight: 600;
         }
-        
+
         .cta-button {
             display: inline-block;
-            background: linear-gradient(135deg, #10b981 0%, #047857 100%);
             color: white;
             padding: 16px 32px;
             text-decoration: none;
@@ -356,20 +380,20 @@ export function generateWelcomeEmailHTML(username, options = {}) {
 </head>
 <body>
     <div class="email-container">
-        <div class="header">
+        <div class="header" style="${headerStyle(brand)}">
             <div class="logo">${brandName.toUpperCase()}</div>
             <div>Welcome aboard!</div>
         </div>
-        
+
         <div class="content">
-            <h1 class="success-title">Email Verified Successfully!</h1>
-            
+            <h1 class="success-title" style="${titleStyle(brand)}">Email Verified Successfully!</h1>
+
             <p>Hello ${username},</p>
-            
+
             <p>Your email has been verified and your account is now active. You can now access all features of the ${brandName} workspace.</p>
-            
+
             <div style="text-align: center;">
-                <a href="${signInUrl}" class="cta-button">Sign In to Your Account</a>
+                <a href="${signInUrl}" class="cta-button" style="${primaryButtonStyle(brand)}">Sign In to Your Account</a>
             </div>
         </div>
     </div>
@@ -378,8 +402,9 @@ export function generateWelcomeEmailHTML(username, options = {}) {
 }
 
 export function generatePasswordResetEmailHTML(username, resetUrl, options = {}) {
-  const { companyName = '', platformName = 'MedSaaS' } = options;
+  const { companyName = '', platformName = 'MedSaaS', palette } = options;
   const brandName = resolveBrandName(companyName, platformName);
+  const brand = resolveBrandPalette(palette);
 
   return `
 <!DOCTYPE html>
@@ -411,26 +436,24 @@ export function generatePasswordResetEmailHTML(username, resetUrl, options = {})
         }
         
         .header {
-            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
             color: white;
             padding: 40px 30px;
             text-align: center;
         }
-        
+
         .logo {
             font-size: 28px;
             font-weight: bold;
             margin-bottom: 10px;
             letter-spacing: 1px;
         }
-        
+
         .content {
             padding: 40px 30px;
         }
-        
+
         .reset-button {
             display: inline-block;
-            background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
             color: white;
             padding: 16px 32px;
             text-decoration: none;
@@ -443,20 +466,20 @@ export function generatePasswordResetEmailHTML(username, resetUrl, options = {})
 </head>
 <body>
     <div class="email-container">
-        <div class="header">
+        <div class="header" style="${headerStyle(brand)}">
             <div class="logo">${brandName.toUpperCase()}</div>
             <div>Password Reset Request</div>
         </div>
-        
+
         <div class="content">
-            <h1>Reset Your Password</h1>
-            
+            <h1 style="${accentTextStyle(brand)}">Reset Your Password</h1>
+
             <p>Hello ${username},</p>
-            
+
             <p>We received a request to reset your password. Click the button below to set a new password:</p>
-            
+
             <div style="text-align: center;">
-                <a href="${resetUrl}" class="reset-button">Reset Password</a>
+                <a href="${resetUrl}" class="reset-button" style="${primaryButtonStyle(brand)}">Reset Password</a>
             </div>
             
             <p><strong>This link will expire in 1 hour for security reasons.</strong></p>
