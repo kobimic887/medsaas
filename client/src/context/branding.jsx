@@ -96,11 +96,18 @@ export function BrandingProvider({ children }) {
 
   useEffect(() => {
     if (authLoading) return undefined;
+    // Drop the previous tenant's palette immediately on any company change
+    // (including a direct A->B login with no intervening logout). Resetting to
+    // EMPTY_BRANDING here triggers the writer effect to remove the inline
+    // --brand-* variables in the same commit, so company A's custom palette can
+    // never linger on document.documentElement while company B's branding fetch
+    // is in flight. Without this, the version guard only prevents stale *state*
+    // writes — it does not clear the previously written DOM variables.
+    setBranding(EMPTY_BRANDING);
+    setError(null);
     if (!companyId) {
       requestVersion.current += 1;
-      setBranding(EMPTY_BRANDING);
       setLoading(false);
-      setError(null);
       return undefined;
     }
 
