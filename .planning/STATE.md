@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v3
 milestone_name: Company Brand Colour
 status: executing
-last_updated: "2026-06-10T15:22:14.385Z"
-last_activity: 2026-06-10 -- Phase 3 planning complete
+last_updated: "2026-06-10T15:32:17.063Z"
+last_activity: 2026-06-10
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 7
-  completed_plans: 4
+  completed_plans: 5
   percent: 50
 ---
 
@@ -20,18 +20,18 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-06-06)
 
 **Core value:** Labs and customers get a professional, focused tool — each company's space reflects its own brand, not a shared hardcoded green.
-**Current focus:** Phase 03 — Dashboard Theming Refactor
+**Current focus:** Phase 3 — Dashboard Theming Refactor
 
 ---
 
 ## Current Position
 
-Phase: 3
-Plan: Not planned
+Phase: 3 (Dashboard Theming Refactor) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-06-10 -- Phase 3 planning complete
+Last activity: 2026-06-10 -- Completed 03-01 (runtime CSS-variable theming layer)
 
-Progress: [█████░░░░░] 50%
+Progress: [███████░░░] 71%
 
 ## Performance Metrics
 
@@ -47,6 +47,7 @@ Progress: [█████░░░░░] 50%
 |-------|-------|-------|----------|
 | 01 | 1 | ~20 min | ~20 min |
 | 02 | 3/3 | ~9 min | ~3 min |
+| 03 | 1/3 | ~5 min | ~5 min (P03-01: 3 tasks, 4 files) |
 
 *Updated after each plan completion*
 
@@ -63,6 +64,8 @@ Progress: [█████░░░░░] 50%
 - Material Tailwind `color="green"` is a fixed enum and cannot take arbitrary hex — those sites must move to CSS-variable-driven styling
 - Company branding is stored as a four-color palette plus normalized PNG bytes on the Mongo company document
 - Branding management is the second local-state Company Admin tab; member direct access redirects to dashboardHome
+- Brand theming uses a Tailwind `brand-*` family in `rgb(var(--brand-N) / <alpha-value>)` channel form so opacity modifiers work; `:root` defaults are MD-green channels (76 175 80...) overridden at runtime by BrandingProvider (Phase 3 Plan 1)
+- Tenant palette is written to `document.documentElement` and removed on logout/company-switch; never persisted to localStorage (THEME-04) (Phase 3 Plan 1)
 
 ### Active Blockers
 
