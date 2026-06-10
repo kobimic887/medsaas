@@ -22,6 +22,11 @@ findings:
   info: 6
   total: 9
 status: findings
+warnings_fixed: 3
+finding_status:
+  WR-01: fixed
+  WR-02: fixed
+  WR-03: fixed
 ---
 
 # Phase 3: Code Review Report
@@ -67,7 +72,7 @@ on direct company switch) and six Info items.
 
 ## Warnings
 
-### WR-01: CardHeader migration loses the brand-tinted shadow and leaves a `bg-white` underlay
+### WR-01: CardHeader migration loses the brand-tinted shadow and leaves a `bg-white` underlay [FIXED — 57c662f]
 
 **File:** `client/src/pages/dashboard/simulation.jsx:1542-1545`
 **Issue:** Removing `color="green"` from
@@ -96,7 +101,7 @@ Two consequences:
 (`bg-transparent` overrides `bg-white` via twMerge; `shadow-brand-500/40`
 restores the tinted shadow and re-themes it.)
 
-### WR-02: Shade derivation guarantees neither monotonic darkness nor text contrast — `hover:bg-brand-700` can be lighter than `bg-brand-600`
+### WR-02: Shade derivation guarantees neither monotonic darkness nor text contrast — `hover:bg-brand-700` can be lighter than `bg-brand-600` [FIXED — 20c62e0]
 
 **File:** `client/src/utils/brandTheme.js:99-125` (`shadeRecipe`)
 **Issue:** The recipe assumes a luminance ordering `light > primary > dark` and
@@ -124,7 +129,7 @@ the scale assert `luminance(scale[k]) >= luminance(scale[k+1])` for each step,
 falling back to `mix(primary, dark, t)` for any shade that violates the order.
 That keeps 600→900 strictly darkening regardless of where the accent sits.
 
-### WR-03: Tenant palette is not reset on a direct company switch — stale `--brand-*` variables persist for the duration of the in-flight fetch
+### WR-03: Tenant palette is not reset on a direct company switch — stale `--brand-*` variables persist for the duration of the in-flight fetch [FIXED — 67cfab3]
 
 **File:** `client/src/context/branding.jsx:97-111` (fetch effect), `119-130` (writer)
 **Issue:** The reset path (`setBranding(EMPTY_BRANDING)` → writer removes inline
