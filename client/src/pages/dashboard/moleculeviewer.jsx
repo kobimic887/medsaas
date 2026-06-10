@@ -550,7 +550,7 @@ export function MoleculeViewer() {
                       )}
 
                       {currentSmiles && (
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                        <div className="bg-brand-50 border border-brand-200 rounded-lg p-3">
                           <Typography variant="small" className="font-medium" as="div">
                             Current molecule:
                           </Typography>

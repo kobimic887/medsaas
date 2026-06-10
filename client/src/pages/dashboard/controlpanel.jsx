@@ -590,7 +590,7 @@ export function ControlPanel() {
                           <span>{priceData.data.price_1mg ? `$${priceData.data.price_1mg}` : "-"}</span>
                           {priceData.data.price_1mg && (
                             <ShoppingCartIcon
-                              className="inline-block h-5 w-5 text-green-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
+                              className="inline-block h-5 w-5 text-brand-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
                               title="Add 1mg to cart"
                               onClick={() => addToCart(priceData.data, 1, priceData.data.price_1mg)}
                             />
@@ -600,7 +600,7 @@ export function ControlPanel() {
                           <span>{priceData.data.price_5mg ? `$${priceData.data.price_5mg}` : "-"}</span>
                           {priceData.data.price_5mg && (
                             <ShoppingCartIcon
-                              className="inline-block h-5 w-5 text-green-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
+                              className="inline-block h-5 w-5 text-brand-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
                               title="Add 5mg to cart"
                               onClick={() => addToCart(priceData.data, 5, priceData.data.price_5mg)}
                             />
@@ -610,7 +610,7 @@ export function ControlPanel() {
                           <span>{priceData.data.price_10mg ? `$${priceData.data.price_10mg}` : "-"}</span>
                           {priceData.data.price_10mg && (
                             <ShoppingCartIcon
-                              className="inline-block h-5 w-5 text-green-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
+                              className="inline-block h-5 w-5 text-brand-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
                               title="Add 10mg to cart"
                               onClick={() => addToCart(priceData.data, 10, priceData.data.price_10mg)}
                             />
@@ -651,7 +651,7 @@ export function ControlPanel() {
                             <span>{mol.PRICE_1MG || mol.price_1mg ? `$${mol.PRICE_1MG || mol.price_1mg}` : "-"}</span>
                             {(mol.PRICE_1MG || mol.price_1mg) && (
                               <ShoppingCartIcon
-                                className="inline-block h-5 w-5 text-green-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
+                                className="inline-block h-5 w-5 text-brand-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
                                 title="Add 1mg to cart"
                                 onClick={() => addToCart(mol, 1, mol.PRICE_1MG || mol.price_1mg)}
                               />
@@ -661,7 +661,7 @@ export function ControlPanel() {
                             <span>{mol.PRICE_2MG || mol.price_2mg ? `$${mol.PRICE_2MG || mol.price_2mg}` : "-"}</span>
                             {(mol.PRICE_2MG || mol.price_2mg) && (
                               <ShoppingCartIcon
-                                className="inline-block h-5 w-5 text-green-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
+                                className="inline-block h-5 w-5 text-brand-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
                                 title="Add 2mg to cart"
                                 onClick={() => addToCart(mol, 2, mol.PRICE_2MG || mol.price_2mg)}
                               />
@@ -671,7 +671,7 @@ export function ControlPanel() {
                             <span>{mol.PRICE_5MG || mol.price_5mg ? `$${mol.PRICE_5MG || mol.price_5mg}` : "-"}</span>
                             {(mol.PRICE_5MG || mol.price_5mg) && (
                               <ShoppingCartIcon
-                                className="inline-block h-5 w-5 text-green-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
+                                className="inline-block h-5 w-5 text-brand-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
                                 title="Add 5mg to cart"
                                 onClick={() => addToCart(mol, 5, mol.PRICE_5MG || mol.price_5mg)}
                               />
@@ -681,7 +681,7 @@ export function ControlPanel() {
                             <span>{mol.PRICE_10MG || mol.price_10mg ? `$${mol.PRICE_10MG || mol.price_10mg}` : "-"}</span>
                             {(mol.PRICE_10MG || mol.price_10mg) && (
                               <ShoppingCartIcon
-                                className="inline-block h-5 w-5 text-green-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
+                                className="inline-block h-5 w-5 text-brand-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
                                 title="Add 10mg to cart"
                                 onClick={() => addToCart(mol, 10, mol.PRICE_10MG || mol.price_10mg)}
                               />

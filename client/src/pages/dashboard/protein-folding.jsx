@@ -521,7 +521,7 @@ const ProteinFolding = () => {
                 </span>
                 <button
                   onClick={handleDownload}
-                  className="flex items-center gap-1 bg-green-600 text-white px-3 py-1.5 rounded text-sm hover:bg-green-700 transition-colors"
+                  className="flex items-center gap-1 bg-brand-600 text-white px-3 py-1.5 rounded text-sm hover:bg-brand-700 transition-colors"
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
