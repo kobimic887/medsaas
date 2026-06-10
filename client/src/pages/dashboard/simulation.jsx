@@ -1541,7 +1541,7 @@ export function Simulation() {
         <Card className="mb-6">
           <CardHeader
             variant="gradient"
-            className="mb-4 grid h-12 place-items-center bg-gradient-to-tr from-brand-600 to-brand-400"
+            className="mb-4 grid h-12 place-items-center bg-transparent bg-gradient-to-tr from-brand-600 to-brand-400 shadow-brand-500/40"
           >
             <Typography variant="h6" color="white">
               Search Result
