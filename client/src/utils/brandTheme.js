@@ -85,6 +85,15 @@ export function hexToChannels(hex) {
   return rgb ? channelsToString(rgb) : null;
 }
 
+// WCAG relative luminance of an [r,g,b] tuple (channels 0..255). Higher = lighter.
+function relativeLuminance([r, g, b]) {
+  const linearize = (channel) => {
+    const c = channel / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * linearize(r) + 0.7152 * linearize(g) + 0.0722 * linearize(b);
+}
+
 // Per-shade interpolation recipe.
 //   - 500 is the primary anchor; 600 is the primary->dark midpoint (the common
 //     "hover" weight withMT renders).
@@ -142,9 +151,70 @@ export function deriveBrandScale(palette) {
     return DEFAULT_BRAND_SCALE;
   }
 
+  // Enforce the anchor invariant the recipe assumes: `light` must be the
+  // lightest of the four palette colours and `dark` the darkest, regardless of
+  // how the admin ordered them. Without this, a palette whose `primary` is
+  // lighter than `light` (e.g. the light value pasted into primary) inverts the
+  // tint ramp. We reassign the lightest/darkest anchors by relative luminance
+  // and keep `primary`/`accent` as the two middle colours.
+  const anchors = [
+    { rgb: primary, lum: relativeLuminance(primary) },
+    { rgb: accent, lum: relativeLuminance(accent) },
+    { rgb: light, lum: relativeLuminance(light) },
+    { rgb: dark, lum: relativeLuminance(dark) },
+  ].sort((a, b) => b.lum - a.lum); // lightest first, darkest last
+  const orderedLight = anchors[0].rgb;
+  const orderedDark = anchors[3].rgb;
+  // Preserve the supplied primary/accent as the mid anchors so the brand hue is
+  // retained; only the light/dark endpoints are normalized.
+  const orderedPrimary = primary;
+  const orderedAccent = accent;
+
+  // Build the scale as RGB tuples first so we can enforce monotonic darkness.
+  const rgbScale = {};
+  for (const key of SHADE_KEYS) {
+    rgbScale[key] = shadeRecipe(
+      key,
+      orderedPrimary,
+      orderedAccent,
+      orderedLight,
+      orderedDark,
+    ).map(clampChannel);
+  }
+
+  // Enforce strictly non-increasing luminance from 50 -> 900. Any shade that is
+  // lighter than (or equal to) its predecessor inverts hover/active affordances
+  // (e.g. hover:bg-brand-700 lighter than bg-brand-600). For each violation,
+  // fall back to a deterministic primary->dark mix at that shade's position,
+  // which monotonically darkens along the scale. This is a no-op for any palette
+  // whose recipe output is already ordered (including the olive default).
+  const EPSILON = 1e-9;
+  let previousLum = Infinity;
+  for (let i = 0; i < SHADE_KEYS.length; i += 1) {
+    const key = SHADE_KEYS[i];
+    let tuple = rgbScale[key];
+    if (relativeLuminance(tuple) > previousLum - EPSILON) {
+      // Position along primary->dark: 500 is the anchor, deepen toward 900.
+      const t = (i + 1) / SHADE_KEYS.length;
+      const candidate = mixRgb(orderedPrimary, orderedDark, t).map(clampChannel);
+      // Only accept the fallback if it actually darkens; otherwise nudge the
+      // existing tuple darker to guarantee strict ordering.
+      if (relativeLuminance(candidate) <= previousLum - EPSILON) {
+        tuple = candidate;
+      } else {
+        tuple = mixRgb(tuple, orderedDark, 0.5).map(clampChannel);
+        if (relativeLuminance(tuple) > previousLum - EPSILON) {
+          tuple = orderedDark;
+        }
+      }
+      rgbScale[key] = tuple;
+    }
+    previousLum = relativeLuminance(tuple);
+  }
+
   const scale = {};
   for (const key of SHADE_KEYS) {
-    scale[key] = channelsToString(shadeRecipe(key, primary, accent, light, dark));
+    scale[key] = channelsToString(rgbScale[key]);
   }
   return scale;
 }
