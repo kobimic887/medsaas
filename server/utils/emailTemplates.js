@@ -2,6 +2,22 @@
 
 import { DEFAULT_BRAND_PALETTE, normalizeBrandPalette } from './companyBranding.js';
 
+// Escape HTML-significant characters so caller-supplied text (company name,
+// username, inviter, role, password line) cannot break out of the surrounding
+// markup or attributes. Server-derived URLs are NOT passed through this in
+// href contexts, but any value interpolated into an attribute or element text
+// must be escaped. Escaping `&` first avoids double-encoding the entities we
+// emit below. `"`, `'`, `<`, `>` cover both attribute and element-text breakouts.
+function escapeHtml(value) {
+  const str = value == null ? '' : String(value);
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function resolveBrandName(companyName, platformName = 'MedSaaS') {
   const company = typeof companyName === 'string' ? companyName.trim() : '';
   return company || platformName;
@@ -46,7 +62,10 @@ export function generateVerificationEmailHTML(username, verificationUrl, options
     signInUrl = '',
     palette,
   } = options;
-  const brandName = resolveBrandName(companyName, platformName);
+  const brandNameRaw = resolveBrandName(companyName, platformName);
+  const brandName = escapeHtml(brandNameRaw);
+  const brandNameUpper = escapeHtml(brandNameRaw.toUpperCase());
+  const safeUsername = escapeHtml(username);
   const website = websiteUrl || signInUrl || '#';
   const brand = resolveBrandPalette(palette);
 
@@ -240,13 +259,13 @@ export function generateVerificationEmailHTML(username, verificationUrl, options
     <div class="email-container">
         <!-- Header -->
         <div class="header" style="${headerStyle(brand)}">
-            <div class="logo">${brandName.toUpperCase()}</div>
+            <div class="logo">${brandNameUpper}</div>
             <div class="tagline">Unlocking the potential of macrocyclic chemistry</div>
         </div>
 
         <!-- Main Content -->
         <div class="content">
-            <h1 class="welcome-title" style="${titleStyle(brand)}">Welcome to ${brandName}, ${username}!</h1>
+            <h1 class="welcome-title" style="${titleStyle(brand)}">Welcome to ${brandName}, ${safeUsername}!</h1>
 
             <p class="welcome-text">
                 Thank you for joining our platform dedicated to advancing drug discovery through innovative macrocyclic chemistry.
@@ -311,7 +330,10 @@ export function generateWelcomeEmailHTML(username, options = {}) {
     signInUrl = '#',
     palette,
   } = options;
-  const brandName = resolveBrandName(companyName, platformName);
+  const brandNameRaw = resolveBrandName(companyName, platformName);
+  const brandName = escapeHtml(brandNameRaw);
+  const brandNameUpper = escapeHtml(brandNameRaw.toUpperCase());
+  const safeUsername = escapeHtml(username);
   const brand = resolveBrandPalette(palette);
 
   return `
@@ -381,14 +403,14 @@ export function generateWelcomeEmailHTML(username, options = {}) {
 <body>
     <div class="email-container">
         <div class="header" style="${headerStyle(brand)}">
-            <div class="logo">${brandName.toUpperCase()}</div>
+            <div class="logo">${brandNameUpper}</div>
             <div>Welcome aboard!</div>
         </div>
 
         <div class="content">
             <h1 class="success-title" style="${titleStyle(brand)}">Email Verified Successfully!</h1>
 
-            <p>Hello ${username},</p>
+            <p>Hello ${safeUsername},</p>
 
             <p>Your email has been verified and your account is now active. You can now access all features of the ${brandName} workspace.</p>
 
@@ -403,7 +425,10 @@ export function generateWelcomeEmailHTML(username, options = {}) {
 
 export function generatePasswordResetEmailHTML(username, resetUrl, options = {}) {
   const { companyName = '', platformName = 'MedSaaS', palette } = options;
-  const brandName = resolveBrandName(companyName, platformName);
+  const brandNameRaw = resolveBrandName(companyName, platformName);
+  const brandName = escapeHtml(brandNameRaw);
+  const brandNameUpper = escapeHtml(brandNameRaw.toUpperCase());
+  const safeUsername = escapeHtml(username);
   const brand = resolveBrandPalette(palette);
 
   return `
@@ -467,14 +492,14 @@ export function generatePasswordResetEmailHTML(username, resetUrl, options = {})
 <body>
     <div class="email-container">
         <div class="header" style="${headerStyle(brand)}">
-            <div class="logo">${brandName.toUpperCase()}</div>
+            <div class="logo">${brandNameUpper}</div>
             <div>Password Reset Request</div>
         </div>
 
         <div class="content">
             <h1 style="${accentTextStyle(brand)}">Reset Your Password</h1>
 
-            <p>Hello ${username},</p>
+            <p>Hello ${safeUsername},</p>
 
             <p>We received a request to reset your password. Click the button below to set a new password:</p>
 
@@ -502,7 +527,14 @@ export function generateInviteEmailHTML(options = {}) {
     platformName = 'MedSaaS',
     palette,
   } = options;
-  const brandName = resolveBrandName(companyName, platformName);
+  const brandNameRaw = resolveBrandName(companyName, platformName);
+  const brandName = escapeHtml(brandNameRaw);
+  const brandNameUpper = escapeHtml(brandNameRaw.toUpperCase());
+  const safeInvitee = escapeHtml(invitee);
+  const safeInviter = escapeHtml(inviter);
+  const safePlatformName = escapeHtml(platformName);
+  const safeRole = escapeHtml(role);
+  const safePasswordLine = escapeHtml(passwordLine);
   const brand = resolveBrandPalette(palette);
 
   return `
@@ -568,21 +600,21 @@ export function generateInviteEmailHTML(options = {}) {
 <body>
     <div class="email-container">
         <div class="header" style="${headerStyle(brand)}">
-            <div class="logo">${brandName.toUpperCase()}</div>
+            <div class="logo">${brandNameUpper}</div>
             <div>You're invited</div>
         </div>
 
         <div class="content">
-            <h1 class="invite-title" style="${titleStyle(brand)}">Join ${brandName}, ${invitee}!</h1>
+            <h1 class="invite-title" style="${titleStyle(brand)}">Join ${brandName}, ${safeInvitee}!</h1>
 
-            <p>${inviter} invited you to join ${brandName} on ${platformName} as a <strong>${role}</strong>.</p>
+            <p>${safeInviter} invited you to join ${brandName} on ${safePlatformName} as a <strong>${safeRole}</strong>.</p>
 
             <div style="text-align: center;">
                 <a href="${signInUrl}" class="invite-button" style="${primaryButtonStyle(brand)}">Sign In to Your Account</a>
             </div>
 
             <div class="invite-meta">
-                <strong>Getting started:</strong> ${passwordLine}<br>
+                <strong>Getting started:</strong> ${safePasswordLine}<br>
                 Sign in at <span style="${accentTextStyle(brand)}">${signInUrl}</span>
             </div>
         </div>

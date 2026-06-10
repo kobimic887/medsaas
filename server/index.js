@@ -20,8 +20,10 @@ import dns from 'dns/promises';
 import net from 'net';
 import os from 'os';
 
+import crypto from 'crypto';
+
 // Import email templates
-import { generateVerificationEmailHTML, generatePasswordResetEmailHTML, generateInviteEmailHTML } from './utils/emailTemplates.js';
+import { generatePasswordResetEmailHTML, generateInviteEmailHTML } from './utils/emailTemplates.js';
 import { getBrandName, getPlatformName, getPlatformWebsiteUrl } from './config/branding.js';
 import { sendTitanEmail, testEmailConfiguration } from './utils/emailService.js';
 import { validateEmailCredentials, getTitanMailHelp } from './utils/emailDebug.js';
@@ -964,9 +966,16 @@ function toObjectIdSafe(value) {
 }
 
 function generateTemporaryPassword() {
-  const random = Math.random().toString(36).slice(2, 8);
-  const stamp = Date.now().toString(36).slice(-4);
-  return `Tmp!${random}${stamp}A1`;
+  // Temporary credentials must come from a CSPRNG — Math.random()/Date.now()
+  // output is predictable. The fixed affixes keep the signup password policy
+  // satisfied (lower + upper + digit + special, ≥8 chars) regardless of which
+  // characters the random core draws.
+  const alphabet = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let random = '';
+  for (let i = 0; i < 10; i += 1) {
+    random += alphabet[crypto.randomInt(alphabet.length)];
+  }
+  return `Tmp!${random}aA1`;
 }
 
 async function getCompanyRecord(companyId) {
