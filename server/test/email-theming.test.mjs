@@ -6,6 +6,7 @@ import {
   generateVerificationEmailHTML,
   generateWelcomeEmailHTML,
   generatePasswordResetEmailHTML,
+  generateInviteEmailHTML,
 } from '../utils/emailTemplates.js';
 import { DEFAULT_BRAND_PALETTE } from '../utils/companyBranding.js';
 
@@ -62,6 +63,22 @@ const TEMPLATES = [
     renderDefault: () => generatePasswordResetEmailHTML('user', 'http://x', {}),
     renderMalformed: () => generatePasswordResetEmailHTML('user', 'http://x', { palette: { primary: 'not-a-hex' } }),
   },
+  {
+    name: 'generateInviteEmailHTML',
+    renderCustom: () => generateInviteEmailHTML({
+      invitee: 'newuser', inviter: 'admin', companyName: 'Acme', role: 'member',
+      passwordLine: 'Temporary password: x', signInUrl: 'http://x', palette: CUSTOM_PALETTE,
+    }),
+    renderDefault: () => generateInviteEmailHTML({
+      invitee: 'newuser', inviter: 'admin', companyName: 'Acme', role: 'member',
+      passwordLine: 'Temporary password: x', signInUrl: 'http://x',
+    }),
+    renderMalformed: () => generateInviteEmailHTML({
+      invitee: 'newuser', inviter: 'admin', companyName: 'Acme', role: 'member',
+      passwordLine: 'Temporary password: x', signInUrl: 'http://x',
+      palette: { primary: 'not-a-hex' },
+    }),
+  },
 ];
 
 console.log('Email theming — inline brand colour rendering:\n');
@@ -103,6 +120,26 @@ for (const tpl of TEMPLATES) {
 
   console.log('');
 }
+
+// CR-01 regression: caller-supplied text must be HTML-escaped in every template.
+console.log('HTML injection (CR-01):');
+const EVIL_NAME = 'Acme</title><img src=x onerror="alert(1)">';
+const INJECTION_RENDERS = [
+  ['generateVerificationEmailHTML', generateVerificationEmailHTML(EVIL_NAME, 'http://x', { companyName: EVIL_NAME })],
+  ['generateWelcomeEmailHTML', generateWelcomeEmailHTML(EVIL_NAME, { companyName: EVIL_NAME })],
+  ['generatePasswordResetEmailHTML', generatePasswordResetEmailHTML(EVIL_NAME, 'http://x', { companyName: EVIL_NAME })],
+  ['generateInviteEmailHTML', generateInviteEmailHTML({
+    invitee: EVIL_NAME, inviter: EVIL_NAME, companyName: EVIL_NAME,
+    role: EVIL_NAME, passwordLine: EVIL_NAME, signInUrl: 'http://x',
+  })],
+];
+for (const [name, html] of INJECTION_RENDERS) {
+  check(
+    `${name} escapes injected markup`,
+    !html.includes('<img src=x') && !html.includes('onerror="alert(1)"') && html.includes('&lt;img src=x')
+  );
+}
+console.log('');
 
 console.log('='.repeat(48));
 console.log(`Result: ${passed} passed, ${failed} failed`);
