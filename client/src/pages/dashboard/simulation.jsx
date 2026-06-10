@@ -1315,25 +1315,25 @@ export function Simulation() {
 
         {/* Molecular Weight Range Sliders */}
         {searchType === "molweight" && (
-          <div className="flex flex-col gap-3 mb-2 w-full p-4 bg-green-50 rounded-lg border border-green-200 molecular-weight-range">
+          <div className="flex flex-col gap-3 mb-2 w-full p-4 bg-brand-50 rounded-lg border border-brand-200 molecular-weight-range">
             <Typography variant="small" color="blue-gray" className="font-semibold">
               Molecular Weight Range:
             </Typography>
             
             <div className="flex items-center gap-4 w-full">
               {/* Min value display */}
-              <div className="flex items-center justify-center min-w-[80px] px-3 py-1 bg-green-600 text-white rounded-lg font-bold text-lg">
+              <div className="flex items-center justify-center min-w-[80px] px-3 py-1 bg-brand-600 text-white rounded-lg font-bold text-lg">
                 {parseFloat(molWeightMin).toFixed(2)}
               </div>
               
               {/* Dual range slider container */}
               <div className="flex-1 relative" style={{ minWidth: '200px' }}>
                 {/* Background track */}
-                <div className="absolute w-full h-2 bg-green-200 rounded-lg" style={{ top: '50%', transform: 'translateY(-50%)' }}></div>
+                <div className="absolute w-full h-2 bg-brand-200 rounded-lg" style={{ top: '50%', transform: 'translateY(-50%)' }}></div>
                 
                 {/* Active range highlight */}
                 <div 
-                  className="absolute h-2 bg-green-600 rounded-lg" 
+                  className="absolute h-2 bg-brand-600 rounded-lg"
                   style={{ 
                     left: `${(molWeightMin / 1000) * 100}%`,
                     width: `${((molWeightMax - molWeightMin) / 1000) * 100}%`,
@@ -1388,7 +1388,7 @@ export function Simulation() {
               </div>
               
               {/* Max value display */}
-              <div className="flex items-center justify-center min-w-[80px] px-3 py-1 bg-green-600 text-white rounded-lg font-bold text-lg">
+              <div className="flex items-center justify-center min-w-[80px] px-3 py-1 bg-brand-600 text-white rounded-lg font-bold text-lg">
                 {parseFloat(molWeightMax).toFixed(2)}
               </div>
             </div>
@@ -1436,10 +1436,9 @@ export function Simulation() {
             />
             <Button
               size="lg"
-              color="green"
               onClick={handleSearch}
               disabled={searchLoading || !searchCode || selectedMolecules.size > 1}
-              className="flex items-center gap-3 px-6 py-3 text-lg font-semibold shadow-md whitespace-nowrap"
+              className="flex items-center gap-3 px-6 py-3 text-lg font-semibold shadow-md whitespace-nowrap bg-brand-500 text-white shadow-brand-500/20 hover:shadow-lg hover:shadow-brand-500/40 focus:opacity-[0.85] focus:shadow-none active:opacity-[0.85] active:shadow-none"
             >
               {searchLoading ? <Spinner className="h-5 w-5" /> : <CloudIcon className="h-5 w-5" />}
               {searchLoading ? 'Searching...' : 'Search'}
@@ -1542,8 +1541,7 @@ export function Simulation() {
         <Card className="mb-6">
           <CardHeader
             variant="gradient"
-            color="green"
-            className="mb-4 grid h-12 place-items-center"
+            className="mb-4 grid h-12 place-items-center bg-gradient-to-tr from-brand-600 to-brand-400"
           >
             <Typography variant="h6" color="white">
               Search Result
@@ -1593,10 +1591,9 @@ export function Simulation() {
               />
               <Button
                 size="lg"
-                color="green"
                 onClick={handleSearch}
                 disabled={searchLoading || !searchCode || selectedMolecules.size > 1}
-                className="flex items-center justify-center gap-3 w-full"
+                className="flex items-center justify-center gap-3 w-full bg-brand-500 text-white shadow-md shadow-brand-500/20 hover:shadow-lg hover:shadow-brand-500/40 focus:opacity-[0.85] focus:shadow-none active:opacity-[0.85] active:shadow-none"
               >
                 {searchLoading ? <Spinner className="h-5 w-5" /> : <CloudIcon className="h-5 w-5" />}
                 {searchLoading ? 'Searching...' : 'Search'}
@@ -1843,7 +1840,7 @@ export function Simulation() {
                           <span>{(mol.PRICE_1MG ? formatPriceWithCurrency(mol.PRICE_1MG) : "-").toString().slice(0,moleculeLimit)}{(mol.PRICE_1MG ? formatPriceWithCurrency(mol.PRICE_1MG) : "-").toString().length > moleculeLimit ? '...' : ''}</span>
                           {mol.PRICE_1MG && (
                             <ShoppingCartIcon
-                              className="inline-block h-5 w-5 text-green-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
+                              className="inline-block h-5 w-5 text-brand-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
                               title="Add 1mg to cart"
                             />
                           )}
@@ -1854,7 +1851,7 @@ export function Simulation() {
                           <span>{(mol.PRICE_5MG ? formatPriceWithCurrency(mol.PRICE_5MG) : "-").toString().slice(0,moleculeLimit)}{(mol.PRICE_5MG ? formatPriceWithCurrency(mol.PRICE_5MG) : "-").toString().length > moleculeLimit ? '...' : ''}</span>
                           {mol.PRICE_5MG && (
                             <ShoppingCartIcon
-                              className="inline-block h-5 w-5 text-green-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
+                              className="inline-block h-5 w-5 text-brand-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
                               title="Add 5mg to cart"
                             />
                           )}
@@ -1865,7 +1862,7 @@ export function Simulation() {
                           <span>{(mol.PRICE_10MG ? formatPriceWithCurrency(mol.PRICE_10MG) : "-").toString().slice(0,moleculeLimit)}{(mol.PRICE_10MG ? formatPriceWithCurrency(mol.PRICE_10MG) : "-").toString().length > moleculeLimit ? '...' : ''}</span>
                           {mol.PRICE_10MG && (
                             <ShoppingCartIcon
-                              className="inline-block h-5 w-5 text-green-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
+                              className="inline-block h-5 w-5 text-brand-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
                               title="Add 10mg to cart"
                             />
                           )}
@@ -1948,7 +1945,7 @@ export function Simulation() {
                   View Sanitized PDB Result
                 </a>
                 <a download
-                  className="inline-block px-4 py-2 border border-green-500 text-green-500 rounded hover:bg-green-50 transition"
+                  className="inline-block px-4 py-2 border border-brand-500 text-brand-500 rounded hover:bg-brand-50 transition"
                   href={API_CONFIG.buildApiUrl(`/sanitizedminimalsdf/${simResult.simulationKey}`)}
                   target="_blank"
                 >
