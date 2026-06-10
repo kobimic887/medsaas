@@ -490,3 +490,103 @@ export function generatePasswordResetEmailHTML(username, resetUrl, options = {})
 </body>
 </html>`;
 }
+
+export function generateInviteEmailHTML(options = {}) {
+  const {
+    invitee = '',
+    inviter = '',
+    companyName = '',
+    role = 'member',
+    passwordLine = '',
+    signInUrl = '#',
+    platformName = 'MedSaaS',
+    palette,
+  } = options;
+  const brandName = resolveBrandName(companyName, platformName);
+  const brand = resolveBrandPalette(palette);
+
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>You're invited to ${brandName}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f8f9fa;
+        }
+        .email-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+        }
+        .logo {
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            letter-spacing: 1px;
+        }
+        .content { padding: 40px 30px; }
+        .invite-title {
+            font-size: 24px;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+        .invite-button {
+            display: inline-block;
+            color: white;
+            padding: 16px 32px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 16px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .invite-meta {
+            background-color: #f8fafc;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 25px 0;
+            font-size: 14px;
+            color: #475569;
+            word-break: break-word;
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header" style="${headerStyle(brand)}">
+            <div class="logo">${brandName.toUpperCase()}</div>
+            <div>You're invited</div>
+        </div>
+
+        <div class="content">
+            <h1 class="invite-title" style="${titleStyle(brand)}">Join ${brandName}, ${invitee}!</h1>
+
+            <p>${inviter} invited you to join ${brandName} on ${platformName} as a <strong>${role}</strong>.</p>
+
+            <div style="text-align: center;">
+                <a href="${signInUrl}" class="invite-button" style="${primaryButtonStyle(brand)}">Sign In to Your Account</a>
+            </div>
+
+            <div class="invite-meta">
+                <strong>Getting started:</strong> ${passwordLine}<br>
+                Sign in at <span style="${accentTextStyle(brand)}">${signInUrl}</span>
+            </div>
+        </div>
+    </div>
+</body>
+</html>`;
+}

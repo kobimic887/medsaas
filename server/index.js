@@ -21,12 +21,13 @@ import net from 'net';
 import os from 'os';
 
 // Import email templates
-import { generateVerificationEmailHTML } from './utils/emailTemplates.js';
+import { generateVerificationEmailHTML, generatePasswordResetEmailHTML, generateInviteEmailHTML } from './utils/emailTemplates.js';
 import { getBrandName, getPlatformName, getPlatformWebsiteUrl } from './config/branding.js';
 import { sendTitanEmail, testEmailConfiguration } from './utils/emailService.js';
 import { validateEmailCredentials, getTitanMailHelp } from './utils/emailDebug.js';
 import { createAdmetTask, getQueueStatus, rabbitMQHealthCheck } from './utils/rabbitMQUtils.js';
 import {
+  DEFAULT_BRAND_PALETTE,
   extractBrandPalette,
   normalizeBrandPalette,
   parseAndNormalizeLogoUpload,
@@ -1946,6 +1947,17 @@ app.get('/api/verify-email', ensureMongoConnected, async (req, res) => {
   }
 });
 
+// Resolve a company's branded email palette, failing open to the default.
+// Email sends must never break because branding is missing or malformed:
+// a null company or a normalizeBrandPalette throw both yield DEFAULT_BRAND_PALETTE.
+function resolveCompanyEmailPalette(company) {
+  try {
+    return normalizeBrandPalette(company?.branding?.palette || {});
+  } catch {
+    return DEFAULT_BRAND_PALETTE;
+  }
+}
+
 app.post('/api/password-reset/request', authRateLimit, ensureMongoConnected, async (req, res) => {
   const identifier = typeof req.body.email === 'string' && req.body.email.trim()
     ? req.body.email.trim()
@@ -1967,6 +1979,18 @@ app.post('/api/password-reset/request', authRateLimit, ensureMongoConnected, asy
     );
     const resetUrl = `${getPublicAppUrl(req)}/auth/sign-in?resetToken=${encodeURIComponent(resetToken)}`;
 
+    let resetCompany = null;
+    try {
+      resetCompany = await companiesCollection.findOne({ companyId: user.companyId });
+    } catch (companyError) {
+      console.warn('Password reset company lookup failed:', companyError.message);
+    }
+    const resetPalette = resolveCompanyEmailPalette(resetCompany);
+    const resetHtml = generatePasswordResetEmailHTML(user.username, resetUrl, {
+      palette: resetPalette,
+      companyName: user.companyName
+    });
+
     try {
       await sendTitanEmail({
         name: user.username,
@@ -1976,7 +2000,8 @@ app.post('/api/password-reset/request', authRateLimit, ensureMongoConnected, asy
           resetUrl,
           'If you did not request this reset, you can ignore this email.'
         ].join('\n\n'),
-        recipientEmail: user.email
+        recipientEmail: user.email,
+        htmlContent: resetHtml
       });
     } catch (error) {
       console.error('Password reset email failed:', error.message);
@@ -3496,6 +3521,16 @@ app.post('/api/company/members', ensureMongoConnected, authenticateToken, requir
       const passwordLine = password
         ? 'Use the initial password shared by your company admin.'
         : `Temporary password: ${generatedPassword}`;
+      const invitePalette = resolveCompanyEmailPalette(company);
+      const inviteHtml = generateInviteEmailHTML({
+        invitee: username,
+        inviter: req.user.username,
+        companyName: company.name,
+        role,
+        passwordLine,
+        signInUrl,
+        palette: invitePalette
+      });
       await sendTitanEmail({
         name: username,
         subject: `${company.name} invited you to ${getPlatformName()}`,
@@ -3505,7 +3540,8 @@ app.post('/api/company/members', ensureMongoConnected, authenticateToken, requir
           passwordLine,
           `Sign in: ${signInUrl}`
         ].join('\n\n'),
-        recipientEmail: email
+        recipientEmail: email,
+        htmlContent: inviteHtml
       });
       inviteEmailSent = true;
     } catch (inviteEmailError) {
