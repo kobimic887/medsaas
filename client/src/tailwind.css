@@ -7,6 +7,23 @@
    ════════════════════════════════════════════════════════════════════════════ */
 
 :root {
+  /* Brand theme defaults — Material Design green (what withMT renders for
+     green-*). Channel triplets so brand-* utilities + /opacity modifiers work.
+     Overridden at runtime by BrandingProvider for companies with a custom
+     palette; removing the inline vars restores these byte-identical defaults. */
+  --brand-50:  232 245 233;
+  --brand-100: 200 230 201;
+  --brand-200: 165 214 167;
+  --brand-300: 129 199 132;
+  --brand-400: 102 187 106;
+  --brand-500: 76 175 80;
+  --brand-600: 67 160 71;
+  --brand-700: 56 142 60;
+  --brand-800: 46 125 50;
+  --brand-900: 27 94 32;
+}
+
+:root {
   --cb-bg:        #0a0a0f;
   --cb-surface:   #12121a;
   --cb-border:    rgba(255,255,255,0.06);
