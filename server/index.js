@@ -28,6 +28,7 @@ import { getBrandName, getPlatformName, getPlatformWebsiteUrl } from './config/b
 import { sendTitanEmail, testEmailConfiguration } from './utils/emailService.js';
 import { validateEmailCredentials, getTitanMailHelp } from './utils/emailDebug.js';
 import { createAdmetTask, getQueueStatus, rabbitMQHealthCheck } from './utils/rabbitMQUtils.js';
+import { normalizeShopSearchResponse } from './utils/asinexCompound.js';
 import {
   DEFAULT_BRAND_PALETTE,
   extractBrandPalette,
@@ -2667,8 +2668,18 @@ app.post('/api/shop', ensureMongoConnected, authenticateToken, requireActiveUser
       },
       body: JSON.stringify(req.body)
     });
+    if (!response.ok) {
+      // Relay upstream status (mapping an upstream 401 to 502 so it can't trip
+      // the client's same-origin-401 auto-logout), matching the other proxies.
+      return res
+        .status(relayUpstreamStatus(response.status))
+        .json({ error: `Stock API responded with status: ${response.status}` });
+    }
     const data = await response.json();
-    res.json(data);
+    // Normalise the legacy eShop casing (and attach server-computed prices) at
+    // the boundary; passes the payload through unchanged if it isn't the
+    // expected { list, found, totalFound } shape.
+    res.json(normalizeShopSearchResponse(data));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
