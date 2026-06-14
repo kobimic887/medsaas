@@ -1,315 +1,354 @@
----
-last_mapped_commit: 1a703a98234dd0b9b66866ec31d4d9a1a6455b55
----
-<!-- refreshed: 2026-06-05 -->
+<!-- refreshed: 2026-06-14 -->
 # Architecture
 
-**Analysis Date:** 2026-06-05
+**Analysis Date:** 2026-06-14
 
 ## System Overview
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│                    React/Vite Web Client                    │
-│  `client/src/main.jsx` -> `client/src/App.jsx`              │
-├──────────────────┬──────────────────┬───────────────────────┤
-│ Public Site      │ Auth Pages        │ Dashboard             │
-│ `client/src/pages/main` │ `client/src/pages/auth` │ `client/src/pages/dashboard` │
-└────────┬─────────┴────────┬─────────┴──────────┬────────────┘
-         │ same-origin `/api`, `/tanimoto`, checkout, `/health`
-         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 Express API / Static Host                   │
-│                 `server/index.js`                           │
-├──────────────────────┬──────────────────────┬───────────────┤
-│ Auth/Billing/Tenant  │ Chemistry Proxies    │ Scientific API │
-│ Mongo + Stripe + JWT │ Asinex/Tanimoto/NVIDIA│ `server/routes/scientificServices.js` │
-└──────────┬───────────┴──────────┬───────────┴───────┬───────┘
-           │                      │                   │
-           ▼                      ▼                   ▼
-┌──────────────────────┐ ┌──────────────────────┐ ┌──────────────────────┐
-│ MongoDB + RabbitMQ   │ │ External Services    │ │ Python Microservices │
-│ `docker-compose.yml` │ │ env-configured URLs  │ │ `services/*`         │
-└──────────────────────┘ └──────────────────────┘ └──────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│              User-Facing Applications                           │
+├───────────────────────┬────────────────┬──────────────────────┤
+│   React Dashboard     │  Auth Pages    │   Marketing Site     │
+│  `client/src/pages/`  │  `pages/auth/` │  `pages/main/`       │
+│   Material Tailwind   │                │                      │
+└────────────┬──────────┴────────┬───────┴──────────────┬────────┘
+             │                   │                      │
+             └───────────────────┼──────────────────────┘
+                   Vite Proxy    │   HTTP/REST API
+                   (dev mode)    │   (Compat w/ Bun)
+                                 ▼
+            ┌────────────────────────────────────────┐
+            │   Express.js API Server (single file)  │
+            │   `server/index.js` (ESM)              │
+            │                                        │
+            │  • Auth & middleware chain             │
+            │  • Simulation token consumption        │
+            │  • Stripe billing integration          │
+            │  • NVIDIA API proxies                  │
+            │  • Company multi-tenancy               │
+            └────────────┬─────────────┬─────────────┘
+                         │             │
+         ┌───────────────┘             └────────────────┐
+         │                                              │
+         ▼                                              ▼
+    ┌──────────────────┐                        ┌──────────────────┐
+    │    MongoDB       │                        │ Scientific Routes│
+    │   Collections    │                        │ `server/routes/` │
+    │ (users, cos,     │                        │                  │
+    │  audit_logs,     │                        │ Proxies to:      │
+    │  billing_events) │                        │ • GROMACS API    │
+    └──────────────────┘                        │ • Glioblastoma   │
+                                                │ • External APIs  │
+                                                └──────────────────┘
+         ┌────────────────────────────────────────────┐
+         │   Optional Microservices (Docker)          │
+         ├────────────────────────────────────────────┤
+         │ • `services/admet/` — ADMET worker         │
+         │ • `services/gromacs-api/` — MD sim server  │
+         │ • `services/glioblastoma-predictor/`       │
+         └────────────────────────────────────────────┘
+                          │
+                          ▼
+         ┌────────────────────────────────────────┐
+         │   External/NVIDIA APIs                 │
+         │ • MolMIM (generate molecules)          │
+         │ • OpenFold3 (protein folding)          │
+         │ • Stripe (billing)                     │
+         │ • Tanimoto (similarity search)         │
+         │ • Asinex (ligand catalog)              │
+         └────────────────────────────────────────┘
 ```
 
 ## Component Responsibilities
 
 | Component | Responsibility | File |
 |-----------|----------------|------|
-| Root workspace scripts | Coordinate install, dev, build, start, Docker service profiles, and Bun/npm fallback commands across package roots. | `package.json` |
-| Web entry point | Mount React under `BrowserRouter`, Material Tailwind, auth context, blog context, and Molstar styles. | `client/src/main.jsx` |
-| Top-level route gate | Route `/dashboard/*`, `/main/*`, `/auth/*`, and redirect unknown paths; protect dashboard by local auth token presence. | `client/src/App.jsx` |
-| Route registry | Define navigable page metadata for main, auth, and dashboard layouts, including admin-only and hidden pages. | `client/src/routes.jsx` |
-| Layout shells | Render route groups and shared navigation for public, auth, and dashboard experiences. | `client/src/layouts/dashboard.jsx`, `client/src/layouts/mainpage.jsx`, `client/src/layouts/auth.jsx` |
-| API URL utility | Keep browser API calls same-origin by default; allow split hosting via `VITE_API_BASE_URL`. | `client/src/utils/api.js`, `client/src/utils/constants.js` |
-| Express API server | Own HTTP middleware, auth, MongoDB access, billing, tenant administration, chemistry proxies, ADMET task endpoints, static hosting, and server startup. | `server/index.js` |
-| Scientific service router | Proxy GROMACS and glioblastoma API calls and aggregate scientific-service health. | `server/routes/scientificServices.js` |
-| RabbitMQ utility | Publish ADMET work to RabbitMQ and expose queue health/status helpers. | `server/utils/rabbitMQUtils.js` |
-| Email utility | Send and test Titan SMTP emails. | `server/utils/emailService.js` |
-| Branding config | Resolve platform/company label helpers used by server-side emails and UI-oriented responses. | `server/config/branding.js` |
-| ADMET worker | Consume RabbitMQ ADMET tasks and call back into the API. | `services/admet/amqpadmet.py`, `services/admet/admet_sender.py`, `services/admet/admentpred.py` |
-| GROMACS API | Provide a FastAPI service for file handling, GROMACS commands, jobs, templates, and workflows. | `services/gromacs-api/app.py` |
-| Glioblastoma predictor | Provide a Flask service for SMILES testing, single prediction, and batch prediction. | `services/glioblastoma-predictor/app.py` |
-| Dashboard template | Preserve upstream dashboard reference code separate from the active client. | `packages/dashboard-template/` |
-| Legacy API | Preserve archived standalone Chem API code separate from active server code. | `legacy/chem-beo-api/` |
+| React Dashboard | UI views, routing, form handling, local auth state | `client/src/` |
+| Auth Context | Token + user_info storage, login/logout/role helpers | `client/src/context/auth.jsx` |
+| Routes Config | Page definitions, menu structure, admin-only gating | `client/src/routes.jsx` |
+| Express API | All HTTP endpoints, auth, middleware, data models | `server/index.js` |
+| Scientific Router | Proxy to GROMACS, Glioblastoma, health checks | `server/routes/scientificServices.js` |
+| Config/Branding | Company name → label, platform fallback, email branding | `server/config/branding.js` |
+| Email Utils | HTML templates, Titan email sender | `server/utils/emailTemplates.js`, `emailService.js` |
+| Microservices | ADMET prediction, MD simulations, cancer prediction | `services/*` |
+| RabbitMQ Utils | Task queue for async ADMET jobs | `server/utils/rabbitMQUtils.js` |
 
 ## Pattern Overview
 
-**Overall:** Monorepo with a Vite React SPA, a monolithic Express API/static host, and optional Dockerized Python scientific workers/services.
+**Overall:** Multi-tenant SaaS with company-scoped users, token-based simulation economy, and role-based access control.
 
 **Key Characteristics:**
-- Use three JavaScript package roots: root orchestration in `package.json`, client app in `client/package.json`, and API app in `server/package.json`.
-- Use Bun as the default package runner and API runtime while keeping npm/Node fallback commands and lockfiles in root, `client/`, and `server/`.
-- Keep frontend API calls same-origin: Vite proxies development requests from `client/vite.config.js`; production serves `client/dist` from `server/index.js`.
-- Keep most backend business logic in `server/index.js`; extract only focused helper modules in `server/utils/`, `server/config/`, and `server/routes/`.
-- Treat optional scientific capabilities as services behind the Express API, not as direct frontend integrations.
+- Single-tenant-per-company model: every user belongs to exactly one company.
+- JWT session tokens (7-day default) stored in browser localStorage.
+- Atomic simulation-token consumption via MongoDB updateOne (no race conditions).
+- Idempotent Stripe webhook fulfillment (checks if already fulfilled).
+- Middleware chain validates auth, user account status, company status, and token availability before simulation execution.
+- NVIDIA API proxying for molecule generation and protein folding (requires API keys).
+- Multi-role system: owner (first user), admin, member with gradated access.
 
 ## Layers
 
-**Root Orchestration:**
-- Purpose: Run install/dev/build/start/check commands and Docker Compose service profiles from a single place.
-- Location: `package.json`
-- Contains: Bun default scripts, npm/Node rollback scripts, lockfile refresh, Docker service profile commands.
-- Depends on: `bun.lock`, `package-lock.json`, `client/bun.lock`, `client/package-lock.json`, `server/bun.lock`, `server/package-lock.json`.
-- Used by: Developers, CI/deploy scripts, Phase 7 package-management/runtime migration work.
+**Client Presentation Layer:**
+- Purpose: React 18 dashboard + marketing site, Material Tailwind styling, Heroicons
+- Location: `client/src/pages/`, `client/src/components/`, `client/src/context/`
+- Contains: Page components, forms, context providers, layout wrappers
+- Depends on: AuthContext, API_CONFIG (constants for URL building)
+- Used by: Browser users
 
-**Frontend Application:**
-- Purpose: Render public pages, auth pages, dashboard tools, molecular visualization, checkout triggers, and admin controls.
-- Location: `client/src/`
-- Contains: React pages in `client/src/pages/`, layouts in `client/src/layouts/`, route definitions in `client/src/routes.jsx`, shared widgets in `client/src/widgets/`, contexts in `client/src/context/`, API helpers in `client/src/utils/`.
-- Depends on: React, React Router, Material Tailwind, Heroicons, Molstar, Ketcher, Vite alias `@ -> /src`.
-- Used by: Vite dev server and production static host.
+**API Gateway & Middleware (Express):**
+- Purpose: HTTP request routing, authentication, authorization, rate limiting, audit logging
+- Location: `server/index.js` (top-level middleware, auth functions, rate limiters ~lines 109–193)
+- Contains: Middleware chain, session validation, role checking
+- Depends on: MongoDB collections (users, companies, audit_logs)
+- Used by: All protected and public endpoints
 
-**API Application:**
-- Purpose: Authenticate users, manage companies/usage/billing, proxy external chemistry APIs, record simulation data, publish ADMET jobs, and serve built frontend assets.
-- Location: `server/index.js`
-- Contains: Express middleware, route handlers, MongoDB connection/index setup, JWT auth middleware, rate limiters, Stripe webhook/checkout handlers, Swagger setup, static SPA fallback.
-- Depends on: MongoDB, Stripe, JWT, Nodemailer, RabbitMQ utility, scientific router, environment variables loaded from root `.env`.
-- Used by: Vite dev proxy, production unified server, ADMET callback worker, Docker deployment.
+**Token Economy Layer:**
+- Purpose: Consume simulation tokens atomically, enforce quota caps
+- Location: `server/index.js` — `consumeSimulationToken()` function (~line 1227)
+- Contains: UpdateOne with $inc and $gt checks, token deduction logic
+- Depends on: usersCollection
+- Used by: Simulation endpoints (MolMIM, OpenFold3, docking, etc.)
 
-**Backend Helper Modules:**
-- Purpose: Keep repeated integrations and configuration helpers out of the main route file.
-- Location: `server/utils/`, `server/config/`, `server/routes/`
-- Contains: `server/utils/rabbitMQUtils.js`, `server/utils/emailService.js`, `server/utils/emailTemplates.js`, `server/utils/emailDebug.js`, `server/config/branding.js`, `server/routes/scientificServices.js`.
-- Depends on: Environment variables and third-party SDKs.
-- Used by: `server/index.js`.
+**Multi-Tenancy & Authorization:**
+- Purpose: Company-scoped data isolation, role verification, active status checks
+- Location: `server/index.js` — `requireActiveUser()`, `requireCompanyAdmin()`, `buildTenantFilter()` (~lines 834, 1166, 1192)
+- Contains: Company lookups, role assertions, soft-delete (active: false) checks
+- Depends on: companiesCollection, usersCollection
+- Used by: All protected endpoints
 
-**Scientific Services:**
-- Purpose: Provide heavier scientific compute capabilities outside the Node/Bun API process.
-- Location: `services/admet/`, `services/gromacs-api/`, `services/glioblastoma-predictor/`
-- Contains: Python services/workers, service Dockerfiles, service requirements, standalone READMEs.
-- Depends on: RabbitMQ for ADMET, FastAPI/GROMACS stack for GROMACS, Flask/scientific Python stack for glioblastoma prediction.
-- Used by: Docker Compose profiles and `server/routes/scientificServices.js`.
+**Billing & Stripe Integration:**
+- Purpose: Webhook fulfillment, credit granting, plan catalog
+- Location: `server/index.js` — `fulfillCheckoutSession()` (~line 1289), `/create-checkout-session-onetime` endpoint
+- Contains: Stripe webhook verification, idempotent credit application via billingEventsCollection
+- Depends on: billingEventsCollection, usersCollection, stripe client
+- Used by: POST `/stripe/webhook`, POST `/create-checkout-session-onetime`
 
-**Reference and Archive Code:**
-- Purpose: Preserve upstream UI template and legacy API implementation without making them active runtime code.
-- Location: `packages/dashboard-template/`, `legacy/chem-beo-api/`
-- Contains: Dashboard template source/static assets and archived Chem API files.
-- Depends on: Their own historical package manifests.
-- Used by: Manual reference only unless explicitly copied or diffed.
+**Scientific Service Proxy Layer:**
+- Purpose: Route simulation requests to external APIs or internal microservices
+- Location: `server/routes/scientificServices.js`, `server/index.js` (API endpoints ~226–300)
+- Contains: NVIDIA API forwarding (MolMIM, OpenFold3), Asinex catalog, DiffDock, Tanimoto, internal GROMACS/Glioblastoma proxies
+- Depends on: axios, node-fetch, NVIDIA API keys, Asinex config
+- Used by: Simulation feature endpoints
+
+**Data Persistence:**
+- Purpose: Store users, companies, audit logs, billing events, simulation cache
+- Location: MongoDB (connection ~line 712, initialization ~line 720)
+- Collections: `users`, `companies`, `audit_logs`, `billing_events`, `simulation_logs`, `projects`, `mol_price`
+- Indexes: username, email, companyId, slug, stripeSessionId, audit timestamps
+- Used by: All backend logic
 
 ## Data Flow
 
-### Primary Web Request Path
+### Primary Request Path (Protected Simulation)
 
-1. Browser loads `client/src/main.jsx` through Vite in development or `client/dist/index.html` through Express static hosting in production (`client/src/main.jsx`, `server/index.js`).
-2. `client/src/App.jsx` routes `/main/*`, `/auth/*`, and `/dashboard/*`; dashboard access checks `getAuthToken()` before rendering protected layouts.
-3. Dashboard pages call same-origin API paths using `fetch`, `API_CONFIG`, or `apiRequest()` (`client/src/utils/constants.js`, `client/src/utils/api.js`).
-4. In development, `client/vite.config.js` proxies `/api`, `/tanimoto`, checkout endpoints, and `/health` to `http://127.0.0.1:3000`.
-5. `server/index.js` applies JSON parsing, CORS, security headers, Mongo connection middleware, JWT middleware, and route-specific guards.
-6. Route handlers read/write MongoDB collections, call external APIs, publish RabbitMQ tasks, or return static files.
-7. Responses return JSON to the React page, which stores selected client state in React state and localStorage.
+1. **Client Request** (`client/src/pages/dashboard/simulation.jsx` or similar)
+   - User form submission → API call via `API_CONFIG.buildApiUrl()`
+   - Bearer token in Authorization header
 
-### Unified Production Path
+2. **ensureMongoConnected** (`server/index.js:772`)
+   - Validate MongoDB connection, re-connect if down
+   - Initialize collections (usersCollection, companiesCollection, etc.)
 
-1. Root `bun run start` runs `bun run build:bun` and then `bun --cwd=server run start:unified:bun` (`package.json`).
-2. `client/package.json` runs `vite build`, producing `client/dist`.
-3. `server/package.json` starts `FRONTEND_DIST=../client/dist bun index.js`.
-4. `server/index.js` serves static assets from `FRONTEND_DIST_PATH` and sends `index.html` for non-API SPA routes.
+3. **authenticateToken** (`server/index.js:2591`)
+   - Extract JWT from Authorization header
+   - Verify signature against JWT_SECRET
+   - If invalid/expired: return 401 (client auto-logs out on 401)
+   - Attach decoded payload to `req.user`
 
-### Authentication and Tenant Path
+4. **requireActiveUser** (`server/index.js:1192`)
+   - Look up user in DB by username ± companyId
+   - Check user.active !== false
+   - Check company (if multi-tenant) is not disabled
+   - Attach role and full user doc to req.user, req.dbUser
 
-1. Auth pages submit signup/signin requests to `/api/signup` and `/api/signin` (`client/src/pages/auth/sign-up.jsx`, `client/src/pages/auth/sign-in.jsx`).
-2. `server/index.js` validates input (username/email trimmed; email matched case-insensitively), hashes passwords with bcrypt, writes users/companies to MongoDB, and issues JWTs. Both endpoints return the same `{ token, user }` payload; signup signs the new user in immediately (email verification is disabled in non-prod) and the client redirects to the dashboard.
-3. Client auth helpers store tokens and user info in localStorage (`client/src/context/auth.jsx`, `client/src/utils/constants.js`).
-4. Protected API routes call `authenticateToken`, then optional `requireActiveUser` or `requireCompanyAdmin` in `server/index.js`.
-5. Tenant filtering uses `companyId` when present, otherwise falls back to username-scoped records.
+5. **consumeSimulationToken(feature)** (`server/index.js:1227`)
+   - Atomic MongoDB updateOne: decrement simulationTokens by 1, check $gt: 0
+   - If matchedCount === 0: return 403 "No simulation tokens left"
+   - Log audit event `usage.token.consume`
+   - Proceed if successful
 
-### Billing Path
+6. **Simulation Handler** (e.g., `/api/generate-molecules` ~line 226)
+   - Call NVIDIA MolMIM API with request body
+   - Catch errors, return response or 500
+   - Optionally log simulation_logs record
 
-1. Paid-plan UI calls checkout endpoints (`client/src/pages/dashboard/paidplans.jsx`, `client/src/widgets/layout/dashboard-navbar.jsx`).
-2. `server/index.js` creates Stripe Checkout sessions from the server-side `PLAN_CATALOG`.
-3. Stripe posts `checkout.session.completed` to `/stripe/webhook`, which uses raw body parsing before JSON middleware.
-4. `fulfillCheckoutSession()` records billing events and increments user simulation tokens in MongoDB.
-
-### Simulation and Scientific Service Path
-
-1. Dashboard simulation pages call endpoints such as `/api/simulation`, `/api/diffdock/generate`, `/api/generate-molecules`, `/api/openfold3/predict`, `/api/gromacs/*`, and `/api/glioblastoma/*` (`client/src/pages/dashboard/simulation.jsx`, `client/src/pages/dashboard/gromacs-md.jsx`, `client/src/pages/dashboard/glioblastoma-predict.jsx`).
-2. `server/index.js` validates auth, tenant status, and simulation-token availability for token-consuming routes.
-3. `server/index.js` proxies NVIDIA, Asinex, Tanimoto, DiffDock, RCSB, ligand, and SDF-converter calls directly from route handlers.
-4. `server/routes/scientificServices.js` proxies GROMACS and glioblastoma calls to `GROMACS_API_BASE` and `GLIOBLASTOMA_API_BASE`.
-5. Result URLs and viewer state are passed to Molstar/Molecule viewer pages through localStorage and API result records.
-
-### ADMET Queue Path
-
-1. API routes under `/api/simulation/:simulationKey/admet` and `/api/admet/create-task` create ADMET work (`server/index.js`).
-2. `server/utils/rabbitMQUtils.js` publishes JSON messages to `ADMET_QUEUE_NAME`.
-3. `services/admet/amqpadmet.py` consumes RabbitMQ messages and invokes ADMET prediction code.
-4. `services/admet/admet_sender.py` calls back to the API using `API_BASE_URL` and `ADMET_CALLBACK_SECRET`.
+7. **Response** → Client receives result or error
 
 **State Management:**
-- Frontend auth, viewer, cart, blog, and simulation-navigation state is stored in React context plus localStorage (`client/src/context/auth.jsx`, `client/src/context/blog.jsx`, `client/src/pages/dashboard/molstar3d.jsx`, `client/src/pages/dashboard/simulation.jsx`).
-- Server application state uses module-level MongoDB client/collection variables, in-memory rate limiter maps, Stripe client singleton, and RabbitMQ singleton (`server/index.js`, `server/utils/rabbitMQUtils.js`).
-- Durable state lives in MongoDB collections: `users`, `companies`, `audit_logs`, `billing_events`, `simulation_logs`, `projects`, and `mol_price`.
+- User session state: browser localStorage (user_info, access_token)
+- Company state: user.companyId from JWT, verified at each request
+- Simulation tokens: atomic decrements prevent double-spend
+- Audit trail: every auth/admin/billing action logged to audit_logs
+
+### Billing & Stripe Flow
+
+1. **User initiates checkout** (PaidPlans page)
+   - POST `/create-checkout-session-onetime` with plan name
+   - Middleware: checkoutRateLimit → ensureMongoConnected → authenticateToken → requireActiveUser
+
+2. **Server creates Stripe checkout session** (`server/index.js:1425`)
+   - Embed metadata: `{ purchaseType: 'plan_tokens', plan, username, companyId, credits }`
+   - Return session ID to client
+
+3. **Client redirects to Stripe** → User completes payment
+
+4. **Stripe webhook** (`server/index.js:109`)
+   - POST `/stripe/webhook` with signed event payload
+   - Verify signature against STRIPE_WEBHOOK_SECRET
+   - If event.type === 'checkout.session.completed':
+
+5. **fulfillCheckoutSession** (`server/index.js:1289`)
+   - Find existing billingEventsCollection record by stripeSessionId
+   - If already fulfilled (idempotent): return early
+   - If payment_status !== 'paid': mark as 'ignored_unpaid', skip credit grant
+   - Otherwise: updateOne usersCollection to increment simulationTokens by credits
+   - Record billing_event as 'fulfilled'
+
+6. **Client detects token refresh** → Next simulation consumption succeeds
+
+### Secondary Flow: Company Admin Invites
+
+1. User invites new team member (CompanyAdmin page)
+2. generateInviteEmailHTML template → Titan email sender
+3. Invite email includes accept link + temporary password
+4. New user accepts → account created with role 'member'
+5. Audit log records: `invite.sent`, then `invite.accepted`
 
 ## Key Abstractions
 
-**Route Registry:**
-- Purpose: Single metadata source for layout-specific navigation and route rendering.
-- Examples: `client/src/routes.jsx`, `client/src/layouts/dashboard.jsx`, `client/src/layouts/mainpage.jsx`, `client/src/layouts/auth.jsx`.
-- Pattern: Array of route groups with `layout`, `pages`, `path`, `element`, `hideFromMenu`, and `adminOnly` fields.
+**User (in JWT payload):**
+- `username`: unique identifier
+- `companyId`: if multi-tenant, links to companies collection
+- `companyName`: display name (company.name or fallback)
+- `role`: 'owner', 'admin', or 'member'
+- `iat`, `exp`: token issued-at, expiration timestamps
+- Purpose: Identifies session owner, enables role checks, enables tenant routing
 
-**Auth Token Helpers:**
-- Purpose: Standardize token lookup and route protection on the client.
-- Examples: `client/src/utils/constants.js`, `client/src/context/auth.jsx`, `client/src/App.jsx`.
-- Pattern: LocalStorage token read/write, with backward-compatible `access_token` and `auth_token` keys.
+Examples: `client/src/context/auth.jsx:6–14`, `server/index.js:2600`
 
-**API Configuration:**
-- Purpose: Keep frontend calls portable between Vite proxy, unified production, and split hosting.
-- Examples: `client/src/utils/api.js`, `client/src/utils/constants.js`, `client/vite.config.js`.
-- Pattern: Same-origin by default; `VITE_API_BASE_URL` only for split hosting.
+**Company (in companies collection):**
+- `_id`: MongoDB ObjectId
+- `companyId`: string (set to _id.toString() on create)
+- `name`: display name
+- `slug`: URL-safe identifier (from toCompanySlug)
+- `active`: boolean (soft-delete via false)
+- `branding`: color palette, logo URL, email customization
+- `usagePolicy`: monthlySimulationCap, others
+- `monthlyUsage`: { simulationsRun, [monthKey]: { ... } }
+- `ligandServiceConfig`: per-company Asinex catalog/docking overrides
+- Purpose: Multi-tenant scoping, billing controls, branding
 
-**Route Middleware:**
-- Purpose: Compose per-route requirements for Mongo availability, JWT identity, active-user status, admin role, rate limits, and token consumption.
-- Examples: `ensureMongoConnected`, `authenticateToken`, `requireActiveUser`, `requireCompanyAdmin`, `consumeSimulationToken` in `server/index.js`.
-- Pattern: Express middleware functions chained directly in route definitions.
+**Simulation Token Economy:**
+- `simulationTokens` in users collection: atomic counter
+- `consumeSimulationToken(feature)` middleware: $inc -1 with $gt: 0 check
+- PLAN_CATALOG: frozen object mapping plan names to credits and price
+- `billingEventsCollection`: idempotent fulfillment log
+- Purpose: Consume credits on simulation, grant via Stripe webhook (never frontend)
 
-**Tenant and Usage Helpers:**
-- Purpose: Normalize company records, tenant filters, ligand service overrides, monthly usage, and simulation token accounting.
-- Examples: `buildTenantFilter`, `getCompanyRecord`, `normalizeUsagePolicy`, `getRequestLigandServiceConfig`, `incrementCompanyMonthlyUsage` in `server/index.js`.
-- Pattern: Helper functions near route handlers, backed by MongoDB collections.
-
-**External Service Proxy Routes:**
-- Purpose: Hide third-party service URLs/API keys from the browser and centralize per-company service overrides.
-- Examples: Asinex/Tanimoto/NVIDIA/DiffDock routes in `server/index.js`, GROMACS/glioblastoma routes in `server/routes/scientificServices.js`.
-- Pattern: Express handler receives frontend request, builds upstream request, returns upstream status/payload.
-
-**Package Root Boundary:**
-- Purpose: Keep root orchestration, client dependencies, and server dependencies independently installable.
-- Examples: `package.json`, `client/package.json`, `server/package.json`.
-- Pattern: Each package root has a Bun lockfile and npm lockfile; root scripts call `bun --cwd=client`, `bun --cwd=server`, `npm --prefix client`, and `npm --prefix server`.
+**Audit Log:**
+- `action`: e.g., 'invite.sent', 'usage.token.consume', 'simulation.cache_hit'
+- `actorUsername`, `targetUsername`, `companyId`
+- `status`: 'success', 'failure'
+- `timestamp`: ISO string
+- Purpose: Compliance, debugging, user activity tracking
 
 ## Entry Points
 
-**Root dev command:**
-- Location: `package.json`
-- Triggers: `bun run dev`
-- Responsibilities: Run `server` with `bun --watch index.js` and `client` with Vite concurrently.
+**Frontend (Vite + React 18):**
+- Location: `client/src/index.jsx` (implied, compiled by Vite)
+- Triggers: User navigates to http://localhost:5173 (dev) or built frontend URL (prod)
+- Responsibilities: Render routes, authenticate on mount, proxy API calls
 
-**Root production command:**
-- Location: `package.json`
-- Triggers: `bun run start`
-- Responsibilities: Build the client and start the unified Bun API/static host.
+**API Server:**
+- Location: `server/index.js` (ESM, runs via `bun --cwd=server run dev:bun` or `node --watch index.js`)
+- Triggers: HTTP requests on :3000
+- Responsibilities: Route requests, enforce middleware chain, proxy to external services
 
-**Frontend application:**
-- Location: `client/src/main.jsx`
-- Triggers: Vite development server or built `client/dist/index.html`.
-- Responsibilities: Mount React providers and render `App`.
+**Stripe Webhook:**
+- Location: `server/index.js:109` (POST `/stripe/webhook`)
+- Triggers: Stripe event delivery (checkout.session.completed, etc.)
+- Responsibilities: Verify signature, fulfill purchase (grant credits)
 
-**Frontend route tree:**
-- Location: `client/src/App.jsx`, `client/src/routes.jsx`
-- Triggers: Browser navigation.
-- Responsibilities: Choose layout/page and enforce dashboard token presence.
-
-**API server:**
-- Location: `server/index.js`
-- Triggers: `bun index.js`, `bun --watch index.js`, `node index.js`, Docker `CMD ["node", "index.js"]`.
-- Responsibilities: Validate required env, initialize MongoDB, register middleware/routes, serve API docs/static assets, start HTTP/HTTPS listener.
-
-**Scientific service proxy:**
-- Location: `server/routes/scientificServices.js`
-- Triggers: API requests mounted under `/api`.
-- Responsibilities: Proxy `/api/platform/health`, `/api/gromacs/*`, and `/api/glioblastoma/*`.
-
-**GROMACS service:**
-- Location: `services/gromacs-api/app.py`
-- Triggers: Docker Compose `gromacs-api` profile.
-- Responsibilities: Serve FastAPI endpoints for GROMACS commands, jobs, files, workspaces, and templates.
-
-**Glioblastoma service:**
-- Location: `services/glioblastoma-predictor/app.py`
-- Triggers: Docker Compose `glioblastoma-predictor` profile.
-- Responsibilities: Serve Flask health, SMILES validation, prediction, and batch-prediction endpoints.
-
-**ADMET worker:**
-- Location: `services/admet/amqpadmet.py`
-- Triggers: Docker Compose `admet-worker` profile.
-- Responsibilities: Consume RabbitMQ tasks and produce ADMET callbacks.
-
-**Deploy workflow:**
-- Location: `.github/workflows/deploy.yml`
-- Triggers: Manual GitHub Actions workflow dispatch.
-- Responsibilities: Archive source, copy to the non-prod box, and run `docker compose -f docker-compose.box.yml up -d --build`.
+**CLI Scripts:**
+- `scripts/ensure-dev.mjs`: Pre-dev checks
+- `scripts/check-brand.mjs`: Verify branding config
 
 ## Architectural Constraints
 
-- **Runtime model:** The active API is a single Express process running on Bun by default, with Node fallback scripts retained in `server/package.json` and root `package.json`.
-- **Package management:** Phase 6 establishes Bun as default package runner. Maintain `bun.lock` and `package-lock.json` together at root, `client/`, and `server/`. Docker, CI, `check`, and test script migration remain Phase 7 scope per `README.md`.
-- **Threading:** JavaScript code runs on the single-threaded event loop. GROMACS execution and ADMET processing are delegated to Python services/worker containers.
-- **Global state:** `server/index.js` uses module-level `MongoClient`, collection variables, Stripe client, plan constants, default service config, and in-memory rate-limit maps. `server/utils/rabbitMQUtils.js` uses a singleton RabbitMQ service instance.
-- **Environment loading:** `server/index.js` loads root `.env` via `configDotenv({ path: path.resolve(__dirname, '../.env') })` and process cwd `.env`; never place secrets in package-specific files.
-- **Static hosting:** Production-style unified serving depends on `FRONTEND_DIST` or default `../client/dist`; non-API routes fall back to `client/dist/index.html`.
-- **Route namespace:** Mount new API endpoints under `/api/*` unless they must match existing external contracts such as `/stripe/webhook`, `/create-checkout-session*`, `/tanimoto/*`, or `/health`.
-- **Circular imports:** Not detected in the inspected active code; keep `server/index.js` depending on helpers, and avoid helpers importing `server/index.js`.
+- **Threading:** Single-threaded Node.js event loop. RabbitMQ (optional) offloads async ADMET tasks to separate workers.
+- **Global state:** `usersCollection`, `companiesCollection`, `auditLogsCollection`, `billingEventsCollection` are module-level references initialized on startup. Express app (`const app`) is also module-level. Rate limiters (authRateLimit, checkoutRateLimit) are in-memory maps.
+- **Circular imports:** None observed; imports follow client → context → pages, server is monolithic.
+- **Database indexes:** username, email (unique), companyId, stripeSessionId (unique, sparse). Missing indexes may cause slow queries on large audit_logs.
+- **Scaling limits:** Single Express instance; no clustering. In-memory rate limiters are not shared across processes (would need Redis for multi-instance). Token consumption is atomic via MongoDB, so distributed scaling is possible if load-balanced.
+- **Timezone:** All timestamps are ISO strings in UTC (new Date().toISOString()).
 
 ## Anti-Patterns
 
-### Bypassing Same-Origin API Helpers
+### Loose Multi-Tenancy Scoping
 
-**What happens:** Frontend code hardcodes hosts or bypasses same-origin helpers for backend calls.
-**Why it's wrong:** It breaks the Vite proxy/unified production model and reintroduces split-host configuration drift.
-**Do this instead:** Use same-origin paths with `API_CONFIG.buildApiUrl()` or `apiRequest()` from `client/src/utils/constants.js` and `client/src/utils/api.js`; keep proxy paths in `client/vite.config.js` aligned.
+**What happens:** Endpoints use `buildTenantFilter()` to scope queries, but it's easy to forget to apply the filter when reading/writing.
 
-### Adding More Business Logic to Template or Legacy Trees
+**Why it's wrong:** A member from Company A could accidentally query Company B's data if a developer forgets to add the filter.
 
-**What happens:** Active changes are made in `packages/dashboard-template/` or `legacy/chem-beo-api/`.
-**Why it's wrong:** Those trees are reference/archive code and are not the active runtime.
-**Do this instead:** Put active frontend code under `client/src/` and active backend code under `server/`; use template/legacy files only as reference.
+**Do this instead:** Always apply `buildTenantFilter(req.user)` to queries; consider wrapping collection methods to enforce it. See `server/index.js:834` for the pattern.
 
-### Introducing a Fourth JavaScript Package Root
+### Stripe Webhook Signature Validation Skipped
 
-**What happens:** New app code gets a separate package manifest outside root, `client/`, or `server/`.
-**Why it's wrong:** Phase 6 package-management workflow tracks exactly the root/client/server package roots and paired Bun/npm lockfiles.
-**Do this instead:** Add dependencies to the relevant existing root and refresh all lockfiles with `bun run lockfiles:refresh`.
+**What happens:** STRIPE_WEBHOOK_SECRET defaults to empty string if not configured, and the endpoint logs a warning but still processes requests.
 
-### Direct Browser Calls to Secret-Bearing Services
+**Why it's wrong:** In production, an unconfigured secret means any attacker can POST a fake webhook to grant credits.
 
-**What happens:** React pages call NVIDIA, Stripe, Asinex, SMTP, or other key-bearing services directly.
-**Why it's wrong:** Browser calls expose secrets and bypass tenant/service override policy.
-**Do this instead:** Add an authenticated proxy route in `server/index.js` or `server/routes/scientificServices.js` and call it from `client/src/pages/...`.
+**Do this instead:** Enforce STRIPE_WEBHOOK_SECRET in environment validation (similar to JWT_SECRET at `server/index.js:47–54`). Fail startup if not set.
+
+### Rate Limiter as In-Memory Map
+
+**What happens:** authRateLimit, checkoutRateLimit are Map objects that grow unbounded and are lost on restart.
+
+**Why it's wrong:** Doesn't scale to multiple server instances; memory leaks if users spam from many IPs.
+
+**Do this instead:** Use Redis-based rate limiting (e.g., express-rate-limit with store) for production deployments.
+
+### Token Consumption Without Simulation Logging
+
+**What happens:** consumeSimulationToken decrementes the count but doesn't record what was simulated or the result.
+
+**Why it's wrong:** Audit trail is broken; can't tell which features consumed tokens or correlate with failures.
+
+**Do this instead:** Log each consumption to simulation_logs with feature name and result (success/error). Pattern exists at `server/index.js:2663–2670` for cache hits.
 
 ## Error Handling
 
-**Strategy:** Route handlers use local `try/catch` blocks and return JSON errors with upstream status when available; process startup fails fast for missing required environment and failed Mongo initialization.
+**Strategy:** RESTful status codes (401 for dead sessions, 403 for authz/quota, 400 for validation, 500 for server error).
 
 **Patterns:**
-- Required env validation happens before server startup in `server/index.js`.
-- Startup Mongo connection/index creation happens in `initializeDatabase()` before `startServer()` listens.
-- Protected routes return `401` for missing token, `403` for invalid token/inactive role or depleted simulation tokens, and `500` for server errors.
-- Proxy routes generally pass upstream status codes when `error.response?.status` exists.
-- Scientific proxy failures return `502` from `server/routes/scientificServices.js`.
-- Stripe webhook signature failures return `400`; fulfillment failures return `500`.
+
+- **Authentication failures (401):** Missing/invalid/expired JWT. Triggers client auto-logout (see `client/src/context/auth.jsx`).
+- **Authorization failures (403):** Valid JWT but user is disabled, company is disabled, role is insufficient, or token quota exhausted.
+- **Validation errors (400):** Missing required fields, invalid enum values.
+- **Upstream service errors:** Forward 502 for unavailable external services (see `server/routes/scientificServices.js:29` — maps upstream 401 to 502 to avoid triggering client logout).
+- **Database errors (500):** MongoDB connection failures, query timeouts. Retry once in ensureMongoConnected middleware.
 
 ## Cross-Cutting Concerns
 
-**Logging:** Use `console.log`, `console.warn`, and `console.error` in `server/index.js`, `server/utils/*`, and Python services. File logging is limited to DiffDock helper logging in `server/index.js`.
-**Validation:** Use explicit route-level checks in `server/index.js`, including env validation, password policy, URL validation, tenant/role checks, upload size validation, and object ID parsing.
-**Authentication:** Use JWT bearer tokens in `server/index.js`; client stores tokens in localStorage through `client/src/context/auth.jsx` and `client/src/utils/constants.js`.
-**Authorization:** Use `requireActiveUser` for active account/company checks and `requireCompanyAdmin` for company administration routes in `server/index.js`.
-**Billing:** Use Stripe Checkout sessions and webhook fulfillment in `server/index.js`; never grant paid credits from frontend-only success redirects.
-**Observability:** Swagger UI is mounted at `/api-docs` and `/api/docs`; raw OpenAPI JSON is served at `/api/openapi.json`.
+**Logging:**
+- Console.error/log in server; no structured logging library.
+- Stripe errors logged with full error object.
+- MongoDB connection issues logged with redacted credentials.
+- TODO: Migrate to winston or pino for production observability.
+
+**Validation:**
+- Passwords: regex check at signup, password change, invite accept (`server/index.js:96`).
+- Email: required, must be unique per company (or globally if no company).
+- Company names: normalized (trim, collapse spaces) before slug generation.
+- URLs: DNS resolution check via assertValidHttpUrl for branding URLs.
+- Stripe webhook payloads: Verify signature before processing.
+
+**Authentication:**
+- JWT with HS256 (symmetric key). Sessions are 7 days by default (JWT_EXPIRES_IN).
+- No refresh token mechanism; client must re-login after expiration.
+- Tokens stored in browser localStorage (vulnerable to XSS; consider httpOnly in future).
 
 ---
 
-*Architecture analysis: 2026-06-05*
+*Architecture analysis: 2026-06-14*

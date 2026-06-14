@@ -1,287 +1,533 @@
----
-last_mapped_commit: 1a703a98234dd0b9b66866ec31d4d9a1a6455b55
----
-
 # Codebase Concerns
 
-**Analysis Date:** 2026-06-05
+**Analysis Date:** 2026-06-14
 
 ## Tech Debt
 
-**Monolithic Express API:**
-- Issue: `server/index.js` contains API setup, middleware, route handlers, MongoDB initialization, Stripe webhook fulfillment, Swagger generation, external proxy calls, startup logic, and file logging in one 6,028-line module.
-- Files: `server/index.js`
-- Impact: Most backend changes touch the same file, increasing merge conflicts and making route-specific review difficult. Security fixes such as auth middleware, tenant checks, and token accounting must be audited manually across unrelated sections.
-- Fix approach: Split by domain into route modules under `server/routes/` and middleware/helper modules under `server/middleware/` or `server/utils/`. Keep `server/index.js` as process bootstrap, middleware registration, route mounting, and server startup only.
+### Monolithic Server File
 
-**Duplicate simulation token accounting:**
-- Issue: `GET /api/simulation` and `POST /api/simulation` implement token checks/decrements inline instead of using one shared token-consumption path. The inline logic also contains the `tester123` bypass tracked by `SEC-V2-01`.
-- Files: `server/index.js`
-- Impact: Billing-sensitive logic has multiple implementations, making it easy for future simulation endpoints to copy the wrong pattern or skip tenant/company usage accounting.
-- Fix approach: Move all simulation charging into one middleware/helper, remove route-local decrements, and make cache-hit behavior explicit before charging.
+**Issue:** Single ~6,342 line server file (`server/index.js`) contains all routes, middleware, database logic, utility functions, and API integrations in one ESM module.
 
-**Runtime/package migration is incomplete at the ops boundary:**
-- Issue: Bun is now the default package/runtime path in root and server scripts, but production image and some checks still use Node. `Dockerfile` uses `node:22-alpine`, `npm ci`, and `CMD ["node", "index.js"]`; root `check` and `test:brand` invoke `node`; server `test:stripe`, `test:runtime-smoke`, and `test:runtime-watch` invoke `node`.
-- Files: `Dockerfile`, `package.json`, `server/package.json`, `.planning/REQUIREMENTS.md`, `.planning/ROADMAP.md`
-- Impact: Phase 7 (`OPS-01` through `OPS-04`) remains the highest-priority migration gap. The app can pass local Bun runtime checks while deploy/test paths still exercise Node semantics.
-- Fix approach: Convert the production image to `oven/bun` on arm64, add Bun variants for root check and server tests, and retain a documented Node rollback path as required by `OPS-04`.
+**Files:** `server/index.js`
 
-**Manual-only deployment workflow:**
-- Issue: `.github/workflows/deploy.yml` has the `push` trigger commented out and deploys by archiving source to the Oracle box, then building through `docker compose -f docker-compose.box.yml up -d --build`.
-- Files: `.github/workflows/deploy.yml`, `docker-compose.box.yml`, `docker-compose.deploy.yml`
-- Impact: Automatic deployment is disabled, and the active deploy path is the build-on-box compose file rather than the GHCR image path. This increases drift between CI, image build expectations, and the running VPS.
-- Fix approach: In Phase 7, decide whether build-on-box remains canonical or GHCR becomes canonical, then align Actions, Dockerfile, compose files, and rollback docs around that single path.
+**Impact:** 
+- Extremely difficult to navigate and maintain
+- Testing individual features requires testing the entire file
+- Code organization by concern is impossible — parsing, business logic, database operations, and API proxies are interleaved
+- Adding new routes or features forces reading thousands of lines of unrelated code
+- Performance: Node/Bun must parse and hold the entire file in memory at startup
 
-**Legacy/template code remains committed beside active code:**
-- Issue: Archived and template directories contain full copies of API/UI code that are not part of the active app.
-- Files: `legacy/chem-beo-api/index.js`, `legacy/chem-beo-api/utils/`, `packages/dashboard-template/src/`
-- Impact: Search results and code reviews include inactive implementations. Future agents can confuse `packages/dashboard-template/src/pages/dashboard/simulation.jsx` with the active `client/src/pages/dashboard/simulation.jsx`.
-- Fix approach: Move legacy/template snapshots outside source control or clearly quarantine them with documentation and tooling exclusions.
-
-**Template/demo data and brand remnants still exist:**
-- Issue: Brand defaults and some visible strings still use `MedSaaS`; dead-link/template UI remains in auth, pricing, insights, and notifications views.
-- Files: `scripts/ensure-dev.mjs`, `server/utils/emailTemplates.js`, `server/utils/emailService.js`, `client/src/config/branding.js`, `client/src/widgets/layout/navbar.jsx`, `client/src/widgets/layout/sidenav.jsx`, `client/src/pages/auth/sign-in.jsx`, `client/src/pages/main/paidplansdescription.jsx`, `client/src/pages/main/insights.jsx`, `client/src/pages/dashboard/notifications.jsx`
-- Impact: The project requirement says the product must feel like a professional ChemBench tool, not a rebranded demo. Stale strings and `href="#"` links undermine that standard.
-- Fix approach: Centralize platform branding defaults and replace placeholder links with real routes or remove them.
-
-**Relative runtime log path:**
-- Issue: DiffDock API logging writes to `diffdock_api.log` relative to the runtime working directory and deletes the file when it exceeds the size threshold.
-- Files: `server/index.js`
-- Impact: Logs can land in different directories depending on process startup cwd, and deleting the file loses historical diagnostics.
-- Fix approach: Configure a log directory through env, write under a known writable path, and rotate rather than unlinking.
-
-## Known Bugs
-
-**Forgot-password flow is a dead link:**
-- Symptoms: The sign-in form renders `Forgot password?` as `href="#"` with no route or handler. The server endpoints exist (`/api/password-reset/request`, `/api/password-reset/confirm` in `server/index.js`) but no client page calls them.
-- Files: `client/src/pages/auth/sign-in.jsx`, `.planning/REQUIREMENTS.md`
-- Trigger: Open the sign-in page and click `Forgot password?`.
-- Workaround: None in the UI. This is tracked as `AUTH-V2-01` for a future milestone.
-
-**`tester123` can run simulations without token deduction:**
-- Symptoms: The simulation routes skip decrementing `simulationTokens` when the current user document has username `tester123`.
-- Files: `server/index.js`, `.planning/REQUIREMENTS.md`, `.planning/STATE.md`
-- Trigger: Authenticate as username `tester123`, then run `GET /api/simulation` or `POST /api/simulation`.
-- Workaround: Avoid provisioning or exposing a `tester123` account in production until `SEC-V2-01` is fixed.
-
-**Price-range query rejects valid zero values:**
-- Symptoms: `/api/molecules/price-range` treats `0` as missing because it checks `if (!minPrice || !maxPrice)`.
-- Files: `server/index.js`
-- Trigger: Request a price range with `minPrice=0` or `maxPrice=0`.
-- Workaround: Use positive non-zero values. Fix by checking `Number.isFinite(minPrice)` and `Number.isFinite(maxPrice)`.
-
-**Stripe webhook configuration fails at runtime rather than startup:**
-- Symptoms: Missing or placeholder `STRIPE_WEBHOOK_SECRET` logs a warning at startup and causes webhook requests to return 500.
-- Files: `server/index.js`, `server/test/stripe-webhook.test.mjs`
-- Trigger: Start the server without a real `STRIPE_WEBHOOK_SECRET`, then receive a Stripe event.
-- Workaround: Set `STRIPE_WEBHOOK_SECRET` in production. For stricter behavior, add it to required production env validation.
-
-## Security Considerations
-
-**Public mol-price and molecule catalog endpoints:**
-- Risk: Compound/pricing data is reachable without `authenticateToken`.
-- Files: `server/index.js`, `.planning/REQUIREMENTS.md`
-- Current mitigation: MongoDB connection is required, but no user auth or tenant auth is required for `GET /api/mol-price`, `GET /api/mol-price/count`, `GET /api/mol-price/search`, `GET /api/mol-price/:id`, `GET /api/mol-price-stats`, `GET /api/molecules`, `GET /api/molecules/:asinexId`, `GET /api/molecules/stats`, `GET /api/molecules/search/smiles`, or `GET /api/molecules/price-range`.
-- Recommendations: Apply `authenticateToken` and tenant/role policy to all catalog endpoints as tracked by `SEC-V2-02`.
-
-**CORS allows every origin when no origins are configured:**
-- Risk: If `BASE_URL` and `FRONTEND_URL` are both unset, the CORS callback allows any origin because `allowedOrigins.size === 0` passes.
-- Files: `server/index.js`, `.planning/REQUIREMENTS.md`
-- Current mitigation: Configured deployments can set `BASE_URL` or `FRONTEND_URL`.
-- Recommendations: Fail closed when the allowlist is empty in production; keep localhost/dev allowances explicit. This is tracked as `SEC-V2-03`.
-
-**Missing Helmet-grade security headers:**
-- Risk: The server sets `X-Content-Type-Options`, `X-Frame-Options`, and `Referrer-Policy`, but does not configure CSP, HSTS, Permissions-Policy, or other Helmet defaults.
-- Files: `server/index.js`, `.planning/REQUIREMENTS.md`
-- Current mitigation: A small custom header middleware exists.
-- Recommendations: Add and configure `helmet` with CSP exceptions for same-origin Ketcher/Molstar iframes. This is tracked as `SEC-V2-04`.
-
-**JWTs and simulation/viewer payloads are stored in browser localStorage:**
-- Risk: Any XSS can read `access_token`, `auth_token`, `user_info`, molecule cart data, Molstar URLs, DiffDock payloads, and simulation metadata from localStorage.
-- Files: `client/src/context/auth.jsx`, `client/src/utils/constants.js`, `client/src/pages/dashboard/simulation.jsx`, `client/src/pages/dashboard/molstar3d.jsx`, `client/src/pages/dashboard/moleculeviewer.jsx`, `client/src/widgets/layout/dashboard-navbar.jsx`
-- Current mitigation: Tokens expire server-side according to JWT settings, and logout clears known keys.
-- Recommendations: Prefer httpOnly cookies for auth. Reduce localStorage to non-sensitive UI state, and avoid storing raw simulation artifacts when session memory or server-backed lookups are sufficient.
-
-**Token validation endpoint is unauthenticated and not rate-limited:**
-- Risk: `/api/validate-token` performs JWT verification and user/company lookup without `authRateLimit`.
-- Files: `server/index.js`
-- Current mitigation: A valid bearer token is required to return `valid: true`.
-- Recommendations: Add rate limiting, normalize error messages, and treat token validation as authenticated session introspection rather than a public oracle.
-
-**Public email-sending endpoint can send through platform SMTP:**
-- Risk: `/api/send-email` accepts recipient, subject, and body from unauthenticated callers, protected only by IP rate limiting.
-- Files: `server/index.js`, `server/utils/emailService.js`
-- Current mitigation: `publicEmailRateLimit` limits request frequency.
-- Recommendations: Require auth or restrict recipients to controlled contact destinations. Never allow arbitrary recipient submission from a public endpoint.
-
-**Raw user input is used as MongoDB regex:**
-- Risk: Search parameters are passed into `$regex` without escaping, allowing expensive patterns and broad collection scans.
-- Files: `server/index.js`
-- Current mitigation: None detected.
-- Recommendations: Escape regex metacharacters, cap search lengths, prefer anchored/index-backed search where possible, or move to text indexes/search service.
-
-**Client-side IP/geolocation calls cross privacy and trust boundaries:**
-- Risk: Browser calls to third-party IP/geolocation services expose user metadata and produce client-controlled data that should not be trusted for audit/security decisions.
-- Files: `client/src/pages/dashboard/simulation.jsx`, `client/src/utils/algo/algo.jsx`
-- Current mitigation: Failures fall back silently.
-- Recommendations: Use server-observed `req.ip` for audit logging and move geo/currency decisions behind explicit product requirements and consent handling.
-
-**Hardcoded plain-HTTP service fallbacks:**
-- Risk: External service defaults include raw IP HTTP URLs for Tanimoto and SDF conversion, so under-configured deployments can send data to mutable IP endpoints over plaintext.
-- Files: `server/index.js`
-- Current mitigation: Env vars can override the defaults.
-- Recommendations: Require explicit production URLs, prefer HTTPS, and fail startup when required scientific service endpoints are missing in production.
-
-## Performance Bottlenecks
-
-**Unbounded custom in-memory rate limiter:**
-- Problem: Each limiter stores entries in a module-local `Map` and never removes inactive IP keys.
-- Files: `server/index.js`
-- Cause: `createRateLimiter` resets counters for existing keys but does not prune expired records.
-- Improvement path: Use `express-rate-limit` with pruning or an external Redis/Mongo store; required if the app scales beyond one process.
-
-**Simulation log queries lack matching indexes:**
-- Problem: Simulation cache lookups and listing queries operate on `simulation_logs`, but startup index creation covers `users`, `companies`, `audit_logs`, and `billing_events` only.
-- Files: `server/index.js`
-- Cause: `simulation_logs` indexes are not created in the database initialization block.
-- Improvement path: Add compound indexes such as `{ companyId: 1, timestamp: -1 }`, `{ username: 1, timestamp: -1 }`, and a cache-key index on tenant plus `pdbid`/`smiles`.
-
-**Mol-price/molecules searches can full-scan large collections:**
-- Problem: Catalog endpoints combine count, unanchored case-insensitive regex, skip pagination, and multi-field `$or` filters.
-- Files: `server/index.js`
-- Cause: Regex search across `ASINEX_ID`, `IUPAC_NAME`, `SMILES_STRING`, `INCHI`, `INCHIKEY`, and `BRUTTO_FORMULA` is not index-friendly.
-- Improvement path: Add text/search indexes, switch to cursor/range pagination for deep pages, cap limits, and escape search input.
-
-**Outbound scientific API calls often lack timeouts:**
-- Problem: Several `axios` calls and `fetch` calls to NVIDIA, Tanimoto, docking, Asinex, PubChem/RCSB, and other external scientific services do not consistently set request timeouts.
-- Files: `server/index.js`, `client/src/pages/dashboard/moleculeviewer.jsx`, `client/src/pages/dashboard/molstar3d.jsx`, `client/src/pages/dashboard/simulation.jsx`
-- Cause: Calls are made inline in route handlers/components without shared HTTP client defaults.
-- Improvement path: Centralize outbound clients with explicit timeout, retry, and error mapping. Use longer timeouts only for queued/background jobs.
-
-**Large frontend page components increase bundle and maintenance cost:**
-- Problem: Several dashboard pages are large single-file components.
-- Files: `client/src/pages/dashboard/simulation.jsx`, `client/src/pages/dashboard/molstar3d.jsx`, `client/src/pages/dashboard/controlpanel.jsx`, `client/src/pages/dashboard/company-admin.jsx`
-- Cause: Data fetching, localStorage orchestration, rendering, molecule preview logic, and workflow state are all embedded in page files.
-- Improvement path: Extract domain hooks/components and add route-level lazy loading for heavy molecule/visualization views.
-
-## Fragile Areas
-
-**Phase 7 Docker/CI/CD rollout:**
-- Files: `Dockerfile`, `.github/workflows/deploy.yml`, `docker-compose.box.yml`, `docker-compose.deploy.yml`, `package.json`, `server/package.json`, `.planning/ROADMAP.md`
-- Why fragile: Current Docker and CI deploy paths are not yet aligned with the Bun default runtime. The root repo also carries both `bun.lock` and npm lockfiles, so install behavior must stay intentionally dual-path.
-- Safe modification: Change one operational layer at a time: Dockerfile first, then Actions script runner, then check/test scripts. Preserve `*:node` scripts and document a one-line rollback as required by `OPS-04`.
-- Test coverage: Existing runtime smoke tests live in `server/test/runtime-smoke.test.mjs`, `server/test/runtime-watch-smoke.mjs`, and `server/test/stripe-webhook.test.mjs`, but Phase 7 needs them runnable through Bun.
-
-**Simulation and billing enforcement:**
-- Files: `server/index.js`, `server/test/runtime-smoke.test.mjs`
-- Why fragile: Token deduction, company monthly caps, cache hits, audit events, and external docking calls are interleaved inside route handlers.
-- Safe modification: Add characterization tests before changing token logic. Verify cache-hit requests do not charge, new simulation requests charge exactly once, disabled users/companies fail, and `tester123` is not special.
-- Test coverage: Smoke coverage exercises one token-consuming simulation path, but there is no focused unit/integration coverage for both GET and POST charging semantics.
-
-**Tenant-sensitive database access:**
-- Files: `server/index.js`
-- Why fragile: Some routes use `buildTenantFilter(req.user)` and authenticated middleware, while public mol-price/molecules routes do not. Full decoded JWT payloads are also stored in `simulation_logs`.
-- Safe modification: Add a route inventory for auth/tenant requirements, then apply middleware consistently. Store minimal audit fields instead of entire JWT payloads.
-- Test coverage: No detected automated test asserts that catalog endpoints require auth or that tenant data cannot cross companies.
-
-**RabbitMQ ADMET workflow:**
-- Files: `server/utils/rabbitMQUtils.js`, `server/index.js`, `services/admet/amqpadmet.py`, `services/admet/admet_sender.py`, `docker-compose.yml`
-- Why fragile: Queue setup falls back to a timestamped queue name when declaration conflicts, publish success is treated as job creation, and there is no visible dead-letter/retry contract.
-- Safe modification: Define queue topology in one place with DLQ/retry settings, fail loudly on unexpected queue declarations, and persist ADMET job state separate from publish acknowledgement.
-- Test coverage: No detected automated test covers ADMET queue publish, worker failure, callback auth, or retry behavior.
-
-**Environment loading and validation:**
-- Files: `server/index.js`, `.env.example`, `services/gromacs-api/env.example`, `services/admet/.env.example`
-- Why fragile: The server loads dotenv in multiple ways and only some operational secrets are required at startup. Different cwd values or pre-set env vars can change which file wins.
-- Safe modification: Centralize config parsing in one module, validate production-required vars by environment, and avoid reading any secret file contents in docs or tooling.
-- Test coverage: Runtime smoke tests cover selected env cases, but no dedicated config validation suite was detected.
-
-**Generated/vendor static assets in public tree:**
-- Files: `client/public/ketcher/static/js/`, `client/public/ketcher/static/css/`, `client/public/ketcher/iframe.html`
-- Why fragile: Large bundled assets are committed directly and embedded by the app. Updating Ketcher can affect CSP, iframe behavior, and bundle size without normal source-level review.
-- Safe modification: Treat Ketcher as a vendored asset with an update checklist. Verify iframe loading and CSP whenever security headers change.
-- Test coverage: No detected browser/E2E test validates Ketcher iframe loading after header or asset changes.
-
-## Scaling Limits
-
-**Single-process in-memory controls:**
-- Current capacity: One API process enforces local rate limits and holds runtime limiter state in memory.
-- Limit: Running multiple API processes or replicas makes rate limits N-times more permissive and loses shared state.
-- Scaling path: Move rate limiting and session/security counters to Redis or MongoDB-backed stores.
-
-**MongoDB client defaults:**
-- Current capacity: `new MongoClient(uri)` uses driver defaults.
-- Limit: Pool size, server selection timeout, and retry behavior are not tuned for production traffic or Oracle VPS constraints.
-- Scaling path: Configure `maxPoolSize`, `minPoolSize`, `serverSelectionTimeoutMS`, and monitoring appropriate to the deployment.
-
-**Scientific jobs run through request/response paths:**
-- Current capacity: Some heavy operations are invoked directly by Express handlers or frontend calls.
-- Limit: Long external calls can tie user requests to upstream service latency and make retries/token accounting hard.
-- Scaling path: Queue long-running docking, ADMET, GROMACS, and prediction jobs with durable status records and polling/websocket updates.
-
-## Dependencies at Risk
-
-**`xlsx`:**
-- Risk: `xlsx` is pinned at the long-stale `^0.18.5` package line for the import script.
-- Impact: Import tooling carries dependency risk even if it is not part of hot production routes.
-- Migration plan: Replace import parsing with `exceljs`, a maintained SheetJS-compatible fork, or a CSV-based import path.
-
-**Vite 4 / older frontend toolchain:**
-- Risk: The client retains Vite 4.5.0 and older UI/chart packages while Bun is only the package runner.
-- Impact: Phase 6 intentionally deferred bundler changes, so client build risks remain separate from the server runtime migration.
-- Migration plan: Keep Vite for v2 as planned; audit and upgrade frontend dependencies in a later milestone with visual regression checks.
-
-**Vendored Ketcher bundle:**
-- Risk: Ketcher static JS/CSS is committed under public assets rather than imported through the normal build graph.
-- Impact: Security scanning, dependency updates, and CSP work need manual review.
-- Migration plan: Track the source/version of the vendored bundle and add a repeatable update procedure.
-
-## Missing Critical Features
-
-**Password reset:**
-- Problem: Server endpoints are implemented (`/api/password-reset/request|confirm`), but the client has no forgot/reset pages and the sign-in link is dead.
-- Blocks: Users cannot recover accounts through self-service.
-
-**Bun-powered production ops:**
-- Problem: Phase 7 is not started; Docker, Actions, and check/test scripts have not all moved to Bun.
-- Blocks: Completing v2 Bun Migration requirements `OPS-01`, `OPS-02`, `OPS-03`, and `OPS-04`.
-
-**Security hardening backlog from v2 planning:**
-- Problem: `SEC-V2-01` through `SEC-V2-04` are tracked future items and remain open.
-- Blocks: Production-hardening work around token bypass removal, public catalog auth, fail-secure CORS, and Helmet headers.
-
-## Test Coverage Gaps
-
-**Auth/security route policy:**
-- What's not tested: Public/private route inventory, mol-price/molecules auth requirements, CORS fail-secure behavior, `/api/send-email` auth policy, and `/api/validate-token` rate limiting.
-- Files: `server/index.js`, `server/test/`
-- Risk: Security regressions can ship as route-level middleware omissions.
-- Priority: High
-
-**Simulation token accounting:**
-- What's not tested: GET vs POST charging parity, no `tester123` bypass, cache-hit no-charge behavior, company monthly cap enforcement, disabled user/company blocks.
-- Files: `server/index.js`, `server/test/runtime-smoke.test.mjs`
-- Risk: Billing and usage enforcement can be bypassed or double-charged.
-- Priority: High
-
-**Phase 7 Bun ops checks:**
-- What's not tested: Production Dockerfile under `oven/bun`, Bun-running root `check`, Bun-running brand check, Bun-running Stripe/runtime smoke tests, and rollback path.
-- Files: `Dockerfile`, `.github/workflows/deploy.yml`, `package.json`, `server/package.json`, `server/test/`
-- Risk: v2 can appear complete locally while deploy/runtime scripts still depend on Node.
-- Priority: High
-
-**ADMET async workflow:**
-- What's not tested: RabbitMQ publish failure, queue declaration conflicts, callback authentication, worker failures, retry/dead-letter behavior, and simulation log updates from callbacks.
-- Files: `server/utils/rabbitMQUtils.js`, `server/index.js`, `services/admet/`
-- Risk: ADMET jobs can be lost or marked successful based only on publish acknowledgement.
-- Priority: Medium
-
-**Frontend heavy workflows:**
-- What's not tested: Ketcher/Molstar iframe loading, localStorage state handoff between simulation and viewer pages, password reset link behavior, and large dashboard route flows.
-- Files: `client/src/pages/dashboard/simulation.jsx`, `client/src/pages/dashboard/molstar3d.jsx`, `client/src/pages/dashboard/moleculeviewer.jsx`, `client/src/pages/auth/sign-in.jsx`, `client/public/ketcher/`
-- Risk: Security header changes, route changes, and refactors can break core lab workflows without automated detection.
-- Priority: Medium
+**Fix approach:** 
+- Split routes into subdirectories: `server/routes/auth.js`, `server/routes/simulations.js`, `server/routes/billing.js`, `server/routes/admin.js`, etc.
+- Extract middleware into `server/middleware/` — `authentication.js`, `rateLimit.js`, `validation.js`
+- Extract database operations into `server/services/` — `userService.js`, `companyService.js`, `billingService.js`
+- Extract shared utilities into `server/utils/` (already partially done)
+- Use Express Router to compose routes at the top level in a 150-line `index.js`
 
 ---
 
-*Concerns audit: 2026-06-05*
+### In-Memory Rate Limiter
+
+**Issue:** Custom in-memory rate limiter (`createRateLimiter` at line 166) uses a `Map` to track request counts per IP/endpoint.
+
+**Files:** `server/index.js` (lines 166–193)
+
+**Impact:**
+- **Horizontal scaling:** Cannot scale beyond a single process — rate limits are not shared across instances. If deployed to multiple servers, each instance tracks independently, defeating rate limiting at scale.
+- **Restart loss:** All rate-limit records are lost on server restart or process crash. Coordinated attacks can immediately resume.
+- **Memory leak risk:** Expired records are never cleaned up once `resetAt` passes. The `hits` Map grows indefinitely.
+- **No persistence:** No audit trail or historical analysis of rate-limit violations.
+
+**Fix approach:**
+- Migrate to Redis-backed rate limiter (e.g., `redis` + `redis-rate-limit` or `Redlock` for distributed limits)
+- Or replace with a managed service rate-limit (e.g., AWS API Gateway, Cloudflare)
+- Add periodic cleanup of expired records if staying in-memory for development
+- Consider storing rate-limit violations in MongoDB audit logs for post-breach analysis
+
+---
+
+### Module-Level Global State
+
+**Issue:** Collections and client are defined at module scope and shared across all requests.
+
+**Files:** `server/index.js` (lines 712–717, 731–734)
+
+```javascript
+let usersCollection;
+let companiesCollection;
+let auditLogsCollection;
+let billingEventsCollection;
+```
+
+**Impact:**
+- If initialization fails partway through, stale partial state may persist
+- Connection pools and indexes are created once at startup; if MongoDB drops connection, middleware must detect and reconnect (`ensureMongoConnected` at line ~790)
+- No request-scoped isolation — all requests share the same collection references and client connection
+- Hard to test or mock: no dependency injection, global state must be cleared between tests
+
+**Fix approach:**
+- Wrap collections in a connection-management module with lazy initialization and reconnection logic
+- Export a `getDb()` function rather than global references
+- Use a connection pool manager (MongoDB native handles this, but explicit management clarifies the concern)
+- Add health-check middleware that validates collection availability on each request startup phase
+
+---
+
+### Log File Rotation Without Cleanup
+
+**Issue:** `logToFile()` function (lines 6307–6325) rotates logs by deleting the file when it exceeds 20 MB, but never archives or compresses old logs.
+
+**Files:** `server/index.js` (lines 6304–6325)
+
+**Impact:**
+- Production logs are lost on rotation — no historical record of events
+- No way to audit what happened before a crash or incident
+- Debugging failed deployments requires real-time log access or manual capture
+- No structured logging — logs are appended as plaintext strings, not queryable events
+
+**Fix approach:**
+- Use a proper logging library: `winston`, `pino`, or `bunyan` with file/MongoDB transports
+- Implement log rotation with archival to S3 or GCS instead of deletion
+- Switch to structured JSON logging so events can be queried and analyzed
+- Consider centralized logging (ELK, Datadog, CloudWatch) for production
+
+---
+
+## Known Bugs
+
+### Stripe Webhook Not Registered in Non-Prod
+
+**Symptoms:** Checkout succeeds but credits are not granted. Manual testing must use the test endpoint to verify token flow.
+
+**Files:** `server/index.js` (lines 67–74), `.env` configuration
+
+**Current state:** 
+- `STRIPE_WEBHOOK_SECRET` defaults to empty string if set to the placeholder `"replace_me"` (lines 70–72)
+- When empty, `/stripe/webhook` rejects all events with 500 (line 111)
+- Credits are ONLY granted via `fulfillCheckoutSession` called from the webhook (line 128)
+- Non-prod deployments don't have a webhook registered with Stripe, so `checkout.session.completed` events never reach the endpoint
+
+**Trigger:** 
+- Purchase a plan in a non-prod environment
+- Checkout session is created successfully and payment is processed
+- No webhook event is sent (or secret validation fails)
+- Credits are not added to the user's account
+- User sees "0 tokens" despite successful payment
+
+**Workaround:** 
+- Register a webhook endpoint in the Stripe dashboard for non-prod with the correct `STRIPE_WEBHOOK_SECRET`
+- Or manually call `fulfillCheckoutSession` via an admin endpoint for testing
+- Use the Stripe CLI `stripe listen --forward-to` for local webhook testing (documented in CLAUDE.md)
+
+**Fix approach:**
+- Document the webhook registration requirement in `.env.example`
+- Add a POST `/api/admin/stripe/fulfill` endpoint (admin-only) to manually trigger fulfillment for testing
+- Log a WARNING at startup if `STRIPE_WEBHOOK_SECRET` is empty (already done at line 73–74, but customer may not see it)
+
+---
+
+### Auth Interceptor Assumes Single Redirect Window
+
+**Symptoms:** If multiple API requests fail with 401 simultaneously (e.g., parallel `activity`, `simulation-logs`, and `user-info` calls), multiple redirects to `/auth/sign-in` may fire in rapid succession, causing route thrashing or race conditions.
+
+**Files:** `client/src/utils/authInterceptor.js` (lines 18–30)
+
+**Current state:**
+- `isRedirecting` flag guards against multiple redirects (line 23)
+- But flag is set at module load and never reset
+- If a soft redirect fails (e.g., network error), the flag stays true and no subsequent 401s will trigger redirect
+
+**Trigger:**
+- Token expires while user is on the dashboard
+- Multiple concurrent requests fail with 401 simultaneously
+- First to fire sets `isRedirecting = true` and calls `window.location.href`
+- Subsequent failures see the flag and return without action
+- If the first redirect stalls (network latency), user is left on the dashboard with an expired token and no further redirects possible
+
+**Workaround:**
+- Manual page refresh or re-login via the URL bar
+- Close and reopen the dashboard tab
+
+**Fix approach:**
+- Reset `isRedirecting` to false after a timeout (e.g., 5 seconds) to allow retries if the first redirect fails
+- Or reset the flag on successful page navigation (listen for `popstate` or `location` change)
+- Consider a queuing mechanism for redirect requests instead of a binary flag
+
+---
+
+## Security Considerations
+
+### Environment Variable Validation at Startup Only
+
+**Risk:** Required env vars (`MONGODB_URI`, `JWT_SECRET`, `STRIPE_SECRET_KEY`) are validated once at startup. If an env var is removed or corrupted after startup, the application continues to run with stale/invalid credentials until restart.
+
+**Files:** `server/index.js` (lines 47–59)
+
+**Current mitigation:**
+- Startup validation catches missing vars before the server binds to a port
+- `JWT_SECRET` length is enforced (≥32 chars, line 56–58)
+- STRIPE_WEBHOOK_SECRET can be empty (intentionally allows non-prod without webhook)
+
+**Recommendations:**
+- Add periodic health checks that re-validate critical env vars (e.g., JWT_SECRET still exists, MongoDB URI still reachable)
+- Log a WARNING if any critical env var changes during runtime
+- Consider reading secrets from a vault (HashiCorp Vault, AWS Secrets Manager) instead of static .env, so rotations don't require restart
+
+---
+
+### Internal IP Address Validation for Admin-Configured URLs
+
+**Risk:** Admins can configure custom ligand catalog/docking endpoints per company. The validator (`isDisallowedAddress` at line 1084) prevents pointing to internal/private IPs, but DNS rebinding attacks can bypass hostname validation.
+
+**Files:** `server/index.js` (lines 1084–1141)
+
+**Current mitigation:**
+- Function blocks entire classes of private addresses (10.0.0.0/8, 172.16–31.0.0/12, 192.168.0.0/16, 169.254.0.0/16, loopback, etc.)
+- IPv4 and IPv6 parsing (including IPv4-mapped IPv6)
+- Covers metadata endpoint (169.254.169.254)
+
+**Recommendations:**
+- Add TOCTOU (time-of-check-time-of-use) mitigation: re-validate the resolved IP at request time, not just at configuration time (comment at line 1116 notes this)
+- Add allow-list of known-safe domains if possible
+- Log all custom URL configurations to audit logs for review
+- Restrict who can change ligand service config (already checked via `requireCompanyAdmin`)
+
+---
+
+### 401/403 Distinction in Auth Responses
+
+**Risk:** Client auto-logs-out on any same-origin 401 (per authInterceptor). If the server accidentally returns 401 for authorization failures (e.g., "insufficient admin role"), the user is logged out when they should stay logged in but see a permission error.
+
+**Files:** 
+- `server/index.js` — Auth middleware returns 401 for token issues (line 2599), 403 for role/account status (lines 1182, 1206, 1209, 1214, etc.)
+- `client/src/utils/authInterceptor.js` — Logs out on 401 (line 63)
+
+**Current mitigation:**
+- Comments document the distinction (lines 2596–2598: "401 for missing/expired, 403 for authorization")
+- Most middleware correctly returns 403 for disabled accounts, wrong roles, etc.
+- However, some routes mix the codes (e.g., `requireActiveUser` returns 401 if token.user.username is missing, line 1195)
+
+**Recommendations:**
+- Audit all 400-series responses in the server to ensure 401 is ONLY for "you need to re-authenticate" and 403 is for "you're authenticated but not authorized"
+- Add a linter rule to catch new 401 responses outside auth middleware
+- Document this invariant in CONVENTIONS.md
+
+---
+
+## Performance Bottlenecks
+
+### Simulation Token Consumption Via Atomic Update
+
+**Problem:** Every simulation feature consumes a token via an atomic MongoDB `updateOne` with a query checking `simulationTokens: { $gt: 0 }` (line 1243–1248). This is correct for preventing overspend, but under high concurrency can cause contention.
+
+**Files:** `server/index.js` (lines 1227–1266)
+
+**Cause:**
+- Update succeeds only if the query matches (user has > 0 tokens)
+- If many requests arrive simultaneously, all hit the same user document
+- MongoDB's write lock on the user document is held for the duration
+- User experiences ~ms-scale latencies multiplied by concurrent request count
+
+**Improvement path:**
+- Cache token count in memory with a very short TTL (5–30 seconds) for reads, only update DB on consumption
+- Or use a distributed token bucket (Redis) for better concurrency
+- Profile with concurrent simulation requests to measure actual impact
+- Consider batch updates if token consumption can be deferred and aggregated
+
+---
+
+### DiffDock API Timeout
+
+**Problem:** OpenFold3 requests have a 600-second (10-minute) timeout (line 295), but DiffDock docking requests may not have explicit timeout, leading to indefinite hangs if an upstream service stalls.
+
+**Files:** `server/index.js` (line 295 has timeout; search for DiffDock requests for missing timeouts)
+
+**Cause:**
+- Long-running biochemistry simulations can legitimately take 5–10 minutes
+- But if the external API hangs, the client connection stays open, consuming a process handle
+- After many hangs, the app runs out of file descriptors and rejects new connections
+
+**Improvement path:**
+- Set explicit timeouts on ALL external API calls (Asinex, DiffDock, Tanimoto, GROMACS, etc.)
+- Add circuit-breaker pattern: track upstream failures and fail-fast if a service is down
+- Monitor request latencies and alert if p99 exceeds 10 minutes
+
+---
+
+### Company Record Lookups Without Caching
+
+**Problem:** `getCompanyRecord()` (line ~960) queries MongoDB every time it's called. In a multi-tenant system, the same company is frequently loaded by multiple requests in parallel.
+
+**Files:** `server/index.js` (search for `getCompanyRecord` calls)
+
+**Cause:**
+- No in-process cache or TTL-based cache
+- Every request that loads user info, then company billing policy, usage, etc., makes sequential DB calls
+
+**Improvement path:**
+- Add an in-memory LRU cache with a 5–30 minute TTL for company records
+- Invalidate cache on company update (admin changes branding, usage policy, etc.)
+- Or use MongoDB query projection to fetch only needed fields, reducing document size
+- Monitor query frequency with MongoDB APM tools
+
+---
+
+## Fragile Areas
+
+### Email Template HTML Injection Escaping
+
+**Issue:** Email templates inline brand palette colors via `style="color: rgb(${r}, ${g}, ${b})"` attributes. If the r/g/b values are user-controlled or unparsed, HTML injection is possible.
+
+**Files:** `server/utils/emailTemplates.js`, `server/index.js` (email send logic)
+
+**Why fragile:**
+- Brand palette is user-uploaded (logo-driven extraction) — extraction algorithm must be bulletproof
+- `generateInviteEmailHTML` and `generatePasswordResetEmailHTML` take palette as parameter
+- If a palette color value contains a `"` or `>`, it breaks the HTML attribute
+
+**Safe modification:**
+- Always validate palette colors are valid RGB integers (0–255) before using in email HTML
+- Use HTML entity encoding for any user text in email (already done for caller name in recent commit 0d0cb5b)
+- Write a test case that attempts to inject HTML via a malformed palette (test/email-injection.test.mjs or similar)
+- Check `server/utils/emailTemplates.js` for all HTML output to ensure proper escaping
+
+**Test coverage:** 
+- See commit 2b174ea: "test(04): cover invite template + HTML-injection regression" — test likely exists in `test/` directory
+
+---
+
+### Company Branding State Reset on Direct Company Switch
+
+**Issue:** When a user switches companies, the brand palette CSS variables must be cleared to prevent stale colors from leaking to the new company's dashboard.
+
+**Files:** `client/src/context/branding.jsx` (BrandingProvider)
+
+**Why fragile:**
+- CSS variables are written to `document.documentElement` on login (line 73 of STATE.md notes this)
+- If logout doesn't clear the variables, a hard refresh before re-login shows the old company's colors
+- If a company switch doesn't clear, the old palette momentarily appears before the new one loads
+
+**Safe modification:**
+- Ensure `BrandingProvider` clears `document.documentElement` style attributes on logout or company switch
+- Call `clearBrandingVariables()` before loading new palette
+- Commit 67cfab3 ("fix(03): WR-03 reset branding state on direct company switch to clear stale palette") fixed this — verify the fix is still in place
+
+**Test coverage:**
+- Write a test that logs in as company A (blue), switches to company B (red), verifies only company B colors are applied
+- Test that manual refresh after company switch loads correct colors
+
+---
+
+### Bun vs. Node Runtime Compatibility (Partial Migration)
+
+**Issue:** Codebase is mid-migration to Bun as the default runtime (Phase 5 complete), but npm/Node fallbacks are retained. Phase 7 (Docker, CI/CD, Scripts) is not yet started.
+
+**Files:** 
+- `Dockerfile` — Currently uses `oven/bun:1.3.14-slim` as base (line 1)
+- `.github/workflows/deploy.yml` — Doesn't run tests or checks before deployment (line 29–52)
+- `server/package.json` — Has both `bun` and `node` scripts (lines 8–15)
+- `client/package.json` — Similar dual scripts
+
+**Current state:**
+- Bun is the default for `npm run dev`, `npm run build`, `npm run start` (thanks to root `package.json` scripts)
+- Node fallbacks exist via `:node` suffixes (e.g., `npm run dev:node`)
+- Docker build uses Bun, production deployment uses Bun on Oracle Linux arm64
+- CI/CD (`deploy.yml`) does NOT run tests or syntax checks — just archives source and deploys
+
+**Why fragile:**
+- Tests are available (`npm run test:stripe:bun`, `npm run test:branding:bun`) but CI doesn't run them
+- A broken commit can deploy to production without running the test suite
+- If Bun and Node have runtime differences (e.g., async import timing, Buffer behavior), breakage won't be caught until production
+
+**Safe modification:**
+- Phase 7 (not yet started) should add test/lint checks to the CI pipeline
+- Parallel test matrix for both Bun and Node runtimes in GitHub Actions (or skip until Phase 7)
+
+---
+
+### Missing CI/CD Test Execution
+
+**Issue:** Deployment pipeline (`deploy.yml`) checks out code, archives it, and deploys to the Oracle VPS without running ANY tests, linting, or syntax checks.
+
+**Files:** `.github/workflows/deploy.yml` (lines 18–52)
+
+**Impact:**
+- Syntax errors, failed tests, and lint violations reach production
+- No feedback loop to developers before deployment
+- Rollback requires manual intervention (SSH to the box, restart container)
+
+**Fix approach (Phase 7 scope):**
+- Add `bun run check` or `npm run check` step before archive (syntax check + client build)
+- Add `npm run test:stripe:bun` and `npm run test:branding:bun` steps
+- Fail the workflow if any check fails
+- Consider adding a linter (ESLint, Biome) to catch code quality issues
+
+---
+
+## Scaling Limits
+
+### In-Memory Rate Limiter Across Cluster
+
+**Current capacity:** Single process, single instance only
+
+**Limit:** Adding more server instances breaks rate limiting — each process independently tracks limits.
+
+**Scaling path:** See "In-Memory Rate Limiter" under Tech Debt above. Migrate to Redis.
+
+---
+
+### Monolithic MongoDB Connection
+
+**Current capacity:** Single `MongoClient` connection pool (default ~10 connections)
+
+**Limit:** High-concurrency scenarios (100+ concurrent requests) may exhaust the pool.
+
+**Scaling path:**
+- Increase `maxPoolSize` in MongoClient options (currently not set, defaults to 10)
+- Monitor connection pool exhaustion with `client.topology().s.sessionPool`
+- Consider connection pooling proxy (e.g., PgBouncer equivalent for MongoDB)
+
+---
+
+### Audit Logging Unbounded Growth
+
+**Current capacity:** `audit_logs` collection in MongoDB, no TTL index
+
+**Limit:** Collection grows indefinitely with every auth action, simulation, admin change. After 1–2 years in production, queries slow down.
+
+**Scaling path:**
+- Add a TTL index to the `audit_logs` collection: `db.audit_logs.createIndex({ timestamp: 1 }, { expireAfterSeconds: 2592000 })` (30 days)
+- Or implement log rotation to archive/delete old entries to cold storage (S3, GCS)
+- Consider a separate timeseries collection for high-volume events (simulations) with tighter TTL
+
+---
+
+## Dependencies at Risk
+
+### Node-Vibrant 4.0.4 (Pinned Version)
+
+**Risk:** Pinned to an old version (Phase 1 spike, commit ~2026-06-06). Canvas-based library may have memory leaks or compatibility issues with newer Node/Bun versions.
+
+**Files:** `server/package.json` (line 38: `"node-vibrant": "4.0.4"`)
+
+**Impact:** 
+- Logo color extraction can fail on certain image formats
+- Memory consumption during logo upload is not tracked
+- If abandoned upstream, security fixes won't arrive
+
+**Migration plan:**
+- Monitor for issues during phase 5 (Bun runtime testing)
+- Test with newer versions (5.x, 6.x) if available
+- Have a fallback palette extraction algorithm (e.g., pure-JS color picker) if vibrant fails
+- Document the pinning decision in a comment next to the dependency
+
+---
+
+### Sharp 0.34.5 (Pinned Version)
+
+**Risk:** Pinned to a specific version for arm64 stability (Phase 1 spike). Updates may have breaking changes.
+
+**Files:** `server/package.json` (line 40: `"sharp": "0.34.5"`)
+
+**Impact:**
+- Image optimization may not use latest performance improvements
+- Security fixes in newer Sharp versions won't be applied automatically
+
+**Migration plan:**
+- Periodically check for newer Sharp versions that support Bun on arm64
+- Test upgrades in a staging environment before production
+- Monitor for CVEs in the pinned version
+
+---
+
+### RDKit (@rdkit/rdkit 2025.3.4-1.0.0)
+
+**Risk:** RDKit is a large, complex C++ library compiled to WebAssembly. Updates may break compatibility or have binary size regressions.
+
+**Files:** `server/package.json` (line 27), `client/package.json` (if installed)
+
+**Impact:**
+- Slow installation on CI systems (requires compilation or download of large binaries)
+- Breaking API changes in major versions
+- Difficult to debug binary linking issues
+
+**Migration plan:**
+- Pin to a stable minor version and test updates in staging
+- Cache compiled binaries in CI to speed up builds
+- Monitor RDKit changelog for breaking changes
+
+---
+
+## Test Coverage Gaps
+
+### Email Sending Not Tested End-to-End
+
+**What's not tested:** Full email delivery flow (compose, template rendering, SMTP send) with real Nodemailer configuration.
+
+**Files:** `server/utils/emailService.js` (sends via Nodemailer), `server/index.js` (calls emailService)
+
+**Risk:** 
+- Email templates may render incorrectly (missing variables, malformed HTML)
+- Branding colors may not inline correctly in emails sent to real addresses
+- SMTP configuration errors only surface in production when a user triggers an invite
+
+**Test coverage:**
+- Unit tests exist for template HTML generation (commit 2b174ea likely covers this)
+- No integration test that sends a real email via Nodemailer
+- No test for Titan email service specifically
+
+**Priority:** Medium (branding emails are critical to user experience)
+
+**Approach:**
+- Add `test/email-send.test.mjs` that mocks Nodemailer, verifies template rendering and color inlining
+- Use `nodemailer-mock` or stub `sendTitanEmail` for local testing
+- In staging, send a test email to a real address and inspect the HTML
+
+---
+
+### Stripe Webhook Signature Verification
+
+**What's not tested:** Webhook signature validation with tampered payloads.
+
+**Files:** `server/index.js` (lines 109–135)
+
+**Risk:**
+- If signature verification is broken, malicious webhooks could grant credits to arbitrary users
+- Test may exist (line 17: `"test:stripe": "SERVER_RUNTIME=bun bun test/stripe-webhook.test.mjs"`), but unclear if coverage is complete
+
+**Test coverage:**
+- Signature test likely exists (see commit 5098e96, phase 4 context)
+- Check `test/stripe-webhook.test.mjs` for coverage of:
+  - Valid signature acceptance
+  - Invalid signature rejection
+  - Tampered payload detection
+
+**Priority:** High (billing security)
+
+**Approach:**
+- Verify test exists and covers tamper scenarios
+- Add a test for replayed webhooks (same session ID sent twice) — currently handled via idempotency check (line 1297)
+
+---
+
+### Concurrency and Race Conditions
+
+**What's not tested:** Parallel requests hitting the same user/company document (simulation token consumption, branding updates, company switch).
+
+**Files:** `server/index.js` (token consumption at lines 1243–1248, company updates throughout)
+
+**Risk:**
+- Two simultaneous simulation requests could both pass the token check and consume one token twice, leaving the user with negative tokens
+- Or both could fail incorrectly if MongoDB atomicity isn't guaranteed
+
+**Test coverage:** Unlikely covered (would require multi-threaded test harness or cluster simulation)
+
+**Priority:** Medium (affects multi-tab users and concurrent API calls)
+
+**Approach:**
+- Add a concurrency test using `Promise.all()` to fire 10 simulation requests with 1 token
+- Verify that only 1 succeeds and 9 fail with "No simulation tokens left"
+
+---
+
+*Concerns audit: 2026-06-14*

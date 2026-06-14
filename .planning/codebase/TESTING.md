@@ -1,111 +1,68 @@
----
-last_mapped_commit: 1a703a98234dd0b9b66866ec31d4d9a1a6455b55
----
-
 # Testing Patterns
 
-**Analysis Date:** 2026-06-05
+**Analysis Date:** 2026-06-14
 
 ## Test Framework
 
 **Runner:**
-- Custom Node `.mjs` smoke/integration harnesses.
-- Config: Not detected. There is no tracked Jest, Vitest, or Playwright config.
-- Project test files: `server/test/stripe-webhook.test.mjs`, `server/test/runtime-smoke.test.mjs`, `server/test/runtime-watch-smoke.mjs`.
+- **No test framework** (no Jest, Vitest, Mocha)
+- Tests are **integration-style Node.js scripts** (`.mjs`) that spawn the real server against ephemeral MongoDB
+- No assertion library; assertions are hand-rolled `check(label, condition, extra)` helper function
+- Each test is independent; no test runner aggregates them
 
-**Assertion Library:**
-- No external assertion library is used.
-- Tests use a local `check(label, cond, extra = '')` helper that increments `passed`/`failed` counters and exits with `process.exit(failed === 0 ? 0 : 1)`.
+**Server Test Scripts:**
+- `npm --prefix server run test:stripe` — Stripe webhook integration (payment → credits flow)
+- `npm --prefix server run test:stripe:bun` — same with Bun runtime
+- `npm --prefix server run test:stripe:node` — same with Node runtime
+- `npm --prefix server run test:branding` — company branding, email theming, logo upload
+- `npm --prefix server run test:branding:bun` — same with Bun runtime
+- `npm --prefix server run test:branding:node` — same with Node runtime
+- `npm --prefix server run test:runtime-smoke` — auth, Stripe, token consumption, static serving under both Bun/Node
+- `npm --prefix server run test:runtime-watch` — smoke tests in watch mode (file at `server/test/runtime-watch-smoke.mjs`)
 
-**Run Commands:**
-```bash
-npm --prefix server run test:stripe          # Run Stripe webhook integration smoke via Node
-npm --prefix server run test:runtime-smoke   # Run runtime parity smoke via Node script runner
-npm --prefix server run test:runtime-watch   # Run Bun watch reload smoke
-npm run test:brand                           # Run retired-brand regression guard
-npm run check                                # Syntax-check server and build client
-```
+**No Unified Test Command:**
+- No `npm test` aggregates all tests
+- Tests must be run individually or via `npm run test:stripe && npm run test:branding && npm run test:runtime-smoke`
+- `npm run check` (root level) is a **syntax check only**: `bun build server/index.js --target=bun` + `bun --cwd=client run build` — runs zero tests
 
-**Bun and npm paths:**
-```bash
-bun run install:all                          # Default Phase 6 install path
-npm run install:all:node                     # npm fallback install path
-bun run dev                                  # Default Phase 6 dev path: Bun API runtime + Vite client
-npm run dev:node                             # Node/npm fallback dev path
-bun run build                                # Default Phase 6 client build invocation through Bun
-npm run build:node                           # npm fallback client build
-```
-- Phase 5 made the Express API run under Bun by default and added runtime smoke coverage.
-- Phase 6 made Bun the default package runner while preserving npm fallback scripts and dual lockfiles.
-- Docker, CI, `check`, `test:brand`, `test:stripe`, and broader test/check migration to Bun remain Phase 7 scope. Keep current Node-based test commands intact until that phase changes them.
+**Client Tests:**
+- **Zero test files** in `client/src/` or project structure
+- Client is built but not tested; no client test suite exists
 
 ## Test File Organization
 
 **Location:**
-- Server integration/smoke tests live under `server/test/`.
-- Root executable regression scripts live under `scripts/`, currently `scripts/check-brand.mjs` and `scripts/ensure-dev.mjs`.
-- Spike and measurement harnesses live under `spike/` and planning phase directories, not under the production test suite: `spike/load-gen.mjs`, `spike/baseline-capture.mjs`.
-- No client test files are tracked under `client/src`.
+- `server/test/*.test.mjs` — integration tests that spawn real server
+- `server/test/*.mjs` — helper/smoke test files (not all have `.test.` in name)
+- No tests in `client/src/`
 
 **Naming:**
-- Use `*.test.mjs` for server smoke tests that can be invoked as test scripts: `server/test/runtime-smoke.test.mjs`, `server/test/stripe-webhook.test.mjs`.
-- Use descriptive `*-smoke.mjs` for special executable harnesses that are not conventional unit suites: `server/test/runtime-watch-smoke.mjs`.
-- Use verb-oriented names for root scripts: `scripts/check-brand.mjs`, `scripts/ensure-dev.mjs`.
+- `.test.mjs` or just `.mjs` (e.g., `stripe-webhook.test.mjs`, `runtime-watch-smoke.mjs`)
+- All use `.mjs` (ESM files); tests are not bundled or transpiled
 
-**Structure:**
-```text
-server/test/
-├── runtime-smoke.test.mjs        # Phase 5 runtime parity smoke: auth, Stripe, token use, static serving
-├── runtime-watch-smoke.mjs       # Phase 5 Bun --watch reload smoke
-└── stripe-webhook.test.mjs       # Stripe payment-to-credit integration smoke
-
-scripts/
-├── check-brand.mjs               # Brand regression guard
-└── ensure-dev.mjs                # Dev environment helper
-```
+**Files:**
+- `server/test/stripe-webhook.test.mjs` — 182 lines, integration test
+- `server/test/branding.test.mjs` — 400+ lines, company branding + email theming
+- `server/test/runtime-smoke.test.mjs` — runtime parity test under Bun/Node
+- `server/test/runtime-watch-smoke.mjs` — watch mode variant (no npm script)
+- `server/test/email-theming.test.mjs` — exists but has no npm script entry
 
 ## Test Structure
 
-**Suite Organization:**
+**Pattern: Spawn Real Server + Ephemeral MongoDB**
+
+Each test file follows this flow:
+
 ```javascript
-let passed = 0;
-let failed = 0;
-function check(label, cond, extra = '') {
-  if (cond) {
-    console.log(`  ✓ ${label}`);
-    passed++;
-  } else {
-    console.log(`  ✗ ${label} ${extra}`);
-    failed++;
-  }
-}
+import { spawn } from 'node:child_process';
+import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoClient } from 'mongodb';
 
-async function main() {
-  // arrange: start dependencies and server
-  // act: call real HTTP endpoints
-  // assert: call check(...) for each behavior
-  process.exit(failed === 0 ? 0 : 1);
-}
+// 1. Create in-memory MongoDB
+const mem = await MongoMemoryServer.create();
+const uri = mem.getUri(DB_NAME);
 
-main().catch((err) => {
-  console.error('Test harness error:', err);
-  process.exit(1);
-});
-```
-
-**Patterns:**
-- Boot the real `server/index.js` process with `spawn(...)` instead of importing route handlers directly: `server/test/stripe-webhook.test.mjs`, `server/test/runtime-smoke.test.mjs`.
-- Poll `/health` with a timeout before assertions to avoid racing server startup: `waitForHealth` in `server/test/runtime-smoke.test.mjs`.
-- Use deterministic local ports per harness to avoid clashes: `3199` in `server/test/stripe-webhook.test.mjs`, `3201` in `server/test/runtime-smoke.test.mjs`, `3202` in `server/test/runtime-watch-smoke.mjs`.
-- Capture child process stdout/stderr into `serverLog` and print it only on startup/reload failure: `server/test/runtime-smoke.test.mjs`, `server/test/runtime-watch-smoke.mjs`.
-- Always clean up child processes and in-memory MongoDB in `finally`: `cleanup` helpers in all `server/test/*.mjs` harnesses.
-
-## Mocking
-
-**Framework:** Manual process/environment/data setup. No Jest/Vitest mocking framework is detected.
-
-**Patterns:**
-```javascript
+// 2. Spawn real server (index.js) against ephemeral DB
 const child = spawn(runtimeBin, ['index.js'], {
   cwd: SERVER_DIR,
   env: {
@@ -113,28 +70,83 @@ const child = spawn(runtimeBin, ['index.js'], {
     MONGODB_URI: uri,
     JWT_SECRET: 'test_jwt_secret_at_least_32_chars_long_xx',
     STRIPE_SECRET_KEY: 'sk_test_dummy_key_never_calls_api',
-    STRIPE_WEBHOOK_SECRET: WEBHOOK_SECRET,
     PORT: String(PORT),
-    NODE_ENV: 'test',
-  },
-  stdio: ['ignore', 'pipe', 'pipe'],
+    NODE_ENV: 'test'
+  }
 });
+
+// 3. Wait for server health
+const healthy = await waitForHealth();
+
+// 4. Run assertions via hand-rolled check() function
+const r1 = await postEvent(event);
+check('webhook returns 200', r1.status === 200);
+
+// 5. Verify database state directly
+const user = await users.findOne({ username: '...' });
+check('credits granted', user.simulationTokens === 55);
+
+// 6. Cleanup
+child.kill('SIGKILL');
+await mem.stop();
 ```
 
-**What to Mock:**
-- Use `mongodb-memory-server` for database isolation in server integration tests: `server/test/stripe-webhook.test.mjs`, `server/test/runtime-smoke.test.mjs`, `server/test/runtime-watch-smoke.mjs`.
-- Use Stripe SDK test-signing helpers to generate valid and forged webhook signatures without contacting Stripe: `stripe.webhooks.generateTestHeaderString(...)` in `server/test/stripe-webhook.test.mjs`.
-- Override runtime env vars in the child process to prevent real external calls and secret leakage: dummy Stripe keys and blank `NVIDIA_MOLMIM_API_KEY` in `server/test/runtime-smoke.test.mjs`.
-- Seed MongoDB collections directly with known user/billing states before calling live routes: `users.insertOne(...)` in `server/test/runtime-smoke.test.mjs`.
+**Assertion Helper:**
 
-**What NOT to Mock:**
-- Do not mock the Express server, webhook route, or request body parser in runtime smoke tests. Phase 5 specifically requires the real `express.raw()` Stripe webhook path in `server/index.js`.
-- Do not call real Stripe, NVIDIA, science, RabbitMQ, or remote molecule services in smoke tests. Use env overrides or cheap failure paths as in `server/test/runtime-smoke.test.mjs`.
-- Do not replace `bun --watch` with a fake reload signal for the watch smoke; the harness must spawn Bun and observe restart behavior through logs/health in `server/test/runtime-watch-smoke.mjs`.
+```javascript
+let passed = 0;
+let failed = 0;
+function check(label, condition, extra = '') {
+  if (condition) {
+    console.log(`  ✓ ${label}`);          // stripe-webhook style
+    // or
+    console.log(`  PASS ${label}`);        // branding style (inconsistent)
+    passed++;
+  } else {
+    console.log(`  ✗ ${label} ${extra}`); // stripe-webhook style
+    // or
+    console.log(`  FAIL ${label} ${extra}`); // branding style
+    failed++;
+  }
+}
+// Final report: `Result: N passed, M failed`
+```
+
+Style is **mixed**: `stripe-webhook` uses `✓/✗` emoji, `branding` uses `PASS/FAIL` text.
+
+## Mocking
+
+**Strategy:** No mocking framework; tests use real implementations against real ephemeral MongoDB.
+
+**What's real:**
+- Full `server/index.js` startup (DB connection, indexes, middleware chain, routes)
+- Real MongoDB via `mongodb-memory-server` (in-memory, no external service needed)
+- Real Stripe signature verification (uses test key to sign webhook events)
+- Real bcrypt password hashing (test user creation uses actual `bcrypt.hash()`)
+
+**What's stubbed:**
+- External API calls: dummy keys (e.g., `sk_test_dummy_key_never_calls_api`) prevent actual Stripe/NVIDIA calls
+- STRIPE_WEBHOOK_SECRET: set to test value in env (`whsec_localtest_do_not_use_in_prod`)
+- PORT: overridden to non-standard test port (3199, 3204, 3201) to avoid conflicts
+
+**What to NOT Mock:**
+- Database operations — use real ephemeral MongoDB; validates persistence/queries
+- Middleware chain — run through real `authenticateToken`, `requireActiveUser`, etc.
+- Request/response cycle — use real HTTP via `fetch()`
+- Cryptographic operations — test real bcrypt and JWT signing
+
+**What's Omitted (Not Tested):**
+- RabbitMQ integration (no ADMET worker queue in tests)
+- External scientific APIs (MolMIM, OpenFold3, Tanimoto) — these routes require valid API keys; tests skip them
+- Email delivery (Nodemailer/Titan) — no email capture in tests
+- Stripe payment delivery — webhook testing delivers properly-signed fake events, not real Stripe calls
 
 ## Fixtures and Factories
 
 **Test Data:**
+
+Stripe webhook test (`:127-142` in `stripe-webhook.test.mjs`):
+
 ```javascript
 const user = {
   username: 'webhooktest',
@@ -146,83 +158,152 @@ const user = {
   createdAt: new Date(),
 };
 await users.insertOne(user);
+
+const sessionId = `cs_test_${Date.now()}`;
+const event = buildEvent(sessionId, {
+  username: 'webhooktest',
+  companyId: 'comp_test',
+  credits: 50,
+  plan: 'Standard'
+});
 ```
 
-**Location:**
-- Fixtures are inline in each smoke harness rather than shared fixture files.
-- Stripe event factory logic is local to `buildEvent(...)` in `server/test/stripe-webhook.test.mjs`.
-- Runtime smoke user fixtures are inline in `server/test/runtime-smoke.test.mjs`, including a bcrypt-hashed password for `/api/signin`.
+Branding test (`:22-23` in `branding.test.mjs`):
+
+```javascript
+const PASSWORD = 'BrandingPass1!';
+const COMPANY_A = 'company_brand_a';
+const DEFAULT_PRIMARY = '#B4B239';
+```
+
+**Location:** Data is defined inline in test files; no shared fixtures directory.
+
+**Factories:** Helper functions generate test data (e.g., `buildEvent(sessionId, metadata)` creates a Stripe event with metadata).
 
 ## Coverage
 
-**Requirements:** None enforced by tooling. There is no coverage threshold or coverage command in tracked package scripts.
+**Requirements:** None enforced
 
-**View Coverage:**
-```bash
-# Not available: no coverage tool is configured.
-```
+**Current State:**
+- **No coverage tool** (no Istanbul, no C8)
+- **Integration tests cover happy paths:** payment flow (stripe-webhook), branding CRUD, auth & token consumption (runtime-smoke)
+- **Many areas untested:** client code, most API endpoints, error paths, edge cases
 
 ## Test Types
 
-**Unit Tests:**
-- Not detected. No tracked source-adjacent unit tests exist under `client/src` or `server/`.
-- Future unit tests should not replace the current smoke harnesses for runtime-critical behavior; keep the live-process tests for Bun/Node parity.
-
 **Integration Tests:**
-- `server/test/stripe-webhook.test.mjs` validates the live payment-to-credit path with real Express, real MongoDB driver against in-memory MongoDB, signed Stripe payloads, idempotency, and forged-signature rejection.
-- `server/test/runtime-smoke.test.mjs` validates Phase 5 runtime parity for auth login, `/health`, `/health/db`, Stripe webhook signature/credit grant, token consumption on `/api/generate-molecules`, and optional static frontend serving via `--assert-static`.
-- `server/test/runtime-watch-smoke.mjs` validates Bun dev watch startup and restart after a content-preserving rewrite of `server/config/branding.js`.
+
+All server tests are integration-style — they start the real server and test end-to-end flows:
+
+- **Stripe webhook** (`stripe-webhook.test.mjs`): Signs a fake event, POSTs to `/stripe/webhook`, verifies credits granted in DB
+- **Branding** (`branding.test.mjs`): Signs up users, updates company branding (logo, palette), verifies email theming generation
+- **Runtime smoke** (`runtime-smoke.test.mjs`): Auth (signup/signin), token consumption, Stripe webhook idempotency, static file serving under both Bun/Node
+
+Scope: Full request/response cycle with real middleware and database.
+
+**Unit Tests:**
+- None present
 
 **E2E Tests:**
-- Not used. No browser E2E framework is configured.
-- Client behavior is currently guarded indirectly by `npm --prefix client run build` in root `npm run check`.
+- None present
+
+**Client Tests:**
+- None present
 
 ## Common Patterns
 
 **Async Testing:**
+
+All tests are async; use `await` throughout and wrap main logic in `async function main()`:
+
 ```javascript
-async function waitForHealth(timeoutMs = 40000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`${BASE}/health`);
-      if (res.ok) return true;
-    } catch {
-      // server not up yet
-    }
-    await new Promise((r) => setTimeout(r, 300));
-  }
-  return false;
+async function main() {
+  // Setup
+  const mem = await MongoMemoryServer.create();
+  const uri = mem.getUri(DB_NAME);
+  
+  // Execute
+  const response = await fetch(url, { method, headers, body });
+  
+  // Verify
+  const data = await response.json();
+  check('response ok', response.ok);
+  
+  // Cleanup
+  await mem.stop();
 }
+
+main().catch((err) => {
+  console.error('Test harness error:', err);
+  process.exit(1);
+});
 ```
 
 **Error Testing:**
+
+Error paths verified by checking HTTP status codes and response bodies:
+
 ```javascript
-const forgedHeader = stripe.webhooks.generateTestHeaderString({
-  payload,
-  secret: 'whsec_wrong_secret',
-});
-const forgedRes = await fetch(`${BASE}/stripe/webhook`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json', 'Stripe-Signature': forgedHeader },
-  body: payload,
-});
-check('forged signature returns 400', forgedRes.status === 400, `(got ${forgedRes.status})`);
+// Forged signature test
+const forged = await postEvent(buildEvent(...), { secret: 'whsec_wrong_secret' });
+check('bad signature returns 400', forged.status === 400);
+
+// Token insufficient test
+check('no tokens left returns 403', afterDepleted.simulationTokens === 0);
 ```
 
-**Runtime Matrix Testing:**
+No explicit `try-catch` for expected errors; status code checks suffice.
+
+**Idempotency Testing:**
+
+Stripe test verifies idempotency by replaying the same event and checking no double-grant occurs (`:155-159` stripe-webhook.test.mjs):
+
+```javascript
+console.log('\nTest 2 — replaying the same event does NOT double-grant (idempotent):');
+const r2 = await postEvent(event);
+check('replay returns 200', r2.status === 200);
+const afterReplay = await users.findOne({ username: 'webhooktest' });
+check('credits stay at 55 (no double grant)', afterReplay.simulationTokens === 55);
+```
+
+**Database State Verification:**
+
+Tests verify database state directly via MongoClient:
+
+```javascript
+const users = mongo.db(DB_NAME).collection('users');
+const afterFirst = await users.findOne({ username: 'webhooktest' });
+check('credits 5 -> 55 (granted 50)', afterFirst.simulationTokens === 55);
+const be = await billing.findOne({ stripeSessionId: sessionId });
+check('billing_events row marked fulfilled', be?.status === 'fulfilled');
+```
+
+## Runtime Parity Testing
+
+`runtime-smoke.test.mjs` (`:1-9`) explicitly tests feature parity under Bun and Node:
+
+**Purpose:** Prove RUN-03 and RUN-02 (Bun migration phases) under both runtimes.
+
+**Usage:**
+
 ```bash
 SERVER_RUNTIME=node npm --prefix server run test:runtime-smoke
-SERVER_RUNTIME=bun npm --prefix server run test:runtime-smoke
-npm run build && FRONTEND_DIST=../client/dist SERVER_RUNTIME=bun npm --prefix server run test:runtime-smoke -- --assert-static
+SERVER_RUNTIME=bun  npm --prefix server run test:runtime-smoke
+
+# With static file serving (requires build)
+npm run build && FRONTEND_DIST=../client/dist SERVER_RUNTIME=bun \
+  npm --prefix server run test:runtime-smoke -- --assert-static
 ```
 
-**Brand Regression Testing:**
-```bash
-npm run test:brand
-```
-- `scripts/check-brand.mjs` recursively scans text-like files, excludes generated/build/secret-prone paths, and fails if the retired brand appears.
+**Flags:**
+- `--assert-static`: Verifies static frontend serving from `FRONTEND_DIST`
+
+**Tested Features:**
+- Authentication (signup, signin, JWT validation)
+- Stripe webhook signature verification
+- Token consumption (simulation token decrement)
+- Static file serving (when `FRONTEND_DIST` set)
 
 ---
 
-*Testing analysis: 2026-06-05*
+*Testing analysis: 2026-06-14*

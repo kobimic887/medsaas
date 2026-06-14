@@ -1,195 +1,243 @@
----
-last_mapped_commit: 1a703a98234dd0b9b66866ec31d4d9a1a6455b55
----
 # External Integrations
 
-**Analysis Date:** 2026-06-05
+**Analysis Date:** 2026-06-14
 
 ## APIs & External Services
 
-**Payments:**
-- Stripe Checkout and webhooks - Used for one-time and plan credit purchases.
-  - SDK/Client: `stripe` in `server/package.json`; server setup in `server/index.js`.
-  - Auth: `STRIPE_SECRET_KEY`; webhook signing secret `STRIPE_WEBHOOK_SECRET`.
-  - Incoming endpoint: `POST /stripe/webhook` in `server/index.js`.
-  - Checkout routes: `POST /create-checkout-session-onetime`, `POST /create-checkout-session`, and `GET /checkout-session/:sessionId` in `server/index.js`.
-  - Client build-time publishable key: `VITE_STRIPE_PUBLISHABLE_KEY` referenced by `client/src/pages/dashboard/paidplans.jsx`, `client/src/pages/main/paidplansdescription.jsx`, and `client/src/widgets/layout/dashboard-navbar.jsx`.
+**NVIDIA (AI/ML):**
+- NVIDIA MolMIM API — Molecule generation
+  - Endpoint: `POST /api/generate-molecules`
+  - SDK/Client: `axios`
+  - Auth: `NVIDIA_MOLMIM_API_KEY` (header)
+  - Location: `server/index.js` lines 226–260
 
-**NVIDIA Biology APIs:**
-- NVIDIA MolMIM - Molecule generation proxy.
-  - SDK/Client: `axios` in `server/index.js`.
-  - Auth: `NVIDIA_MOLMIM_API_KEY`.
-  - Endpoint called: `https://health.api.nvidia.com/v1/biology/nvidia/molmim/generate`.
-  - Local route: `POST /api/generate-molecules` in `server/index.js`.
-- NVIDIA OpenFold3 - Biomolecular complex structure prediction proxy.
-  - SDK/Client: `axios` in `server/index.js`.
-  - Auth: `NVIDIA_OPENFOLD_API_KEY`.
-  - Endpoint called: `https://health.api.nvidia.com/v1/biology/openfold/openfold3/predict`.
-  - Local route: `POST /api/openfold3/predict` in `server/index.js`.
+- NVIDIA OpenFold3 API — Protein/DNA/RNA/ligand structure prediction
+  - Endpoint: `POST /api/openfold3/predict`
+  - SDK/Client: `axios`
+  - Auth: `NVIDIA_OPENFOLD_API_KEY` (header)
+  - Location: `server/index.js` lines 279–345
 
-**Molecular Search and Docking Services:**
-- Tanimoto API - Dataset upload/search/list/delete proxy.
-  - SDK/Client: `axios` in `server/index.js`.
-  - Auth: Not detected in code; base URL configured by `TANIMOTO_API_BASE`.
-  - Default base URL: `http://151.145.91.17:8000` in `server/index.js`.
-  - Local routes: `/tanimoto/health`, `/tanimoto/v1/upload`, `/tanimoto/v1/search/exact`, `/tanimoto/v1/search/similarity`, `/tanimoto/v1/search/substructure`, `/tanimoto/v1/search/batch`, and `/tanimoto/v1/datasets` in `server/index.js`.
-- ASINEX ligand catalog - Catalog, exact/id/all, structure, substructure, similarity, molecular weight, and direct search wrappers.
-  - SDK/Client: native `fetch`/`node-fetch` in `server/index.js`.
-  - Auth: Not detected in code.
-  - Config: `ASINEX_API_BASE`, `ASINEX_STOCK_API_URL`, `ASINEX_DOCKING_API_URL`, and `DIFFDOCK_API_URL`; per-company overrides are stored on company records and normalized in `server/index.js`.
-  - Default catalog base: `http://dev.asinex.com:58181` in `server/index.js`.
-  - Local routes: `/api/exact/:smiles`, `/api/all/:id_:pageSize`, `/api/id/:id_number`, `/api/api4/*`, `/api/asinex/*`, and `/api/shop` in `server/index.js`.
-- ASINEX stock API - Shop/stock lookup.
-  - SDK/Client: native `fetch` in `server/index.js`.
-  - Auth: Not detected in code.
-  - Config: `ASINEX_STOCK_API_URL`.
-  - Default endpoint: `https://stock.asinex.com:5443/api/Shop` in `server/index.js`.
-- ASINEX docking API - Docking service proxy.
-  - SDK/Client: native `fetch` in `server/index.js`.
-  - Auth: Not detected in code.
-  - Config: `ASINEX_DOCKING_API_URL`.
-  - Default endpoint: `https://services.asinex.com:8000/docking` in `server/index.js`.
-- DiffDock API - Molecular docking generation service.
-  - SDK/Client: native `fetch` in `server/index.js`.
-  - Auth: Not detected in code.
-  - Config: `DIFFDOCK_API_URL`.
-  - Default endpoint: `https://services.asinex.com:58000/molecular-docking/diffdock/generate` in `server/index.js`.
-  - Local routes: `POST /api/diffdock/generate` and `POST /api/diffdock/generate_file` in `server/index.js`.
-- SDF converter - Converts structure data.
-  - SDK/Client: native `fetch` in `server/index.js`.
-  - Auth: Not detected in code.
-  - Config: `SDF_CONVERTER_URL`.
-  - Default endpoint: `http://83.229.87.94:8001/convertSTR` in `server/index.js`.
-- RCSB Protein Data Bank - Downloads PDB and ligand SDF files.
-  - SDK/Client: native `fetch` in `server/index.js`.
-  - Auth: None.
-  - Endpoints called: `https://files.rcsb.org/download/{PDB}.pdb` and `https://files.rcsb.org/ligands/download/{ligand}_ideal.sdf`.
+**Tanimoto Similarity Search:**
+- External Tanimoto service (configurable)
+  - Endpoints: `/tanimoto/v1/upload`, `/tanimoto/v1/search/{exact,similarity,substructure,batch}`, `/tanimoto/v1/datasets/*`
+  - SDK/Client: `axios`
+  - Auth: None (proxied from authenticated session)
+  - Base URL: `TANIMOTO_API_BASE` (default: `http://151.145.91.17:8000`)
+  - Location: `server/index.js` lines 347–609
 
-**Integrated Scientific Microservices:**
-- GROMACS API - Proxied workflow/job service.
-  - SDK/Client: `node-fetch` in `server/routes/scientificServices.js`.
-  - Auth: Not detected in proxy code.
-  - Config: `GROMACS_API_BASE`, default `http://localhost:8001`.
-  - Local routes: `/api/scientific/platform/health`, `/api/scientific/gromacs/health`, `/api/scientific/gromacs/info`, `/api/scientific/gromacs/workflows/:workflow`, and `/api/scientific/gromacs/jobs/:jobId` via `server/routes/scientificServices.js`.
-  - Service implementation: `services/gromacs-api/app.py`; dependencies in `services/gromacs-api/requirements.txt`.
-- Glioblastoma predictor - Proxied ML prediction service.
-  - SDK/Client: `node-fetch` in `server/routes/scientificServices.js`.
-  - Auth: Not detected in proxy code.
-  - Config: `GLIOBLASTOMA_API_BASE`, default `http://localhost:5000`.
-  - Local routes: `/api/scientific/glioblastoma/predict` and `/api/scientific/glioblastoma/batch-predict` via `server/routes/scientificServices.js`.
-  - Service implementation: `services/glioblastoma-predictor/app.py`; dependencies in `services/glioblastoma-predictor/requirements.txt`.
-
-**Messaging and Workers:**
-- RabbitMQ - Queues ADMET prediction tasks.
-  - SDK/Client: `amqplib` in `server/package.json`; implementation in `server/utils/rabbitMQUtils.js`.
-  - Auth: `RABBITMQ_URL`, `RABBITMQ_USERNAME`, `RABBITMQ_PASSWORD`, and `RABBITMQ_VHOST`.
-  - Queue: `ADMET_QUEUE_NAME`; default in code is `test_queue`, `.env.example` documents `admet_processing_queue`.
-  - Local routes: `GET /api/rabbitmq/health`, `GET /api/rabbitmq/queue-status`, and `POST /api/admet/create-task` in `server/index.js`.
-- ADMET worker callback - Receives worker results for simulations.
-  - SDK/Client: HTTP callback from worker; sender code exists in `services/admet/admet_sender.py`.
-  - Auth: `ADMET_CALLBACK_SECRET`.
-  - Incoming endpoint: `PUT /api/simulation/:simulationKey/admet` in `server/index.js`.
-  - Worker dependencies: `services/admet/requirements.txt`.
-
-**Email:**
-- Titan Mail SMTP - Verification, password reset, admin/member invite, and contact email delivery.
-  - SDK/Client: `nodemailer` in `server/package.json`; implementation in `server/utils/emailService.js`.
-  - Auth: `EMAIL_USER`, `EMAIL_PASS`, optional `EMAIL_FROM`.
-  - SMTP hosts tried: `server028.yourhosting.nl` and `smtp.titan.email` in `server/utils/emailService.js`.
-  - Test/debug routes: `GET /api/test-email`, `GET /api/debug-email`, `POST /api/send-test-email`, and `POST /api/send-email` in `server/index.js`.
-
-**Frontend Dev Proxy and Public Assets:**
-- Vite dev server - Proxies client requests to the API during development.
-  - Config: `client/vite.config.js`.
-  - Proxy targets: `/api`, `/tanimoto`, checkout routes, and `/health` to `http://127.0.0.1:3000`.
-  - CSP allows script/worker sources for `https://cdn.jsdelivr.net`, `https://api.nepcha.com`, `https://3dmol.csb.pitt.edu`, and `https://unpkg.com` in `client/vite.config.js`.
-- Static frontend serving - API serves `client/dist` when `FRONTEND_DIST` is configured.
-  - Config: `FRONTEND_DIST` in `server/index.js` and `server/package.json`.
+**Asinex Ligand Catalog:**
+- Asinex APIs — Ligand catalog search, stock availability, molecular docking
+  - Catalog API: `ASINEX_API_BASE` (default: `http://dev.asinex.com:58181`)
+  - Stock API: `ASINEX_STOCK_API_URL` (default: `https://stock.asinex.com:5443/api/Shop`)
+  - Docking API: `ASINEX_DOCKING_API_URL` (default: `https://services.asinex.com:8000/docking`)
+  - DiffDock API: `DIFFDOCK_API_URL` (default: `https://services.asinex.com:58000/molecular-docking/diffdock/generate`)
+  - SDF Converter: `SDF_CONVERTER_URL` (default: `http://83.229.87.94:8001/convertSTR`)
+  - Endpoints: `/api/search-asinex`, `/api/docking`, `/api/docking-diffdock`, `/api/convert-sdf`
+  - SDK/Client: `axios`, `fetch`
+  - Location: `server/index.js` lines 2200–4580
 
 ## Data Storage
 
 **Databases:**
-- MongoDB - Primary application data store.
-  - Connection: `MONGODB_URI`.
-  - Client: `mongodb` Node driver in `server/index.js`.
-  - Collections initialized in `server/index.js`: `users`, `companies`, `audit_logs`, and `billing_events`.
-  - Additional collections queried in `server/index.js` include simulation, molecule, project, and activity data collections.
-  - Import utility: `server/import-mol-price.js` imports molecule pricing data using `MONGODB_URI`.
-  - Test database: `mongodb-memory-server` in `server/test/stripe-webhook.test.mjs` and `server/test/runtime-smoke.test.mjs`.
+- MongoDB 6.17.0
+  - Connection: `MONGODB_URI` (e.g., `mongodb://localhost:27017/medsaas`)
+  - Client: `mongodb` driver
+  - Auth: Optional username/password in connection string
+  - Container: `mongo:7` (docker-compose.yml)
+  - Collections:
+    - `users` — User accounts, credentials, tokens
+    - `companies` — Company/tenant data, branding config
+    - `audit_logs` — Authentication and admin action audit trail
+    - `billing_events` — Stripe payment transaction records
+    - `simulation_logs` — Scientific simulation execution history
+    - `projects` — User projects and saved analyses
+    - `mol_price` — Molecule pricing data (imported via `npm run import:mol-price`)
+  - Indexes: username/email (unique), companyId (multi-tenant), stripeSessionId (idempotency)
+  - Location: `server/index.js` lines 713–810
 
 **File Storage:**
-- Local filesystem only for served blobs and frontend assets.
-  - Static blobs route: `/blobs` serves `server/blobs` from `server/index.js`.
-  - Static SPA route serves `client/dist` via `FRONTEND_DIST` in `server/index.js`.
-  - No S3, GCS, Azure Blob, Cloudinary, or UploadThing integration detected.
+- Local filesystem only — no S3 or cloud storage
+  - Build output: `client/dist/` (Vite build)
+  - Server logs: Work directory or `/tmp/` (for DiffDock, GROMACS)
+  - No persistent file store configured
 
 **Caching:**
-- No external cache detected.
-- In-process rate limiter uses a module-local `Map` in `server/index.js`.
+- In-memory rate limiters (custom implementation, no external cache)
+  - `authRateLimit` — 30 requests per 15 minutes
+  - `publicEmailRateLimit` — 5 requests per 15 minutes
+  - `checkoutRateLimit` — 20 requests per 5 minutes
+  - Location: `server/index.js` lines 175–193
+
+## Message Queue
+
+**RabbitMQ:**
+- Purpose: ADMET prediction task queue (asynchronous job processing)
+- Container: `rabbitmq:3-management` (docker-compose.yml)
+- Connection: `RABBITMQ_URL` (default: `amqp://localhost:5672`)
+- Auth: `RABBITMQ_USERNAME`, `RABBITMQ_PASSWORD` (default: guest/guest)
+- Queue: `ADMET_QUEUE_NAME` (default: `admet_processing_queue`)
+- Client: `amqplib` (Node.js) + pika (Python worker)
+- Endpoints: `/api/admet-predict` (task creation), `/api/admet-queue-status` (status check)
+- Location: `server/utils/rabbitMQUtils.js`, `server/index.js` lines 3400–3600
+- Python worker: `services/admet/` (Docker, optional)
 
 ## Authentication & Identity
 
-**Auth Provider:**
-- Custom username/email authentication with JWT.
-  - Implementation: `bcryptjs` password hashing, `jsonwebtoken` signing/verification, and MongoDB user records in `server/index.js`.
-  - Secret: `JWT_SECRET`.
-  - Signup/signin/password routes: `POST /api/signup`, `POST /api/signin`, `POST /api/password-reset/request`, `POST /api/password-reset/confirm`, `POST /api/change-password`, `GET /api/verify-email`, and `POST /api/validate-token` in `server/index.js`.
-  - Middleware: `authenticateToken`, `requireActiveUser`, and `requireCompanyAdmin` in `server/index.js`.
-- Email verification and password resets use JWT tokens plus Titan Mail in `server/index.js` and `server/utils/emailService.js`.
-- No Auth0, Clerk, Firebase Auth, Supabase Auth, OAuth, or SAML provider detected.
+**JWT (Session Tokens):**
+- Custom JWT implementation using `jsonwebtoken`
+- Secret: `JWT_SECRET` (≥32 chars, required)
+- Expiration: `JWT_EXPIRES_IN` (default: 7d)
+- Token format: Standard JWT, passed in `Authorization: Bearer <token>` header
+- Validation: `authenticateToken` middleware on all protected routes
+- Roles: owner, admin, member (per company)
+- Location: `server/index.js` lines 900–1000
+
+**Password Hashing:**
+- bcryptjs 3.0.2 — Hash passwords at signup, invite acceptance, password change
+- Policy: `/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).{8,}$/`
+- Requirements: 8+ chars, 1 lowercase, 1 uppercase, 1 digit, 1 special char
+- Location: `server/index.js` password validation endpoints
+
+## Billing & Payments
+
+**Stripe:**
+- Purpose: Payment processing, checkout sessions, credit purchasing
+- SDK: `stripe` 18.3.0
+- Secret Key: `STRIPE_SECRET_KEY` (required)
+- Publishable Key: `VITE_STRIPE_PUBLISHABLE_KEY` (client build-time)
+- Webhook Secret: `STRIPE_WEBHOOK_SECRET` (for verification)
+- Webhook Endpoint: `POST /stripe/webhook` (localhost:3000/stripe/webhook)
+- Client checkout: `POST /create-checkout-session`, `POST /create-checkout-session-onetime`
+- Session retrieval: `GET /checkout-session/:sessionId`
+- Event handling:
+  - `checkout.session.completed` — Trigger `fulfillCheckoutSession()` to grant credits atomically
+  - Idempotency: tracked via `stripeSessionId` index on `billing_events` collection
+- Fallback: When `STRIPE_WEBHOOK_SECRET` not configured, webhooks are rejected and credits NOT granted
+- Location: `server/index.js` lines 109–135, 1289–1610
+
+## Email
+
+**Titan Mail (SMTP):**
+- Purpose: User signup confirmations, password resets, invite emails, contact form replies
+- Provider: Titan Mail
+- Auth: `EMAIL_USER`, `EMAIL_PASS` environment variables
+- Connection: nodemailer via SMTP
+- Endpoints:
+  - `POST /auth/send-password-reset-email` — Password reset link
+  - `POST /auth/send-invite-email` — Company invite to new user
+  - `POST /send-email` — Public contact form (fixed recipient)
+- HTML templates: `server/utils/emailTemplates.js`
+- From address: Uses `EMAIL_USER` or fallback to `PLATFORM_NAME`
+- Branding: Dynamic based on company name (or `PLATFORM_NAME` fallback)
+- Fixed contact recipient: `CONTACT_RECIPIENT` (env var, defaults to `EMAIL_USER`)
+- Location: `server/utils/emailService.js`, `server/index.js` (signup/reset/invite routes)
 
 ## Monitoring & Observability
 
 **Error Tracking:**
-- None detected. No Sentry, Datadog, New Relic, OpenTelemetry, or similar dependency appears in active manifests.
+- Not detected — no external error tracking service (Sentry, etc.)
+- Errors logged to console via `console.error()`
 
 **Logs:**
-- Console logging through `console.log`, `console.warn`, and `console.error` in `server/index.js`, `server/utils/emailService.js`, `server/utils/rabbitMQUtils.js`, and `server/routes/scientificServices.js`.
-- MongoDB connection logs redact credentials in `server/index.js`.
-- Titan Mail logs redact email user partially in `server/utils/emailService.js`.
+- Console logging (stdout/stderr)
+- File logging for DiffDock debug: `logToFile()` in `server/index.js` (location: `diff_dock_debug.log`)
+- RabbitMQ connection logs for ADMET task processing
+- Audit logs stored in MongoDB `audit_logs` collection
+
+**Health Checks:**
+- Endpoint: `GET /health` — Server status
+- Database: `GET /health/db` — MongoDB connection test
+- RabbitMQ: Logged at startup, health check via `rabbitMQHealthCheck()`
+- Scientific services: `GET /api/scientific/platform/health` — GROMACS and Glioblastoma uptime
 
 ## CI/CD & Deployment
 
-**Hosting:**
-- Containerized deployment is supported by `Dockerfile`, `docker-compose.yml`, `docker-compose.deploy.yml`, and `docker-compose.box.yml`.
-- Root `Dockerfile` builds the Vite client and Express API with Node 22 Alpine and serves on port 3000.
-- Root scripts in `package.json` use Docker Compose service profiles for local infrastructure and scientific workers.
+**Version Control:**
+- Git repository (GitHub)
+- Branches: main (production), feature branches
 
 **CI Pipeline:**
-- Not detected. No `.github/workflows` files were found in the repository scan.
+- GitHub Actions (manual dispatch only)
+- Job: `.github/workflows/deploy.yml`
+- Trigger: Manual via "Run workflow" (no auto-deploy on push)
+- Process:
+  1. Checkout code
+  2. Create git archive (tracked files only)
+  3. SCP archive to deployment host (Oracle VPS)
+  4. Extract and run `docker compose -f docker-compose.box.yml up -d --build`
+  5. Prune dangling Docker images
+- Deployment host is non-public (secrets-managed SSH)
+
+**Containerization:**
+- Root `Dockerfile` — Two-stage Bun build for app + client
+  - Stage 1 (`frontend`): Build client via Vite
+  - Stage 2 (`api`): Install server deps, copy built client, run Bun
+  - Base image: `oven/bun:1.3.14-slim`
+  - Entrypoint: `bun index.js`
+  - Port: 3000
+  - Environment: `NODE_ENV=production`, `FRONTEND_DIST=../client/dist`
+
+- Optional science services (docker-compose.yml):
+  - `admet-worker` — ADMET prediction (profile: workers)
+  - `gromacs-api` — Molecular dynamics (profile: science)
+  - `glioblastoma-predictor` — Cancer model prediction (profile: science)
+  - Core services (always up):
+    - MongoDB 7
+    - RabbitMQ 3-management
+
+- Deployment compose file: `docker-compose.box.yml` (referenced in CI, not in repo root)
+
+**No containerization for main app in development** — `docker-compose.yml` contains only MongoDB, RabbitMQ, and optional science services. The Express app runs natively via `bun` or `node --watch`.
 
 ## Environment Configuration
 
-**Required env vars:**
-- Core required at API startup: `MONGODB_URI`, `JWT_SECRET`, `STRIPE_SECRET_KEY`.
-- Stripe: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `VITE_STRIPE_PUBLISHABLE_KEY`.
-- URLs and serving: `PORT`, `BASE_URL`, `FRONTEND_URL`, `FRONTEND_DIST`, `VITE_API_BASE_URL`, `VITE_PLATFORM_NAME`, `PLATFORM_NAME`, `PLATFORM_WEBSITE_URL`.
-- Email: `EMAIL_USER`, `EMAIL_PASS`, optional `EMAIL_FROM`.
-- NVIDIA: `NVIDIA_MOLMIM_API_KEY`, `NVIDIA_OPENFOLD_API_KEY`.
-- Molecular services: `TANIMOTO_API_BASE`, `ASINEX_API_BASE`, `ASINEX_STOCK_API_URL`, `ASINEX_DOCKING_API_URL`, `DIFFDOCK_API_URL`, `SDF_CONVERTER_URL`.
-- RabbitMQ/ADMET: `RABBITMQ_URL`, `RABBITMQ_USERNAME`, `RABBITMQ_PASSWORD`, `RABBITMQ_VHOST`, `ADMET_QUEUE_NAME`, `ADMET_CALLBACK_SECRET`.
-- Scientific microservices: `GROMACS_API_BASE`, `GLIOBLASTOMA_API_BASE`.
-- Optional HTTPS: `SSL_KEY_PATH`, `SSL_CERT_PATH`.
+**Required Env Vars (Validated at Startup):**
+- `MONGODB_URI` — Database connection
+- `JWT_SECRET` — Session token key (≥32 chars)
+- `STRIPE_SECRET_KEY` — Stripe secret
 
-**Secrets location:**
-- Root `.env` file present and intentionally not read.
-- Root `.env.example` documents variable names and placeholder values.
-- `services/admet/.env.example`, `legacy/chem-beo-api/.env.example`, `legacy/chem-beo-api/.env.rabbitmq.example`, and `packages/dashboard-template/.env.example` exist for service/template/legacy configuration examples.
-- Do not read or quote real `.env`, credential, key, or secret files.
+**Required for Full Operation:**
+- `STRIPE_WEBHOOK_SECRET` — Webhook verification (without this, payment webhooks rejected)
+- `EMAIL_USER`, `EMAIL_PASS` — Email sending
+- `NVIDIA_MOLMIM_API_KEY` — Molecule generation
+- `NVIDIA_OPENFOLD_API_KEY` — Protein folding
+
+**Optional/Defaulted:**
+- `PORT` (default: 3000)
+- `BASE_URL`, `FRONTEND_URL` — Callback URLs
+- `PLATFORM_NAME` (default: "MedSaaS")
+- `TANIMOTO_API_BASE` (default: `http://151.145.91.17:8000`)
+- `ASINEX_*` endpoints (defaults provided)
+- `RABBITMQ_URL`, credentials (defaults: localhost, guest/guest)
+- `GROMACS_API_BASE`, `GLIOBLASTOMA_API_BASE` (defaults: localhost:8001, :5000)
+- `FRONTEND_DIST` — Path to built client (optional; auto-detected)
+- `SSL_KEY_PATH`, `SSL_CERT_PATH` — HTTPS certificates
 
 ## Webhooks & Callbacks
 
-**Incoming:**
-- `POST /stripe/webhook` in `server/index.js` - Stripe `checkout.session.completed`; validates `Stripe-Signature` with `STRIPE_WEBHOOK_SECRET` and fulfills checkout credits.
-- `PUT /api/simulation/:simulationKey/admet` in `server/index.js` - ADMET worker callback; guarded by `ADMET_CALLBACK_SECRET`.
+**Incoming (Server Receives):**
+- `POST /stripe/webhook` — Stripe payment events (e.g., `checkout.session.completed`)
+  - Signature verification via `stripe.webhooks.constructEventAsync()`
+  - Idempotent processing via `billing_events` collection
+  - Location: `server/index.js` lines 109–135
 
-**Outgoing:**
-- Stripe Checkout sessions are created through the Stripe API from `server/index.js`.
-- Titan Mail SMTP messages are sent from `server/utils/emailService.js`.
-- RabbitMQ ADMET task messages are published from `server/utils/rabbitMQUtils.js`.
-- NVIDIA MolMIM/OpenFold requests are sent from `server/index.js`.
-- Tanimoto, ASINEX, DiffDock, SDF converter, RCSB, GROMACS, and glioblastoma requests are proxied from `server/index.js` and `server/routes/scientificServices.js`.
+- `POST /api/admet-callback` — ADMET worker task completion callback
+  - Called by `services/admet/` worker after processing
+  - Auth: `ADMET_CALLBACK_SECRET` (env var, shared secret)
+  - Payload: Task ID, results, status
+  - Returns: Updated simulation record
+  - Location: `server/index.js` (ADMET callback route)
+
+**Outgoing (Server Calls):**
+- NVIDIA MolMIM API — POST requests for molecule generation
+- NVIDIA OpenFold3 API — POST requests for protein structure prediction
+- Tanimoto API — GET/POST requests for similarity search
+- Asinex APIs — GET/POST requests for ligand search and docking
+- DiffDock API — POST requests for molecular docking
+- GROMACS API (internal) — GET/POST for MD simulations
+- Glioblastoma predictor (internal) — POST for cancer predictions
+- RabbitMQ — AMQP messages enqueued to `admet_processing_queue` for ADMET jobs
 
 ---
 
-*Integration audit: 2026-06-05*
+*Integration audit: 2026-06-14*
