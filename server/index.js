@@ -165,9 +165,22 @@ app.use((req, res, next) => {
 
 function createRateLimiter({ windowMs, max, name }) {
   const hits = new Map();
+  let lastSweep = Date.now();
 
   return (req, res, next) => {
     const now = Date.now();
+
+    // Drop fully-elapsed records so the Map can't grow unbounded with one-off
+    // IPs that never return — each distinct IP otherwise leaves a permanent
+    // entry. Swept at most once per window; deleting an expired record is
+    // equivalent to resetting it, so rate-limiting behaviour is unchanged.
+    if (now - lastSweep > windowMs) {
+      for (const [k, v] of hits) {
+        if (v.resetAt <= now) hits.delete(k);
+      }
+      lastSweep = now;
+    }
+
     const key = `${name}:${req.ip || req.socket.remoteAddress || 'unknown'}`;
     const record = hits.get(key) || { count: 0, resetAt: now + windowMs };
 
