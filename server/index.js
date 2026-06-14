@@ -205,6 +205,25 @@ const authRateLimit = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 30, nam
 const publicEmailRateLimit = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 5, name: 'public-email' });
 const checkoutRateLimit = createRateLimiter({ windowMs: 5 * 60 * 1000, max: 20, name: 'checkout' });
 
+// Outbound calls to external services had no default timeout, so a hung
+// upstream could hold a connection (and file descriptor) open indefinitely —
+// enough stalled requests exhaust the process's descriptors. Bound every
+// outbound call: axios honours axios.defaults.timeout (per-call timeouts still
+// override it); native fetch goes through fetchWithTimeout below. Interactive
+// catalog/search/stock calls use the default; long-running docking jobs pass
+// the longer value explicitly.
+const EXTERNAL_HTTP_TIMEOUT_MS = 120000; // 2 min — interactive catalog/search/stock
+const EXTERNAL_HTTP_TIMEOUT_LONG_MS = 600000; // 10 min — docking / diffdock generate jobs
+axios.defaults.timeout = EXTERNAL_HTTP_TIMEOUT_MS;
+
+// Wrap native fetch so every outbound request is bounded. Callers may pass a
+// longer `timeoutMs`; an explicit `signal` is respected and wins.
+function fetchWithTimeout(url, opts = {}) {
+  const { timeoutMs = EXTERNAL_HTTP_TIMEOUT_MS, ...rest } = opts;
+  if (rest.signal) return fetch(url, rest);
+  return fetch(url, { ...rest, signal: AbortSignal.timeout(timeoutMs) });
+}
+
 /**
  * @swagger
  * /api/generate-molecules:
@@ -2618,7 +2637,7 @@ function authenticateToken(req, res, next) {
 app.post('/api/shop', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { stockApiUrl } = await getRequestLigandServiceConfig(req);
-    const response = await fetch(stockApiUrl, {
+    const response = await fetchWithTimeout(stockApiUrl, {
       method: 'POST',
       headers: {
         'Accept': 'application/json, text/plain, */*',
@@ -2704,7 +2723,7 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, requireActiv
     // Call external API
     const { dockingApiUrl } = await getRequestLigandServiceConfig(req);
     const url = `${dockingApiUrl}/${encodeURIComponent(pdbid)}&${encodeURIComponent(smiles)}`;
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, { timeoutMs: EXTERNAL_HTTP_TIMEOUT_LONG_MS,
       method: 'GET',
       headers: {
         'Accept': 'application/json, text/plain, */*',
@@ -2849,7 +2868,7 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, requireActi
     ).join('');
     // Call external API with POST method
     const { dockingApiUrl } = await getRequestLigandServiceConfig(req);
-    const response = await fetch(dockingApiUrl, {
+    const response = await fetchWithTimeout(dockingApiUrl, { timeoutMs: EXTERNAL_HTTP_TIMEOUT_LONG_MS,
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -3754,7 +3773,7 @@ app.get('/api/exact/:smiles', ensureMongoConnected, authenticateToken, requireAc
     }
     
     // Forward the request directly to Asinex API
-    const response = await fetch(`${catalogApiBase}/api/exact/${smiles}`, {
+    const response = await fetchWithTimeout(`${catalogApiBase}/api/exact/${smiles}`, {
       method: 'GET',
       headers: {
         'Accept': '*/*',
@@ -3827,7 +3846,7 @@ app.get('/api/all/:id_:pageSize', ensureMongoConnected, authenticateToken, requi
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
     
     // Forward the request directly to Asinex API
-    const response = await fetch(`${catalogApiBase}/api/all/${id}_${pageSize}`, {
+    const response = await fetchWithTimeout(`${catalogApiBase}/api/all/${id}_${pageSize}`, {
       method: 'GET',
       headers: {
         'Accept': '*/*',
@@ -3890,7 +3909,7 @@ app.get('/api/id/:id_number', ensureMongoConnected, authenticateToken, requireAc
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
     
     // Forward the request directly to Asinex API
-    const response = await fetch(`${catalogApiBase}/api/id/${id_number}`, {
+    const response = await fetchWithTimeout(`${catalogApiBase}/api/id/${id_number}`, {
       method: 'GET',
       headers: {
         'Accept': '*/*',
@@ -3968,7 +3987,7 @@ app.get('/api/id/:id_number', ensureMongoConnected, authenticateToken, requireAc
 app.post('/api/api4/bas', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    const response = await fetch(`${catalogApiBase}/api4/bas`, {
+    const response = await fetchWithTimeout(`${catalogApiBase}/api4/bas`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -4038,7 +4057,7 @@ app.post('/api/api4/bas', ensureMongoConnected, authenticateToken, requireActive
 app.post('/api/api4/structure', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    const response = await fetch(`${catalogApiBase}/api4/structure`, {
+    const response = await fetchWithTimeout(`${catalogApiBase}/api4/structure`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -4108,7 +4127,7 @@ app.post('/api/api4/structure', ensureMongoConnected, authenticateToken, require
 app.post('/api/api4/substructure', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    const response = await fetch(`${catalogApiBase}/api4/substructure`, {
+    const response = await fetchWithTimeout(`${catalogApiBase}/api4/substructure`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -4178,7 +4197,7 @@ app.post('/api/api4/substructure', ensureMongoConnected, authenticateToken, requ
 app.post('/api/api4/similarity', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    const response = await fetch(`${catalogApiBase}/api4/similarity`, {
+    const response = await fetchWithTimeout(`${catalogApiBase}/api4/similarity`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -4248,7 +4267,7 @@ app.post('/api/api4/similarity', ensureMongoConnected, authenticateToken, requir
 app.post('/api/api4/mw', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    const response = await fetch(`${catalogApiBase}/api4/mw`, {
+    const response = await fetchWithTimeout(`${catalogApiBase}/api4/mw`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -4369,7 +4388,7 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
     var ligand_bytes;
     var ligand_raw;
     try {
-        const pdbResponse = await fetch(`https://files.rcsb.org/download/${protein.toUpperCase()}.pdb`, {
+        const pdbResponse = await fetchWithTimeout(`https://files.rcsb.org/download/${protein.toUpperCase()}.pdb`, {
           method: 'GET',
           headers: {
             'Accept': 'text/plain'
@@ -4394,7 +4413,7 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
         if(ligand.length < 4) //its a ligandId
           {
           // Fetch and process ligand SDF file
-          const sdfResponse = await fetch(`https://files.rcsb.org/ligands/download/${ligand}_ideal.sdf`, {
+          const sdfResponse = await fetchWithTimeout(`https://files.rcsb.org/ligands/download/${ligand}_ideal.sdf`, {
             method: 'GET',
             headers: {
               'Accept': 'text/plain'
@@ -4415,7 +4434,7 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
         else{
           const smilesRequestBody = { smiles: ligand };
           logToFile('SMILES->SDF REQUEST: ' + JSON.stringify(smilesRequestBody));
-          const sdfResponse = await fetch(SDF_CONVERTER_URL, {
+          const sdfResponse = await fetchWithTimeout(SDF_CONVERTER_URL, {
             method: 'POST',
             headers: {
               'Accept': 'application/json',
@@ -4455,7 +4474,7 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
         is_staged: is_staged
       };
       logToFile('makeDiffDockRequest REQUEST: ' + JSON.stringify(requestBody));
-      const response = await fetch(diffdockApiUrl, {
+      const response = await fetchWithTimeout(diffdockApiUrl, { timeoutMs: EXTERNAL_HTTP_TIMEOUT_LONG_MS,
         method: 'POST',
         headers: {
           'Accept': 'application/json',
@@ -4625,7 +4644,7 @@ app.get('/api/asinex/all/:id_:pageSize', ensureMongoConnected, authenticateToken
       return res.status(400).json({ error: '_id, pageSize are all required' });
     }
 
-    const response = await fetch(`${catalogApiBase}/api/all/${id_}_${pageSize.replace('_', '')}`, {
+    const response = await fetchWithTimeout(`${catalogApiBase}/api/all/${id_}_${pageSize.replace('_', '')}`, {
       method: 'GET' 
     });
     
@@ -4675,7 +4694,7 @@ app.get('/api/asinex/id/:id_number', ensureMongoConnected, authenticateToken, re
       return res.status(400).json({ error: 'id_number is required' });
     }
     
-    const response = await fetch(`${catalogApiBase}/api/id/${encodeURIComponent(id_number)}`, {
+    const response = await fetchWithTimeout(`${catalogApiBase}/api/id/${encodeURIComponent(id_number)}`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -4737,7 +4756,7 @@ app.get('/api/asinex/exact/:smiles', ensureMongoConnected, authenticateToken, re
       return res.status(400).json({ error: 'SMILES string is required' });
     }
     
-    const response = await fetch(`${catalogApiBase}/api/exact/${encodeURIComponent(smiles)}`, {
+    const response = await fetchWithTimeout(`${catalogApiBase}/api/exact/${encodeURIComponent(smiles)}`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -4812,7 +4831,7 @@ app.get('/api/asinex/substructure/:id_:pageSize/:smiles', ensureMongoConnected, 
       return res.status(400).json({ error: '_id, pageSize, and SMILES are all required' });
     }
   let uri =`${catalogApiBase}/api/substructure/${id_}_${pageSize.replace('_', '')}/${encodeURIComponent(smiles)}`;
-    const response = await fetch(uri, {      method: 'GET'     });
+    const response = await fetchWithTimeout(uri, {      method: 'GET'     });
 
     if (response.status === 404) {
       return res.status(404).json({ error: 'No substructure matches found in Asinex database' });
@@ -4923,7 +4942,7 @@ app.post('/api/asinex/search', ensureMongoConnected, authenticateToken, requireA
         return res.status(400).json({ error: 'Invalid searchType. Must be one of: all, id, exact, substructure' });
     }
     
-    const response = await fetch(apiUrl, {
+    const response = await fetchWithTimeout(apiUrl, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -4971,7 +4990,7 @@ app.get('/api/asinex/health', ensureMongoConnected, authenticateToken, requireAc
   let catalogApiBase = DEFAULT_LIGAND_SERVICE_CONFIG.catalogApiBase;
   try {
     ({ catalogApiBase } = await getRequestLigandServiceConfig(req));
-    const response = await fetch(`${catalogApiBase}/api/all/1_1`, {
+    const response = await fetchWithTimeout(`${catalogApiBase}/api/all/1_1`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
