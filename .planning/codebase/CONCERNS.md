@@ -186,11 +186,12 @@ let billingEventsCollection;
 - IPv4 and IPv6 parsing (including IPv4-mapped IPv6)
 - Covers metadata endpoint (169.254.169.254)
 
-**Recommendations:**
-- Add TOCTOU (time-of-check-time-of-use) mitigation: re-validate the resolved IP at request time, not just at configuration time (comment at line 1116 notes this)
-- Add allow-list of known-safe domains if possible
-- Log all custom URL configurations to audit logs for review
-- Restrict who can change ligand service config (already checked via `requireCompanyAdmin`)
+**Status (2026-06-14): still open — deliberately not auto-patched.** A config-time-only check (or a chokepoint re-resolve in `getRequestLigandServiceConfig`) only narrows the rebinding window — it leaves the TOCTOU open while reading as "fixed." The honest fix changes connection behaviour, and these ligand endpoints have no test coverage, so it needs a deliberate, tested change rather than a blind patch.
+
+**Recommended fix:**
+- Thread a custom undici `Agent` (with a validating `connect`/`lookup` that rejects private IPs at socket-connect time) through *only* the ligand fetches — not a global `setGlobalDispatcher`, which would also block internal Docker services (admet/gromacs/glioblastoma) that resolve to private addresses.
+- Add a test that points a configured URL at a private/rebinding host and asserts the fetch is refused.
+- Keep `requireCompanyAdmin` gating; log custom-URL configs to audit logs for review.
 
 ---
 
@@ -236,9 +237,11 @@ let billingEventsCollection;
 
 ---
 
-### DiffDock API Timeout
+### DiffDock / External API Timeout — RESOLVED 2026-06-14
 
-**Problem:** OpenFold3 requests have a 600-second (10-minute) timeout (line 295), but DiffDock docking requests may not have explicit timeout, leading to indefinite hangs if an upstream service stalls.
+**Resolved:** All outbound calls are now bounded. `axios.defaults.timeout` is set (per-call timeouts like the 600s OpenFold3 call still override), and all 21 native `fetch()` calls go through a `fetchWithTimeout` helper — interactive catalog/search/stock at 2 min, the three docking/diffdock generate jobs at 10 min. A hung upstream can no longer hold a file descriptor open indefinitely. Additive change (adds a ceiling where there was none; nothing that completes in time is affected).
+
+**Problem (was):** OpenFold3 requests had a 600s timeout, but the DiffDock/Asinex/Tanimoto calls had none, leading to indefinite hangs (and eventual fd exhaustion) if an upstream stalled.
 
 **Files:** `server/index.js` (line 295 has timeout; search for DiffDock requests for missing timeouts)
 
