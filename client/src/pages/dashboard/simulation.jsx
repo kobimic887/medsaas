@@ -328,7 +328,7 @@ export function Simulation() {
           IUPAC_NAME: molecule.iupac_name || "N/A",
           INCHI: molecule.inchi || "N/A", 
           INCHIKEY: molecule.inchikey || "N/A",
-          PRICE_2MG: molecule.price_2mg || "N/A"
+          PRICE_2MG: molecule.price_2mg
         }));
       } else if (result.data && Array.isArray(result.data)) {
         formattedMolecules = result.data.map(molecule => ({
@@ -343,7 +343,7 @@ export function Simulation() {
           IUPAC_NAME: molecule.iupac_name || "N/A",
           INCHI: molecule.inchi || "N/A", 
           INCHIKEY: molecule.inchikey || "N/A",
-          PRICE_2MG: molecule.price_2mg || "N/A"
+          PRICE_2MG: molecule.price_2mg
         }));
       }
       
@@ -481,7 +481,7 @@ export function Simulation() {
           IUPAC_NAME: molecule.iupac_name || "N/A",
           INCHI: molecule.inchi || "N/A", 
           INCHIKEY: molecule.inchikey || "N/A",
-          PRICE_2MG: molecule.price_2mg || "N/A",
+          PRICE_2MG: molecule.price_2mg,
           SIMILARITY: molecule.similarity || molecule.Similarity || null
         };
         setTopMolecules([formattedMolecule]);
@@ -502,7 +502,7 @@ export function Simulation() {
           IUPAC_NAME: molecule.iupac_name || "N/A",
           INCHI: molecule.inchi || "N/A", 
           INCHIKEY: molecule.inchikey || "N/A",
-          PRICE_2MG: molecule.price_2mg || "N/A",
+          PRICE_2MG: molecule.price_2mg,
           SIMILARITY: molecule.similarity || molecule.Similarity || null
         }));
         setTopMolecules(formattedMolecules);
@@ -532,7 +532,7 @@ export function Simulation() {
           IUPAC_NAME: result.iupac_name || "N/A",
           INCHI: result.inchi || "N/A", 
           INCHIKEY: result.inchikey || "N/A",
-          PRICE_2MG: result.price_2mg || "N/A",
+          PRICE_2MG: result.price_2mg,
           SIMILARITY: result.similarity || result.Similarity || null
         };
         setTopMolecules([formattedMolecule]);
@@ -641,7 +641,7 @@ export function Simulation() {
           IUPAC_NAME: molecule.iupac_name || "N/A",
           INCHI: molecule.inchi || "N/A", 
           INCHIKEY: molecule.inchikey || "N/A",
-          PRICE_2MG: molecule.price_2mg || "N/A",
+          PRICE_2MG: molecule.price_2mg,
           SIMILARITY: molecule.similarity || molecule.Similarity || null
         }));
         

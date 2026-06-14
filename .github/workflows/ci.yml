@@ -1,9 +1,8 @@
 name: CI
 
 # Check + test gate. Runs on every push/PR to main for developer feedback, and
-# is reused by deploy.yml (workflow_call) so a deploy cannot proceed unless this
-# passes. Bun-only (the default runtime); the Node fallback is exercised locally
-# via the :node scripts, not gated here.
+# is reused by deploy.yml (workflow_call) so a deploy cannot proceed unless both
+# the default Bun runtime and the Node fallback pass.
 on:
   push:
     branches: [main]
@@ -29,7 +28,7 @@ jobs:
       MONGOMS_VERSION: "7.0.14"
       MONGOMS_DISTRO: "ubuntu-22.04"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -42,7 +41,7 @@ jobs:
         run: echo "BUN_PATH=$(command -v bun)" >> "$GITHUB_ENV"
 
       - name: Cache mongodb-memory-server binary
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/mongodb-binaries
           key: mongodb-binaries-${{ env.MONGOMS_DISTRO }}-${{ env.MONGOMS_VERSION }}
@@ -53,3 +52,34 @@ jobs:
       - name: Check + tests
         # bun run ci == bun run check (server syntax + client build) && bun run test
         run: bun run ci
+
+  test-node:
+    name: check + tests (node 24)
+    runs-on: ubuntu-latest
+    env:
+      MONGOMS_VERSION: "7.0.14"
+      MONGOMS_DISTRO: "ubuntu-22.04"
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            client/package-lock.json
+            server/package-lock.json
+
+      - name: Cache mongodb-memory-server binary
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ env.MONGOMS_DISTRO }}-${{ env.MONGOMS_VERSION }}
+
+      - name: Install dependencies
+        run: npm run install:all:node
+
+      - name: Check + tests
+        run: npm run ci:node
