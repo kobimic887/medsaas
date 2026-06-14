@@ -12,7 +12,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Gate: run the full check + test suite (ci.yml) before anything ships. A
+  # broken commit can no longer reach the box without tests passing first.
+  # This is a separate job, not a step in `deploy` — the deploy job stays a
+  # pure build-on-box flow with no runner-side build.
+  test:
+    uses: ./.github/workflows/ci.yml
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
