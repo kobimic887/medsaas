@@ -12,7 +12,9 @@ on:
   workflow_call: {}
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # Separate push/PR runs from deploy-gate (workflow_call) runs on the same ref
+  # so a push-triggered CI can never cancel the deploy job's required test run.
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
