@@ -23,7 +23,7 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Build natively on the box (Oracle Ampere / arm64) — no registry, no
       # QEMU. Ship a clean source archive (tracked files only) over native
