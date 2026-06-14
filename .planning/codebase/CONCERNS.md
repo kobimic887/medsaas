@@ -320,7 +320,7 @@ let billingEventsCollection;
 
 ### Bun vs. Node Runtime Compatibility (Partial Migration)
 
-**Issue:** Codebase is mid-migration to Bun as the default runtime (Phase 5 complete), but npm/Node fallbacks are retained. Phase 7 (Docker, CI/CD, Scripts) is not yet started.
+**Issue:** Bun is the default runtime with npm/Node fallbacks retained. The Bun migration (v2 — incl. Phase 7 Docker/CI/Scripts) shipped 2026-06-05; residual risk is Bun-vs-Node runtime divergence, not migration-incompleteness. As of 2026-06-14, CI (`ci.yml`) runs the Bun suite and gates deploys (`deploy.yml` `needs: test`).
 
 **Files:** 
 - `Dockerfile` — Currently uses `oven/bun:1.3.14-slim` as base (line 1)
@@ -332,7 +332,7 @@ let billingEventsCollection;
 - Bun is the default for `npm run dev`, `npm run build`, `npm run start` (thanks to root `package.json` scripts)
 - Node fallbacks exist via `:node` suffixes (e.g., `npm run dev:node`)
 - Docker build uses Bun, production deployment uses Bun on Oracle Linux arm64
-- CI/CD (`deploy.yml`) does NOT run tests or syntax checks — just archives source and deploys
+- CI/CD: `ci.yml` runs `bun run ci` (check + Bun tests) on push/PR; `deploy.yml`'s `deploy` job `needs: test`, so a deploy is blocked unless the suite passes (added 2026-06-14)
 
 **Why fragile:**
 - Tests are available (`npm run test:stripe:bun`, `npm run test:branding:bun`) but CI doesn't run them
@@ -345,9 +345,11 @@ let billingEventsCollection;
 
 ---
 
-### Missing CI/CD Test Execution
+### Missing CI/CD Test Execution — RESOLVED 2026-06-14
 
-**Issue:** Deployment pipeline (`deploy.yml`) checks out code, archives it, and deploys to the Oracle VPS without running ANY tests, linting, or syntax checks.
+**Resolved:** Added `.github/workflows/ci.yml` (`bun run ci` = `check` + `test`: email-theming, stripe-webhook, branding, runtime-smoke) and made `deploy.yml`'s `deploy` job `needs: test`, reusing `ci.yml` via `workflow_call`. A deploy can no longer ship a commit whose suite is red. `mongodb-memory-server` is pinned to the ubuntu-22.04 binary + cached for deterministic Linux runs. Deliberately still open: Bun-only gate (no Node matrix), no ESLint/Biome linter, and `runtime-watch-smoke` excluded (it exercises `--watch` and can hang a runner). Original description retained below for context.
+
+**Issue (was):** Deployment pipeline (`deploy.yml`) checks out code, archives it, and deploys to the Oracle VPS without running ANY tests, linting, or syntax checks.
 
 **Files:** `.github/workflows/deploy.yml` (lines 18–52)
 

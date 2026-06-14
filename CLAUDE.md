@@ -6,14 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This project uses GSD for planning. See `.planning/` for context.
 
-- **Current milestone:** v2 Bun Migration (in progress)
+- **Current milestone:** v3 Company Brand Colour — complete (4/4 phases shipped 2026-06-10)
 - **Roadmap:** `.planning/ROADMAP.md`
 - **State:** `.planning/STATE.md`
 - **Codebase map:** `.planning/codebase/` (STACK, ARCHITECTURE, STRUCTURE, CONVENTIONS, INTEGRATIONS, TESTING, CONCERNS)
-- **Completed:** Phase 4 (Compatibility Spike), Phase 5 (Server Runtime on Bun — Bun is the default server runtime), Phase 6 (Package Management — Bun is the default package manager, npm/Node fallback retained)
-- **Active phase:** Phase 7 — Docker, CI/CD, and Scripts (not yet started)
+- **Shipped milestones:** v1 ChemBench Cleanup · v2 Bun Migration — incl. **Phase 7 (Docker, CI/CD, Scripts), shipped 2026-06-05** · v3 Company Brand Colour (per-company logo-driven palette across dashboard + emails)
+- **No active phase** — last milestone is complete. CI now gates deploys: `.github/workflows/ci.yml` runs `bun run ci` (check + tests) on push/PR, and `deploy.yml` won't ship unless it passes (`needs: test`).
 
-Bun is already the default runtime and package manager for this repo. npm/Node fallbacks
+Bun is the default runtime and package manager for this repo. npm/Node fallbacks
 are retained via `:node`-suffixed scripts. See the Commands section below.
 
 When starting work: read `.planning/STATE.md` for current context.

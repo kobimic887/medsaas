@@ -10,7 +10,7 @@ medsaas/
 │   ├── codebase/                       # Architecture/structure/testing docs (this dir)
 │   ├── STATE.md                        # Current milestone state
 │   └── ROADMAP.md                      # Future phases
-├── .github/workflows/                  # CI/CD (Phase 7 — not yet active)
+├── .github/workflows/                  # CI/CD — ci.yml (check+test gate) + deploy.yml
 ├── .claude/                            # Claude Code memory files
 ├── client/                             # Vite + React 18 dashboard
 │   ├── src/
