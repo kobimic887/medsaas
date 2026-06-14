@@ -1094,7 +1094,9 @@ async function getRequestLigandServiceConfig(req) {
   if (!company) {
     return { ...DEFAULT_LIGAND_SERVICE_CONFIG };
   }
-  return normalizeLigandServiceConfig(company.ligandServiceConfig || {});
+  const config = normalizeLigandServiceConfig(company.ligandServiceConfig || {});
+  await assertConfiguredUrlsArePublic(config);
+  return config;
 }
 
 function validateRequiredStringField(body, fieldName) {
@@ -1143,9 +1145,9 @@ function isDisallowedAddress(ip) {
 }
 
 // Validates an admin-supplied upstream URL: must be http(s) AND resolve to a
-// public address. Async because it performs DNS resolution. Note: this checks
-// at configuration time; a fully rebinding-proof guard would also re-validate
-// the resolved IP at fetch time.
+// public address. Async because it performs DNS resolution. Used both at
+// configuration time (reject private targets on save) and per request via
+// assertConfiguredUrlsArePublic below (defence-in-depth against DNS rebinding).
 async function assertValidHttpUrl(value, fieldName) {
   let parsed;
   try { parsed = new URL(value); } catch {
@@ -1170,6 +1172,26 @@ async function assertValidHttpUrl(value, fieldName) {
   if (!addresses.length || addresses.some(isDisallowedAddress)) {
     throw new Error(`${fieldName} must point to a public host (private/internal addresses are not allowed)`);
   }
+}
+
+// Per-request SSRF guard for company-customised ligand upstreams. Re-validates
+// each non-default URL right before use, so a host that passed the config-time
+// check but later had its DNS rebound to an internal address (e.g. the cloud
+// metadata endpoint 169.254.169.254) is refused. Default upstreams are
+// developer/env-set and trusted, so they skip the lookup. This narrows — it
+// does not fully close — the rebinding window: native fetch re-resolves on
+// connect, and Bun's fetch ignores undici dispatchers so the socket can't be
+// pinned to the validated IP portably. It turns "rebind once, reach internal
+// forever" into "win a DNS race per request", layered on the config-time check.
+async function assertConfiguredUrlsArePublic(config) {
+  const checks = [];
+  for (const field of ['catalogApiBase', 'stockApiUrl', 'dockingApiUrl', 'diffdockApiUrl']) {
+    const value = config[field];
+    if (value && value !== DEFAULT_LIGAND_SERVICE_CONFIG[field]) {
+      checks.push(assertValidHttpUrl(value, field));
+    }
+  }
+  await Promise.all(checks);
 }
 
 async function recordAuditEvent(req, action, details = {}, status = 'success') {
