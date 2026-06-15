@@ -74,7 +74,7 @@ export function BlogProvider({ children }) {
   };
 
   const getPostById = (id) => {
-    return posts.find(post => post.id === parseInt(id));
+    return posts.find(post => post.id === parseInt(id, 10));
   };
 
   const value = {

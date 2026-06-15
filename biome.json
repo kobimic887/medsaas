@@ -28,10 +28,13 @@
       "preset": "recommended",
       "correctness": {
         "noUnusedFunctionParameters": "warn",
-        "useExhaustiveDependencies": "off"
+        "useExhaustiveDependencies": "off",
+        "useParseIntRadix": "error"
       },
       "suspicious": {
-        "noArrayIndexKey": "off"
+        "noArrayIndexKey": "off",
+        "noGlobalIsNan": "error",
+        "noPrototypeBuiltins": "error"
       },
       "security": {
         "noDangerouslySetInnerHtml": "warn"

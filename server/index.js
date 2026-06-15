@@ -1100,7 +1100,7 @@ async function getRequestLigandServiceConfig(req) {
 }
 
 function validateRequiredStringField(body, fieldName) {
-  if (!Object.prototype.hasOwnProperty.call(body, fieldName)) {
+  if (!Object.hasOwn(body, fieldName)) {
     return undefined;
   }
   const value = typeof body[fieldName] === 'string' ? body[fieldName].trim() : '';
@@ -2346,15 +2346,15 @@ app.get('/api/mol-price', ensureMongoConnected, async (req, res) => {
     const totalCount = await molPriceCollection.countDocuments(filter);
     const molecules = await molPriceCollection
       .find(filter)
-      .limit(parseInt(limit))
-      .skip(parseInt(skip))
+      .limit(parseInt(limit, 10))
+      .skip(parseInt(skip, 10))
       .toArray();
     
     res.json({
       total: totalCount,
       count: molecules.length,
-      limit: parseInt(limit),
-      skip: parseInt(skip),
+      limit: parseInt(limit, 10),
+      skip: parseInt(skip, 10),
       molecules
     });
   } catch (error) {
@@ -2482,8 +2482,8 @@ app.get('/api/mol-price/search', ensureMongoConnected, async (req, res) => {
     const totalCount = await molPriceCollection.countDocuments(filter);
     const molecules = await molPriceCollection
       .find(filter)
-      .limit(parseInt(limit))
-      .skip(parseInt(skip))
+      .limit(parseInt(limit, 10))
+      .skip(parseInt(skip, 10))
       .toArray();
     
     res.json({
@@ -3253,7 +3253,7 @@ app.patch('/api/company/branding', ensureMongoConnected, authenticateToken, requ
     const paletteFields = ['primary', 'accent', 'light', 'dark'];
     if (
       !req.body?.palette
-      || paletteFields.some((field) => !Object.prototype.hasOwnProperty.call(req.body.palette, field))
+      || paletteFields.some((field) => !Object.hasOwn(req.body.palette, field))
     ) {
       return res.status(400).json({ error: 'A complete primary, accent, light, and dark palette is required' });
     }
@@ -3262,7 +3262,7 @@ app.patch('/api/company/branding', ensureMongoConnected, authenticateToken, requ
     let normalizedLogo = null;
     try {
       palette = normalizeBrandPalette(req.body.palette);
-      if (Object.prototype.hasOwnProperty.call(req.body, 'logoUpload')) {
+      if (Object.hasOwn(req.body, 'logoUpload')) {
         normalizedLogo = await parseAndNormalizeLogoUpload(req.body.logoUpload);
       }
     } catch (validationError) {
@@ -3382,7 +3382,7 @@ app.patch('/api/company/usage-policy', ensureMongoConnected, authenticateToken, 
     const currentPolicy = normalizeUsagePolicy(company.usagePolicy || {});
     const updates = {};
 
-    if (Object.prototype.hasOwnProperty.call(req.body, 'monthlySimulationCap')) {
+    if (Object.hasOwn(req.body, 'monthlySimulationCap')) {
       const capRaw = req.body.monthlySimulationCap;
       if (capRaw === null || capRaw === '' || capRaw === undefined) {
         updates.monthlySimulationCap = null;
@@ -3393,7 +3393,7 @@ app.patch('/api/company/usage-policy', ensureMongoConnected, authenticateToken, 
       }
     }
 
-    if (Object.prototype.hasOwnProperty.call(req.body, 'defaultSimulationTokensPerUser')) {
+    if (Object.hasOwn(req.body, 'defaultSimulationTokensPerUser')) {
       const defaultTokensRaw = req.body.defaultSimulationTokensPerUser;
       if (!Number.isFinite(Number(defaultTokensRaw)) || Number(defaultTokensRaw) < 0) {
         return res.status(400).json({ error: 'defaultSimulationTokensPerUser must be 0 or a positive number' });
@@ -3655,7 +3655,7 @@ app.patch('/api/company/members/:username', ensureMongoConnected, authenticateTo
 
     const updates = {};
 
-    if (Object.prototype.hasOwnProperty.call(req.body, 'role')) {
+    if (Object.hasOwn(req.body, 'role')) {
       const nextRole = req.body.role;
       if (!['member', 'admin'].includes(nextRole)) {
         return res.status(400).json({ error: 'role must be member or admin' });
@@ -3666,7 +3666,7 @@ app.patch('/api/company/members/:username', ensureMongoConnected, authenticateTo
       updates.role = nextRole;
     }
 
-    if (Object.prototype.hasOwnProperty.call(req.body, 'active')) {
+    if (Object.hasOwn(req.body, 'active')) {
       if (typeof req.body.active !== 'boolean') {
         return res.status(400).json({ error: 'active must be a boolean' });
       }
@@ -3679,7 +3679,7 @@ app.patch('/api/company/members/:username', ensureMongoConnected, authenticateTo
       updates.active = req.body.active;
     }
 
-    if (Object.prototype.hasOwnProperty.call(req.body, 'simulationTokens')) {
+    if (Object.hasOwn(req.body, 'simulationTokens')) {
       const tokens = Number(req.body.simulationTokens);
       if (!Number.isFinite(tokens) || tokens < 0) {
         return res.status(400).json({ error: 'simulationTokens must be 0 or a positive number' });
@@ -5660,8 +5660,8 @@ app.get('/api/molecules', ensureMongoConnected, async (req, res) => {
     const molPriceCollection = db.collection('mol_price');
     
     // Parse query parameters
-    const limit = parseInt(req.query.limit) || 50;
-    const offset = parseInt(req.query.offset) || 0;
+    const limit = parseInt(req.query.limit, 10) || 50;
+    const offset = parseInt(req.query.offset, 10) || 0;
     const search = req.query.search;
     const maxPrice = req.query.maxPrice ? parseFloat(req.query.maxPrice) : null;
     const minWeight = req.query.minWeight ? parseFloat(req.query.minWeight) : null;
@@ -5818,7 +5818,7 @@ app.get('/api/molecules/search/smiles', ensureMongoConnected, async (req, res) =
     const molPriceCollection = db.collection('mol_price');
     
     const pattern = req.query.pattern;
-    const limit = parseInt(req.query.limit) || 20;
+    const limit = parseInt(req.query.limit, 10) || 20;
     
     if (!pattern) {
       return res.status(400).json({ error: 'Pattern parameter is required' });
@@ -5875,7 +5875,7 @@ app.get('/api/molecules/price-range', ensureMongoConnected, async (req, res) => 
     
     const minPrice = parseFloat(req.query.minPrice);
     const maxPrice = parseFloat(req.query.maxPrice);
-    const limit = parseInt(req.query.limit) || 50;
+    const limit = parseInt(req.query.limit, 10) || 50;
     
     if (!minPrice || !maxPrice) {
       return res.status(400).json({ error: 'Both minPrice and maxPrice are required' });

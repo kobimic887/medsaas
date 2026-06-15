@@ -510,7 +510,7 @@ export function Simulation() {
         if (formattedMolecules.length > 0) {
           const maxId = Math.max(...formattedMolecules.map(m => {
             const id = m.ASINEX_ID || '0';
-            return parseInt(id) || 0;
+            return parseInt(id, 10) || 0;
           }));
           setLastFromId(maxId);
         }
@@ -649,7 +649,7 @@ export function Simulation() {
         if (formattedMolecules.length > 0) {
           const maxId = Math.max(...formattedMolecules.map(m => {
             const id = m.ASINEX_ID || '0';
-            return parseInt(id) || 0;
+            return parseInt(id, 10) || 0;
           }));
           setLastFromId(maxId);
         }
@@ -1020,7 +1020,7 @@ export function Simulation() {
     }
     
     const numValue = parseFloat(value);
-    if (isNaN(numValue)) {
+    if (Number.isNaN(numValue)) {
       return "N/A";
     }
     
@@ -1033,7 +1033,7 @@ export function Simulation() {
     if (!priceUSD || priceUSD === "N/A") return "N/A";
     
     const numPrice = parseFloat(priceUSD);
-    if (isNaN(numPrice)) return "N/A";
+    if (Number.isNaN(numPrice)) return "N/A";
     
     const convertedPrice = numPrice * exchangeRate;
     return formatPrice(convertedPrice, currency);
