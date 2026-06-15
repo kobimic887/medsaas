@@ -155,7 +155,7 @@ export function DashboardHome() {
   const generateProjectsData = () => {
     if (!activityData || !activityData.projects) return [];
     
-    return activityData.projects.map((project, index) => {
+    return activityData.projects.map((project, _index) => {
       // Find simulations for this project
       const projectSimulations = activityData.simulations ? 
         activityData.simulations.filter(sim => sim.user?.username === project.userid) : [];

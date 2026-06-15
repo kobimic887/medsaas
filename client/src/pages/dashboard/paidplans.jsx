@@ -153,7 +153,7 @@ export function PaidPlans() {
   };
 
   // Helper function to create checkout session
-  const createCheckoutSession = async (plan, isYearly) => {
+  const createCheckoutSession = async (plan, _isYearly) => {
     try {
       const token = localStorage.getItem('auth_token');
       const response = await fetch(API_CONFIG.buildUrl('/create-checkout-session-onetime'), {

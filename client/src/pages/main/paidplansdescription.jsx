@@ -167,7 +167,7 @@ export function PaidPlansDescription() {
       buttonText: 'Contact Us',
       buttonColor: 'gray'
     }
-  ];  const handlePlanSelection = async (plan) => {
+  ];  const handlePlanSelection = async (_plan) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setMessage('Please register first, and then choose the plan on the dashboard');
 

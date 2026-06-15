@@ -154,7 +154,7 @@ app.use(cors({
 }));
 app.use('/blobs', express.static(path.join(__dirname, 'blobs')));
 
-app.use((req, res, next) => {
+app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   // SAMEORIGIN (not DENY) so the dashboard can embed the same-origin Ketcher
   // (/ketcher/index.html) editor and Molstar (/molstar/index.html) viewer iframes.
@@ -342,12 +342,12 @@ app.post("/api/openfold3/predict", ensureMongoConnected, authenticateToken, requ
 
 
 // Add a basic health check endpoint
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString(), message: 'Server is running' });
 });
 
 // Add a database health check endpoint
-app.get('/health/db', async (req, res) => {
+app.get('/health/db', async (_req, res) => {
   try {
     await client.db().admin().ping();
     const dbStats = await client.db().stats();
@@ -369,7 +369,7 @@ app.get('/health/db', async (req, res) => {
 });
 
 // Root route serves frontend if available; falls back to API docs
-app.get('/', (req, res) => {
+app.get('/', (_req, res) => {
   if (hasFrontendBuild()) {
     return res.sendFile(FRONTEND_INDEX_PATH);
   }
@@ -389,7 +389,7 @@ app.get('/', (req, res) => {
  *       200:
  *         description: Health status
  */
-app.get('/tanimoto/health', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+app.get('/tanimoto/health', ensureMongoConnected, authenticateToken, requireActiveUser, async (_req, res) => {
   try {
     const response = await axios.get(`${TANIMOTO_API_BASE}/health`);
     res.json(response.data);
@@ -736,7 +736,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // Add a route to serve the raw OpenAPI spec
-app.get('/api/openapi.json', (req, res) => {
+app.get('/api/openapi.json', (_req, res) => {
   res.setHeader('Content-Type', 'application/json');
   res.send(swaggerSpec);
 });
@@ -801,7 +801,7 @@ async function initializeDatabase() {
 }
 
 // Robust middleware to ensure MongoDB connection and usersCollection
-async function ensureMongoConnected(req, res, next) {
+async function ensureMongoConnected(_req, res, next) {
   try {
     // Check if client is connected
     if (!client.topology || !client.topology.isConnected()) {
@@ -2242,7 +2242,7 @@ app.post('/api/change-password', authRateLimit, ensureMongoConnected, authentica
   res.json({ message: 'Password changed successfully' });
 });
 
-app.get('/api/hello', (req, res) => {
+app.get('/api/hello', (_req, res) => {
   res.send('{"data":"hello"}');
 });
 
@@ -2381,7 +2381,7 @@ app.get('/api/mol-price', ensureMongoConnected, async (req, res) => {
  *       500:
  *         description: Server error
  */
-app.get('/api/mol-price/count', ensureMongoConnected, async (req, res) => {
+app.get('/api/mol-price/count', ensureMongoConnected, async (_req, res) => {
   try {
     const db = client.db();
     const molPriceCollection = db.collection('mol_price');
@@ -2606,7 +2606,7 @@ app.get('/api/mol-price/:id', ensureMongoConnected, async (req, res) => {
  *       500:
  *         description: Server error
  */
-app.get('/api/mol-price-stats', ensureMongoConnected, async (req, res) => {
+app.get('/api/mol-price-stats', ensureMongoConnected, async (_req, res) => {
   try {
     const db = client.db();
     const molPriceCollection = db.collection('mol_price');
@@ -4604,7 +4604,7 @@ app.post('/api/diffdock/generate_file', ensureMongoConnected, authenticateToken,
     const workDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'diffdock-'));
     const cleanup = () => fs.promises.rm(workDir, { recursive: true, force: true }).catch(() => {});
 
-    execFile('./diff_dock.sh', [protein, ligand, workDir], { cwd: process.cwd() }, (error, stdout, stderr) => {
+    execFile('./diff_dock.sh', [protein, ligand, workDir], { cwd: process.cwd() }, (error, _stdout, stderr) => {
       if (error) {
         console.error('Script execution error:', error);
         console.error('stderr:', stderr);
@@ -5342,7 +5342,7 @@ app.post('/api/issueSimulationTokens', ensureMongoConnected, authenticateToken, 
 });
 
 // Test email configuration endpoint
-app.get('/api/test-email', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (req, res) => {
+app.get('/api/test-email', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (_req, res) => {
   const result = await testEmailConfiguration();
   if (result.success) {
     res.json(result);
@@ -5352,7 +5352,7 @@ app.get('/api/test-email', ensureMongoConnected, authenticateToken, requireCompa
 });
 
 // Email credentials debugging endpoint
-app.get('/api/debug-email', ensureMongoConnected, authenticateToken, requireCompanyAdmin, (req, res) => {
+app.get('/api/debug-email', ensureMongoConnected, authenticateToken, requireCompanyAdmin, (_req, res) => {
   const validation = validateEmailCredentials();
   const help = getTitanMailHelp();
   
@@ -5761,7 +5761,7 @@ app.get('/api/molecules/:asinexId', ensureMongoConnected, async (req, res) => {
  *       200:
  *         description: Collection statistics
  */
-app.get('/api/molecules/stats', ensureMongoConnected, async (req, res) => {
+app.get('/api/molecules/stats', ensureMongoConnected, async (_req, res) => {
   try {
     const db = client.db();
     const molPriceCollection = db.collection('mol_price');
@@ -6253,7 +6253,7 @@ app.delete('/api/simulation/:simulationKey/admet', ensureMongoConnected, authent
  *       500:
  *         description: RabbitMQ connection error
  */
-app.get('/api/rabbitmq/health', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (req, res) => {
+app.get('/api/rabbitmq/health', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (_req, res) => {
   try {
     const healthStatus = await rabbitMQHealthCheck();
     
@@ -6284,7 +6284,7 @@ app.get('/api/rabbitmq/health', ensureMongoConnected, authenticateToken, require
  *       500:
  *         description: Error getting queue status
  */
-app.get('/api/rabbitmq/queue-status', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (req, res) => {
+app.get('/api/rabbitmq/queue-status', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (_req, res) => {
   try {
     const queueStatus = await getQueueStatus();
     res.json(queueStatus);
@@ -6393,7 +6393,7 @@ function logToFile(logStr) {
 app.use(express.static(FRONTEND_DIST_PATH, { index: false }));
 
 // SPA fallback for non-API routes when frontend build is present
-app.get(/^(?!\/(?:api|api-docs|health|tanimoto|blobs)(?:\/|$)).*/, (req, res, next) => {
+app.get(/^(?!\/(?:api|api-docs|health|tanimoto|blobs)(?:\/|$)).*/, (_req, res, next) => {
   if (!hasFrontendBuild()) {
     return next();
   }
