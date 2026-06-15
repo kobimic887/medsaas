@@ -41,7 +41,7 @@ const GenerateMolecules = () => {
         try {
           const parsed = JSON.parse(data.molecules);
           if (Array.isArray(parsed)) molecules = parsed;
-        } catch (e) {
+        } catch (_e) {
           // keep as string fallback
           molecules = [data.molecules];
         }
@@ -51,7 +51,7 @@ const GenerateMolecules = () => {
         try {
           const parsed = JSON.parse(data.results);
           if (Array.isArray(parsed)) molecules = parsed;
-        } catch (e) {
+        } catch (_e) {
           molecules = [data.results];
         }
       } else if (data.smiles) {

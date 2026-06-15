@@ -21,7 +21,7 @@ export function PaidPlans() {
   const isStripeConfigured = !!import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
 
   // Handle toggle change
-  const handleToggleChange = () => {
+  const _handleToggleChange = () => {
     const newValue = !isYearly;
     console.log('Toggle changed from', isYearly, 'to', newValue);
     setIsYearly(newValue);

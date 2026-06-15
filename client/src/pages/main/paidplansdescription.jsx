@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 
 export function PaidPlansDescription() {
   const [isYearly, setIsYearly] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, _setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState(''); // 'success' or 'error'
 

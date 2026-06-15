@@ -18,7 +18,7 @@ import { useAuth } from "@/context/auth";
 import { useBlog } from "@/context/blog";
 
 export function Blog() {
-  const { isAdmin, isLoggedIn } = useAuth();
+  const { isAdmin } = useAuth();
   const { posts, isLoading, createPost, updatePost, deletePost, getPublishedPosts } = useBlog();
   
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);

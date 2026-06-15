@@ -28,7 +28,7 @@ export function ControlPanel() {
   const [activityData, setActivityData] = React.useState(null);
   const [userSimulationLogs, setUserSimulationLogs] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState(null);
+  const [_error, setError] = React.useState(null);
   
   // Price popup state
   const [showPricePopup, setShowPricePopup] = React.useState(false);

@@ -204,7 +204,7 @@ const SimpleMoleculeViewer = ({ modelData, selectedAtomIds = [], onChangeSelecti
   };
 
   // Standard CPK colors for atoms
-  const getAtomColor = (atomSymbol) => {
+  const _getAtomColor = (atomSymbol) => {
     const element = atomSymbol.replace(/\d+/g, '').trim();
     const colors = {
       'H': '#FFFFFF',
@@ -261,7 +261,7 @@ const SimpleMoleculeViewer = ({ modelData, selectedAtomIds = [], onChangeSelecti
     return colors[element] || '#FF1493'; // Default to hot pink for unknown elements
   };
 
-  const getAtomRadius = (atomSymbol) => {
+  const _getAtomRadius = (atomSymbol) => {
     const element = atomSymbol.replace(/\d+/g, '').trim();
     const radii = {
       'H': 10,

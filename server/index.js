@@ -1951,7 +1951,7 @@ app.get('/api/verify-email', ensureMongoConnected, async (req, res) => {
     </html>`;
     
     res.send(successHTML);
-  } catch (err) {
+  } catch (_err) {
     const errorHTML = `
     <!DOCTYPE html>
     <html lang="en">
@@ -2107,7 +2107,7 @@ app.post('/api/password-reset/confirm', authRateLimit, ensureMongoConnected, asy
     }
 
     res.json({ message: 'Password reset successful' });
-  } catch (error) {
+  } catch (_error) {
     res.status(400).json({ error: 'Invalid or expired reset token' });
   }
 });
@@ -5087,7 +5087,7 @@ async function startServer() {
       console.log(`✅ HTTPS Server running on port ${PORT}`);
       console.log(`📚 API Documentation: https://localhost:${PORT}/api-docs`);
     });
-  } catch (error) {
+  } catch (_error) {
     console.log('SSL certificates not found, starting HTTP server for development...');
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`✅ HTTP Server running on port ${PORT}`);

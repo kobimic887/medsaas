@@ -42,15 +42,15 @@ async function copyToClipboard(text) {
 export function Simulation() {
   // Popup state for clipboard copy
   const [showClipboardPopup, setShowClipboardPopup] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [_loading, setLoading] = useState(false);
   // State for toggling simulation inputs
   const [showSimInputs, setShowSimInputs] = useState(false);
   const [showDiffDockInputs, setShowDiffDockInputs] = useState(false);
-  const [response, setResponse] = useState(null);
-  const [error, setError] = useState('');
-  const [lastUpdated, setLastUpdated] = useState(null);
-  const [apiUrl, setApiUrl] = useState('/api/hello');
-  const [useHttpbin, setUseHttpbin] = useState(true);
+  const [_response, setResponse] = useState(null);
+  const [_error, setError] = useState('');
+  const [_lastUpdated, setLastUpdated] = useState(null);
+  const [apiUrl, _setApiUrl] = useState('/api/hello');
+  const [useHttpbin, _setUseHttpbin] = useState(true);
   const [searchCode, setSearchCode] = useState("");
   const [searchResult, setSearchResult] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -65,16 +65,16 @@ export function Simulation() {
   const [diffDockResult, setDiffDockResult] = useState(null);
   const [diffDockLoading, setDiffDockLoading] = useState(false);
   const [diffDockError, setDiffDockError] = useState("");
-  const [message, setMessage] = useState('');
-    const [messageType, setMessageType] = useState(''); // 'success', 'error', or ''
+  const [_message, setMessage] = useState('');
+    const [_messageType, setMessageType] = useState(''); // 'success', 'error', or ''
   const [topMolecules, setTopMolecules] = useState([]);
   const [topLoading, setTopLoading] = useState(false);
   const [topError, setTopError] = useState("");
 
   const [searchType, setSearchType] = useState("similarity"); // Add searchType state
   const [queryType, setQueryType] = useState("draw"); // Default to Draw molecule
-  const [topLimit, setTopLimit] = useState(8); // Add topLimit state
-  const [moleculeLimit, setMoleculeLimit] = useState(30); // Add moleculeLimit state
+  const [_topLimit, _setTopLimit] = useState(8); // Add topLimit state
+  const [moleculeLimit, _setMoleculeLimit] = useState(30); // Add moleculeLimit state
   const [similarityThreshold, setSimilarityThreshold] = useState(0.7); // Similarity threshold (0-1)
   const [molWeightMin, setMolWeightMin] = useState(0); // Molecular weight minimum (0-1000)
   const [molWeightMax, setMolWeightMax] = useState(1000); // Molecular weight maximum (0-1000)
@@ -82,13 +82,13 @@ export function Simulation() {
   const [isSearchActive, setIsSearchActive] = useState(false); // Track if search is active
   const [lastSearchQuery, setLastSearchQuery] = useState(""); // Track last search query
 
-  const [mculeSmiles, setMculeSmiles] = useState(""); // For drawing in mcule component
+  const [_mculeSmiles, _setMculeSmiles] = useState(""); // For drawing in mcule component
 
   const [cart, setCart] = useState([]);
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(0);
-  const [allMolecules, setAllMolecules] = useState([]);
+  const [_allMolecules, setAllMolecules] = useState([]);
   const [hasMore, setHasMore] = useState(true);
   const [initialLoading, setInitialLoading] = useState(true);
   const [pageSize, setPageSize] = useState(10);
@@ -103,7 +103,7 @@ export function Simulation() {
   // Currency conversion state
   const [currency, setCurrency] = useState('USD');
   const [exchangeRate, setExchangeRate] = useState(1);
-  const [userCountry, setUserCountry] = useState('US');
+  const [_userCountry, setUserCountry] = useState('US');
 
   // Refs to prevent infinite loops in scroll handler
   const hasMoreRef = useRef(true);
@@ -147,7 +147,7 @@ export function Simulation() {
   };
 
   // Filter function for test user by IP
-  const filterForTestUserByIp = (data) => {
+  const _filterForTestUserByIp = (data) => {
     if (!isTestUser()) {
       // Not a test user, return all data
       return data;
@@ -241,7 +241,7 @@ export function Simulation() {
     }
   }, []);
 
-  const fetchApiData = async () => {
+  const _fetchApiData = async () => {
     setLoading(true);
     setError('');
     try {
@@ -546,7 +546,7 @@ export function Simulation() {
         // Clear selected molecules when loading new search results
         setSelectedMolecules(new Set());
       }
-    } catch (err) {
+    } catch (_err) {
       setSearchError("Not found, please try again later");
       setTimeout(() => {
         setSearchError("");
@@ -916,7 +916,7 @@ export function Simulation() {
   }, []); // Empty dependency array - only set up once
 
 
-  const handleCellClick = value => {
+  const _handleCellClick = value => {
     setSearchCode(value);
   };
 
@@ -1042,7 +1042,7 @@ export function Simulation() {
   // Handle checkbox selection
   const handleCheckboxChange = (molecule, isChecked) => {
     const moleculeId = molecule.ASINEX_ID || molecule.id || Math.random().toString(36).slice(2);
-    const smiles = molecule.SMILES_STRING || molecule.SMILES || molecule.smiles || '';
+    const _smiles = molecule.SMILES_STRING || molecule.SMILES || molecule.smiles || '';
     
     setSelectedMolecules(prev => {
       const newSelected = new Set(prev);
