@@ -1,30 +1,20 @@
 import { useLocation, Link } from "react-router-dom";
 import {
-  Navbar,
-  Typography,
-  Button,
   IconButton,
-  Breadcrumbs,
-  Input,
   Menu,
   MenuHandler,
   MenuList,
   MenuItem,
-  Avatar,
 } from "@material-tailwind/react";
 import {
   UserCircleIcon,
-  BellIcon,
-  ClockIcon,
-  CreditCardIcon,
   Bars3Icon,
 } from "@heroicons/react/24/solid";
 import {
   useMaterialTailwindController,
-  setOpenSidenav,
 } from "@/context";
 import { useAuth } from "@/context/auth";
-import React, { useState } from "react";
+import { useState } from "react";
 
 export function MainNavbar() {
   const [controller, dispatch] = useMaterialTailwindController();

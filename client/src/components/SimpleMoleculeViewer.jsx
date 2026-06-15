@@ -1,4 +1,4 @@
-import React from 'react';
+
 
 const SimpleMoleculeViewer = ({ modelData, selectedAtomIds = [], onChangeSelection, width = 400, height = 300 }) => {
   if (!modelData || !modelData.nodes || !modelData.links) {

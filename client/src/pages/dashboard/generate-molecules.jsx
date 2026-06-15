@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { API_CONFIG } from "@/utils/constants";
 const GenerateMolecules = () => {
   // State for form inputs

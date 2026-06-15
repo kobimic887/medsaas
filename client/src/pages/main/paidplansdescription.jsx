@@ -1,15 +1,4 @@
-import React, { useState, useEffect } from "react";
-import {
-  Card,
-  CardBody,
-  Typography,
-  Button,
-  Switch,
-  Chip,
-  Alert,
-  Spinner,
-} from "@material-tailwind/react";
-import { CheckIcon, XMarkIcon, CheckCircleIcon } from "@heroicons/react/24/outline";
+import { useState, useEffect } from "react";
 
 
 export function PaidPlansDescription() {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Card,
@@ -12,11 +12,8 @@ import {
 } from "@material-tailwind/react";
 import { 
   CloudIcon,
-  ArrowPathIcon,
-  CodeBracketIcon,
 } from "@heroicons/react/24/outline";
 import { ShoppingCartIcon } from '@heroicons/react/24/solid';
-import ProfessionalMoleculeViewer from '../../components/ProfessionalMoleculeViewer';
 import { API_CONFIG } from "@/utils/constants";
 import { convertPriceToEuro, formatPrice } from '@/utils/algo/algo';
 

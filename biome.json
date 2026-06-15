@@ -28,7 +28,6 @@
       "preset": "recommended",
       "correctness": {
         "noUnusedVariables": "warn",
-        "noUnusedImports": "warn",
         "noUnusedFunctionParameters": "warn",
         "useExhaustiveDependencies": "off"
       },

@@ -5,7 +5,6 @@ import {
   Button,
   IconButton,
   Breadcrumbs,
-  Input,
   Menu,
   MenuHandler,
   MenuList,
@@ -16,7 +15,6 @@ import {
 import {
   UserCircleIcon,
   BellIcon,
-  ClockIcon,
   CreditCardIcon,
   Bars3Icon,
   MagnifyingGlassIcon,
@@ -27,7 +25,7 @@ import {
   useMaterialTailwindController,
   setOpenSidenav,
 } from "@/context";
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 
 export function DashboardNavbar() {

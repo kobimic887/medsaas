@@ -10,9 +10,7 @@ import {
   MenuHandler,
   MenuList,
   MenuItem,
-  Avatar,
   Chip,
-  Progress,
   Spinner,
   Alert,
   Button,
@@ -20,13 +18,9 @@ import {
 import {
   EllipsisVerticalIcon,
   ArrowDownTrayIcon,
-  MagnifyingGlassIcon,
-  FunnelIcon,
-  EyeIcon,
   CheckIcon,
-  XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { CheckCircleIcon, ClockIcon, ExclamationTriangleIcon, ShoppingCartIcon } from "@heroicons/react/24/solid";
+import { ClockIcon, ShoppingCartIcon } from "@heroicons/react/24/solid";
 import { API_CONFIG } from "@/utils/constants";
 
 export function ControlPanel() {

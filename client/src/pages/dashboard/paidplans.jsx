@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   Card,
   CardBody,
   Typography,
   Button,
-  Switch,
   Chip,
   Alert,
   Spinner,

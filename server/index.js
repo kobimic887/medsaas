@@ -5,7 +5,6 @@ import { execFile } from 'child_process';
 import express from 'express';
 import cors from 'cors';
 import fetch from 'node-fetch';
-import FormData from 'form-data';
 import { MongoClient, ObjectId } from 'mongodb';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -24,7 +23,7 @@ import crypto from 'crypto';
 
 // Import email templates
 import { generatePasswordResetEmailHTML, generateInviteEmailHTML } from './utils/emailTemplates.js';
-import { getBrandName, getPlatformName, getPlatformWebsiteUrl } from './config/branding.js';
+import { getBrandName, getPlatformName, } from './config/branding.js';
 import { sendTitanEmail, testEmailConfiguration } from './utils/emailService.js';
 import { validateEmailCredentials, getTitanMailHelp } from './utils/emailDebug.js';
 import { createAdmetTask, getQueueStatus, rabbitMQHealthCheck } from './utils/rabbitMQUtils.js';

@@ -1,7 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button, IconButton } from '@material-tailwind/react';
 import {
-  PencilIcon,
   TrashIcon,
   ArrowUturnLeftIcon,
   ArrowUturnRightIcon,

@@ -1,5 +1,4 @@
-import React from "react";
-import { Typography, Button } from "@material-tailwind/react";
+
 import { servicesImages } from "@/data/servicesImages";
 
 export default function Services() {
