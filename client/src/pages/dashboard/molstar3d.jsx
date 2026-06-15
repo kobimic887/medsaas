@@ -359,7 +359,7 @@ export function Molstar3D() {
     loadCartFromStorage();
     
     let pdbUrl = localStorage.getItem('molstar_pdb_url');
-    let sdfUrl = localStorage.getItem('molstar_sdf_url');
+    const sdfUrl = localStorage.getItem('molstar_sdf_url');
     const simulationKey = localStorage.getItem('molstar_simulation_key');
     const pdbCode = localStorage.getItem('molstar_pdb_code');
     const diffdockProtein = localStorage.getItem('diffdock_protein');

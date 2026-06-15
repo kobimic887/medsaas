@@ -39,8 +39,7 @@
       "style": {
         "useTemplate": "off",
         "useNodejsImportProtocol": "off",
-        "useExponentiationOperator": "off",
-        "useConst": "warn"
+        "useExponentiationOperator": "off"
       },
       "complexity": {
         "useOptionalChain": "off",

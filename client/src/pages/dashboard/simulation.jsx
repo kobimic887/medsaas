@@ -410,7 +410,7 @@ export function Simulation() {
       const fromId = lastFromId;
 
       // Prepare request body with pagination parameters
-      let requestBody = {
+      const requestBody = {
         fromId: fromId,
         pageSize: pageSize
       };
@@ -580,7 +580,7 @@ export function Simulation() {
       const method = methodMap[searchType] || 'similarity';
 
       // Prepare request body with pagination parameters
-      let requestBody = {
+      const requestBody = {
         fromId: lastFromId,
         pageSize: pageSize
       };
@@ -676,7 +676,7 @@ export function Simulation() {
       setSimError("Please search for a molecule first to get the SMILES code for docking");
       return;
     }
-    let _searchSmiles = searchCode.replace(',', ';').trim();
+    const _searchSmiles = searchCode.replace(',', ';').trim();
     setSimLoading(true);
     setSimError("");
     setSimResult(null);
@@ -716,7 +716,7 @@ export function Simulation() {
       localStorage.removeItem('diffdock_ligand_position');
     }
   const handleDiffDock = async () => {
-    let ligand_file_type = "sdf";
+    const ligand_file_type = "sdf";
     // Check if we have both PDB ID and Ligand ID
     if (!diffDockPdbId) {
       setDiffDockError("Please provide a PDB ID for DiffDock");
@@ -724,7 +724,7 @@ export function Simulation() {
     }
     
     // If no Ligand ID provided, try to use SMILES from search input
-    let ligandId = searchCode;
+    const ligandId = searchCode;
 
   
     if (!ligandId) {

@@ -4863,7 +4863,7 @@ app.get('/api/asinex/substructure/:id_:pageSize/:smiles', ensureMongoConnected, 
     if (!id_ || !pageSize || !smiles) {
       return res.status(400).json({ error: '_id, pageSize, and SMILES are all required' });
     }
-  let uri =`${catalogApiBase}/api/substructure/${id_}_${pageSize.replace('_', '')}/${encodeURIComponent(smiles)}`;
+  const uri =`${catalogApiBase}/api/substructure/${id_}_${pageSize.replace('_', '')}/${encodeURIComponent(smiles)}`;
     const response = await fetchWithTimeout(uri, {      method: 'GET'     });
 
     if (response.status === 404) {
@@ -5668,7 +5668,7 @@ app.get('/api/molecules', ensureMongoConnected, async (req, res) => {
     const maxWeight = req.query.maxWeight ? parseFloat(req.query.maxWeight) : null;
     
     // Build query filter
-    let filter = {};
+    const filter = {};
     
     if (search) {
       const safe = escapeRegExp(String(search));

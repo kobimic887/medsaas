@@ -142,8 +142,8 @@ export function ControlPanel() {
       setPriceLoading(true);
       setCurrentSmiles(smiles);
       const token = localStorage.getItem('auth_token');      
-      let _smiles = decodeURIComponent(smiles);      
-      let _smiles1 = _smiles.split('\\').map(part => part.trim()).filter(part => part).join(`\\`);
+      const _smiles = decodeURIComponent(smiles);      
+      const _smiles1 = _smiles.split('\\').map(part => part.trim()).filter(part => part).join(`\\`);
       console.log('URL that will be sent:', API_CONFIG.buildApiUrl(`/asinex/exact/${encodeURIComponent(_smiles1)}`));
       const response = await fetch(API_CONFIG.buildApiUrl(`/asinex/exact/${_smiles}`), {
         headers: {

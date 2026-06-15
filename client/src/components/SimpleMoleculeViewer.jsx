@@ -39,7 +39,7 @@ const SimpleMoleculeViewer = ({ modelData, selectedAtomIds = [], onChangeSelecti
     
     // Find a good starting node (preferably one with multiple connections)
     let startNode = nodes[0];
-    for (let node of nodes) {
+    for (const node of nodes) {
       if (adjacencyList[node.id].length > adjacencyList[startNode.id].length) {
         startNode = node;
       }
@@ -61,7 +61,7 @@ const SimpleMoleculeViewer = ({ modelData, selectedAtomIds = [], onChangeSelecti
       
       // Calculate ideal angles for chemical bonds
       const angleStep = (2 * Math.PI) / Math.max(neighbors.length, 3);
-      let startAngle = 0;
+      const startAngle = 0;
       
       // For tetrahedral geometry (4 bonds), use specific angles
       if (neighbors.length === 4) {

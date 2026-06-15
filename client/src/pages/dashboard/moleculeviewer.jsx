@@ -376,7 +376,7 @@ export function MoleculeViewer() {
 
     let content = "";
     let filename = "";
-    let mimeType = "text/plain";
+    const mimeType = "text/plain";
 
     switch (format) {
       case "smiles":

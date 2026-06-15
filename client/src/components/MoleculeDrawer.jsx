@@ -190,7 +190,7 @@ const MoleculeDrawer = ({ onStructureChange, width = 500, height = 400 }) => {
     
     // Find starting atom (preferably one with most connections)
     let startAtom = atoms[0];
-    for (let atom of atoms) {
+    for (const atom of atoms) {
       if (adjacency[atom.id].length > adjacency[startAtom.id].length) {
         startAtom = atom;
       }
