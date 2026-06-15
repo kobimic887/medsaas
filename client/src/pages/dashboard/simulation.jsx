@@ -1003,7 +1003,7 @@ export function Simulation() {
       if (mol[field] && typeof mol[field] === 'string' && mol[field].trim() !== '') {
         const smiles = mol[field].trim();
         // Basic SMILES validation - should contain typical SMILES characters
-        if (smiles.length > 1 && /[A-Za-z0-9\[\]()@=#+\-\\/\\\\]/.test(smiles)) {
+        if (smiles.length > 1 && /[A-Za-z0-9[\]()@=#+\-\\/\\\\]/.test(smiles)) {
           console.log(`Found valid SMILES in field: ${field}, value: ${smiles}`);
           return smiles;
         } else {
@@ -1167,7 +1167,7 @@ export function Simulation() {
                 if (!e.target.getAttribute('data-fallback-attempted')) {
                   e.target.setAttribute('data-fallback-attempted', '1');
                   // Try simplified SMILES encoding (remove special characters that might cause issues)
-                  const simplifiedSmiles = hoveredPreview.smiles.replace(/[^\w\[\]()@=#+\-\\/\\\\]/g, '');
+                  const simplifiedSmiles = hoveredPreview.smiles.replace(/[^\w[\]()@=#+\-\\/\\\\]/g, '');
                   if (simplifiedSmiles !== hoveredPreview.smiles) {
                     console.log('Trying simplified SMILES:', simplifiedSmiles);
                     e.target.src = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(simplifiedSmiles)}/PNG?record_type=2d&image_size=200x150`;
@@ -1940,14 +1940,14 @@ export function Simulation() {
                 <a download
                   className="inline-block px-4 py-2 border border-blue-500 text-blue-500 rounded hover:bg-blue-50 transition"
                   href={API_CONFIG.buildApiUrl(`/sanitizedpdb/${simResult.simulationKey}`)}
-                  target="_blank"
+                  target="_blank" rel="noopener"
                 >
                   View Sanitized PDB Result
                 </a>
                 <a download
                   className="inline-block px-4 py-2 border border-brand-500 text-brand-500 rounded hover:bg-brand-50 transition"
                   href={API_CONFIG.buildApiUrl(`/sanitizedminimalsdf/${simResult.simulationKey}`)}
-                  target="_blank"
+                  target="_blank" rel="noopener"
                 >
                   View Sanitized SDF Result
                 </a>

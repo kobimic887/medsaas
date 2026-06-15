@@ -91,7 +91,6 @@ export async function sendTitanEmail({ name, subject, message, recipientEmail, h
       if (error.responseCode === 535) {
         console.error(`  Authentication failed - check your email credentials`);
       }
-      continue;
     }
   }
 

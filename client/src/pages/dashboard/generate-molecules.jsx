@@ -224,7 +224,7 @@ const GenerateMolecules = () => {
                                 // Fallback logic after retries
                                 if (!e.target.getAttribute('data-fallback-attempted')) {
                                   e.target.setAttribute('data-fallback-attempted', '1');
-                                  const simplifiedSmiles = smilesStr.replace(/[^\w\[\]()@=#+\-\/\\]/g, '');
+                                  const simplifiedSmiles = smilesStr.replace(/[^\w[\]()@=#+\-/\\]/g, '');
                                   if (simplifiedSmiles !== smilesStr) {
                                     e.target.src = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(simplifiedSmiles)}/PNG?record_type=2d&image_size=200x150`;
                                     return;
@@ -280,7 +280,7 @@ const GenerateMolecules = () => {
                           // Fallback logic after retries
                           if (!e.target.getAttribute('data-fallback-attempted')) {
                             e.target.setAttribute('data-fallback-attempted', '1');
-                            const simplifiedSmiles = smilesStr.replace(/[^\w\[\]()@=#+\-\/\\]/g, '');
+                            const simplifiedSmiles = smilesStr.replace(/[^\w[\]()@=#+\-/\\]/g, '');
                             if (simplifiedSmiles !== smilesStr) {
                               e.target.src = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(simplifiedSmiles)}/PNG?record_type=2d&image_size=200x150`;
                               return;

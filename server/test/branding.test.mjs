@@ -353,7 +353,7 @@ async function main() {
     check('durable logo has no contentBase64 field', persisted.branding?.logo?.contentBase64 === undefined);
     const audit = await auditLogs.findOne({ action: 'company.branding.update' }, { sort: { timestamp: -1 } });
     const auditJson = JSON.stringify(audit?.details || {});
-    check('audit metadata excludes image/base64 bytes', !/contentBase64|dataUrl|\"data\"/.test(auditJson));
+    check('audit metadata excludes image/base64 bytes', !/contentBase64|dataUrl|"data"/.test(auditJson));
 
     console.log('\nTest 6 - palette-only update preserves the existing logo:');
     const storedLogoLength = binaryLength(persisted.branding.logo.data);

@@ -87,7 +87,7 @@ Navbar.defaultProps = {
   action: (
     <a
       href="https://outwize.tech"
-      target="_blank"
+      target="_blank" rel="noopener"
     >
       <Button variant="gradient" size="sm" fullWidth>
         free download
