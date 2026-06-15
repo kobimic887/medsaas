@@ -1,4 +1,5 @@
 {
+  // Lint-only gate; brownfield relaxes ratchet to error over time. See docs/IMPROVEMENTS.md item 3.
   "$schema": "https://biomejs.dev/schemas/2.5.0/schema.json",
   "vcs": {
     "enabled": true,
