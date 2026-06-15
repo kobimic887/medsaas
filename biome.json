@@ -30,12 +30,10 @@
         "noUnusedVariables": "warn",
         "noUnusedImports": "warn",
         "noUnusedFunctionParameters": "warn",
-        "noInnerDeclarations": "warn",
         "useExhaustiveDependencies": "off"
       },
       "suspicious": {
-        "noArrayIndexKey": "off",
-        "useIterableCallbackReturn": "warn"
+        "noArrayIndexKey": "off"
       },
       "security": {
         "noDangerouslySetInnerHtml": "warn"

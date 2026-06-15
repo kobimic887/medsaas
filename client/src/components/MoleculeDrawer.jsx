@@ -445,6 +445,8 @@ const MoleculeDrawer = ({ onStructureChange, width = 500, height = 400 }) => {
                 </g>
               );
             }
+            // Bond orders other than 1/2/3 (e.g. aromatic) render nothing.
+            return null;
           })}          {/* Atoms: show all atoms with proper CPK coloring */}
           {atoms.map(atom => {
             const getAtomColor = (element) => {

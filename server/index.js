@@ -4418,8 +4418,9 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
       return res.status(400).json({ error: 'protein and ligand are required' });
     }
   
-    var ligand_bytes;
-    var ligand_raw;
+    let ligand_bytes;
+    let ligand_raw;
+    let protein_bytes;
     try {
         const pdbResponse = await fetchWithTimeout(`https://files.rcsb.org/download/${protein.toUpperCase()}.pdb`, {
           method: 'GET',
@@ -4440,7 +4441,7 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
           .filter(line => line.startsWith('ATOM'))
           .join('\n');
         
-        var protein_bytes = atomLines.replace(/\n/g, '\\\n');
+        protein_bytes = atomLines.replace(/\n/g, '\\\n');
 
       
         if(ligand.length < 4) //its a ligandId
