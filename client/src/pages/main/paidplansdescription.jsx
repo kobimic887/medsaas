@@ -277,7 +277,7 @@ export function PaidPlansDescription() {
             All plans include a 14-day free trial. No credit card required to start.
           </p>
           <p className="text-muted small">
-            Questions about our plans? <a href="#" className="text-primary text-decoration-underline">Contact our sales team</a>
+            Questions about our plans? <a href="/main/contact-us" className="text-primary text-decoration-underline">Contact our sales team</a>
           </p>
         </div>
       </div>
