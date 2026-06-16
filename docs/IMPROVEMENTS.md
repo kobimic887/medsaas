@@ -25,17 +25,28 @@ timeout/CI fixes) and `.planning/codebase/CONCERNS.md`. Effort is rough; risk is
    tree without a mass rewrite, rules the tree already violates are relaxed to
    `warn`/`off` (CSS linting disabled so Tailwind directives don't fail). The
    gate still blocks **new** errors: proven by a planted `noAssignInExpressions`
-   that fails the run. **Ratchet later:** the relaxed `error`→`warn` rules each
-   want a dedicated fix pass before being restored to `error` —
-   - a11y group (`useKeyWithClickEvents` ×16, `noLabelWithoutControl` ×15,
-     `noSvgWithoutTitle` ×14, `useButtonType` ×6, `useValidAnchor` ×5, …): a
-     real accessibility cleanup of the client.
-   - dead code (`noUnusedVariables` ×59, `noUnusedImports` ×50,
-     `noUnusedFunctionParameters` ×23): safe to remove incrementally, but
-     server-side side-effect imports and positional params need eyes-on.
-   - `noInnerDeclarations` ×3 / `useIterableCallbackReturn` ×1: localized
-     correctness smells (a `var`→`let` scope change in the DiffDock route; a
-     render `.map` with a non-returning branch) — fix with care, not autofix.
+   that fails the run. The config is `biome.jsonc` (comments silently break a
+   `.json` Biome config).
+
+   **Cleared and enforced (`error`)** since the introduction:
+   - dead code: `noUnusedImports` ×50, `noUnusedVariables` ×59, `useConst` ×16.
+   - correctness: `noInnerDeclarations`, `useIterableCallbackReturn`,
+     `noPrototypeBuiltins`→`Object.hasOwn`, `noGlobalIsNan`→`Number.isNaN`,
+     `useParseIntRadix`.
+   - a11y: `useButtonType` ×6, `noSvgWithoutTitle` ×14, `useAltText`,
+     `useAriaPropsSupportedByRole`, `noLabelWithoutControl` ×15,
+     `useSemanticElements` ×2.
+
+   **Still parked at `warn`/`off`** (need judgment / UX decisions / manual
+   testing — the client has no behavioral tests, only a build check):
+   - `useKeyWithClickEvents` ×16 (add keyboard handlers — changes runtime
+     interaction), `useValidAnchor` ×5 (placeholder `href="#"` links for
+     unbuilt features — need real destinations or conversion to buttons),
+     `noStaticElementInteractions` ×2.
+   - `noUnusedFunctionParameters` (3 legit destructured API props; rest marked
+     `_`), `noDangerouslySetInnerHtml` ×3 (intentional), and stylistic rules
+     (`useTemplate`, `useOptionalChain`, …) left off.
+
    The Node leg (`ci:node`) intentionally does not re-run lint — runtime-
    independent, one run is enough.
 4. **Client price-display consistency.** In `simulation.jsx`, `PRICE_2MG` has a
