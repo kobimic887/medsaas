@@ -159,7 +159,7 @@ export function SignIn() {
               className="cb-auth-input"
               required
             />
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-gray-500 mt-1">
               At least 8 characters with uppercase, lowercase, a digit, and a special character.
             </p>
           </div>
@@ -275,7 +275,7 @@ export function SignIn() {
       </form>
 
       <div className="cb-auth-footer">
-        <span className="text-slate-500">Don't have an account?</span>
+        <span className="text-gray-500">Don't have an account?</span>
         <Link to="/auth/sign-up" className="cb-auth-link">Create account</Link>
       </div>
     </AuthShell>

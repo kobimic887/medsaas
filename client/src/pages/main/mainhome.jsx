@@ -43,7 +43,7 @@ function StepCard({ number, title, description, icon, delay }) {
         <div className="cb-step-number">{number}</div>
         <div className="text-3xl mb-4">{icon}</div>
         <h3 className="text-xl font-bold text-white mb-2" style={{ fontFamily: "'Outfit', sans-serif" }}>{title}</h3>
-        <p className="text-sm text-slate-300 leading-relaxed">{description}</p>
+        <p className="text-sm text-gray-300 leading-relaxed">{description}</p>
       </div>
     </Reveal>
   );
@@ -56,7 +56,7 @@ function FeatureCard({ title, description, icon, delay }) {
       <div className="cb-feature-card group">
         <div className="text-4xl mb-4 cb-feature-icon">{icon}</div>
         <h3 className="text-lg font-bold text-white mb-2" style={{ fontFamily: "'Outfit', sans-serif" }}>{title}</h3>
-        <p className="text-sm text-slate-400 leading-relaxed">{description}</p>
+        <p className="text-sm text-gray-400 leading-relaxed">{description}</p>
       </div>
     </Reveal>
   );
@@ -187,21 +187,21 @@ export function MainHome() {
             <h2 className="text-3xl lg:text-4xl font-bold text-white mb-4" style={{ fontFamily: "'Outfit', sans-serif" }}>
               Your Compounds,<br />Their Discovery
             </h2>
-            <p className="text-slate-400 leading-relaxed mb-6">
+            <p className="text-gray-400 leading-relaxed mb-6">
               Whether you specialise in macrocyclic research, covalent inhibitors, or
               molecular glues — ChemBench lets you showcase your entire chemical
               space to potential customers. They interact with your molecules using
               professional-grade tools, and when they find what they need, the
               purchase happens right here.
             </p>
-            <ul className="space-y-3 text-slate-300">
+            <ul className="space-y-3 text-gray-300">
               {["Drag-and-drop compound upload (SDF, SMILES, PDB)",
                 "Customisable target protein library",
                 "Real-time customer activity dashboard",
                 "Revenue analytics & order management"
               ].map((t, i) => (
                 <li key={i} className="flex items-start gap-2">
-                  <span className="text-emerald-400 mt-0.5">✓</span> {t}
+                  <span className="text-green-400 mt-0.5">✓</span> {t}
                 </li>
               ))}
             </ul>
@@ -221,7 +221,7 @@ export function MainHome() {
                     <div className="cb-score-pill cb-score-good">Score: 9.2</div>
                     <div className="cb-score-pill cb-score-mid">ΔG: −8.4</div>
                   </div>
-                  <div className="text-xs text-slate-500 font-mono">Docking complete • 3 conformers</div>
+                  <div className="text-xs text-gray-500 font-mono">Docking complete • 3 conformers</div>
                 </div>
               </div>
             </div>
@@ -231,14 +231,14 @@ export function MainHome() {
             <h2 className="text-3xl lg:text-4xl font-bold text-white mb-4" style={{ fontFamily: "'Outfit', sans-serif" }}>
               Explore, Simulate,<br />Then Purchase
             </h2>
-            <p className="text-slate-400 leading-relaxed mb-6">
+            <p className="text-gray-400 leading-relaxed mb-6">
               Sign in to your partner lab's ChemBench space. Browse their compound
               catalogue, tweak molecules with built-in editors, run docking
               simulations against real protein targets, and — when you've found the
               perfect ligand — buy it or request a custom quote, all without leaving
               the platform.
             </p>
-            <ul className="space-y-3 text-slate-300">
+            <ul className="space-y-3 text-gray-300">
               {["Browse & filter thousands of compounds interactively",
                 "3D visualization and binding-pose inspection",
                 "Automated affinity scoring against lab-defined targets",
@@ -262,7 +262,7 @@ export function MainHome() {
           </h2>
         </Reveal>
         <Reveal delay={100}>
-          <p className="text-slate-400 text-center max-w-xl mx-auto mb-8">
+          <p className="text-gray-400 text-center max-w-xl mx-auto mb-8">
             Join the growing network of organic-chemistry labs that use ChemBench to
             showcase compounds, run simulations, and convert researchers into paying
             customers.
