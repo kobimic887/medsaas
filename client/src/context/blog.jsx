@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
 import PropTypes from "prop-types";
 
 const BlogContext = createContext();
@@ -74,7 +74,7 @@ export function BlogProvider({ children }) {
   };
 
   const getPostById = (id) => {
-    return posts.find(post => post.id === parseInt(id));
+    return posts.find(post => post.id === parseInt(id, 10));
   };
 
   const value = {

@@ -1,5 +1,4 @@
-import React, { useState } from "react";
-import { Button, Typography } from "@material-tailwind/react";
+import { useState } from "react";
 
 export default function ContactUs() {
   const [form, setForm] = useState({

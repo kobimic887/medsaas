@@ -1,36 +1,21 @@
 import { useLocation, Link } from "react-router-dom";
 import {
-  Navbar,
-  Typography,
-  Button,
   IconButton,
-  Breadcrumbs,
-  Input,
   Menu,
   MenuHandler,
   MenuList,
   MenuItem,
-  Avatar,
 } from "@material-tailwind/react";
 import {
   UserCircleIcon,
-  BellIcon,
-  ClockIcon,
-  CreditCardIcon,
   Bars3Icon,
 } from "@heroicons/react/24/solid";
-import {
-  useMaterialTailwindController,
-  setOpenSidenav,
-} from "@/context";
 import { useAuth } from "@/context/auth";
-import React, { useState } from "react";
+import { useState } from "react";
 
 export function MainNavbar() {
-  const [controller, dispatch] = useMaterialTailwindController();
-  const { fixedNavbar, openSidenav } = controller;
   const { pathname } = useLocation();
-  const [layout, page] =  pathname.split("/").filter((el) => el !== "");
+  const [_layout, page] =  pathname.split("/").filter((el) => el !== "");
   const { isLoggedIn, logout, user, isAdmin } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
 

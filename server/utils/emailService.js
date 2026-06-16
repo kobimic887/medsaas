@@ -50,7 +50,7 @@ export async function sendTitanEmail({ name, subject, message, recipientEmail, h
     }
   ];
 
-  for (let config of configs) {
+  for (const config of configs) {
     try {
       console.log(`Trying email config: ${config.name}`);
       console.log(`Host: ${config.host}, Port: ${config.port}, Secure: ${config.secure}`);
@@ -91,7 +91,6 @@ export async function sendTitanEmail({ name, subject, message, recipientEmail, h
       if (error.responseCode === 535) {
         console.error(`  Authentication failed - check your email credentials`);
       }
-      continue;
     }
   }
 
@@ -154,7 +153,7 @@ export async function testEmailConfiguration() {
     }
   ];
 
-  for (let config of configs) {
+  for (const config of configs) {
     try {
       console.log(`Testing config: ${config.name}`);
       console.log(`Host: ${config.host}, Port: ${config.port}, Secure: ${config.secure}`);

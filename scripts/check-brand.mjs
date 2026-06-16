@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // BRAND-06 regression guard: fail if the retired brand name leaks back into source.
 // Cross-platform (no grep/findstr) so it runs identically in local + CI/Docker (Phase 3).
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, } from "node:fs";
 import { join, extname } from "node:path";
 
 // Build the needle without writing the literal, so this file never trips its own check.

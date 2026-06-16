@@ -10,9 +10,7 @@ import {
   MenuHandler,
   MenuList,
   MenuItem,
-  Avatar,
   Chip,
-  Progress,
   Spinner,
   Alert,
   Button,
@@ -20,13 +18,9 @@ import {
 import {
   EllipsisVerticalIcon,
   ArrowDownTrayIcon,
-  MagnifyingGlassIcon,
-  FunnelIcon,
-  EyeIcon,
   CheckIcon,
-  XMarkIcon,
 } from "@heroicons/react/24/outline";
-import { CheckCircleIcon, ClockIcon, ExclamationTriangleIcon, ShoppingCartIcon } from "@heroicons/react/24/solid";
+import { ClockIcon, ShoppingCartIcon } from "@heroicons/react/24/solid";
 import { API_CONFIG } from "@/utils/constants";
 
 export function ControlPanel() {
@@ -34,7 +28,7 @@ export function ControlPanel() {
   const [activityData, setActivityData] = React.useState(null);
   const [userSimulationLogs, setUserSimulationLogs] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState(null);
+  const [_error, setError] = React.useState(null);
   
   // Price popup state
   const [showPricePopup, setShowPricePopup] = React.useState(false);
@@ -148,8 +142,8 @@ export function ControlPanel() {
       setPriceLoading(true);
       setCurrentSmiles(smiles);
       const token = localStorage.getItem('auth_token');      
-      let _smiles = decodeURIComponent(smiles);      
-      let _smiles1 = _smiles.split('\\').map(part => part.trim()).filter(part => part).join(`\\`);
+      const _smiles = decodeURIComponent(smiles);      
+      const _smiles1 = _smiles.split('\\').map(part => part.trim()).filter(part => part).join(`\\`);
       console.log('URL that will be sent:', API_CONFIG.buildApiUrl(`/asinex/exact/${encodeURIComponent(_smiles1)}`));
       const response = await fetch(API_CONFIG.buildApiUrl(`/asinex/exact/${_smiles}`), {
         headers: {

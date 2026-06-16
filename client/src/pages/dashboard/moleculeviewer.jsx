@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Card,
   CardHeader,
@@ -376,7 +376,7 @@ export function MoleculeViewer() {
 
     let content = "";
     let filename = "";
-    let mimeType = "text/plain";
+    const mimeType = "text/plain";
 
     switch (format) {
       case "smiles":

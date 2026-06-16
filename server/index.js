@@ -5,7 +5,6 @@ import { execFile } from 'child_process';
 import express from 'express';
 import cors from 'cors';
 import fetch from 'node-fetch';
-import FormData from 'form-data';
 import { MongoClient, ObjectId } from 'mongodb';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -24,7 +23,7 @@ import crypto from 'crypto';
 
 // Import email templates
 import { generatePasswordResetEmailHTML, generateInviteEmailHTML } from './utils/emailTemplates.js';
-import { getBrandName, getPlatformName, getPlatformWebsiteUrl } from './config/branding.js';
+import { getBrandName, getPlatformName, } from './config/branding.js';
 import { sendTitanEmail, testEmailConfiguration } from './utils/emailService.js';
 import { validateEmailCredentials, getTitanMailHelp } from './utils/emailDebug.js';
 import { createAdmetTask, getQueueStatus, rabbitMQHealthCheck } from './utils/rabbitMQUtils.js';
@@ -155,7 +154,7 @@ app.use(cors({
 }));
 app.use('/blobs', express.static(path.join(__dirname, 'blobs')));
 
-app.use((req, res, next) => {
+app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   // SAMEORIGIN (not DENY) so the dashboard can embed the same-origin Ketcher
   // (/ketcher/index.html) editor and Molstar (/molstar/index.html) viewer iframes.
@@ -343,12 +342,12 @@ app.post("/api/openfold3/predict", ensureMongoConnected, authenticateToken, requ
 
 
 // Add a basic health check endpoint
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString(), message: 'Server is running' });
 });
 
 // Add a database health check endpoint
-app.get('/health/db', async (req, res) => {
+app.get('/health/db', async (_req, res) => {
   try {
     await client.db().admin().ping();
     const dbStats = await client.db().stats();
@@ -370,7 +369,7 @@ app.get('/health/db', async (req, res) => {
 });
 
 // Root route serves frontend if available; falls back to API docs
-app.get('/', (req, res) => {
+app.get('/', (_req, res) => {
   if (hasFrontendBuild()) {
     return res.sendFile(FRONTEND_INDEX_PATH);
   }
@@ -390,7 +389,7 @@ app.get('/', (req, res) => {
  *       200:
  *         description: Health status
  */
-app.get('/tanimoto/health', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+app.get('/tanimoto/health', ensureMongoConnected, authenticateToken, requireActiveUser, async (_req, res) => {
   try {
     const response = await axios.get(`${TANIMOTO_API_BASE}/health`);
     res.json(response.data);
@@ -737,7 +736,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // Add a route to serve the raw OpenAPI spec
-app.get('/api/openapi.json', (req, res) => {
+app.get('/api/openapi.json', (_req, res) => {
   res.setHeader('Content-Type', 'application/json');
   res.send(swaggerSpec);
 });
@@ -802,7 +801,7 @@ async function initializeDatabase() {
 }
 
 // Robust middleware to ensure MongoDB connection and usersCollection
-async function ensureMongoConnected(req, res, next) {
+async function ensureMongoConnected(_req, res, next) {
   try {
     // Check if client is connected
     if (!client.topology || !client.topology.isConnected()) {
@@ -1101,7 +1100,7 @@ async function getRequestLigandServiceConfig(req) {
 }
 
 function validateRequiredStringField(body, fieldName) {
-  if (!Object.prototype.hasOwnProperty.call(body, fieldName)) {
+  if (!Object.hasOwn(body, fieldName)) {
     return undefined;
   }
   const value = typeof body[fieldName] === 'string' ? body[fieldName].trim() : '';
@@ -1952,7 +1951,7 @@ app.get('/api/verify-email', ensureMongoConnected, async (req, res) => {
     </html>`;
     
     res.send(successHTML);
-  } catch (err) {
+  } catch (_err) {
     const errorHTML = `
     <!DOCTYPE html>
     <html lang="en">
@@ -2108,7 +2107,7 @@ app.post('/api/password-reset/confirm', authRateLimit, ensureMongoConnected, asy
     }
 
     res.json({ message: 'Password reset successful' });
-  } catch (error) {
+  } catch (_error) {
     res.status(400).json({ error: 'Invalid or expired reset token' });
   }
 });
@@ -2243,7 +2242,7 @@ app.post('/api/change-password', authRateLimit, ensureMongoConnected, authentica
   res.json({ message: 'Password changed successfully' });
 });
 
-app.get('/api/hello', (req, res) => {
+app.get('/api/hello', (_req, res) => {
   res.send('{"data":"hello"}');
 });
 
@@ -2347,15 +2346,15 @@ app.get('/api/mol-price', ensureMongoConnected, async (req, res) => {
     const totalCount = await molPriceCollection.countDocuments(filter);
     const molecules = await molPriceCollection
       .find(filter)
-      .limit(parseInt(limit))
-      .skip(parseInt(skip))
+      .limit(parseInt(limit, 10))
+      .skip(parseInt(skip, 10))
       .toArray();
     
     res.json({
       total: totalCount,
       count: molecules.length,
-      limit: parseInt(limit),
-      skip: parseInt(skip),
+      limit: parseInt(limit, 10),
+      skip: parseInt(skip, 10),
       molecules
     });
   } catch (error) {
@@ -2382,7 +2381,7 @@ app.get('/api/mol-price', ensureMongoConnected, async (req, res) => {
  *       500:
  *         description: Server error
  */
-app.get('/api/mol-price/count', ensureMongoConnected, async (req, res) => {
+app.get('/api/mol-price/count', ensureMongoConnected, async (_req, res) => {
   try {
     const db = client.db();
     const molPriceCollection = db.collection('mol_price');
@@ -2483,8 +2482,8 @@ app.get('/api/mol-price/search', ensureMongoConnected, async (req, res) => {
     const totalCount = await molPriceCollection.countDocuments(filter);
     const molecules = await molPriceCollection
       .find(filter)
-      .limit(parseInt(limit))
-      .skip(parseInt(skip))
+      .limit(parseInt(limit, 10))
+      .skip(parseInt(skip, 10))
       .toArray();
     
     res.json({
@@ -2607,7 +2606,7 @@ app.get('/api/mol-price/:id', ensureMongoConnected, async (req, res) => {
  *       500:
  *         description: Server error
  */
-app.get('/api/mol-price-stats', ensureMongoConnected, async (req, res) => {
+app.get('/api/mol-price-stats', ensureMongoConnected, async (_req, res) => {
   try {
     const db = client.db();
     const molPriceCollection = db.collection('mol_price');
@@ -3254,7 +3253,7 @@ app.patch('/api/company/branding', ensureMongoConnected, authenticateToken, requ
     const paletteFields = ['primary', 'accent', 'light', 'dark'];
     if (
       !req.body?.palette
-      || paletteFields.some((field) => !Object.prototype.hasOwnProperty.call(req.body.palette, field))
+      || paletteFields.some((field) => !Object.hasOwn(req.body.palette, field))
     ) {
       return res.status(400).json({ error: 'A complete primary, accent, light, and dark palette is required' });
     }
@@ -3263,7 +3262,7 @@ app.patch('/api/company/branding', ensureMongoConnected, authenticateToken, requ
     let normalizedLogo = null;
     try {
       palette = normalizeBrandPalette(req.body.palette);
-      if (Object.prototype.hasOwnProperty.call(req.body, 'logoUpload')) {
+      if (Object.hasOwn(req.body, 'logoUpload')) {
         normalizedLogo = await parseAndNormalizeLogoUpload(req.body.logoUpload);
       }
     } catch (validationError) {
@@ -3383,7 +3382,7 @@ app.patch('/api/company/usage-policy', ensureMongoConnected, authenticateToken, 
     const currentPolicy = normalizeUsagePolicy(company.usagePolicy || {});
     const updates = {};
 
-    if (Object.prototype.hasOwnProperty.call(req.body, 'monthlySimulationCap')) {
+    if (Object.hasOwn(req.body, 'monthlySimulationCap')) {
       const capRaw = req.body.monthlySimulationCap;
       if (capRaw === null || capRaw === '' || capRaw === undefined) {
         updates.monthlySimulationCap = null;
@@ -3394,7 +3393,7 @@ app.patch('/api/company/usage-policy', ensureMongoConnected, authenticateToken, 
       }
     }
 
-    if (Object.prototype.hasOwnProperty.call(req.body, 'defaultSimulationTokensPerUser')) {
+    if (Object.hasOwn(req.body, 'defaultSimulationTokensPerUser')) {
       const defaultTokensRaw = req.body.defaultSimulationTokensPerUser;
       if (!Number.isFinite(Number(defaultTokensRaw)) || Number(defaultTokensRaw) < 0) {
         return res.status(400).json({ error: 'defaultSimulationTokensPerUser must be 0 or a positive number' });
@@ -3656,7 +3655,7 @@ app.patch('/api/company/members/:username', ensureMongoConnected, authenticateTo
 
     const updates = {};
 
-    if (Object.prototype.hasOwnProperty.call(req.body, 'role')) {
+    if (Object.hasOwn(req.body, 'role')) {
       const nextRole = req.body.role;
       if (!['member', 'admin'].includes(nextRole)) {
         return res.status(400).json({ error: 'role must be member or admin' });
@@ -3667,7 +3666,7 @@ app.patch('/api/company/members/:username', ensureMongoConnected, authenticateTo
       updates.role = nextRole;
     }
 
-    if (Object.prototype.hasOwnProperty.call(req.body, 'active')) {
+    if (Object.hasOwn(req.body, 'active')) {
       if (typeof req.body.active !== 'boolean') {
         return res.status(400).json({ error: 'active must be a boolean' });
       }
@@ -3680,7 +3679,7 @@ app.patch('/api/company/members/:username', ensureMongoConnected, authenticateTo
       updates.active = req.body.active;
     }
 
-    if (Object.prototype.hasOwnProperty.call(req.body, 'simulationTokens')) {
+    if (Object.hasOwn(req.body, 'simulationTokens')) {
       const tokens = Number(req.body.simulationTokens);
       if (!Number.isFinite(tokens) || tokens < 0) {
         return res.status(400).json({ error: 'simulationTokens must be 0 or a positive number' });
@@ -4418,8 +4417,9 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
       return res.status(400).json({ error: 'protein and ligand are required' });
     }
   
-    var ligand_bytes;
-    var ligand_raw;
+    let ligand_bytes;
+    let ligand_raw;
+    let protein_bytes;
     try {
         const pdbResponse = await fetchWithTimeout(`https://files.rcsb.org/download/${protein.toUpperCase()}.pdb`, {
           method: 'GET',
@@ -4440,7 +4440,7 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
           .filter(line => line.startsWith('ATOM'))
           .join('\n');
         
-        var protein_bytes = atomLines.replace(/\n/g, '\\\n');
+        protein_bytes = atomLines.replace(/\n/g, '\\\n');
 
       
         if(ligand.length < 4) //its a ligandId
@@ -4604,7 +4604,7 @@ app.post('/api/diffdock/generate_file', ensureMongoConnected, authenticateToken,
     const workDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'diffdock-'));
     const cleanup = () => fs.promises.rm(workDir, { recursive: true, force: true }).catch(() => {});
 
-    execFile('./diff_dock.sh', [protein, ligand, workDir], { cwd: process.cwd() }, (error, stdout, stderr) => {
+    execFile('./diff_dock.sh', [protein, ligand, workDir], { cwd: process.cwd() }, (error, _stdout, stderr) => {
       if (error) {
         console.error('Script execution error:', error);
         console.error('stderr:', stderr);
@@ -4863,7 +4863,7 @@ app.get('/api/asinex/substructure/:id_:pageSize/:smiles', ensureMongoConnected, 
     if (!id_ || !pageSize || !smiles) {
       return res.status(400).json({ error: '_id, pageSize, and SMILES are all required' });
     }
-  let uri =`${catalogApiBase}/api/substructure/${id_}_${pageSize.replace('_', '')}/${encodeURIComponent(smiles)}`;
+  const uri =`${catalogApiBase}/api/substructure/${id_}_${pageSize.replace('_', '')}/${encodeURIComponent(smiles)}`;
     const response = await fetchWithTimeout(uri, {      method: 'GET'     });
 
     if (response.status === 404) {
@@ -5087,7 +5087,7 @@ async function startServer() {
       console.log(`✅ HTTPS Server running on port ${PORT}`);
       console.log(`📚 API Documentation: https://localhost:${PORT}/api-docs`);
     });
-  } catch (error) {
+  } catch (_error) {
     console.log('SSL certificates not found, starting HTTP server for development...');
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`✅ HTTP Server running on port ${PORT}`);
@@ -5342,7 +5342,7 @@ app.post('/api/issueSimulationTokens', ensureMongoConnected, authenticateToken, 
 });
 
 // Test email configuration endpoint
-app.get('/api/test-email', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (req, res) => {
+app.get('/api/test-email', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (_req, res) => {
   const result = await testEmailConfiguration();
   if (result.success) {
     res.json(result);
@@ -5352,7 +5352,7 @@ app.get('/api/test-email', ensureMongoConnected, authenticateToken, requireCompa
 });
 
 // Email credentials debugging endpoint
-app.get('/api/debug-email', ensureMongoConnected, authenticateToken, requireCompanyAdmin, (req, res) => {
+app.get('/api/debug-email', ensureMongoConnected, authenticateToken, requireCompanyAdmin, (_req, res) => {
   const validation = validateEmailCredentials();
   const help = getTitanMailHelp();
   
@@ -5660,15 +5660,15 @@ app.get('/api/molecules', ensureMongoConnected, async (req, res) => {
     const molPriceCollection = db.collection('mol_price');
     
     // Parse query parameters
-    const limit = parseInt(req.query.limit) || 50;
-    const offset = parseInt(req.query.offset) || 0;
+    const limit = parseInt(req.query.limit, 10) || 50;
+    const offset = parseInt(req.query.offset, 10) || 0;
     const search = req.query.search;
     const maxPrice = req.query.maxPrice ? parseFloat(req.query.maxPrice) : null;
     const minWeight = req.query.minWeight ? parseFloat(req.query.minWeight) : null;
     const maxWeight = req.query.maxWeight ? parseFloat(req.query.maxWeight) : null;
     
     // Build query filter
-    let filter = {};
+    const filter = {};
     
     if (search) {
       const safe = escapeRegExp(String(search));
@@ -5761,7 +5761,7 @@ app.get('/api/molecules/:asinexId', ensureMongoConnected, async (req, res) => {
  *       200:
  *         description: Collection statistics
  */
-app.get('/api/molecules/stats', ensureMongoConnected, async (req, res) => {
+app.get('/api/molecules/stats', ensureMongoConnected, async (_req, res) => {
   try {
     const db = client.db();
     const molPriceCollection = db.collection('mol_price');
@@ -5818,7 +5818,7 @@ app.get('/api/molecules/search/smiles', ensureMongoConnected, async (req, res) =
     const molPriceCollection = db.collection('mol_price');
     
     const pattern = req.query.pattern;
-    const limit = parseInt(req.query.limit) || 20;
+    const limit = parseInt(req.query.limit, 10) || 20;
     
     if (!pattern) {
       return res.status(400).json({ error: 'Pattern parameter is required' });
@@ -5875,7 +5875,7 @@ app.get('/api/molecules/price-range', ensureMongoConnected, async (req, res) => 
     
     const minPrice = parseFloat(req.query.minPrice);
     const maxPrice = parseFloat(req.query.maxPrice);
-    const limit = parseInt(req.query.limit) || 50;
+    const limit = parseInt(req.query.limit, 10) || 50;
     
     if (!minPrice || !maxPrice) {
       return res.status(400).json({ error: 'Both minPrice and maxPrice are required' });
@@ -6253,7 +6253,7 @@ app.delete('/api/simulation/:simulationKey/admet', ensureMongoConnected, authent
  *       500:
  *         description: RabbitMQ connection error
  */
-app.get('/api/rabbitmq/health', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (req, res) => {
+app.get('/api/rabbitmq/health', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (_req, res) => {
   try {
     const healthStatus = await rabbitMQHealthCheck();
     
@@ -6284,7 +6284,7 @@ app.get('/api/rabbitmq/health', ensureMongoConnected, authenticateToken, require
  *       500:
  *         description: Error getting queue status
  */
-app.get('/api/rabbitmq/queue-status', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (req, res) => {
+app.get('/api/rabbitmq/queue-status', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (_req, res) => {
   try {
     const queueStatus = await getQueueStatus();
     res.json(queueStatus);
@@ -6393,7 +6393,7 @@ function logToFile(logStr) {
 app.use(express.static(FRONTEND_DIST_PATH, { index: false }));
 
 // SPA fallback for non-API routes when frontend build is present
-app.get(/^(?!\/(?:api|api-docs|health|tanimoto|blobs)(?:\/|$)).*/, (req, res, next) => {
+app.get(/^(?!\/(?:api|api-docs|health|tanimoto|blobs)(?:\/|$)).*/, (_req, res, next) => {
   if (!hasFrontendBuild()) {
     return next();
   }

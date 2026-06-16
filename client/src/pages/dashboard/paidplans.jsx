@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   Card,
   CardBody,
   Typography,
   Button,
-  Switch,
   Chip,
   Alert,
   Spinner,
@@ -22,7 +21,7 @@ export function PaidPlans() {
   const isStripeConfigured = !!import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
 
   // Handle toggle change
-  const handleToggleChange = () => {
+  const _handleToggleChange = () => {
     const newValue = !isYearly;
     console.log('Toggle changed from', isYearly, 'to', newValue);
     setIsYearly(newValue);
@@ -154,7 +153,7 @@ export function PaidPlans() {
   };
 
   // Helper function to create checkout session
-  const createCheckoutSession = async (plan, isYearly) => {
+  const createCheckoutSession = async (plan, _isYearly) => {
     try {
       const token = localStorage.getItem('auth_token');
       const response = await fetch(API_CONFIG.buildUrl('/create-checkout-session-onetime'), {

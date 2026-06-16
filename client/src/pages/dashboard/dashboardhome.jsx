@@ -22,13 +22,9 @@ import {
 import { StatisticsCard } from "@/widgets/cards";
 import { StatisticsChart } from "@/widgets/charts";
 import {
-  statisticsCardsData,
   statisticsChartsData,
-  projectsTableData,
-  ordersOverviewData,
 } from "@/data";
 import { CheckCircleIcon, ClockIcon } from "@heroicons/react/24/solid";
-import { Link } from "react-router-dom";
 import { API_CONFIG } from "@/utils/constants";
 
 
@@ -159,7 +155,7 @@ export function DashboardHome() {
   const generateProjectsData = () => {
     if (!activityData || !activityData.projects) return [];
     
-    return activityData.projects.map((project, index) => {
+    return activityData.projects.map((project, _index) => {
       // Find simulations for this project
       const projectSimulations = activityData.simulations ? 
         activityData.simulations.filter(sim => sim.user?.username === project.userid) : [];

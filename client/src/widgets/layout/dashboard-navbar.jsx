@@ -5,7 +5,6 @@ import {
   Button,
   IconButton,
   Breadcrumbs,
-  Input,
   Menu,
   MenuHandler,
   MenuList,
@@ -16,7 +15,6 @@ import {
 import {
   UserCircleIcon,
   BellIcon,
-  ClockIcon,
   CreditCardIcon,
   Bars3Icon,
   MagnifyingGlassIcon,
@@ -27,14 +25,14 @@ import {
   useMaterialTailwindController,
   setOpenSidenav,
 } from "@/context";
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 
 export function DashboardNavbar() {
   const [controller, dispatch] = useMaterialTailwindController();
-  const { fixedNavbar, openSidenav } = controller;
+  const { openSidenav } = controller;
   const { pathname } = useLocation();
-  const [layout, page] = pathname.split("/").filter((el) => el !== "");
+  const [_layout, page] = pathname.split("/").filter((el) => el !== "");
   const [showMobileSearch, setShowMobileSearch] = useState(false);
 
   // User info state

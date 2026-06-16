@@ -1,7 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button, IconButton } from '@material-tailwind/react';
 import {
-  PencilIcon,
   TrashIcon,
   ArrowUturnLeftIcon,
   ArrowUturnRightIcon,
@@ -191,7 +190,7 @@ const MoleculeDrawer = ({ onStructureChange, width = 500, height = 400 }) => {
     
     // Find starting atom (preferably one with most connections)
     let startAtom = atoms[0];
-    for (let atom of atoms) {
+    for (const atom of atoms) {
       if (adjacency[atom.id].length > adjacency[startAtom.id].length) {
         startAtom = atom;
       }
@@ -445,6 +444,8 @@ const MoleculeDrawer = ({ onStructureChange, width = 500, height = 400 }) => {
                 </g>
               );
             }
+            // Bond orders other than 1/2/3 (e.g. aromatic) render nothing.
+            return null;
           })}          {/* Atoms: show all atoms with proper CPK coloring */}
           {atoms.map(atom => {
             const getAtomColor = (element) => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Card,
@@ -12,11 +12,8 @@ import {
 } from "@material-tailwind/react";
 import { 
   CloudIcon,
-  ArrowPathIcon,
-  CodeBracketIcon,
 } from "@heroicons/react/24/outline";
 import { ShoppingCartIcon } from '@heroicons/react/24/solid';
-import ProfessionalMoleculeViewer from '../../components/ProfessionalMoleculeViewer';
 import { API_CONFIG } from "@/utils/constants";
 import { convertPriceToEuro, formatPrice } from '@/utils/algo/algo';
 
@@ -45,15 +42,15 @@ async function copyToClipboard(text) {
 export function Simulation() {
   // Popup state for clipboard copy
   const [showClipboardPopup, setShowClipboardPopup] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [_loading, setLoading] = useState(false);
   // State for toggling simulation inputs
   const [showSimInputs, setShowSimInputs] = useState(false);
   const [showDiffDockInputs, setShowDiffDockInputs] = useState(false);
-  const [response, setResponse] = useState(null);
-  const [error, setError] = useState('');
-  const [lastUpdated, setLastUpdated] = useState(null);
-  const [apiUrl, setApiUrl] = useState('/api/hello');
-  const [useHttpbin, setUseHttpbin] = useState(true);
+  const [_response, setResponse] = useState(null);
+  const [_error, setError] = useState('');
+  const [_lastUpdated, setLastUpdated] = useState(null);
+  const [apiUrl, _setApiUrl] = useState('/api/hello');
+  const [useHttpbin, _setUseHttpbin] = useState(true);
   const [searchCode, setSearchCode] = useState("");
   const [searchResult, setSearchResult] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -68,16 +65,16 @@ export function Simulation() {
   const [diffDockResult, setDiffDockResult] = useState(null);
   const [diffDockLoading, setDiffDockLoading] = useState(false);
   const [diffDockError, setDiffDockError] = useState("");
-  const [message, setMessage] = useState('');
-    const [messageType, setMessageType] = useState(''); // 'success', 'error', or ''
+  const [_message, setMessage] = useState('');
+    const [_messageType, setMessageType] = useState(''); // 'success', 'error', or ''
   const [topMolecules, setTopMolecules] = useState([]);
   const [topLoading, setTopLoading] = useState(false);
   const [topError, setTopError] = useState("");
 
   const [searchType, setSearchType] = useState("similarity"); // Add searchType state
   const [queryType, setQueryType] = useState("draw"); // Default to Draw molecule
-  const [topLimit, setTopLimit] = useState(8); // Add topLimit state
-  const [moleculeLimit, setMoleculeLimit] = useState(30); // Add moleculeLimit state
+  const [_topLimit, _setTopLimit] = useState(8); // Add topLimit state
+  const [moleculeLimit, _setMoleculeLimit] = useState(30); // Add moleculeLimit state
   const [similarityThreshold, setSimilarityThreshold] = useState(0.7); // Similarity threshold (0-1)
   const [molWeightMin, setMolWeightMin] = useState(0); // Molecular weight minimum (0-1000)
   const [molWeightMax, setMolWeightMax] = useState(1000); // Molecular weight maximum (0-1000)
@@ -85,13 +82,13 @@ export function Simulation() {
   const [isSearchActive, setIsSearchActive] = useState(false); // Track if search is active
   const [lastSearchQuery, setLastSearchQuery] = useState(""); // Track last search query
 
-  const [mculeSmiles, setMculeSmiles] = useState(""); // For drawing in mcule component
+  const [_mculeSmiles, _setMculeSmiles] = useState(""); // For drawing in mcule component
 
   const [cart, setCart] = useState([]);
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(0);
-  const [allMolecules, setAllMolecules] = useState([]);
+  const [_allMolecules, setAllMolecules] = useState([]);
   const [hasMore, setHasMore] = useState(true);
   const [initialLoading, setInitialLoading] = useState(true);
   const [pageSize, setPageSize] = useState(10);
@@ -106,7 +103,7 @@ export function Simulation() {
   // Currency conversion state
   const [currency, setCurrency] = useState('USD');
   const [exchangeRate, setExchangeRate] = useState(1);
-  const [userCountry, setUserCountry] = useState('US');
+  const [_userCountry, setUserCountry] = useState('US');
 
   // Refs to prevent infinite loops in scroll handler
   const hasMoreRef = useRef(true);
@@ -150,7 +147,7 @@ export function Simulation() {
   };
 
   // Filter function for test user by IP
-  const filterForTestUserByIp = (data) => {
+  const _filterForTestUserByIp = (data) => {
     if (!isTestUser()) {
       // Not a test user, return all data
       return data;
@@ -244,7 +241,7 @@ export function Simulation() {
     }
   }, []);
 
-  const fetchApiData = async () => {
+  const _fetchApiData = async () => {
     setLoading(true);
     setError('');
     try {
@@ -413,7 +410,7 @@ export function Simulation() {
       const fromId = lastFromId;
 
       // Prepare request body with pagination parameters
-      let requestBody = {
+      const requestBody = {
         fromId: fromId,
         pageSize: pageSize
       };
@@ -513,7 +510,7 @@ export function Simulation() {
         if (formattedMolecules.length > 0) {
           const maxId = Math.max(...formattedMolecules.map(m => {
             const id = m.ASINEX_ID || '0';
-            return parseInt(id) || 0;
+            return parseInt(id, 10) || 0;
           }));
           setLastFromId(maxId);
         }
@@ -549,7 +546,7 @@ export function Simulation() {
         // Clear selected molecules when loading new search results
         setSelectedMolecules(new Set());
       }
-    } catch (err) {
+    } catch (_err) {
       setSearchError("Not found, please try again later");
       setTimeout(() => {
         setSearchError("");
@@ -583,7 +580,7 @@ export function Simulation() {
       const method = methodMap[searchType] || 'similarity';
 
       // Prepare request body with pagination parameters
-      let requestBody = {
+      const requestBody = {
         fromId: lastFromId,
         pageSize: pageSize
       };
@@ -652,7 +649,7 @@ export function Simulation() {
         if (formattedMolecules.length > 0) {
           const maxId = Math.max(...formattedMolecules.map(m => {
             const id = m.ASINEX_ID || '0';
-            return parseInt(id) || 0;
+            return parseInt(id, 10) || 0;
           }));
           setLastFromId(maxId);
         }
@@ -679,7 +676,7 @@ export function Simulation() {
       setSimError("Please search for a molecule first to get the SMILES code for docking");
       return;
     }
-    let _searchSmiles = searchCode.replace(',', ';').trim();
+    const _searchSmiles = searchCode.replace(',', ';').trim();
     setSimLoading(true);
     setSimError("");
     setSimResult(null);
@@ -719,7 +716,7 @@ export function Simulation() {
       localStorage.removeItem('diffdock_ligand_position');
     }
   const handleDiffDock = async () => {
-    let ligand_file_type = "sdf";
+    const ligand_file_type = "sdf";
     // Check if we have both PDB ID and Ligand ID
     if (!diffDockPdbId) {
       setDiffDockError("Please provide a PDB ID for DiffDock");
@@ -727,7 +724,7 @@ export function Simulation() {
     }
     
     // If no Ligand ID provided, try to use SMILES from search input
-    let ligandId = searchCode;
+    const ligandId = searchCode;
 
   
     if (!ligandId) {
@@ -919,7 +916,7 @@ export function Simulation() {
   }, []); // Empty dependency array - only set up once
 
 
-  const handleCellClick = value => {
+  const _handleCellClick = value => {
     setSearchCode(value);
   };
 
@@ -1003,7 +1000,7 @@ export function Simulation() {
       if (mol[field] && typeof mol[field] === 'string' && mol[field].trim() !== '') {
         const smiles = mol[field].trim();
         // Basic SMILES validation - should contain typical SMILES characters
-        if (smiles.length > 1 && /[A-Za-z0-9\[\]()@=#+\-\\/\\\\]/.test(smiles)) {
+        if (smiles.length > 1 && /[A-Za-z0-9[\]()@=#+\-\\/\\\\]/.test(smiles)) {
           console.log(`Found valid SMILES in field: ${field}, value: ${smiles}`);
           return smiles;
         } else {
@@ -1023,7 +1020,7 @@ export function Simulation() {
     }
     
     const numValue = parseFloat(value);
-    if (isNaN(numValue)) {
+    if (Number.isNaN(numValue)) {
       return "N/A";
     }
     
@@ -1036,7 +1033,7 @@ export function Simulation() {
     if (!priceUSD || priceUSD === "N/A") return "N/A";
     
     const numPrice = parseFloat(priceUSD);
-    if (isNaN(numPrice)) return "N/A";
+    if (Number.isNaN(numPrice)) return "N/A";
     
     const convertedPrice = numPrice * exchangeRate;
     return formatPrice(convertedPrice, currency);
@@ -1045,7 +1042,7 @@ export function Simulation() {
   // Handle checkbox selection
   const handleCheckboxChange = (molecule, isChecked) => {
     const moleculeId = molecule.ASINEX_ID || molecule.id || Math.random().toString(36).slice(2);
-    const smiles = molecule.SMILES_STRING || molecule.SMILES || molecule.smiles || '';
+    const _smiles = molecule.SMILES_STRING || molecule.SMILES || molecule.smiles || '';
     
     setSelectedMolecules(prev => {
       const newSelected = new Set(prev);
@@ -1167,7 +1164,7 @@ export function Simulation() {
                 if (!e.target.getAttribute('data-fallback-attempted')) {
                   e.target.setAttribute('data-fallback-attempted', '1');
                   // Try simplified SMILES encoding (remove special characters that might cause issues)
-                  const simplifiedSmiles = hoveredPreview.smiles.replace(/[^\w\[\]()@=#+\-\\/\\\\]/g, '');
+                  const simplifiedSmiles = hoveredPreview.smiles.replace(/[^\w[\]()@=#+\-\\/\\\\]/g, '');
                   if (simplifiedSmiles !== hoveredPreview.smiles) {
                     console.log('Trying simplified SMILES:', simplifiedSmiles);
                     e.target.src = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(simplifiedSmiles)}/PNG?record_type=2d&image_size=200x150`;
@@ -1940,14 +1937,14 @@ export function Simulation() {
                 <a download
                   className="inline-block px-4 py-2 border border-blue-500 text-blue-500 rounded hover:bg-blue-50 transition"
                   href={API_CONFIG.buildApiUrl(`/sanitizedpdb/${simResult.simulationKey}`)}
-                  target="_blank"
+                  target="_blank" rel="noopener"
                 >
                   View Sanitized PDB Result
                 </a>
                 <a download
                   className="inline-block px-4 py-2 border border-brand-500 text-brand-500 rounded hover:bg-brand-50 transition"
                   href={API_CONFIG.buildApiUrl(`/sanitizedminimalsdf/${simResult.simulationKey}`)}
-                  target="_blank"
+                  target="_blank" rel="noopener"
                 >
                   View Sanitized SDF Result
                 </a>

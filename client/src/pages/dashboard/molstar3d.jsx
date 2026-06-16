@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardHeader, CardBody, Typography, Button, Chip } from "@material-tailwind/react";
 import { useNavigate } from "react-router-dom";
 import { API_CONFIG } from "@/utils/constants";
@@ -200,7 +200,7 @@ export function Molstar3D() {
     }
   };
 
-  const addToCart = (molecule, amount, priceInfo) => {
+  const _addToCart = (molecule, amount, priceInfo) => {
     const cartItem = {
       id: `${molecule.smiles}_${Date.now()}`,
       smiles: molecule.smiles,
@@ -269,7 +269,7 @@ export function Molstar3D() {
     // Check for checkout status and simulation data from URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const checkoutStatus = urlParams.get('checkout');
-    const sessionId = urlParams.get('session_id');
+    const _sessionId = urlParams.get('session_id');
     const pdbParam = urlParams.get('pdb');
     const simulationParam = urlParams.get('simulation');
     
@@ -359,7 +359,7 @@ export function Molstar3D() {
     loadCartFromStorage();
     
     let pdbUrl = localStorage.getItem('molstar_pdb_url');
-    let sdfUrl = localStorage.getItem('molstar_sdf_url');
+    const sdfUrl = localStorage.getItem('molstar_sdf_url');
     const simulationKey = localStorage.getItem('molstar_simulation_key');
     const pdbCode = localStorage.getItem('molstar_pdb_code');
     const diffdockProtein = localStorage.getItem('diffdock_protein');
@@ -395,7 +395,7 @@ export function Molstar3D() {
 
     
     // Load cart from storage
-    const savedCart = loadCartFromStorage();
+    const _savedCart = loadCartFromStorage();
 
     // Listen for messages from Molstar iframe
     const handleMessage = (event) => {
@@ -543,7 +543,7 @@ export function Molstar3D() {
             }, 700); // Delay to ensure PDB is loaded and UI is ready
     }
   };
-const HideMenu =()=>{
+const _HideMenu =()=>{
         
 
     };
@@ -586,7 +586,7 @@ const HideMenu =()=>{
         const sdfSpecUrl = API_CONFIG.buildApiUrl(`/sanitizedspecificsdf/${simulationKey}/${encodeURIComponent(smiles)}`);
         const response = await fetch(sdfSpecUrl);
         if (response.ok) {
-          const sdfText = await response.text();
+          const _sdfText = await response.text();
           // Send SDF data to Molstar iframe
           molstarRef.current.contentWindow.postMessage({
             type: 'loadStructureFromUrl',
@@ -609,7 +609,7 @@ const HideMenu =()=>{
           setMessage(`Failed to fetch SDF for ${moleculeName}`);
           setMessageType('error');
         }
-      } catch (error) {
+      } catch (_error) {
         setMessage(`Error loading SDF for ${moleculeName}`);
         setMessageType('error');
       }
@@ -627,7 +627,7 @@ const HideMenu =()=>{
   };
 
   // Function to send SMILES to Molstar for visualization
-  const sendSmilesToMolstar = (smiles) => {
+  const _sendSmilesToMolstar = (smiles) => {
     if (molstarRef.current && smiles && smiles !== 'N/A') {
       console.log('Sending SMILES to Molstar:', smiles);
       molstarRef.current.contentWindow.postMessage({

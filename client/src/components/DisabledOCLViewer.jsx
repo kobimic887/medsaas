@@ -1,4 +1,4 @@
-import React from 'react';
+
 
 // Disabled RDKit viewer due to import issues
 const OCLMoleculeViewer = ({ smiles, width = 400, height = 300 }) => {

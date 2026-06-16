@@ -84,14 +84,14 @@ class RabbitMQService {
           durable: true
         });
         console.log(`✓ RabbitMQ queue '${queue_name}' declared successfully`);
-      } catch (queueError) {
+      } catch (_queueError) {
         console.log(`Queue '${queue_name}' may already exist with different parameters, trying to use existing queue...`);
         
         // If queue already exists with different parameters, try to check if it exists
         try {
           await this.channel.checkQueue(queue_name);
           console.log(`✓ Using existing RabbitMQ queue '${queue_name}'`);
-        } catch (checkError) {
+        } catch (_checkError) {
           // If check fails, create a queue with a unique name
           const uniqueQueueName = `${queue_name}_${Date.now()}`;
           await this.channel.assertQueue(uniqueQueueName, {
@@ -120,10 +120,7 @@ class RabbitMQService {
       const {
         simulationKey,
         smiles,
-        pdbid,
-        userId,
-        priority = 'normal',
-        requestedAt = new Date().toISOString()
+        priority = 'normal'
       } = taskData;
 
       // Validate required fields
@@ -145,7 +142,7 @@ class RabbitMQService {
       // Try to declare queue, but don't fail if it already exists with different params
       try {
         await this.channel.assertQueue(queue_name, { durable: true });
-      } catch (queueError) {
+      } catch (_queueError) {
         console.log(`Queue '${queue_name}' already exists, continuing with message publish...`);
       }
 

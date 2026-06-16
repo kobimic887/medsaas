@@ -19,6 +19,25 @@ timeout/CI fixes) and `.planning/codebase/CONCERNS.md`. Effort is rough; risk is
    lockfiles and runs `npm run ci:node`.
 3. **Add a linter to the gate.** Biome (single fast binary) or ESLint, run in
    `ci`. Catches the stuff tests don't. — root `package.json`, `ci.yml`
+   **Completed 2026-06-16:** added Biome 2.5 (lint-only; Prettier keeps owning
+   formatting) as a root devDep, with `biome.json` and a `lint` script chained
+   into `bun run ci`. Brownfield introduction — to land green on the existing
+   tree without a mass rewrite, rules the tree already violates are relaxed to
+   `warn`/`off` (CSS linting disabled so Tailwind directives don't fail). The
+   gate still blocks **new** errors: proven by a planted `noAssignInExpressions`
+   that fails the run. **Ratchet later:** the relaxed `error`→`warn` rules each
+   want a dedicated fix pass before being restored to `error` —
+   - a11y group (`useKeyWithClickEvents` ×16, `noLabelWithoutControl` ×15,
+     `noSvgWithoutTitle` ×14, `useButtonType` ×6, `useValidAnchor` ×5, …): a
+     real accessibility cleanup of the client.
+   - dead code (`noUnusedVariables` ×59, `noUnusedImports` ×50,
+     `noUnusedFunctionParameters` ×23): safe to remove incrementally, but
+     server-side side-effect imports and positional params need eyes-on.
+   - `noInnerDeclarations` ×3 / `useIterableCallbackReturn` ×1: localized
+     correctness smells (a `var`→`let` scope change in the DiffDock route; a
+     render `.map` with a non-returning branch) — fix with care, not autofix.
+   The Node leg (`ci:node`) intentionally does not re-run lint — runtime-
+   independent, one run is enough.
 4. **Client price-display consistency.** In `simulation.jsx`, `PRICE_2MG` has a
    `|| "N/A"` fallback the other weights lack — make them uniform. Trivial. —
    `client/src/pages/dashboard/simulation.jsx`

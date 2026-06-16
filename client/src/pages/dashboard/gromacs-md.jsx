@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Typography, Button, Input, Textarea } from "@material-tailwind/react";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 

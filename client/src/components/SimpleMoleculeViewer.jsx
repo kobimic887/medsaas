@@ -1,4 +1,4 @@
-import React from 'react';
+
 
 const SimpleMoleculeViewer = ({ modelData, selectedAtomIds = [], onChangeSelection, width = 400, height = 300 }) => {
   if (!modelData || !modelData.nodes || !modelData.links) {
@@ -39,7 +39,7 @@ const SimpleMoleculeViewer = ({ modelData, selectedAtomIds = [], onChangeSelecti
     
     // Find a good starting node (preferably one with multiple connections)
     let startNode = nodes[0];
-    for (let node of nodes) {
+    for (const node of nodes) {
       if (adjacencyList[node.id].length > adjacencyList[startNode.id].length) {
         startNode = node;
       }
@@ -61,7 +61,7 @@ const SimpleMoleculeViewer = ({ modelData, selectedAtomIds = [], onChangeSelecti
       
       // Calculate ideal angles for chemical bonds
       const angleStep = (2 * Math.PI) / Math.max(neighbors.length, 3);
-      let startAngle = 0;
+      const startAngle = 0;
       
       // For tetrahedral geometry (4 bonds), use specific angles
       if (neighbors.length === 4) {
@@ -204,7 +204,7 @@ const SimpleMoleculeViewer = ({ modelData, selectedAtomIds = [], onChangeSelecti
   };
 
   // Standard CPK colors for atoms
-  const getAtomColor = (atomSymbol) => {
+  const _getAtomColor = (atomSymbol) => {
     const element = atomSymbol.replace(/\d+/g, '').trim();
     const colors = {
       'H': '#FFFFFF',
@@ -261,7 +261,7 @@ const SimpleMoleculeViewer = ({ modelData, selectedAtomIds = [], onChangeSelecti
     return colors[element] || '#FF1493'; // Default to hot pink for unknown elements
   };
 
-  const getAtomRadius = (atomSymbol) => {
+  const _getAtomRadius = (atomSymbol) => {
     const element = atomSymbol.replace(/\d+/g, '').trim();
     const radii = {
       'H': 10,

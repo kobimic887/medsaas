@@ -12,13 +12,13 @@ import { InformationCircleIcon } from "@heroicons/react/24/outline";
 import { API_CONFIG } from "@/utils/constants";
 
 export function Notifications() {
-  const [showAlerts, setShowAlerts] = React.useState({
+  const [_showAlerts, _setShowAlerts] = React.useState({
     blue: true,
     green: true,
     orange: true,
     red: true,
   });
-  const [showAlertsWithIcon, setShowAlertsWithIcon] = React.useState({
+  const [_showAlertsWithIcon, _setShowAlertsWithIcon] = React.useState({
     blue: true,
     green: true,
     orange: true,
@@ -28,7 +28,7 @@ export function Notifications() {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState(null);
   
-  const alerts = ["gray", "green", "orange", "red"];
+  const _alerts = ["gray", "green", "orange", "red"];
   
   // Informational messages array
   const infoMessages = [
@@ -156,7 +156,7 @@ export function Notifications() {
   };
 
   // Function to format timestamp
-  const formatTimestamp = (timestamp) => {
+  const _formatTimestamp = (timestamp) => {
     if (!timestamp) return '';
     try {
       return new Date(timestamp).toLocaleString();

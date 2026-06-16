@@ -1,20 +1,9 @@
-import React, { useState, useEffect } from "react";
-import {
-  Card,
-  CardBody,
-  Typography,
-  Button,
-  Switch,
-  Chip,
-  Alert,
-  Spinner,
-} from "@material-tailwind/react";
-import { CheckIcon, XMarkIcon, CheckCircleIcon } from "@heroicons/react/24/outline";
+import { useState, useEffect } from "react";
 
 
 export function PaidPlansDescription() {
   const [isYearly, setIsYearly] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, _setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState(''); // 'success' or 'error'
 
@@ -178,7 +167,7 @@ export function PaidPlansDescription() {
       buttonText: 'Contact Us',
       buttonColor: 'gray'
     }
-  ];  const handlePlanSelection = async (plan) => {
+  ];  const handlePlanSelection = async (_plan) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setMessage('Please register first, and then choose the plan on the dashboard');
 

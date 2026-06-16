@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { API_CONFIG } from "@/utils/constants";
 const GenerateMolecules = () => {
   // State for form inputs
@@ -41,7 +41,7 @@ const GenerateMolecules = () => {
         try {
           const parsed = JSON.parse(data.molecules);
           if (Array.isArray(parsed)) molecules = parsed;
-        } catch (e) {
+        } catch (_e) {
           // keep as string fallback
           molecules = [data.molecules];
         }
@@ -51,7 +51,7 @@ const GenerateMolecules = () => {
         try {
           const parsed = JSON.parse(data.results);
           if (Array.isArray(parsed)) molecules = parsed;
-        } catch (e) {
+        } catch (_e) {
           molecules = [data.results];
         }
       } else if (data.smiles) {
@@ -158,7 +158,7 @@ const GenerateMolecules = () => {
                 min="1"
                 max="100"
                 value={numMolecules}
-                onChange={(e) => setNumMolecules(parseInt(e.target.value))}
+                onChange={(e) => setNumMolecules(parseInt(e.target.value, 10))}
                 className="w-full border rounded px-3 py-2"
                 required
               />
@@ -224,7 +224,7 @@ const GenerateMolecules = () => {
                                 // Fallback logic after retries
                                 if (!e.target.getAttribute('data-fallback-attempted')) {
                                   e.target.setAttribute('data-fallback-attempted', '1');
-                                  const simplifiedSmiles = smilesStr.replace(/[^\w\[\]()@=#+\-\/\\]/g, '');
+                                  const simplifiedSmiles = smilesStr.replace(/[^\w[\]()@=#+\-/\\]/g, '');
                                   if (simplifiedSmiles !== smilesStr) {
                                     e.target.src = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(simplifiedSmiles)}/PNG?record_type=2d&image_size=200x150`;
                                     return;
@@ -280,7 +280,7 @@ const GenerateMolecules = () => {
                           // Fallback logic after retries
                           if (!e.target.getAttribute('data-fallback-attempted')) {
                             e.target.setAttribute('data-fallback-attempted', '1');
-                            const simplifiedSmiles = smilesStr.replace(/[^\w\[\]()@=#+\-\/\\]/g, '');
+                            const simplifiedSmiles = smilesStr.replace(/[^\w[\]()@=#+\-/\\]/g, '');
                             if (simplifiedSmiles !== smilesStr) {
                               e.target.src = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(simplifiedSmiles)}/PNG?record_type=2d&image_size=200x150`;
                               return;
