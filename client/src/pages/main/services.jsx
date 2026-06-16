@@ -111,7 +111,7 @@ export default function Services() {
         <div className="row">
           <div className="col text-center">
             <h2 className="fw-bold mb-3" style={{ fontSize: '3rem' }}>Looking for advice or a screening partner?</h2>
-            <a href="/main/contact-us" className="btn btn-success ms-2" role="button">
+            <a href="/main/contact-us" className="btn btn-success ms-2">
               Contact ChemBench
             </a>
           </div>

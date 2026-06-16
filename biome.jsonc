@@ -57,7 +57,7 @@
         "useButtonType": "error",
         "useValidAnchor": "warn",
         "noStaticElementInteractions": "warn",
-        "useSemanticElements": "warn",
+        "useSemanticElements": "error",
         "useAriaPropsSupportedByRole": "error",
         "useAltText": "error"
       }

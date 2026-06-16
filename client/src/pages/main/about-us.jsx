@@ -135,7 +135,6 @@ export default function AboutUs() {
               <a
                 href="/main/contact-us"
                 className="btn btn-success ms-2"
-                role="button"
               >
                 Contact Us
               </a>
