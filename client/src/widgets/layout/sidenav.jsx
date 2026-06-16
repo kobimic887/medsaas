@@ -97,8 +97,7 @@ export function Sidenav({ brandImg, brandName, routes }) {
                         id={`sidebar-link-${name.replace(/\s+/g, '-').toLowerCase()}`}
                         variant="text"
                         color={isActive ? undefined : (sidenavType === "dark" ? "white" : "blue-gray")}
-                        className={`flex items-center gap-4 px-4 capitalize${isActive ? ' !bg-[#b4b239] !text-white' : ''}`}
-                        style={isActive ? { backgroundColor: '#b4b239', color: '#fff' } : {}}
+                        className={`flex items-center gap-4 px-4 capitalize${isActive ? ' !bg-brand-500 !text-white' : ''}`}
                         fullWidth
                         onClick={() => {
                           // Close mobile menu when item is clicked

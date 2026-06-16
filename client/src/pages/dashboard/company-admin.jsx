@@ -583,7 +583,7 @@ export function CompanyAdmin() {
                 onClick={() => setActiveTab(key)}
                 className={`flex min-h-[40px] items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors ${
                   activeTab === key
-                    ? "bg-[#b4b239] text-white"
+                    ? "bg-brand-500 text-white"
                     : "text-blue-gray-700 hover:bg-blue-gray-50"
                 }`}
               >
@@ -1013,7 +1013,7 @@ export function CompanyAdmin() {
                   </Typography>
                   <Button
                     type="button"
-                    className="flex w-full items-center justify-center gap-2 !bg-[#b4b239] sm:w-auto"
+                    className="flex w-full items-center justify-center gap-2 !bg-brand-500 sm:w-auto"
                     onClick={handleBrandingSave}
                     disabled={
                       !brandingDirty
