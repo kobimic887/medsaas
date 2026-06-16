@@ -234,7 +234,7 @@ const ProteinFolding = () => {
                               className="text-red-400 hover:text-red-600 transition-colors"
                               title="Remove entity"
                             >
-                              <svg
+                              <svg aria-hidden="true"
                                 xmlns="http://www.w3.org/2000/svg"
                                 className="h-5 w-5"
                                 viewBox="0 0 20 20"
@@ -393,7 +393,7 @@ const ProteinFolding = () => {
                     onClick={addEntity}
                     className="flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded text-sm font-medium transition-colors"
                   >
-                    <svg
+                    <svg aria-hidden="true"
                       xmlns="http://www.w3.org/2000/svg"
                       className="h-4 w-4"
                       viewBox="0 0 20 20"
@@ -419,7 +419,7 @@ const ProteinFolding = () => {
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
-                  <svg
+                  <svg aria-hidden="true"
                     className="animate-spin h-5 w-5 text-white"
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
@@ -461,7 +461,7 @@ const ProteinFolding = () => {
 
           {!loading && !result && !error && (
             <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center text-gray-400">
-              <svg
+              <svg aria-hidden="true"
                 xmlns="http://www.w3.org/2000/svg"
                 className="h-12 w-12 mx-auto mb-3 opacity-50"
                 fill="none"
@@ -486,7 +486,7 @@ const ProteinFolding = () => {
 
           {loading && (
             <div className="border border-blue-200 bg-blue-50 rounded-lg p-8 text-center">
-              <svg
+              <svg aria-hidden="true"
                 className="animate-spin h-10 w-10 text-blue-500 mx-auto mb-3"
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
@@ -520,10 +520,11 @@ const ProteinFolding = () => {
                   Prediction complete
                 </span>
                 <button
+                  type="button"
                   onClick={handleDownload}
                   className="flex items-center gap-1 bg-brand-600 text-white px-3 py-1.5 rounded text-sm hover:bg-brand-700 transition-colors"
                 >
-                  <svg
+                  <svg aria-hidden="true"
                     xmlns="http://www.w3.org/2000/svg"
                     className="h-4 w-4"
                     viewBox="0 0 20 20"

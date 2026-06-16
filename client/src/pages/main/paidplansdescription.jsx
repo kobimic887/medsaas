@@ -251,6 +251,7 @@ export function PaidPlansDescription() {
                     ))}
                   </ul>
                   <button
+                    type="button"
                     onClick={() => handlePlanSelection(plan)}
                     className={`btn btn-lg w-100 fw-bold ${plan.popular ? 'btn-primary' : plan.buttonColor === 'gray' ? 'btn-secondary' : `btn-${plan.buttonColor}`}`}
                     disabled={loading}

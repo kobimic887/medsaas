@@ -328,7 +328,8 @@ export function ControlPanel() {
                   variant="small"
                   className="mt-1 text-blue-gray-500"
                 >
-                  <button 
+                  <button
+                    type="button"
                     onClick={() => navigate('/dashboard/simulation')}
                     className="text-blue-600 hover:text-blue-800 underline hover:no-underline transition-colors"
                   >

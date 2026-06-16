@@ -53,13 +53,13 @@
       "a11y": {
         "useKeyWithClickEvents": "warn",
         "noLabelWithoutControl": "warn",
-        "noSvgWithoutTitle": "warn",
-        "useButtonType": "warn",
+        "noSvgWithoutTitle": "error",
+        "useButtonType": "error",
         "useValidAnchor": "warn",
         "noStaticElementInteractions": "warn",
         "useSemanticElements": "warn",
-        "useAriaPropsSupportedByRole": "warn",
-        "useAltText": "warn"
+        "useAriaPropsSupportedByRole": "error",
+        "useAltText": "error"
       }
     }
   }
