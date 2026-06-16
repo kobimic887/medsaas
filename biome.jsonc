@@ -52,7 +52,7 @@
       },
       "a11y": {
         "useKeyWithClickEvents": "warn",
-        "noLabelWithoutControl": "warn",
+        "noLabelWithoutControl": "error",
         "noSvgWithoutTitle": "error",
         "useButtonType": "error",
         "useValidAnchor": "warn",

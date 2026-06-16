@@ -212,7 +212,7 @@ export function PaidPlansDescription() {
             <span className={`fs-5 fw-medium ${!isYearly ? 'text-primary' : 'text-secondary'}`}>Billed Monthly</span>
             <div className="form-check form-switch mx-3">
               <input className="form-check-input" type="checkbox" id="billingToggle" checked={isYearly} onChange={handleToggleChange} />
-              <label className="form-check-label" htmlFor="billingToggle"></label>
+              <label className="form-check-label" htmlFor="billingToggle" aria-label="Toggle annual billing"></label>
             </div>
             <span className={`fs-5 fw-medium ${isYearly ? 'text-primary' : 'text-secondary'}`}>Billed Yearly</span>
             <span className="badge bg-success ms-2">Save up to 20%</span>

@@ -73,8 +73,9 @@ export function SignIn() {
 
           <form onSubmit={handleSubmit} className="cb-auth-form">
             <div className="cb-auth-field">
-              <label className="cb-auth-label">Username</label>
+              <label className="cb-auth-label" htmlFor="signin-username">Username</label>
               <input
+                id="signin-username"
                 type="text"
                 placeholder="Enter your username"
                 value={username}
@@ -86,10 +87,11 @@ export function SignIn() {
 
             <div className="cb-auth-field">
               <div className="flex justify-between items-center">
-                <label className="cb-auth-label">Password</label>
+                <label className="cb-auth-label" htmlFor="signin-password">Password</label>
                 <a href="#" className="cb-auth-link text-xs">Forgot password?</a>
               </div>
               <input
+                id="signin-password"
                 type="password"
                 placeholder="••••••••"
                 value={password}
