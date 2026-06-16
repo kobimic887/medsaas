@@ -52,14 +52,14 @@
       },
       "a11y": {
         "useKeyWithClickEvents": "warn",
-        "noLabelWithoutControl": "warn",
-        "noSvgWithoutTitle": "warn",
-        "useButtonType": "warn",
+        "noLabelWithoutControl": "error",
+        "noSvgWithoutTitle": "error",
+        "useButtonType": "error",
         "useValidAnchor": "warn",
         "noStaticElementInteractions": "warn",
-        "useSemanticElements": "warn",
-        "useAriaPropsSupportedByRole": "warn",
-        "useAltText": "warn"
+        "useSemanticElements": "error",
+        "useAriaPropsSupportedByRole": "error",
+        "useAltText": "error"
       }
     }
   }

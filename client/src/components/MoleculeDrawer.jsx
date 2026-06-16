@@ -366,6 +366,7 @@ const MoleculeDrawer = ({ onStructureChange, width = 500, height = 400 }) => {
           onMouseUp={handleMouseUp}
           className="cursor-crosshair"
         >
+          <title>Molecule structure editor</title>
           {/* Bonds */}
           {bonds.map(bond => {
             const sourceAtom = atoms.find(a => a.id === bond.source);

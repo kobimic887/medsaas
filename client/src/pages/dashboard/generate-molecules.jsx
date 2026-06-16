@@ -128,8 +128,9 @@ const GenerateMolecules = () => {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block font-medium mb-1">SMILES</label>
+              <label className="block font-medium mb-1" htmlFor="gen-smiles">SMILES</label>
               <input
+                id="gen-smiles"
                 type="text"
                 value={smiles}
                 onChange={(e) => setSmiles(e.target.value)}
@@ -139,8 +140,9 @@ const GenerateMolecules = () => {
               />
             </div>
             <div>
-              <label className="block font-medium mb-1">Minimum Similarity</label>
+              <label className="block font-medium mb-1" htmlFor="gen-min-similarity">Minimum Similarity</label>
               <input
+                id="gen-min-similarity"
                 type="number"
                 step="0.01"
                 min="0"
@@ -152,8 +154,9 @@ const GenerateMolecules = () => {
               />
             </div>
             <div>
-              <label className="block font-medium mb-1">Number of Molecules</label>
+              <label className="block font-medium mb-1" htmlFor="gen-num-molecules">Number of Molecules</label>
               <input
+                id="gen-num-molecules"
                 type="number"
                 min="1"
                 max="100"

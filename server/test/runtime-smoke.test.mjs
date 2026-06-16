@@ -15,6 +15,7 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import { MongoClient } from 'mongodb';
 import Stripe from 'stripe';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SERVER_DIR = path.resolve(__dirname, '..');
@@ -23,6 +24,7 @@ const ASSERT_STATIC = process.argv.includes('--assert-static');
 const PORT = 3201;
 const BASE = `http://127.0.0.1:${PORT}`;
 const WEBHOOK_SECRET = 'whsec_smoketest_do_not_use_in_prod';
+const SMOKE_JWT_SECRET = 'smoke_jwt_secret_at_least_32_chars_long_xx';
 const DB_NAME = 'medsaas_smoke_test';
 
 const BUN_PATH = process.env.BUN_PATH || `${process.env.HOME}/.bun/bin/bun`;
@@ -70,7 +72,7 @@ async function main() {
   const childEnvFinal = {
     ...childEnv,
     MONGODB_URI: uri,
-    JWT_SECRET: 'smoke_jwt_secret_at_least_32_chars_long_xx',
+    JWT_SECRET: SMOKE_JWT_SECRET,
     STRIPE_SECRET_KEY: 'sk_test_dummy_key_never_calls_api',
     STRIPE_WEBHOOK_SECRET: WEBHOOK_SECRET,
     PORT: String(PORT),
@@ -237,9 +239,72 @@ async function main() {
       check('second call error is No simulation tokens left', mol2Body.error === 'No simulation tokens left', `(got ${JSON.stringify(mol2Body.error)})`);
     }
 
-    // --- Test 5: static serving (only with --assert-static) ---
+    // --- Test 5: password reset flow (request + confirm) ---
+    console.log('\nTest 5 — password reset (request + confirm):');
+    await users.insertOne({
+      username: 'resetuser',
+      email: 'reset@example.com',
+      password: await bcrypt.hash('OldResetPass1!', 10),
+      verified: true,
+      active: true,
+      role: 'member',
+      simulationTokens: 0,
+      createdAt: new Date(),
+    });
+
+    // request: always 200 with a generic message, for known and unknown accounts
+    // (no user enumeration). Email delivery isn't configured in the smoke env;
+    // the endpoint swallows the send error and still returns 200.
+    const reqKnown = await fetch(`${BASE}/api/password-reset/request`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'reset@example.com' }),
+    });
+    check('reset request (known account) returns 200', reqKnown.status === 200, `(got ${reqKnown.status})`);
+    const reqUnknown = await fetch(`${BASE}/api/password-reset/request`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'nobody@example.com' }),
+    });
+    check('reset request (unknown account) still 200 — no enumeration', reqUnknown.status === 200, `(got ${reqUnknown.status})`);
+
+    // confirm: mint a token exactly as the server does, then set a new password
+    const validResetToken = jwt.sign(
+      { reset: true, email: 'reset@example.com', username: 'resetuser' },
+      SMOKE_JWT_SECRET,
+      { expiresIn: '30m' }
+    );
+    const confirmRes = await fetch(`${BASE}/api/password-reset/confirm`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: validResetToken, password: 'NewResetPass1!' }),
+    });
+    const confirmBody = await confirmRes.json().catch(() => ({}));
+    check('reset confirm returns 200', confirmRes.status === 200, `(got ${confirmRes.status}: ${JSON.stringify(confirmBody)})`);
+
+    const newLogin = await fetch(`${BASE}/api/signin`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'resetuser', password: 'NewResetPass1!' }),
+    });
+    check('signin with the new password returns 200', newLogin.status === 200, `(got ${newLogin.status})`);
+    const oldLogin = await fetch(`${BASE}/api/signin`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'resetuser', password: 'OldResetPass1!' }),
+    });
+    check('signin with the old password no longer works', oldLogin.status !== 200, `(got ${oldLogin.status})`);
+
+    // rejects a bogus token and a policy-violating password
+    const badToken = await fetch(`${BASE}/api/password-reset/confirm`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: 'not-a-jwt', password: 'NewResetPass1!' }),
+    });
+    check('reset confirm with invalid token returns 400', badToken.status === 400, `(got ${badToken.status})`);
+    const weakPass = await fetch(`${BASE}/api/password-reset/confirm`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: validResetToken, password: 'weak' }),
+    });
+    check('reset confirm with weak password returns 400', weakPass.status === 400, `(got ${weakPass.status})`);
+
+    // --- Test 6: static serving (only with --assert-static) ---
     if (ASSERT_STATIC) {
-      console.log('\nTest 5 — GET / serves built frontend HTML:');
+      console.log('\nTest 6 — GET / serves built frontend HTML:');
       const rootRes = await fetch(`${BASE}/`);
       const rootText = await rootRes.text().catch(() => '');
       check('GET / returns 200', rootRes.status === 200, `(got ${rootRes.status})`);

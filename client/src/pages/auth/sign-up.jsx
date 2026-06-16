@@ -78,6 +78,7 @@ export function SignUp() {
       <div className="w-2/5 h-full hidden lg:block">
         <img
           src="/img/pattern.png"
+          alt=""
           className="h-full w-full object-cover rounded-3xl"
         />
       </div>

@@ -71,6 +71,7 @@ export function MainNavbar() {
             <Menu>
               <MenuHandler>
                 <button
+                  type="button"
                   className={`hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                     isLandingPage
                       ? "text-slate-300 hover:text-white hover:bg-white/5"
@@ -100,6 +101,7 @@ export function MainNavbar() {
           ) : (
             <Link to="/auth/sign-in" className="no-underline">
               <button
+                type="button"
                 className={`hidden xl:flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all ${
                   isLandingPage
                     ? "bg-gradient-to-r from-purple-500 to-blue-500 text-white shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40"
@@ -120,6 +122,7 @@ export function MainNavbar() {
 
           {/* Mobile Menu Toggle */}
           <button
+            type="button"
             className={`xl:hidden p-2 rounded-lg transition-colors ${
               isLandingPage ? "text-slate-300 hover:bg-white/5" : "text-gray-600 hover:bg-gray-100"
             }`}

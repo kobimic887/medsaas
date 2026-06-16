@@ -369,6 +369,7 @@ const SimpleMoleculeViewer = ({ modelData, selectedAtomIds = [], onChangeSelecti
   return (
     <div className="molecule-2d-viewer bg-white border-0 rounded-lg overflow-hidden">
       <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="w-full h-full">
+        <title>2D molecule structure</title>
         {/* Pure white background */}
         <rect width={width} height={height} fill="#FFFFFF" />
         {/* Render bonds */}

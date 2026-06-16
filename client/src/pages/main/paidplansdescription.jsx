@@ -212,7 +212,7 @@ export function PaidPlansDescription() {
             <span className={`fs-5 fw-medium ${!isYearly ? 'text-primary' : 'text-secondary'}`}>Billed Monthly</span>
             <div className="form-check form-switch mx-3">
               <input className="form-check-input" type="checkbox" id="billingToggle" checked={isYearly} onChange={handleToggleChange} />
-              <label className="form-check-label" htmlFor="billingToggle"></label>
+              <label className="form-check-label" htmlFor="billingToggle" aria-label="Toggle annual billing"></label>
             </div>
             <span className={`fs-5 fw-medium ${isYearly ? 'text-primary' : 'text-secondary'}`}>Billed Yearly</span>
             <span className="badge bg-success ms-2">Save up to 20%</span>
@@ -251,6 +251,7 @@ export function PaidPlansDescription() {
                     ))}
                   </ul>
                   <button
+                    type="button"
                     onClick={() => handlePlanSelection(plan)}
                     className={`btn btn-lg w-100 fw-bold ${plan.popular ? 'btn-primary' : plan.buttonColor === 'gray' ? 'btn-secondary' : `btn-${plan.buttonColor}`}`}
                     disabled={loading}
@@ -276,7 +277,7 @@ export function PaidPlansDescription() {
             All plans include a 14-day free trial. No credit card required to start.
           </p>
           <p className="text-muted small">
-            Questions about our plans? <a href="#" className="text-primary text-decoration-underline">Contact our sales team</a>
+            Questions about our plans? <a href="/main/contact-us" className="text-primary text-decoration-underline">Contact our sales team</a>
           </p>
         </div>
       </div>

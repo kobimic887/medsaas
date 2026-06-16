@@ -78,6 +78,7 @@ export function BrandingPreview({ companyName, logoSrc, palette }) {
             {paletteFields.map(([key, label]) => (
               <div key={key} className="rounded-lg bg-white p-3">
                 <div
+                  role="img"
                   className="h-10 w-full rounded-lg border border-blue-gray-200"
                   style={{ backgroundColor: palette[key] }}
                   aria-label={`${label} color ${palette[key]}`}

@@ -170,8 +170,9 @@ const ProteinFolding = () => {
             {/* Request ID + Output Format */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Request ID</label>
+                <label className="block text-sm font-medium mb-1" htmlFor="pf-request-id">Request ID</label>
                 <input
+                  id="pf-request-id"
                   type="text"
                   value={requestId}
                   onChange={(e) => setRequestId(e.target.value)}
@@ -181,8 +182,9 @@ const ProteinFolding = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Output Format</label>
+                <label className="block text-sm font-medium mb-1" htmlFor="pf-output-format">Output Format</label>
                 <select
+                  id="pf-output-format"
                   value={outputFormat}
                   onChange={(e) => setOutputFormat(e.target.value)}
                   className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
@@ -195,9 +197,9 @@ const ProteinFolding = () => {
 
             {/* Entities */}
             <div>
-              <label className="block text-sm font-medium mb-2">
+              <p className="block text-sm font-medium mb-2">
                 Molecular Entities ({entities.length})
-              </label>
+              </p>
 
               <div className="space-y-4">
                 {entities.map((entity, idx) => {
@@ -216,8 +218,9 @@ const ProteinFolding = () => {
                         </span>
                         <div className="flex items-center gap-3">
                           <div className="flex items-center gap-1">
-                            <label className="text-xs font-medium text-gray-600">Chain ID:</label>
+                            <label className="text-xs font-medium text-gray-600" htmlFor={`pf-chain-${idx}`}>Chain ID:</label>
                             <input
+                              id={`pf-chain-${idx}`}
                               type="text"
                               value={entity.id}
                               onChange={(e) =>
@@ -234,7 +237,7 @@ const ProteinFolding = () => {
                               className="text-red-400 hover:text-red-600 transition-colors"
                               title="Remove entity"
                             >
-                              <svg
+                              <svg aria-hidden="true"
                                 xmlns="http://www.w3.org/2000/svg"
                                 className="h-5 w-5"
                                 viewBox="0 0 20 20"
@@ -255,10 +258,11 @@ const ProteinFolding = () => {
                       {entity.type === "protein" && (
                         <>
                           <div className="mb-3">
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                            <label className="block text-xs font-medium text-gray-600 mb-1" htmlFor={`pf-aa-seq-${idx}`}>
                               Amino Acid Sequence
                             </label>
                             <textarea
+                              id={`pf-aa-seq-${idx}`}
                               value={entity.sequence}
                               onChange={(e) => updateEntity(idx, "sequence", e.target.value.replace(/\s/g, ""))}
                               className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-400"
@@ -280,10 +284,11 @@ const ProteinFolding = () => {
                           </div>
                           {entity.msaEnabled && (
                             <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">
+                              <label className="block text-xs font-medium text-gray-600 mb-1" htmlFor={`pf-msa-${idx}`}>
                                 MSA Alignment (CSV format)
                               </label>
                               <textarea
+                                id={`pf-msa-${idx}`}
                                 value={entity.msaCsv}
                                 onChange={(e) => updateEntity(idx, "msaCsv", e.target.value)}
                                 className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-400"
@@ -298,10 +303,11 @@ const ProteinFolding = () => {
                       {/* DNA / RNA fields */}
                       {(entity.type === "dna" || entity.type === "rna") && (
                         <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                          <label className="block text-xs font-medium text-gray-600 mb-1" htmlFor={`pf-na-seq-${idx}`}>
                             {entity.type === "dna" ? "DNA" : "RNA"} Sequence
                           </label>
                           <textarea
+                            id={`pf-na-seq-${idx}`}
                             value={entity.sequence}
                             onChange={(e) => updateEntity(idx, "sequence", e.target.value.replace(/\s/g, ""))}
                             className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-400"
@@ -341,10 +347,11 @@ const ProteinFolding = () => {
                           </div>
                           {entity.ligandMode === "ccd" ? (
                             <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">
+                              <label className="block text-xs font-medium text-gray-600 mb-1" htmlFor={`pf-ccd-${idx}`}>
                                 CCD Code
                               </label>
                               <input
+                                id={`pf-ccd-${idx}`}
                                 type="text"
                                 value={entity.ccdCode}
                                 onChange={(e) => updateEntity(idx, "ccdCode", e.target.value.toUpperCase())}
@@ -355,10 +362,11 @@ const ProteinFolding = () => {
                             </div>
                           ) : (
                             <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1">
+                              <label className="block text-xs font-medium text-gray-600 mb-1" htmlFor={`pf-smiles-${idx}`}>
                                 SMILES String
                               </label>
                               <input
+                                id={`pf-smiles-${idx}`}
                                 type="text"
                                 value={entity.smiles}
                                 onChange={(e) => updateEntity(idx, "smiles", e.target.value)}
@@ -393,7 +401,7 @@ const ProteinFolding = () => {
                     onClick={addEntity}
                     className="flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded text-sm font-medium transition-colors"
                   >
-                    <svg
+                    <svg aria-hidden="true"
                       xmlns="http://www.w3.org/2000/svg"
                       className="h-4 w-4"
                       viewBox="0 0 20 20"
@@ -419,7 +427,7 @@ const ProteinFolding = () => {
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
-                  <svg
+                  <svg aria-hidden="true"
                     className="animate-spin h-5 w-5 text-white"
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
@@ -461,7 +469,7 @@ const ProteinFolding = () => {
 
           {!loading && !result && !error && (
             <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center text-gray-400">
-              <svg
+              <svg aria-hidden="true"
                 xmlns="http://www.w3.org/2000/svg"
                 className="h-12 w-12 mx-auto mb-3 opacity-50"
                 fill="none"
@@ -486,7 +494,7 @@ const ProteinFolding = () => {
 
           {loading && (
             <div className="border border-blue-200 bg-blue-50 rounded-lg p-8 text-center">
-              <svg
+              <svg aria-hidden="true"
                 className="animate-spin h-10 w-10 text-blue-500 mx-auto mb-3"
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
@@ -520,10 +528,11 @@ const ProteinFolding = () => {
                   Prediction complete
                 </span>
                 <button
+                  type="button"
                   onClick={handleDownload}
                   className="flex items-center gap-1 bg-brand-600 text-white px-3 py-1.5 rounded text-sm hover:bg-brand-700 transition-colors"
                 >
-                  <svg
+                  <svg aria-hidden="true"
                     xmlns="http://www.w3.org/2000/svg"
                     className="h-4 w-4"
                     viewBox="0 0 20 20"
