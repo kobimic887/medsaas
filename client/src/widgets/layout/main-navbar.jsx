@@ -74,7 +74,7 @@ export function MainNavbar() {
                   type="button"
                   className={`hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                     isLandingPage
-                      ? "text-slate-300 hover:text-white hover:bg-white/5"
+                      ? "text-gray-300 hover:text-white hover:bg-white/5"
                       : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
                   }`}
                 >
@@ -115,7 +115,7 @@ export function MainNavbar() {
                 color="blue-gray"
                 className="grid xl:hidden"
               >
-                <UserCircleIcon className={`h-5 w-5 ${isLandingPage ? "text-slate-300" : "text-blue-gray-500"}`} />
+                <UserCircleIcon className={`h-5 w-5 ${isLandingPage ? "text-gray-300" : "text-blue-gray-500"}`} />
               </IconButton>
             </Link>
           )}
@@ -124,7 +124,7 @@ export function MainNavbar() {
           <button
             type="button"
             className={`xl:hidden p-2 rounded-lg transition-colors ${
-              isLandingPage ? "text-slate-300 hover:bg-white/5" : "text-gray-600 hover:bg-gray-100"
+              isLandingPage ? "text-gray-300 hover:bg-white/5" : "text-gray-600 hover:bg-gray-100"
             }`}
             onClick={() => setMobileOpen(!mobileOpen)}
           >
@@ -143,7 +143,7 @@ export function MainNavbar() {
               <div
                 className={`block px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                   isLandingPage
-                    ? "text-slate-300 hover:text-white hover:bg-white/5"
+                    ? "text-gray-300 hover:text-white hover:bg-white/5"
                     : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
                 }`}
               >
