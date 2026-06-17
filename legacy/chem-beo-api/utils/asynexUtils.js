@@ -1,1 +1,0 @@
-//http://dev.asinex.com:58181/swagger/index.html

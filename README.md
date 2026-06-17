@@ -9,8 +9,6 @@ Combined monorepo for molecular research SaaS: web app, chemistry API, ADMET wor
 | `services/admet/` | RabbitMQ ADMET-AI worker |
 | `services/gromacs-api/` | GROMACS REST API |
 | `services/glioblastoma-predictor/` | Glioblastoma sensitivity API |
-| `packages/dashboard-template/` | Upstream dashboard UI reference |
-| `legacy/chem-beo-api/` | Archived standalone Chem API |
 
 Root scripts are the supported way to install, run, build, and check the app.
 Bun is the default package runner for install, dev, build, and start. npm/Node
@@ -96,7 +94,8 @@ the existing `vite build` script in `client/package.json`.
 - `bun run build` runs the retained Vite production build through Bun's package runner.
 - `bun run start` builds the client, then runs `FRONTEND_DIST=../client/dist bun index.js`.
 
-Docker, CI, `check`, and test script migration remain Phase 7 scope.
+Docker, CI, `check`, and test scripts now use the Bun-default paths, with
+Node fallback scripts retained where runtime parity matters.
 
 **Bun commands (default):**
 
