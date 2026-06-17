@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 import subprocess
 import os
-import re
 import uuid
 import json
 import shutil
@@ -32,10 +31,8 @@ app.add_middleware(
 
 # Configuration
 WORK_DIR = os.getenv("WORK_DIR", "/data")
-WORK_DIR_PATH = Path(WORK_DIR).resolve()
-JOBS_FILE = str(WORK_DIR_PATH / ".jobs.json")
-TEMPLATES_DIR_PATH = WORK_DIR_PATH / ".templates"
-TEMPLATES_DIR = str(TEMPLATES_DIR_PATH)
+JOBS_FILE = os.path.join(WORK_DIR, ".jobs.json")
+TEMPLATES_DIR = os.path.join(WORK_DIR, ".templates")
 MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE", 100 * 1024 * 1024))  # 100MB
 JOB_TIMEOUT = int(os.getenv("JOB_TIMEOUT", 3600))  # 1 hour
 
@@ -78,81 +75,10 @@ class TemplateCreate(BaseModel):
     content: str = Field(..., description="Template content")
 
 # Helper functions
-SAFE_BASENAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$")
-ALLOWED_GROMACS_COMMANDS = frozenset({
-    "--version",
-    "help",
-    "pdb2gmx",
-    "editconf",
-    "solvate",
-    "genion",
-    "grompp",
-    "mdrun",
-    "energy",
-    "trjconv",
-    "make_ndx",
-    "select",
-    "rms",
-    "rmsf",
-    "gyrate",
-    "distance",
-    "sasa",
-})
-
-def ensure_safe_basename(value: str, field_name: str, required_suffix: Optional[str] = None) -> str:
-    if not isinstance(value, str):
-        raise HTTPException(status_code=400, detail=f"Invalid {field_name}")
-    candidate = value.strip()
-    if (
-        not candidate
-        or candidate in {".", ".."}
-        or "/" in candidate
-        or "\\" in candidate
-        or not SAFE_BASENAME.fullmatch(candidate)
-    ):
-        raise HTTPException(status_code=400, detail=f"Invalid {field_name}")
-    if required_suffix and not candidate.endswith(required_suffix):
-        raise HTTPException(status_code=400, detail=f"{field_name} must end with {required_suffix}")
-    return candidate
-
-def resolve_work_path(relative_path: Optional[str] = ".") -> Path:
-    raw_path = relative_path or "."
-    if "\x00" in raw_path:
-        raise HTTPException(status_code=400, detail="Invalid path")
-    resolved = (WORK_DIR_PATH / raw_path).resolve()
-    if resolved != WORK_DIR_PATH and WORK_DIR_PATH not in resolved.parents:
-        raise HTTPException(status_code=400, detail="Path must stay inside the work directory")
-    return resolved
-
-def normalized_working_dir(relative_path: Optional[str] = ".") -> str:
-    resolved = resolve_work_path(relative_path)
-    relative = resolved.relative_to(WORK_DIR_PATH)
-    return "." if str(relative) == "." else str(relative)
-
-def resolve_template_path(name: str) -> Path:
-    return TEMPLATES_DIR_PATH / ensure_safe_basename(name, "template name", ".mdp")
-
-def validate_gromacs_command(command: str) -> str:
-    if command not in ALLOWED_GROMACS_COMMANDS:
-        raise HTTPException(status_code=400, detail="GROMACS command is not allowed")
-    return command
-
-def validate_gromacs_args(args: List[str]) -> List[str]:
-    safe_args = []
-    for arg in args or []:
-        value = str(arg)
-        if "\x00" in value or len(value) > 4096:
-            raise HTTPException(status_code=400, detail="Invalid GROMACS argument")
-        safe_args.append(value)
-    return safe_args
-
-def build_gromacs_command(command: str, args: List[str]) -> List[str]:
-    return ["gmx", validate_gromacs_command(command)] + validate_gromacs_args(args)
-
 def run_gromacs_sync(command: str, args: List[str], working_dir: str = ".", stdin_input: Optional[str] = None) -> Dict[str, Any]:
     """Execute a GROMACS command synchronously"""
-    full_cmd = build_gromacs_command(command, args)
-    work_path = resolve_work_path(working_dir)
+    full_cmd = ["gmx", command] + args
+    work_path = os.path.join(WORK_DIR, working_dir)
     
     try:
         result = subprocess.run(
@@ -191,9 +117,9 @@ async def run_job_background(job_id: str, command: str, args: List[str], working
     jobs_db[job_id]["started_at"] = datetime.utcnow().isoformat()
     save_jobs(jobs_db)
     
-    full_cmd = build_gromacs_command(command, args)
-    work_path = resolve_work_path(working_dir)
-    log_file = WORK_DIR_PATH / f".job_{job_id}.log"
+    full_cmd = ["gmx", command] + args
+    work_path = os.path.join(WORK_DIR, working_dir)
+    log_file = os.path.join(WORK_DIR, f".job_{job_id}.log")
     
     try:
         with open(log_file, 'w') as log:
@@ -310,11 +236,10 @@ def system_metrics():
 async def upload_file(file: UploadFile, subdir: str = ""):
     """Upload a file to the work directory"""
     try:
-        target_dir = resolve_work_path(subdir)
+        target_dir = os.path.join(WORK_DIR, subdir)
         os.makedirs(target_dir, exist_ok=True)
         
-        safe_filename = ensure_safe_basename(file.filename, "file name")
-        file_path = target_dir / safe_filename
+        file_path = os.path.join(target_dir, file.filename)
         
         content = await file.read()
         
@@ -326,12 +251,10 @@ async def upload_file(file: UploadFile, subdir: str = ""):
         
         return {
             "success": True,
-            "filename": safe_filename,
-            "path": str(file_path.relative_to(WORK_DIR_PATH)),
+            "filename": file.filename,
+            "path": os.path.join(subdir, file.filename) if subdir else file.filename,
             "size": len(content)
         }
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -339,7 +262,7 @@ async def upload_file(file: UploadFile, subdir: str = ""):
 def list_files(subdir: str = ""):
     """List files in directory"""
     try:
-        target_dir = resolve_work_path(subdir)
+        target_dir = os.path.join(WORK_DIR, subdir)
         
         if not os.path.exists(target_dir):
             return {"files": [], "directory": subdir}
@@ -357,15 +280,13 @@ def list_files(subdir: str = ""):
             })
         
         return {"files": files, "directory": subdir}
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/files/download/{file_path:path}")
 def download_file(file_path: str):
     """Download a file"""
-    full_path = resolve_work_path(file_path)
+    full_path = os.path.join(WORK_DIR, file_path)
     
     if not os.path.exists(full_path):
         raise HTTPException(status_code=404, detail="File not found")
@@ -378,7 +299,7 @@ def download_file(file_path: str):
 @app.get("/files/view/{file_path:path}")
 def view_file(file_path: str, lines: int = Query(100, description="Number of lines to return")):
     """View file content (for text files)"""
-    full_path = resolve_work_path(file_path)
+    full_path = os.path.join(WORK_DIR, file_path)
     
     if not os.path.exists(full_path):
         raise HTTPException(status_code=404, detail="File not found")
@@ -404,10 +325,7 @@ def view_file(file_path: str, lines: int = Query(100, description="Number of lin
 @app.delete("/files/delete/{file_path:path}")
 def delete_file(file_path: str):
     """Delete a file or directory"""
-    full_path = resolve_work_path(file_path)
-
-    if full_path == WORK_DIR_PATH:
-        raise HTTPException(status_code=400, detail="Cannot delete the work directory")
+    full_path = os.path.join(WORK_DIR, file_path)
 
     if not os.path.exists(full_path):
         raise HTTPException(status_code=404, detail="File not found")
@@ -429,16 +347,13 @@ async def execute_gromacs(cmd: GromacsCommand, background_tasks: BackgroundTasks
     """Execute GROMACS command asynchronously"""
     job_id = str(uuid.uuid4())
     job_name = cmd.job_name or f"{cmd.command}_{job_id[:8]}"
-    command = validate_gromacs_command(cmd.command)
-    args = validate_gromacs_args(cmd.args)
-    working_dir = normalized_working_dir(cmd.working_dir)
     
     jobs_db[job_id] = {
         "job_id": job_id,
         "job_name": job_name,
-        "command": command,
-        "args": args,
-        "working_dir": working_dir,
+        "command": cmd.command,
+        "args": cmd.args,
+        "working_dir": cmd.working_dir,
         "status": "queued",
         "created_at": datetime.utcnow().isoformat()
     }
@@ -447,9 +362,9 @@ async def execute_gromacs(cmd: GromacsCommand, background_tasks: BackgroundTasks
     background_tasks.add_task(
         run_job_background,
         job_id,
-        command,
-        args,
-        working_dir,
+        cmd.command,
+        cmd.args,
+        cmd.working_dir,
         cmd.stdin_input
     )
     
@@ -531,7 +446,7 @@ def delete_job(job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
     
     # Clean up log file
-    log_file = WORK_DIR_PATH / f".job_{job_id}.log"
+    log_file = os.path.join(WORK_DIR, f".job_{job_id}.log")
     if os.path.exists(log_file):
         os.remove(log_file)
     
@@ -571,7 +486,7 @@ def get_job_logs(job_id: str):
     if job_id not in jobs_db:
         raise HTTPException(status_code=404, detail="Job not found")
     
-    log_file = WORK_DIR_PATH / f".job_{job_id}.log"
+    log_file = os.path.join(WORK_DIR, f".job_{job_id}.log")
     
     if not os.path.exists(log_file):
         return {"job_id": job_id, "logs": "No logs available"}
@@ -841,7 +756,7 @@ def list_templates():
 @app.get("/templates/{name}")
 def get_template(name: str):
     """Get template content"""
-    template_path = resolve_template_path(name)
+    template_path = os.path.join(TEMPLATES_DIR, name)
     
     if not os.path.exists(template_path):
         raise HTTPException(status_code=404, detail="Template not found")
@@ -854,7 +769,7 @@ def get_template(name: str):
 @app.post("/templates/create")
 async def create_template(template: TemplateCreate):
     """Create a custom template"""
-    template_path = resolve_template_path(template.name)
+    template_path = os.path.join(TEMPLATES_DIR, template.name)
     
     with open(template_path, 'w') as f:
         f.write(template.content)
@@ -866,8 +781,7 @@ async def create_template(template: TemplateCreate):
 @app.post("/workspaces/create")
 async def create_workspace(workspace: WorkspaceCreate):
     """Create a new project workspace"""
-    workspace_name = ensure_safe_basename(workspace.name, "workspace name")
-    workspace_path = resolve_work_path(workspace_name)
+    workspace_path = os.path.join(WORK_DIR, workspace.name)
     
     if os.path.exists(workspace_path):
         raise HTTPException(status_code=400, detail="Workspace already exists")
@@ -876,7 +790,7 @@ async def create_workspace(workspace: WorkspaceCreate):
     
     # Create metadata file
     metadata = {
-        "name": workspace_name,
+        "name": workspace.name,
         "description": workspace.description,
         "created_at": datetime.utcnow().isoformat()
     }
@@ -884,7 +798,7 @@ async def create_workspace(workspace: WorkspaceCreate):
     with open(os.path.join(workspace_path, ".metadata.json"), 'w') as f:
         json.dump(metadata, f, indent=2)
     
-    return {"success": True, "workspace": workspace_name, "path": str(workspace_path)}
+    return {"success": True, "workspace": workspace.name, "path": workspace_path}
 
 @app.get("/workspaces/list")
 def list_workspaces():
@@ -906,7 +820,7 @@ def list_workspaces():
 @app.delete("/workspaces/{name}")
 def delete_workspace(name: str):
     """Delete workspace and contents"""
-    workspace_path = resolve_work_path(ensure_safe_basename(name, "workspace name"))
+    workspace_path = os.path.join(WORK_DIR, name)
     
     if not os.path.exists(workspace_path):
         raise HTTPException(status_code=404, detail="Workspace not found")
