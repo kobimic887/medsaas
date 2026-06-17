@@ -7,6 +7,9 @@ on:
   #   branches: [main]
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
 concurrency:
   group: deploy-nonprod
   cancel-in-progress: true
@@ -22,6 +25,8 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: non-prod
     steps:
       - uses: actions/checkout@v6
 
@@ -41,12 +46,18 @@ jobs:
           SSH_USER: ${{ secrets.DEPLOY_USER }}
         run: |
           set -euo pipefail
+          if [ -z "${SSH_KEY:-}" ] || [ -z "${HOST:-}" ] || [ -z "${SSH_USER:-}" ]; then
+            echo "::error::DEPLOY_SSH_KEY, DEPLOY_HOST, and DEPLOY_USER secrets must be set"
+            exit 1
+          fi
+
           mkdir -p "$HOME/.ssh"
           printf '%s\n' "$SSH_KEY" > "$HOME/.ssh/deploy_key"
           chmod 600 "$HOME/.ssh/deploy_key"
           SSHOPTS="-i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 -o ServerAliveInterval=15"
 
           git archive --format=tar.gz -o src.tar.gz HEAD
+          ssh $SSHOPTS "$SSH_USER@$HOST" 'mkdir -p ~/medsaas'
           scp $SSHOPTS src.tar.gz "$SSH_USER@$HOST:~/medsaas/src.tar.gz"
           ssh $SSHOPTS "$SSH_USER@$HOST" 'bash -se' <<'REMOTE'
           set -euo pipefail
@@ -55,6 +66,25 @@ jobs:
           tar -xzf src.tar.gz -C src
           cp src/docker-compose.box.yml docker-compose.box.yml
           rm -f src.tar.gz
+
+          if [ ! -f .env ]; then
+            echo "ERROR: ~/medsaas/.env is missing on the deploy host"
+            exit 1
+          fi
+
+          docker compose -f docker-compose.box.yml config --quiet
           docker compose -f docker-compose.box.yml up -d --build
-          docker image prune -f
+
+          for attempt in $(seq 1 20); do
+            if docker compose -f docker-compose.box.yml exec -T app bun --eval "const r = await fetch('http://localhost:3000/health'); process.exit(r.ok ? 0 : 1);"; then
+              docker image prune -f
+              exit 0
+            fi
+            echo "Waiting for app health check ($attempt/20)..."
+            sleep 3
+          done
+
+          docker compose -f docker-compose.box.yml ps
+          docker compose -f docker-compose.box.yml logs --no-color --tail=120 app
+          exit 1
           REMOTE

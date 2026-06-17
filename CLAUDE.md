@@ -11,7 +11,8 @@ This project uses GSD for planning. See `.planning/` for context.
 - **State:** `.planning/STATE.md`
 - **Codebase map:** `.planning/codebase/` (STACK, ARCHITECTURE, STRUCTURE, CONVENTIONS, INTEGRATIONS, TESTING, CONCERNS)
 - **Shipped milestones:** v1 ChemBench Cleanup · v2 Bun Migration — incl. **Phase 7 (Docker, CI/CD, Scripts), shipped 2026-06-05** · v3 Company Brand Colour (per-company logo-driven palette across dashboard + emails)
-- **No active phase** — last milestone is complete. CI now gates deploys: `.github/workflows/ci.yml` runs `bun run ci` (check + tests) on push/PR, and `deploy.yml` won't ship unless it passes (`needs: test`).
+- **No active phase** — last milestone is complete. CI now gates deploys: `.github/workflows/ci.yml` runs Bun and Node fallback checks on push/PR, and `deploy.yml` won't ship unless the reusable CI gate passes (`needs: test`).
+- **CI/CD source of truth:** repo-owned workflows are only `.github/workflows/ci.yml` and `.github/workflows/deploy.yml`. Dynamic GitHub Actions entries such as CodeQL, Dependency Graph, Copilot, Claude, and Codex come from GitHub settings/integrations. Current deploy builds on the box from `docker-compose.box.yml`; GHCR/GitHub Packages is legacy and unused. See `docs/CI-CD.md`.
 
 Bun is the default runtime and package manager for this repo. npm/Node fallbacks
 are retained via `:node`-suffixed scripts. See the Commands section below.
