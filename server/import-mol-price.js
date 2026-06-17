@@ -1,4 +1,4 @@
-import XLSX from 'xlsx';
+import XLSX from '@e965/xlsx';
 import { MongoClient } from 'mongodb';
 import fs from 'fs';
 import path from 'path';

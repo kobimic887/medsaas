@@ -1,5 +1,4 @@
 import sharp from 'sharp';
-import { Vibrant } from 'node-vibrant/node';
 
 export const MAX_LOGO_UPLOAD_BYTES = 5 * 1024 * 1024;
 
@@ -198,21 +197,16 @@ export async function extractBrandPalette(buffer) {
     throw new Error('A normalized logo buffer is required for palette extraction');
   }
 
-  const palette = await Vibrant.from(pngBuffer).getPalette();
-  const swatches = Object.values(palette)
-    .filter((swatch) => swatch && normalizedHex(swatch.hex) && Number.isFinite(swatch.population))
-    .map((swatch) => ({
-      hex: normalizedHex(swatch.hex),
-      population: swatch.population
-    }))
-    .sort((left, right) => right.population - left.population);
-
-  if (swatches.length === 0) {
+  const stats = await sharp(pngBuffer, {
+    failOn: 'error',
+    limitInputPixels: MAX_LOGO_PIXELS
+  }).stats();
+  if (!stats?.dominant || !Number.isFinite(stats.dominant.r)) {
     throw new Error('No usable colors were found in the logo');
   }
 
-  const primary = swatches[0].hex;
-  const accent = swatches.find((swatch) => swatch.hex !== primary)?.hex || deriveAccent(primary);
+  const primary = rgbToHex([stats.dominant.r, stats.dominant.g, stats.dominant.b]);
+  const accent = deriveAccent(primary);
   return {
     primary,
     accent,

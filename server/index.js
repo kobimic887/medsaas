@@ -76,6 +76,7 @@ if (!STRIPE_WEBHOOK_SECRET) {
 const MONGODB_URI = process.env.MONGODB_URI;
 const APP_BASE_URL = (process.env.BASE_URL || '').replace(/\/$/, '');
 const FRONTEND_URL = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
+const PUBLIC_APP_URL = FRONTEND_URL || APP_BASE_URL;
 const TANIMOTO_API_BASE = (process.env.TANIMOTO_API_BASE || 'http://151.145.91.17:8000').replace(/\/$/, '');
 const SDF_CONVERTER_URL = process.env.SDF_CONVERTER_URL || 'http://83.229.87.94:8001/convertSTR';
 // Default ligand catalog/docking endpoints. Companies override these per-company
@@ -1331,8 +1332,12 @@ function requireAdmetCallbackAuth(req, res, next) {
   next();
 }
 
-function getPublicAppUrl(req) {
-  return (FRONTEND_URL || APP_BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+function getPublicAppUrl() {
+  if (PUBLIC_APP_URL) return PUBLIC_APP_URL;
+  if (process.env.NODE_ENV !== 'production') {
+    return `http://localhost:${process.env.PORT || 3000}`;
+  }
+  throw new Error('FRONTEND_URL or BASE_URL must be configured to generate public email links');
 }
 
 function getPlan(planName) {
@@ -1866,7 +1871,7 @@ app.get('/api/verify-email', ensureMongoConnected, async (req, res) => {
     await usersCollection.updateOne({ email }, { $set: { verified: true } });
     
     // Send success HTML page
-    const signInUrl = `${(process.env.FRONTEND_URL || process.env.BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '')}/auth/sign-in`;
+    const signInUrl = `${getPublicAppUrl()}/auth/sign-in`;
     const brandName = getBrandName(companyName);
     const successHTML = `
     <!DOCTYPE html>
@@ -3590,7 +3595,7 @@ app.post('/api/company/members', ensureMongoConnected, authenticateToken, requir
 
     let inviteEmailSent = false;
     try {
-      const signInUrl = `${(process.env.FRONTEND_URL || process.env.BASE_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '')}/auth/sign-in`;
+      const signInUrl = `${getPublicAppUrl()}/auth/sign-in`;
       const passwordLine = password
         ? 'Use the initial password shared by your company admin.'
         : `Temporary password: ${generatedPassword}`;
