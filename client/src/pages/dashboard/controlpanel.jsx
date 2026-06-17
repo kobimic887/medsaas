@@ -306,7 +306,7 @@ export function ControlPanel() {
       ) : activityData ? (
         <div className="space-y-8">
           {/* User Simulation Logs Table */}
-          <Card className="border border-blue-gray-100 shadow-sm">
+          <Card className="border border-blue-gray-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
             <CardHeader
               floated={false}
               shadow={false}
@@ -314,60 +314,60 @@ export function ControlPanel() {
               className="m-0 flex items-center justify-between p-6"
             >
               <div>
-                <Typography variant="h6" color="blue-gray" className="mb-1">
+                <Typography variant="h6" color="blue-gray" className="mb-1 dark:text-slate-50">
                   Please find your Past Jobs listed below. You can review your past jobs by clicking on the SIMULATION ID                  
                 </Typography>
                 <Typography
                   variant="small"
-                  className="flex items-center gap-1 font-normal text-blue-gray-600"
+                  className="flex items-center gap-1 font-normal text-blue-gray-600 dark:text-slate-400"
                 >
-                  <ClockIcon strokeWidth={3} className="h-4 w-4 text-blue-gray-200" />
+                  <ClockIcon strokeWidth={3} className="h-4 w-4 text-blue-gray-200 dark:text-slate-600" />
                   <strong>{userSimulationLogs?.length || 0}</strong> simulation records
                 </Typography>
                 <Typography
                   variant="small"
-                  className="mt-1 text-blue-gray-500"
+                  className="mt-1 text-blue-gray-500 dark:text-slate-400"
                 >
                   <button
                     type="button"
                     onClick={() => navigate('/dashboard/simulation')}
-                    className="text-blue-600 hover:text-blue-800 underline hover:no-underline transition-colors"
+                    className="text-blue-600 underline transition-colors hover:text-blue-800 hover:no-underline dark:text-brand-300 dark:hover:text-brand-200"
                   >
                     Run a new simulation
                   </button>
                 </Typography>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outlined" size="sm" className="flex items-center gap-2">
+                <Button variant="outlined" size="sm" className="flex items-center gap-2 dark:border-slate-600 dark:text-slate-200">
                   <ArrowDownTrayIcon className="h-4 w-4" />
                   Export
                 </Button>
                 <Menu placement="left-start">
                   <MenuHandler>
-                    <IconButton size="sm" variant="text" color="blue-gray">
+                    <IconButton size="sm" variant="text" color="blue-gray" className="dark:text-slate-300">
                       <EllipsisVerticalIcon strokeWidth={3} className="h-6 w-6" />
                     </IconButton>
                   </MenuHandler>
-                  <MenuList>
-                    <MenuItem onClick={() => fetchUserSimulationLogs()}>Refresh Data</MenuItem>
-                    <MenuItem>Filter by Status</MenuItem>
-                    <MenuItem>Download Results</MenuItem>
+                  <MenuList className="bg-white dark:border dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">
+                    <MenuItem className="dark:hover:bg-slate-800" onClick={() => fetchUserSimulationLogs()}>Refresh Data</MenuItem>
+                    <MenuItem className="dark:hover:bg-slate-800">Filter by Status</MenuItem>
+                    <MenuItem className="dark:hover:bg-slate-800">Download Results</MenuItem>
                   </MenuList>
                 </Menu>
               </div>
             </CardHeader>
             <CardBody className="overflow-x-scroll px-0 pt-0 pb-2" style={{ maxHeight: "70vh", overflowY: "auto" }}>
               <table className="w-full min-w-[640px] table-auto" id="results">
-                <thead className="sticky top-0 bg-white z-10 shadow-sm">
+                <thead className="sticky top-0 z-10 bg-white shadow-sm dark:bg-slate-900 dark:shadow-black/20">
                   <tr>
                     {["Simulation ID", "PDB ID", "SMILES", "Timestamp", "Status", "Price", "ADMET"].map((el, index) => (
                       <th 
                         key={el} 
-                        className="border-b border-blue-gray-50 py-3 px-6 text-left bg-white"
+                        className="border-b border-blue-gray-50 bg-white px-6 py-3 text-left dark:border-slate-800 dark:bg-slate-900"
                         style={index === 1 ? { width: '60px', minWidth: '60px', maxWidth: '60px' } : {}}
                         title={el === "ADMET" ? "ADMET-AI is a simple, fast, and accurate web interface for predicting the Absorption, Distribution, Metabolism, Excretion, and Toxicity (ADMET) properties of molecules using machine learning models" : ""}
                       >
-                        <Typography variant="small" className="text-[12px] font-medium uppercase text-blue-gray-400">
+                        <Typography variant="small" className="text-[12px] font-medium uppercase text-blue-gray-400 dark:text-slate-500">
                           {el}
                         </Typography>
                       </th>
@@ -387,9 +387,9 @@ export function ControlPanel() {
                       const status = log.status || 'completed';
                       
                       return (
-                        <tr key={log.simulationKey || log.id || key} className="hover:bg-blue-gray-50 cursor-pointer transition-colors">
+                        <tr key={log.simulationKey || log.id || key} className="cursor-pointer transition-colors hover:bg-blue-gray-50 dark:hover:bg-slate-800/60">
                           <td className={className} onClick={() => handleViewInMolstar(log)}>
-                            <Typography variant="small" color="blue-gray" className="font-mono text-sm hover:text-blue-600">
+                            <Typography variant="small" color="blue-gray" className="font-mono text-sm hover:text-blue-600 dark:text-slate-100 dark:hover:text-brand-300">
                               {log.simulationKey?.substring(0, 12) || log.id || 'N/A'}
                             </Typography>
                           </td>
@@ -398,17 +398,17 @@ export function ControlPanel() {
                             onClick={() => handleViewInMolstar(log)}
                             style={{ width: '60px', minWidth: '60px', maxWidth: '60px', padding: '12px 4px' }}
                           >
-                            <Typography variant="small" className="text-xs font-medium text-blue-gray-600 font-mono hover:text-blue-600" style={{ fontSize: '12px', lineHeight: '1.3' }}>
+                            <Typography variant="small" className="font-mono text-xs font-medium text-blue-gray-600 hover:text-blue-600 dark:text-slate-300 dark:hover:text-brand-300" style={{ fontSize: '12px', lineHeight: '1.3' }}>
                               {(log.pdbid || log.pdbId || 'N/A').toString().substring(0, 10)}
                             </Typography>
                           </td>
                           <td className={className} onClick={() => handleViewInMolstar(log)} title={decodeSmiles(log.smiles || log.SMILES || 'N/A')}>
-                            <Typography variant="small" className="text-xs font-medium text-blue-gray-600 font-mono hover:text-blue-600" style={{ fontSize: '12px', lineHeight: '1.3' }}>
+                            <Typography variant="small" className="font-mono text-xs font-medium text-blue-gray-600 hover:text-blue-600 dark:text-slate-300 dark:hover:text-brand-300" style={{ fontSize: '12px', lineHeight: '1.3' }}>
                               {decodeSmiles(log.smiles || log.SMILES || 'N/A').toString().substring(0, 15)}
                             </Typography>
                           </td>
                           <td className={className} onClick={() => handleViewInMolstar(log)}>
-                            <Typography variant="small" className="text-sm font-medium text-blue-gray-600">
+                            <Typography variant="small" className="text-sm font-medium text-blue-gray-600 dark:text-slate-300">
                               {formatDate(log.timestamp || log.createdAt)}
                             </Typography>
                           </td>
@@ -433,7 +433,7 @@ export function ControlPanel() {
                                 }
                               }}
                               disabled={priceLoading || !log.smiles && !log.SMILES}
-                              className="text-sm py-1 px-2"
+                              className="px-2 py-1 text-sm dark:border-blue-400 dark:text-blue-200"
                             >
                               {priceLoading && (currentSmiles === (log.smiles || log.SMILES)) ? 'Loading...' : 'Show Price'}
                             </Button>
@@ -451,7 +451,7 @@ export function ControlPanel() {
                                 }
                               }}
                               disabled={admetLoading || !log.simulationKey && !log.id}
-                              className="text-sm py-1 px-2 flex items-center gap-1"
+                              className="flex items-center gap-1 px-2 py-1 text-sm dark:border-blue-400 dark:text-blue-200"
                               title={hasAdmetData(log) ? "ADMET data available" : "Click to calculate ADMET"}
                             >
                               {admetLoading && (currentSimulationId === (log.simulationKey || log.id)) ? (
@@ -519,14 +519,15 @@ export function ControlPanel() {
       {/* Price Popup Modal */}
       {showPricePopup && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[80vh] overflow-auto">
+          <div className="mx-4 max-h-[80vh] w-full max-w-4xl overflow-auto rounded-lg bg-white shadow-xl dark:border dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:shadow-black/30">
             <div className="p-6">
               <div className="flex justify-between items-center mb-4">
-                <Typography variant="h5" color="blue-gray">
+                <Typography variant="h5" color="blue-gray" className="dark:text-slate-50">
                   Price Information
                 </Typography>
                 <IconButton 
                   variant="text" 
+                  className="dark:text-slate-300"
                   onClick={() => setShowPricePopup(false)}
                 >
                   <span className="text-xl">×</span>
@@ -534,7 +535,7 @@ export function ControlPanel() {
               </div>
               
               <div className="mb-4">
-                <Typography variant="small" color="gray" className="font-mono">
+                <Typography variant="small" color="gray" className="font-mono dark:text-slate-400">
                   SMILES: {currentSmiles}
                 </Typography>
               </div>
@@ -689,7 +690,7 @@ export function ControlPanel() {
                 </div>
               ) : priceData ? (
                 <div className="overflow-x-auto">
-                  <pre className="whitespace-pre-wrap text-sm font-mono bg-gray-50 p-4 rounded border">
+                  <pre className="whitespace-pre-wrap rounded border bg-gray-50 p-4 font-mono text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
                     {JSON.stringify(priceData, null, 2)}
                   </pre>
                 </div>
@@ -704,14 +705,15 @@ export function ControlPanel() {
       {/* ADMET Popup Modal */}
       {showAdmetPopup && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full mx-4 max-h-[80vh] overflow-auto">
+          <div className="mx-4 max-h-[80vh] w-full max-w-6xl overflow-auto rounded-lg bg-white shadow-xl dark:border dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:shadow-black/30">
             <div className="p-6">
               <div className="flex justify-between items-center mb-4">
-                <Typography variant="h5" color="blue-gray">
+                <Typography variant="h5" color="blue-gray" className="dark:text-slate-50">
                   ADMET Properties
                 </Typography>
                 <IconButton 
                   variant="text" 
+                  className="dark:text-slate-300"
                   onClick={() => setShowAdmetPopup(false)}
                 >
                   <span className="text-xl">×</span>
@@ -719,16 +721,16 @@ export function ControlPanel() {
               </div>
               
               <div className="mb-4">
-                <Typography variant="small" color="gray" className="font-mono">
+                <Typography variant="small" color="gray" className="font-mono dark:text-slate-400">
                   Simulation ID: {currentSimulationId}
                 </Typography>
                 {admetData?.simulationKey && (
-                  <Typography variant="small" color="gray" className="font-mono">
+                  <Typography variant="small" color="gray" className="font-mono dark:text-slate-400">
                     Simulation Key: {admetData.simulationKey}
                   </Typography>
                 )}
                 {admetData?.smiles && (
-                  <Typography variant="small" color="gray" className="font-mono">
+                  <Typography variant="small" color="gray" className="font-mono dark:text-slate-400">
                     SMILES: {admetData.smiles}
                   </Typography>
                 )}

@@ -1,5 +1,7 @@
 export const chartsConfig = {
   chart: {
+    background: "transparent",
+    foreColor: "#37474f",
     toolbar: {
       show: false,
     },

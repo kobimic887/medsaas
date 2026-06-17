@@ -27,11 +27,11 @@ class DashboardErrorBoundary extends React.Component {
     if (!this.state.error) return this.props.children;
 
     return (
-      <div className="mt-8 rounded-lg border border-red-100 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-red-700">
+      <div className="mt-8 rounded-lg border border-red-100 bg-white p-6 shadow-sm dark:border-red-900/60 dark:bg-slate-900 dark:shadow-black/20">
+        <h2 className="text-lg font-semibold text-red-700 dark:text-red-300">
           This dashboard page could not load.
         </h2>
-        <p className="mt-2 text-sm text-blue-gray-600">
+        <p className="mt-2 text-sm text-blue-gray-600 dark:text-slate-300">
           Try reloading the page. If it keeps happening, the error is now logged in the browser console instead of leaving a blank screen.
         </p>
         <button
@@ -57,7 +57,7 @@ export function Dashboard() {
   const { brandName, logo } = useBranding();
 
   return (
-    <div id="dashboard-layout" className="min-h-screen bg-blue-gray-50/50 flex">
+    <div id="dashboard-layout" className="flex min-h-screen bg-blue-gray-50/50 text-blue-gray-900 dark:bg-slate-950 dark:text-slate-100">
       {/* Left Sidebar Navigation */}
       <div id="sidebar-container" className="relative">
         <Sidenav
@@ -99,7 +99,7 @@ export function Dashboard() {
         </main>
 
         {/* Footer */}
-        <footer id="dashboard-footer" className="text-blue-gray-600 p-4">
+        <footer id="dashboard-footer" className="p-4 text-blue-gray-600 dark:text-slate-400">
           <Footer />
         </footer>
       </div>

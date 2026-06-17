@@ -20,17 +20,21 @@ import {
   MagnifyingGlassIcon,
   XMarkIcon,
   TrashIcon,
+  MoonIcon,
+  SunIcon,
 } from "@heroicons/react/24/solid";
 import {
   useMaterialTailwindController,
   setOpenSidenav,
 } from "@/context";
+import { useThemeMode } from "@/context/theme";
 import { useState, useEffect } from "react";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 
 export function DashboardNavbar() {
   const [controller, dispatch] = useMaterialTailwindController();
   const { openSidenav } = controller;
+  const { isDark, toggleTheme } = useThemeMode();
   const { pathname } = useLocation();
   const [_layout, page] = pathname.split("/").filter((el) => el !== "");
   const [showMobileSearch, setShowMobileSearch] = useState(false);
@@ -353,7 +357,7 @@ Please contact the customer at ${userEmail} to process this order.
     <Navbar
       id="top-navbar"
       color="white"
-      className="sticky top-0 z-40 py-3 shadow-md shadow-blue-gray-500/5 rounded-none border-b border-blue-gray-100"
+      className="sticky top-0 z-40 rounded-none border-b border-blue-gray-100 bg-white/95 py-3 shadow-md shadow-blue-gray-500/5 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90 dark:shadow-black/20"
       fullWidth
       blurred={true}
     >
@@ -365,22 +369,22 @@ Please contact the customer at ${userEmail} to process this order.
             id="mobile-menu-toggle"
             variant="text"
             color="blue-gray"
-            className="grid xl:hidden"
+            className="grid dark:text-slate-300 xl:hidden"
             onClick={() => setOpenSidenav(dispatch, !openSidenav)}
           >
-            <Bars3Icon strokeWidth={3} className="h-6 w-6 text-blue-gray-500" />
+            <Bars3Icon strokeWidth={3} className="h-6 w-6 text-blue-gray-500 dark:text-slate-300" />
           </IconButton>
 
           {/* Breadcrumbs */}
           <div id="breadcrumbs" className="hidden lg:block">
             <Breadcrumbs className="bg-transparent p-0">
-              <Link to="/dashboard/controlpanel" className="opacity-60">
+              <Link to="/dashboard/controlpanel" className="opacity-60 dark:text-slate-300">
                 Dashboard
               </Link>
               <Typography
                 variant="small"
                 color="blue-gray"
-                className="font-normal opacity-100 capitalize"
+                className="font-normal capitalize opacity-100 dark:text-slate-100"
               >
                 {page || "Home"}
               </Typography>
@@ -411,32 +415,48 @@ Please contact the customer at ${userEmail} to process this order.
             id="mobile-search-toggle"
             variant="text"
             color="blue-gray"
-            className="grid md:hidden"
+            className="grid dark:text-slate-300 md:hidden"
             onClick={() => setShowMobileSearch(!showMobileSearch)}
           >
             {showMobileSearch ? (
-              <XMarkIcon className="h-5 w-5 text-blue-gray-500" />
+              <XMarkIcon className="h-5 w-5 text-blue-gray-500 dark:text-slate-300" />
             ) : (
-              <MagnifyingGlassIcon className="h-5 w-5 text-blue-gray-500" />
+              <MagnifyingGlassIcon className="h-5 w-5 text-blue-gray-500 dark:text-slate-300" />
             )}
           </IconButton>
 
           {/* Simulation Tokens Display */}
-          <div className="hidden md:flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-1">
-            <svg aria-hidden="true" className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+          <div className="hidden items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1 dark:border-blue-500/30 dark:bg-blue-950/50 md:flex">
+            <svg aria-hidden="true" className="h-4 w-4 text-blue-600 dark:text-blue-300" fill="currentColor" viewBox="0 0 20 20">
               <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
-            <Typography variant="small" color="blue-gray" className="font-medium">
+            <Typography variant="small" color="blue-gray" className="font-medium dark:text-slate-200">
              Remaining Tokens: {user.simulationTokens}
             </Typography>
           </div>
 
+          <IconButton
+            id="theme-toggle-button"
+            variant="text"
+            color="blue-gray"
+            aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            className="dark:text-slate-300"
+            onClick={toggleTheme}
+          >
+            {isDark ? (
+              <SunIcon className="h-5 w-5 text-blue-gray-500 dark:text-amber-300" />
+            ) : (
+              <MoonIcon className="h-5 w-5 text-blue-gray-500" />
+            )}
+          </IconButton>
+
           {/* Cart Menu */}
           <Menu>
             <MenuHandler>
-              <IconButton id="cart-menu-button" variant="text" color="blue-gray">
+              <IconButton id="cart-menu-button" variant="text" color="blue-gray" className="dark:text-slate-300">
                 <div className="relative">
-                  <CreditCardIcon className="h-5 w-5 text-blue-gray-500" />
+                  <CreditCardIcon className="h-5 w-5 text-blue-gray-500 dark:text-slate-300" />
                   {cartItems.length > 0 && (
                     <Chip
                       value={cartItems.length}
@@ -447,13 +467,13 @@ Please contact the customer at ${userEmail} to process this order.
                 </div>
               </IconButton>
             </MenuHandler>
-            <MenuList id="cart-menu-list" className="w-80 border-0 shadow-lg">
-              <div className="p-3 border-b border-blue-gray-100">
-                <Typography variant="h6" color="blue-gray">
+            <MenuList id="cart-menu-list" className="w-80 border-0 bg-white shadow-lg dark:border dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">
+              <div className="border-b border-blue-gray-100 p-3 dark:border-slate-800">
+                <Typography variant="h6" color="blue-gray" className="dark:text-slate-50">
                   Molecule Cart ({cartItems.length} {cartItems.length === 1 ? 'item' : 'items'})
                 </Typography>
                 <div className="flex justify-between items-center mt-1">
-                  <Typography variant="small" color="blue-gray" className="font-normal">
+                  <Typography variant="small" color="blue-gray" className="font-normal dark:text-slate-300">
                     Total Amount: {cartItems.reduce((sum, item) => sum + (item.amount || 0), 0)}mg
                   </Typography>
                   <Typography variant="small" className="font-bold text-lg text-brand-500">
@@ -464,19 +484,19 @@ Please contact the customer at ${userEmail} to process this order.
               <div className="max-h-64 overflow-y-auto">
                 {cartItems.length === 0 ? (
                   <div className="p-4 text-center">
-                    <Typography variant="small" color="blue-gray" className="font-normal">
+                    <Typography variant="small" color="blue-gray" className="font-normal dark:text-slate-300">
                       Your cart is empty
                     </Typography>
                   </div>
                 ) : (
                   cartItems.map((item, index) => (
-                    <MenuItem key={index} className="flex items-center justify-between p-3 border-b border-blue-gray-50">
+                    <MenuItem key={index} className="flex items-center justify-between border-b border-blue-gray-50 p-3 dark:border-slate-800 dark:text-slate-100 dark:hover:bg-slate-800">
                       <div className="flex-1">
-                        <Typography variant="small" color="blue-gray" className="font-medium">
+                        <Typography variant="small" color="blue-gray" className="font-medium dark:text-slate-100">
                           {item.name || `Molecule ${index + 1}`}
                         </Typography>
                         <div className="flex items-center gap-2 mt-1">
-                          <Typography variant="small" color="blue-gray" className="font-normal text-xs">
+                          <Typography variant="small" color="blue-gray" className="text-xs font-normal dark:text-slate-300">
                             {item.amount}mg
                           </Typography>
                           <Typography variant="small" className="font-bold text-xs text-brand-500">
@@ -484,7 +504,7 @@ Please contact the customer at ${userEmail} to process this order.
                           </Typography>
                         </div>
                         {item.smiles && (
-                          <Typography variant="small" color="gray" className="font-mono truncate max-w-48 text-xs">
+                          <Typography variant="small" color="gray" className="max-w-48 truncate font-mono text-xs dark:text-slate-400">
                             {item.smiles.length > 30 ? `${item.smiles.substring(0, 30)}...` : item.smiles}
                           </Typography>
                         )}
@@ -502,7 +522,7 @@ Please contact the customer at ${userEmail} to process this order.
                 )}
               </div>
               {cartItems.length > 0 && (
-                <div className="p-3 border-t border-blue-gray-100 space-y-2">
+                <div className="space-y-2 border-t border-blue-gray-100 p-3 dark:border-slate-800">
                   <Button 
                     fullWidth 
                     color="blue" 
@@ -527,12 +547,12 @@ Please contact the customer at ${userEmail} to process this order.
           {/* Notifications Menu */}
           <Menu>
             <MenuHandler>
-              <IconButton id="notifications-menu-button" variant="text" color="blue-gray">
-                <BellIcon className="h-5 w-5 text-blue-gray-500" />
+              <IconButton id="notifications-menu-button" variant="text" color="blue-gray" className="dark:text-slate-300">
+                <BellIcon className="h-5 w-5 text-blue-gray-500 dark:text-slate-300" />
               </IconButton>
             </MenuHandler>
-            <MenuList id="notifications-menu-list" className="w-max border-0">
-              <MenuItem>No new notifications</MenuItem>
+            <MenuList id="notifications-menu-list" className="w-max border-0 bg-white dark:border dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">
+              <MenuItem className="dark:hover:bg-slate-800">No new notifications</MenuItem>
             </MenuList>
           </Menu>
 
@@ -543,7 +563,7 @@ Please contact the customer at ${userEmail} to process this order.
                 id="user-menu-button"
                 variant="text"
                 color="blue-gray"
-                className="flex items-center gap-2 rounded-full py-0.5 pr-2 pl-0.5 lg:ml-auto"
+                className="flex items-center gap-2 rounded-full py-0.5 pr-2 pl-0.5 dark:text-slate-300 lg:ml-auto"
               >
                 <Avatar
                   variant="circular"
@@ -555,29 +575,29 @@ Please contact the customer at ${userEmail} to process this order.
                 <Typography
                   variant="small"
                   color="blue-gray"
-                  className="font-medium hidden lg:block"
+                  className="hidden font-medium dark:text-slate-100 lg:block"
                 >
                   {user.name}
                 </Typography>
               </Button>
             </MenuHandler>
-            <MenuList id="user-menu-list" className="p-1">
-              <div className="p-2 border-b border-blue-gray-100">
-                <Typography variant="small" color="blue-gray" className="font-medium">
+            <MenuList id="user-menu-list" className="bg-white p-1 dark:border dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">
+              <div className="border-b border-blue-gray-100 p-2 dark:border-slate-800">
+                <Typography variant="small" color="blue-gray" className="font-medium dark:text-slate-100">
                   {user.name}
                 </Typography>
-                <Typography variant="small" color="blue-gray" className="font-normal text-xs">
+                <Typography variant="small" color="blue-gray" className="text-xs font-normal dark:text-slate-300">
                   Simulation Tokens: {user.simulationTokens}
                 </Typography>
               </div>
-              <MenuItem className="flex items-center gap-2">
+              <MenuItem className="flex items-center gap-2 dark:hover:bg-slate-800">
                 <UserCircleIcon className="h-4 w-4" />
                 <Link to="/dashboard/profile" className="w-full">
                   Profile
                 </Link>
               </MenuItem>
-              <hr className="my-2 border-blue-gray-50" />
-              <MenuItem className="flex items-center gap-2 text-red-500" onClick={logout}>
+              <hr className="my-2 border-blue-gray-50 dark:border-slate-800" />
+              <MenuItem className="flex items-center gap-2 text-red-500 dark:hover:bg-slate-800" onClick={logout}>
                 Sign Out
               </MenuItem>
             </MenuList>

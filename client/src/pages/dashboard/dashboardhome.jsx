@@ -245,7 +245,7 @@ export function DashboardHome() {
                   className: "w-6 h-6 text-white",
                 })}
                 footer={
-                  <Typography className="font-normal text-blue-gray-600">
+                  <Typography className="font-normal text-blue-gray-600 dark:text-slate-400">
                     <strong className={footer.color}>{footer.value}</strong>
                     &nbsp;{footer.label}
                   </Typography>
@@ -261,9 +261,9 @@ export function DashboardHome() {
                 footer={
                   <Typography
                     variant="small"
-                    className="flex items-center font-normal text-blue-gray-600"
+                    className="flex items-center font-normal text-blue-gray-600 dark:text-slate-400"
                   >
-                    <ClockIcon strokeWidth={2} className="h-4 w-4 text-blue-gray-400" />
+                    <ClockIcon strokeWidth={2} className="h-4 w-4 text-blue-gray-400 dark:text-slate-500" />
                     &nbsp;{props.footer}
                   </Typography>
                 }
@@ -271,7 +271,7 @@ export function DashboardHome() {
             ))}
           </div>
           <div className="mb-4 grid grid-cols-1 gap-6 xl:grid-cols-3">
-            <Card className="overflow-hidden xl:col-span-2 border border-blue-gray-100 shadow-sm">
+            <Card className="overflow-hidden border border-blue-gray-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20 xl:col-span-2">
               <CardHeader
                 floated={false}
                 shadow={false}
@@ -279,20 +279,20 @@ export function DashboardHome() {
                 className="m-0 flex items-center justify-between p-6"
               >
                 <div>
-                  <Typography variant="h6" color="blue-gray" className="mb-1">
+                  <Typography variant="h6" color="blue-gray" className="mb-1 dark:text-slate-50">
                     Projects
                   </Typography>
                   <Typography
                     variant="small"
-                    className="flex items-center gap-1 font-normal text-blue-gray-600"
+                    className="flex items-center gap-1 font-normal text-blue-gray-600 dark:text-slate-400"
                   >
-                    <CheckCircleIcon strokeWidth={3} className="h-4 w-4 text-blue-gray-200" />
+                    <CheckCircleIcon strokeWidth={3} className="h-4 w-4 text-blue-gray-200 dark:text-slate-600" />
                     <strong>{projectsData.length} active</strong> projects
                   </Typography>
                 </div>
                 <Menu placement="left-start">
                   <MenuHandler>
-                    <IconButton size="sm" variant="text" color="blue-gray">
+                    <IconButton size="sm" variant="text" color="blue-gray" className="dark:text-slate-300">
                       <EllipsisVerticalIcon
                         strokeWidth={3}
                         fill="currenColor"
@@ -300,10 +300,10 @@ export function DashboardHome() {
                       />
                     </IconButton>
                   </MenuHandler>
-                  <MenuList>
-                    <MenuItem>Refresh</MenuItem>
-                    <MenuItem>View All</MenuItem>
-                    <MenuItem>Export Data</MenuItem>
+                  <MenuList className="bg-white dark:border dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">
+                    <MenuItem className="dark:hover:bg-slate-800">Refresh</MenuItem>
+                    <MenuItem className="dark:hover:bg-slate-800">View All</MenuItem>
+                    <MenuItem className="dark:hover:bg-slate-800">Export Data</MenuItem>
                   </MenuList>
                 </Menu>
               </CardHeader>
@@ -315,11 +315,11 @@ export function DashboardHome() {
                         (el) => (
                           <th
                             key={el}
-                            className="border-b border-blue-gray-50 py-3 px-6 text-left"
+                            className="border-b border-blue-gray-50 px-6 py-3 text-left dark:border-slate-800"
                           >
                             <Typography
                               variant="small"
-                              className="text-[11px] font-medium uppercase text-blue-gray-400"
+                              className="text-[11px] font-medium uppercase text-blue-gray-400 dark:text-slate-500"
                             >
                               {el}
                             </Typography>
@@ -347,14 +347,14 @@ export function DashboardHome() {
                           }`;
 
                           return (
-                            <tr key={name}>
+                            <tr key={name} className="dark:hover:bg-slate-800/60">
                               <td className={className}>
                                 <div className="flex items-center gap-4">
                                   <Avatar src={img} alt={name} size="sm" />
                                   <Typography
                                     variant="small"
                                     color="blue-gray"
-                                    className="font-bold"
+                                    className="font-bold dark:text-slate-100"
                                   >
                                     {name}
                                   </Typography>
@@ -378,7 +378,7 @@ export function DashboardHome() {
                               <td className={className}>
                                 <Typography
                                   variant="small"
-                                  className="text-xs font-medium text-blue-gray-600"
+                                  className="text-xs font-medium text-blue-gray-600 dark:text-slate-300"
                                 >
                                   {budget}
                                 </Typography>
@@ -387,7 +387,7 @@ export function DashboardHome() {
                                 <div className="w-10/12">
                                   <Typography
                                     variant="small"
-                                    className="mb-1 block text-xs font-medium text-blue-gray-600"
+                                    className="mb-1 block text-xs font-medium text-blue-gray-600 dark:text-slate-300"
                                   >
                                     {completion}%
                                   </Typography>
@@ -408,19 +408,19 @@ export function DashboardHome() {
                 </table>
               </CardBody>
             </Card>
-            <Card className="border border-blue-gray-100 shadow-sm">
+            <Card className="border border-blue-gray-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
               <CardHeader
                 floated={false}
                 shadow={false}
                 color="transparent"
                 className="m-0 p-6"
               >
-                <Typography variant="h6" color="blue-gray" className="mb-2">
+                <Typography variant="h6" color="blue-gray" className="mb-2 dark:text-slate-50">
                   Recent Activity
                 </Typography>
                 <Typography
                   variant="small"
-                  className="flex items-center gap-1 font-normal text-blue-gray-600"
+                  className="flex items-center gap-1 font-normal text-blue-gray-600 dark:text-slate-400"
                 >
                   <ArrowUpIcon
                     strokeWidth={3}
@@ -439,7 +439,7 @@ export function DashboardHome() {
                     ({ icon, color, title, description }, key) => (
                       <div key={title + key} className="flex items-start gap-4 py-3">
                         <div
-                          className={`relative p-1 after:absolute after:-bottom-6 after:left-2/4 after:w-0.5 after:-translate-x-2/4 after:bg-blue-gray-50 after:content-[''] ${
+                          className={`relative p-1 after:absolute after:-bottom-6 after:left-2/4 after:w-0.5 after:-translate-x-2/4 after:bg-blue-gray-50 after:content-[''] dark:after:bg-slate-800 ${
                             key === overviewData.length - 1
                               ? "after:h-0"
                               : "after:h-4/6"
@@ -453,14 +453,14 @@ export function DashboardHome() {
                           <Typography
                             variant="small"
                             color="blue-gray"
-                            className="block font-medium"
+                            className="block font-medium dark:text-slate-100"
                           >
                             {title}
                           </Typography>
                           <Typography
                             as="span"
                             variant="small"
-                            className="text-xs font-medium text-blue-gray-500"
+                            className="text-xs font-medium text-blue-gray-500 dark:text-slate-400"
                           >
                             {description}
                           </Typography>
@@ -473,7 +473,7 @@ export function DashboardHome() {
             </Card>
           </div>
           <div className="mb-8">
-            <Typography variant="h6" color="blue-gray" className="mb-2">Molecule Price Stats</Typography>
+            <Typography variant="h6" color="blue-gray" className="mb-2 dark:text-slate-50">Molecule Price Stats</Typography>
             {molPriceStatsLoading ? (
               <div className="flex items-center gap-2 py-2">
                 <Spinner className="h-5 w-5" />
@@ -484,7 +484,7 @@ export function DashboardHome() {
                 <Typography variant="small">Error: {molPriceStatsError}</Typography>
               </Alert>
             ) : molPriceStats ? (
-              <Card className="mb-2 p-4">
+              <Card className="mb-2 border border-blue-gray-100 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <Typography variant="small" color="blue-gray"><strong>Total Molecules:</strong> {molPriceStats.totalMolecules}</Typography>

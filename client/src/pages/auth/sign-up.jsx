@@ -61,37 +61,37 @@ export function SignUp() {
   };
 
   return (
-    <section className="about-us-page m-2 sm:m-4 md:m-8 flex min-h-screen">
-      <div className="w-2/5 h-full hidden lg:block">
+    <section className="about-us-page m-0 flex min-h-screen bg-slate-50 p-4 dark:bg-slate-950 sm:p-6 md:p-8">
+      <div className="hidden h-full w-2/5 lg:block">
         <img
           src="/img/pattern.png"
           alt=""
-          className="h-full w-full object-cover rounded-3xl"
+          className="h-full w-full rounded-3xl object-cover"
         />
       </div>
-      <div className="w-full lg:w-3/5 flex flex-col items-center justify-center px-4 py-6">
-              <div className="capitalize bg-gray rounded-lg px-4 sm:px-8 py-2">
+      <div className="flex w-full flex-col items-center justify-center px-4 py-6 lg:w-3/5">
+        <div className="rounded-lg border border-blue-gray-100 bg-white px-4 py-2 capitalize shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:px-8">
           <span className="cb-auth-logo">ChemBench</span>
         </div>
-        <div className="text-center">
-          <h1 className="display-3 fw-bold mb-4">
+        <div className="mt-8 max-w-2xl text-center">
+          <h1 className="display-3 fw-bold mb-4 text-slate-900 dark:text-slate-50">
             {organization.trim() ? `Set up ${brandName}` : `Create your company on ${platformName}`}
           </h1>
-          <p className="lead text-blue-gray-700 mb-6">
+          <p className="lead mb-6 text-blue-gray-700 dark:text-slate-300">
             {organization.trim()
               ? `Register your team workspace for ${brandName}.`
               : "Enter your company name below — that name is used for branding across the app and in emails."}
           </p>
         </div>
         <form
-          className="mt-8 mb-2 mx-auto w-80 max-w-screen-lg lg:w-1/2"
+          className="mx-auto mb-2 mt-8 w-80 max-w-screen-lg rounded-lg border border-blue-gray-100 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-black/20 lg:w-1/2"
           onSubmit={handleSubmit}
         >
           <div className="mb-1 flex flex-col gap-6">
             <Typography
               variant="small"
               color="blue-gray"
-              className="-mb-3 font-medium"
+              className="-mb-3 font-medium dark:text-slate-300"
             >
               Your email
             </Typography>
@@ -101,7 +101,7 @@ export function SignUp() {
               placeholder="name@mail.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className=" !border-t-blue-gray-200 focus:!border-t-gray-900"
+              className="!border-t-blue-gray-200 text-blue-gray-900 focus:!border-t-gray-900 dark:!border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:!border-brand-400"
               labelProps={{
                 className: "before:content-none after:content-none",
               }}
@@ -109,7 +109,7 @@ export function SignUp() {
             <Typography
               variant="small"
               color="blue-gray"
-              className="-mb-3 font-medium"
+              className="-mb-3 font-medium dark:text-slate-300"
             >
               Password
             </Typography>
@@ -119,7 +119,7 @@ export function SignUp() {
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className=" !border-t-blue-gray-200 focus:!border-t-gray-900"
+              className="!border-t-blue-gray-200 text-blue-gray-900 focus:!border-t-gray-900 dark:!border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:!border-brand-400"
               labelProps={{
                 className: "before:content-none after:content-none",
               }}
@@ -127,7 +127,7 @@ export function SignUp() {
             <Typography
               variant="small"
               color="blue-gray"
-              className="-mb-3 font-medium"
+              className="-mb-3 font-medium dark:text-slate-300"
             >
               Username
             </Typography>
@@ -136,7 +136,7 @@ export function SignUp() {
               placeholder="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className=" !border-t-blue-gray-200 focus:!border-t-gray-900"
+              className="!border-t-blue-gray-200 text-blue-gray-900 focus:!border-t-gray-900 dark:!border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:!border-brand-400"
               labelProps={{
                 className: "before:content-none after:content-none",
               }}
@@ -144,7 +144,7 @@ export function SignUp() {
             <Typography
               variant="small"
               color="blue-gray"
-              className="-mb-3 font-medium"
+              className="-mb-3 font-medium dark:text-slate-300"
             >
               Company Name
             </Typography>
@@ -153,13 +153,13 @@ export function SignUp() {
               placeholder="Company Name"
               value={organization}
               onChange={(e) => setOrganization(e.target.value)}
-              className=" !border-t-blue-gray-200 focus:!border-t-gray-900"
+              className="!border-t-blue-gray-200 text-blue-gray-900 focus:!border-t-gray-900 dark:!border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:!border-brand-400"
               labelProps={{
                 className: "before:content-none after:content-none",
               }}
             />
           </div>
-          <Button className="mt-6" fullWidth type="submit" disabled={loading}>
+          <Button className="mt-6 bg-brand-500 text-white shadow-md shadow-brand-500/20 hover:shadow-lg hover:shadow-brand-500/40" fullWidth type="submit" disabled={loading}>
             {loading ? "Registering..." : "Register Now"}
           </Button>
           {error && (
@@ -236,10 +236,10 @@ export function SignUp() {
           </div> */}
           <Typography
             variant="paragraph"
-            className="lead text-center text-blue-gray-500 font-medium mt-4"
+            className="lead mt-4 text-center font-medium text-blue-gray-500 dark:text-slate-400"
           >
             Already have an account?
-            <Link to="/auth/sign-in" className="text-gray-900 ml-1">
+            <Link to="/auth/sign-in" className="ml-1 text-gray-900 dark:text-brand-300">
               Sign in
             </Link>
           </Typography>

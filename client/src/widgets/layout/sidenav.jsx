@@ -16,9 +16,9 @@ export function Sidenav({ brandImg, brandName, routes }) {
   const [brandImageFailed, setBrandImageFailed] = useState(false);
   const { sidenavType, openSidenav } = controller;
   const sidenavTypes = {
-    dark: "bg-gradient-to-br from-gray-800 to-gray-900",
-    white: "bg-white shadow-sm",
-    transparent: "bg-transparent",
+    dark: "bg-gradient-to-br from-slate-900 to-slate-950 shadow-lg shadow-black/20",
+    white: "bg-white shadow-sm dark:bg-slate-900/95 dark:shadow-black/20",
+    transparent: "bg-transparent dark:bg-slate-900/60",
   };
 
   useEffect(() => {
@@ -33,7 +33,7 @@ export function Sidenav({ brandImg, brandName, routes }) {
       {openSidenav && (
         <div 
           id="mobile-overlay"
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 xl:hidden" 
+          className="fixed inset-0 z-40 bg-black bg-opacity-50 xl:hidden"
           onClick={() => setOpenSidenav(dispatch, false)}
         />
       )}
@@ -41,7 +41,7 @@ export function Sidenav({ brandImg, brandName, routes }) {
         id="left-sidebar"
         className={`${sidenavTypes[sidenavType]} ${
           openSidenav ? "translate-x-0" : "-translate-x-80"
-        } fixed inset-0 z-50 my-4 ml-4 h-[calc(100vh-32px)] w-72 rounded-xl transition-transform duration-300 xl:translate-x-0 border border-blue-gray-100`}
+        } fixed inset-0 z-50 my-4 ml-4 h-[calc(100vh-32px)] w-72 rounded-xl border border-blue-gray-100 transition-transform duration-300 dark:border-slate-800 xl:translate-x-0`}
       >
         {/* Sidebar Header */}
         <div id="sidebar-header" className="relative z-50">
@@ -57,6 +57,7 @@ export function Sidenav({ brandImg, brandName, routes }) {
             <Typography
               variant="h6"
               color={sidenavType === "dark" ? "white" : "blue-gray"}
+              className="dark:text-slate-100"
             >
               {brandName}
             </Typography>
@@ -67,7 +68,7 @@ export function Sidenav({ brandImg, brandName, routes }) {
             color={sidenavType === "dark" ? "white" : "blue-gray"}
             size="sm"
             ripple={false}
-            className="absolute right-0 top-0 grid rounded-br-none rounded-tl-none xl:hidden"
+            className="absolute right-0 top-0 grid rounded-br-none rounded-tl-none dark:text-slate-200 xl:hidden"
             onClick={() => setOpenSidenav(dispatch, false)}
           >
             <XMarkIcon strokeWidth={2.5} className="h-5 w-5" />
@@ -83,7 +84,7 @@ export function Sidenav({ brandImg, brandName, routes }) {
                   <Typography
                     variant="small"
                     color={sidenavType === "dark" ? "white" : "blue-gray"}
-                    className="font-black uppercase opacity-75"
+                    className="font-black uppercase opacity-75 dark:text-slate-400"
                   >
                     {title}
                   </Typography>
@@ -97,7 +98,7 @@ export function Sidenav({ brandImg, brandName, routes }) {
                         id={`sidebar-link-${name.replace(/\s+/g, '-').toLowerCase()}`}
                         variant="text"
                         color={isActive ? undefined : (sidenavType === "dark" ? "white" : "blue-gray")}
-                        className={`flex items-center gap-4 px-4 capitalize${isActive ? ' !bg-brand-500 !text-white' : ''}`}
+                        className={`flex items-center gap-4 px-4 capitalize dark:hover:bg-slate-800/80${isActive ? ' !bg-brand-500 !text-white' : ' dark:text-slate-300'}`}
                         fullWidth
                         onClick={() => {
                           // Close mobile menu when item is clicked

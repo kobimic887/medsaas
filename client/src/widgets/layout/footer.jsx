@@ -6,7 +6,7 @@ export function Footer({ brandName, brandLink, routes }) {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="fixed bottom-0 left-0 w-full bg-gray-100 shadow-md py-2 z-50">
+    <footer className="fixed bottom-0 left-0 z-50 w-full bg-gray-100 py-2 shadow-md dark:border-t dark:border-slate-800 dark:bg-slate-950/95 dark:text-slate-300 dark:shadow-black/30">
       <div className="flex w-full flex-wrap items-center justify-center gap-6 px-2 md:justify-between">
         <Typography variant="small" className="font-normal text-inherit">
           &copy; {year}, made with{" "}
@@ -14,7 +14,7 @@ export function Footer({ brandName, brandLink, routes }) {
           <a
             href={brandLink}
             target="_blank"
-            className="transition-colors hover:text-blue-500 font-bold" rel="noopener"
+            className="font-bold transition-colors hover:text-blue-500 dark:hover:text-brand-300" rel="noopener"
           >
             {brandName}
           </a>{" "}
@@ -28,7 +28,7 @@ export function Footer({ brandName, brandLink, routes }) {
                 href={path}
                 target="_blank"
                 variant="small"
-                className="py-0.5 px-1 font-normal text-inherit transition-colors hover:text-blue-500"
+                className="px-1 py-0.5 font-normal text-inherit transition-colors hover:text-blue-500 dark:hover:text-brand-300"
               >
                 {name}
               </Typography>

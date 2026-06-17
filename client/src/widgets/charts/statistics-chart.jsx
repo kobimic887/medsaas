@@ -25,28 +25,28 @@ const ChartComponent = resolveChartComponent(ReactApexChart);
 
 export function StatisticsChart({ color, chart, title, description, footer }) {
   return (
-    <Card className="border border-blue-gray-100 shadow-sm">
+    <Card className="border border-blue-gray-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
       <CardHeader variant="gradient" color={color} floated={false} shadow={false}>
         {ChartComponent ? (
           <ChartComponent {...chart} />
         ) : (
-          <div className="grid h-[220px] place-items-center bg-white">
-            <Typography variant="small" color="gray">
+          <div className="grid h-[220px] place-items-center bg-white dark:bg-slate-900">
+            <Typography variant="small" color="gray" className="dark:text-slate-400">
               Chart unavailable
             </Typography>
           </div>
         )}
       </CardHeader>
       <CardBody className="px-6 pt-0">
-        <Typography variant="h6" color="blue-gray">
+        <Typography variant="h6" color="blue-gray" className="dark:text-slate-50">
           {title}
         </Typography>
-        <Typography variant="small" className="font-normal text-blue-gray-600">
+        <Typography variant="small" className="font-normal text-blue-gray-600 dark:text-slate-400">
           {description}
         </Typography>
       </CardBody>
       {footer && (
-        <CardFooter className="border-t border-blue-gray-50 px-6 py-5">
+        <CardFooter className="border-t border-blue-gray-50 px-6 py-5 dark:border-slate-800">
           {footer}
         </CardFooter>
       )}

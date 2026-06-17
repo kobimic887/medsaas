@@ -11,11 +11,9 @@ export function MainPage() {
 
   return (
     <div
-      className="min-h-screen flex flex-col"
-      style={{
-        background: isLandingPage ? "#0a0a0f" : "#f8fafc",
-        transition: "background 0.3s ease",
-      }}
+      className={`flex min-h-screen flex-col transition-colors duration-300 ${
+        isLandingPage ? "bg-[#0a0a0f]" : "bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100"
+      }`}
     >
       <div className="flex-1 flex flex-col">
         <MainNavbar />
@@ -31,7 +29,7 @@ export function MainPage() {
           </Routes>
         </div>
         {!isLandingPage && (
-          <div className="text-blue-gray-600">
+          <div className="text-blue-gray-600 dark:text-slate-400">
             <Footer />
           </div>
         )}
