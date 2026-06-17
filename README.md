@@ -140,6 +140,16 @@ bun run lockfiles:refresh
 Commit the regenerated Bun and npm lockfiles together so the default and fallback package
 graphs do not drift.
 
+## CI/CD
+
+Use `.github/workflows/ci.yml` as the PR and `main` quality gate. It runs both
+the Bun default path and the Node fallback path. Use `.github/workflows/deploy.yml`
+only after `main` is green; it is a manual non-prod deploy that reuses the CI gate,
+ships a source archive to the box, and builds the Docker image there.
+
+The current deploy does not use GitHub Packages/GHCR. See
+[docs/CI-CD.md](./docs/CI-CD.md) for the workflow order and deploy model.
+
 ## Required Runtime Dependencies
 
 - MongoDB, configured with `MONGODB_URI`

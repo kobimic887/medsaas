@@ -8,7 +8,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch: {}
   workflow_call: {}
+
+permissions:
+  contents: read
 
 concurrency:
   # Separate push/PR runs from deploy-gate (workflow_call) runs on the same ref
@@ -20,6 +24,7 @@ jobs:
   test:
     name: check + tests (bun)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       # mongodb-memory-server downloads a real mongod binary on first run.
       # ubuntu-latest is 24.04, which MongoDB 7.0 has no published build for —
@@ -56,6 +61,7 @@ jobs:
   test-node:
     name: check + tests (node 24)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       MONGOMS_VERSION: "7.0.14"
       MONGOMS_DISTRO: "ubuntu-22.04"
