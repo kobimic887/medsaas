@@ -35,26 +35,29 @@
     "test:node": "npm run test:asinex:node && npm run test:email-theming:node && npm run test:stripe:node && npm run test:branding:node && npm run test:ssrf:node && SERVER_RUNTIME=node node test/runtime-smoke.test.mjs"
   },
   "dependencies": {
+    "@e965/xlsx": "^0.20.3",
     "@rdkit/rdkit": "^2025.3.4-1.0.0",
     "amqplib": "^0.10.9",
-    "axios": "^1.13.5",
+    "axios": "^1.18.0",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^17.0.1",
-    "express": "^4.18.2",
-    "form-data": "^4.0.4",
+    "express": "^4.22.2",
+    "form-data": "^4.0.6",
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.17.0",
     "node-fetch": "^3.3.2",
-    "node-vibrant": "4.0.4",
-    "nodemailer": "^7.0.5",
+    "nodemailer": "^8.0.11",
     "sharp": "0.34.5",
     "stripe": "^18.3.0",
-    "swagger-jsdoc": "^6.2.8",
-    "swagger-ui-express": "^5.0.1",
-    "xlsx": "^0.18.5"
+    "swagger-jsdoc": "^6.3.0",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
     "mongodb-memory-server": "^11.2.0"
+  },
+  "overrides": {
+    "jws": "3.2.3",
+    "path-to-regexp": "0.1.13"
   }
 }
