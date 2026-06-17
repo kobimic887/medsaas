@@ -6,13 +6,36 @@ import {
   Typography,
 } from "@material-tailwind/react";
 import PropTypes from "prop-types";
-import Chart from "react-apexcharts";
+import ReactApexChart from "react-apexcharts";
+
+function resolveChartComponent(candidate) {
+  if (typeof candidate === "function" || typeof candidate === "string") {
+    return candidate;
+  }
+  if (typeof candidate?.default === "function") {
+    return candidate.default;
+  }
+  if (typeof candidate?.default?.default === "function") {
+    return candidate.default.default;
+  }
+  return null;
+}
+
+const ChartComponent = resolveChartComponent(ReactApexChart);
 
 export function StatisticsChart({ color, chart, title, description, footer }) {
   return (
     <Card className="border border-blue-gray-100 shadow-sm">
       <CardHeader variant="gradient" color={color} floated={false} shadow={false}>
-        <Chart {...chart} />
+        {ChartComponent ? (
+          <ChartComponent {...chart} />
+        ) : (
+          <div className="grid h-[220px] place-items-center bg-white">
+            <Typography variant="small" color="gray">
+              Chart unavailable
+            </Typography>
+          </div>
+        )}
       </CardHeader>
       <CardBody className="px-6 pt-0">
         <Typography variant="h6" color="blue-gray">
