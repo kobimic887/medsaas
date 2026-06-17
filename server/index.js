@@ -1708,21 +1708,12 @@ app.get('/checkout-session/:sessionId', ensureMongoConnected, authenticateToken,
  *               organization:
  *                 type: string
  *                 description: Company name (required) — drives multi-tenant branding
- *               phoneNumber:
- *                 type: string
- *                 description: Optional phone number for contact
- *               shippingAddress:
- *                 type: string
- *                 description: Optional shipping address
- *               billingAddress:
- *                 type: string
- *                 description: Optional billing address
  *     responses:
  *       200:
  *         description: Signup successful
  */
 app.post('/api/signup', authRateLimit, ensureMongoConnected, async (req, res) => {
-  const { password, phoneNumber, shippingAddress, billingAddress, organization } = req.body;
+  const { password, organization } = req.body;
   // Trim identity fields: stray whitespace from autofill/mobile keyboards
   // otherwise gets stored verbatim and makes signin impossible.
   const username = typeof req.body.username === 'string' ? req.body.username.trim() : '';
@@ -1799,11 +1790,6 @@ app.post('/api/signup', authRateLimit, ensureMongoConnected, async (req, res) =>
   const userRole = existingCompanyUsers === 0 ? 'owner' : 'member';
 
   const hash = await bcrypt.hash(password, 10);
-  // Optional fields cleanup
-  const cleanedPhone = typeof phoneNumber === 'string' && phoneNumber.trim() ? phoneNumber.trim() : undefined;
-  const cleanedShipping = typeof shippingAddress === 'string' && shippingAddress.trim() ? shippingAddress.trim() : undefined;
-  const cleanedBilling = typeof billingAddress === 'string' && billingAddress.trim() ? billingAddress.trim() : undefined;
-
   const insertDoc = {
     username,
     email,
@@ -1817,10 +1803,6 @@ app.post('/api/signup', authRateLimit, ensureMongoConnected, async (req, res) =>
     active: true,
     createdAt: new Date()
   };
-
-  if (cleanedPhone) insertDoc.phoneNumber = cleanedPhone;
-  if (cleanedShipping) insertDoc.shippingAddress = cleanedShipping;
-  if (cleanedBilling) insertDoc.billingAddress = cleanedBilling;
 
   const insertResult = await usersCollection.insertOne(insertDoc);
 
@@ -3593,8 +3575,8 @@ app.post('/api/company/members', ensureMongoConnected, authenticateToken, requir
       mustChangePassword: !password
     });
 
-    let inviteEmailSent = false;
-    try {
+    const inviteEmailQueued = Boolean(process.env.EMAIL_USER && process.env.EMAIL_PASS);
+    if (inviteEmailQueued) {
       const signInUrl = `${getPublicAppUrl()}/auth/sign-in`;
       const passwordLine = password
         ? 'Use the initial password shared by your company admin.'
@@ -3609,7 +3591,7 @@ app.post('/api/company/members', ensureMongoConnected, authenticateToken, requir
         signInUrl,
         palette: invitePalette
       });
-      await sendTitanEmail({
+      void sendTitanEmail({
         name: username,
         subject: `${company.name} invited you to ${getPlatformName()}`,
         message: [
@@ -3620,10 +3602,9 @@ app.post('/api/company/members', ensureMongoConnected, authenticateToken, requir
         ].join('\n\n'),
         recipientEmail: email,
         htmlContent: inviteHtml
+      }).catch((inviteEmailError) => {
+        console.warn('Failed to send member invite email:', inviteEmailError.message);
       });
-      inviteEmailSent = true;
-    } catch (inviteEmailError) {
-      console.warn('Failed to send member invite email:', inviteEmailError.message);
     }
 
     res.status(201).json({
@@ -3633,9 +3614,12 @@ app.post('/api/company/members', ensureMongoConnected, authenticateToken, requir
         email: newMember.email,
         role: newMember.role,
         active: true,
-        simulationTokens: newMember.simulationTokens
+        simulationTokens: newMember.simulationTokens,
+        mustChangePassword: newMember.mustChangePassword,
+        createdAt: newMember.createdAt
       },
-      inviteEmailSent,
+      inviteEmailSent: false,
+      inviteEmailQueued,
       temporaryPassword: !password ? generatedPassword : undefined
     });
   } catch (error) {

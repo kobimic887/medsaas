@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
   Input,
-  Checkbox,
   Button,
   Typography,
 } from "@material-tailwind/react";
@@ -15,13 +14,9 @@ export function SignUp() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [organization, setOrganization] = useState("");
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [shippingAddress, setShippingAddress] = useState("");
-  const [billingAddress, setBillingAddress] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [termsAccepted, setTermsAccepted] = useState(false);
   const { brandName, platformName } = useBranding(organization);
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -30,11 +25,6 @@ export function SignUp() {
     e.preventDefault();
     setError("");
     setSuccess(false);
-    
-    if (!termsAccepted) {
-      setError("Please accept the Terms and Conditions to continue");
-      return;
-    }
 
     if (!organization.trim()) {
       setError("Company name is required");
@@ -50,10 +40,7 @@ export function SignUp() {
           username: username.trim(),
           password,
           email: email.trim(),
-          organization: organization.trim(),
-          phoneNumber,
-          shippingAddress,
-          billingAddress
+          organization: organization.trim()
         }),
       });
       const data = await res.json();
@@ -106,27 +93,11 @@ export function SignUp() {
               color="blue-gray"
               className="-mb-3 font-medium"
             >
-              Username
-            </Typography>
-            <Input
-              size="lg"
-              placeholder="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className=" !border-t-blue-gray-200 focus:!border-t-gray-900"
-              labelProps={{
-                className: "before:content-none after:content-none",
-              }}
-            />
-            <Typography
-              variant="small"
-              color="blue-gray"
-              className="-mb-3 font-medium"
-            >
               Your email
             </Typography>
             <Input
               size="lg"
+              type="email"
               placeholder="name@mail.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -158,6 +129,23 @@ export function SignUp() {
               color="blue-gray"
               className="-mb-3 font-medium"
             >
+              Username
+            </Typography>
+            <Input
+              size="lg"
+              placeholder="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className=" !border-t-blue-gray-200 focus:!border-t-gray-900"
+              labelProps={{
+                className: "before:content-none after:content-none",
+              }}
+            />
+            <Typography
+              variant="small"
+              color="blue-gray"
+              className="-mb-3 font-medium"
+            >
               Company Name
             </Typography>
             <Input
@@ -170,78 +158,7 @@ export function SignUp() {
                 className: "before:content-none after:content-none",
               }}
             />
-            <Typography
-              variant="small"
-              color="blue-gray"
-              className="-mb-3 font-medium"
-            >
-              Phone Number <span className="text-gray-500 font-normal">(Optional)</span>
-            </Typography>
-            <Input
-              size="lg"
-              placeholder="+1 (555) 123-4567"
-              value={phoneNumber}
-              onChange={(e) => setPhoneNumber(e.target.value)}
-              className=" !border-t-blue-gray-200 focus:!border-t-gray-900"
-              labelProps={{
-                className: "before:content-none after:content-none",
-              }}
-            />
-            <Typography
-              variant="small"
-              color="blue-gray"
-              className="-mb-3 font-medium"
-            >
-              Shipping Address <span className="text-gray-500 font-normal">(Optional)</span>
-            </Typography>
-            <Input
-              size="lg"
-              placeholder="Street, City, State, ZIP, Country"
-              value={shippingAddress}
-              onChange={(e) => setShippingAddress(e.target.value)}
-              className=" !border-t-blue-gray-200 focus:!border-t-gray-900"
-              labelProps={{
-                className: "before:content-none after:content-none",
-              }}
-            />
-            <Typography
-              variant="small"
-              color="blue-gray"
-              className="-mb-3 font-medium"
-            >
-              Billing Address <span className="text-gray-500 font-normal">(Optional)</span>
-            </Typography>
-            <Input
-              size="lg"
-              placeholder="Street, City, State, ZIP, Country"
-              value={billingAddress}
-              onChange={(e) => setBillingAddress(e.target.value)}
-              className=" !border-t-blue-gray-200 focus:!border-t-gray-900"
-              labelProps={{
-                className: "before:content-none after:content-none",
-              }}
-            />
           </div>
-          <Checkbox
-            checked={termsAccepted}
-            onChange={(e) => setTermsAccepted(e.target.checked)}
-            label={
-              <Typography
-                variant="small"
-                color="gray"
-                className="flex items-center justify-start font-medium"
-              >
-                I agree the&nbsp;
-                <a
-                  href="#"
-                  className="font-normal text-black transition-colors hover:text-gray-900 underline"
-                >
-                  Terms and Conditions
-                </a>
-              </Typography>
-            }
-            containerProps={{ className: "-ml-2.5" }}
-          />
           <Button className="mt-6" fullWidth type="submit" disabled={loading}>
             {loading ? "Registering..." : "Register Now"}
           </Button>

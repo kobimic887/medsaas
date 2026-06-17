@@ -378,8 +378,30 @@ export function CompanyAdmin() {
       });
       setInviteForm(initialInviteForm);
       if (result.temporaryPassword) setTemporaryPassword(result.temporaryPassword);
-      showMessage("green", `${result.message || "Member invited"}${result.inviteEmailSent ? " Invite email sent." : ""}`);
-      await Promise.all([loadUsage(), loadAudit()]);
+      if (result.member) {
+        setUsageData((current) => {
+          if (!current) return current;
+          const members = current.members || [];
+          if (members.some((member) => member.username === result.member.username)) return current;
+          return {
+            ...current,
+            members: [...members, result.member],
+          };
+        });
+        setMemberDrafts((current) => ({
+          ...current,
+          [result.member.username]: normalizeMemberDraft(result.member),
+        }));
+      }
+      const emailStatus = result.inviteEmailSent
+        ? " Invite email sent."
+        : result.inviteEmailQueued
+          ? " Invite email is being sent."
+          : "";
+      showMessage("green", `${result.message || "Member invited"}${emailStatus}`);
+      Promise.all([loadUsage(), loadAudit()]).catch((refreshError) => {
+        showMessage("red", `Member was created, but the list refresh failed: ${refreshError.message}`);
+      });
     } catch (error) {
       showMessage("red", error.message);
     } finally {
