@@ -58,7 +58,8 @@ npm --prefix server run import:mol-price -- /path/to/mol_price.xlsx
 Bun is the default package runner for install, dev, build, and start. npm/Node fallback
 aliases are retained with `:node` suffixes. Vite remains the client bundler:
 `bun run build` invokes `bun --cwd=client run build`, which runs `vite build` from
-`client/package.json`. Docker, CI, `check`, and test script migration remain Phase 7 scope.
+`client/package.json`. Docker, CI, `check`, and test scripts use the Bun-default
+paths, with Node fallbacks retained for runtime parity checks.
 
 Lockfile rule: root, `client/`, and `server/` keep both `bun.lock` and `package-lock.json`.
 When dependencies change, run `bun run lockfiles:refresh` and commit both lockfile families
@@ -72,8 +73,6 @@ Dev URLs: frontend at **http://localhost:5173**, API at http://localhost:3000, A
 - `server/` — Express API server. All routes live in `server/index.js` (one large ESM file) plus `server/routes/scientificServices.js` for microservice proxies.
 - `client/` — Vite + React 18 dashboard using Material Tailwind and Heroicons. `@` aliases to `client/src/`.
 - `services/admet/`, `services/gromacs-api/`, `services/glioblastoma-predictor/` — Scientific microservices (Docker, optional).
-- `packages/dashboard-template/` — Upstream UI reference only, not imported directly by the app.
-- `legacy/chem-beo-api/` — Archived standalone chemistry API, not used.
 
 ### Server
 The server is a single Express app (`server/index.js`, ESM). It starts with `node --watch index.js` in dev. Required env vars are validated at startup: `MONGODB_URI`, `JWT_SECRET` (≥32 chars), `STRIPE_SECRET_KEY`.
@@ -106,7 +105,9 @@ Routes are defined in `client/src/routes.jsx` and consumed by the dashboard layo
 
 **API calls:** Use `API_CONFIG.buildApiUrl(endpoint)` for `/api/*` routes and `API_CONFIG.buildUrl(endpoint)` for top-level routes (Stripe checkout, Tanimoto). In dev, Vite proxies `/api`, `/tanimoto`, `/create-checkout-session*`, and `/health` to port 3000 — no `VITE_API_BASE_URL` needed.
 
-**Molecule visualization libraries:** Ketcher (2D structure editor), Molstar (3D viewer), smiles-drawer, molecule-2d-for-react, RDKit (`@rdkit/rdkit` also installed server-side).
+**Molecule visualization:** Ketcher is served from `client/public/ketcher`,
+Molstar is served from `client/public/molstar` via its CDN build, the RDKit UI
+loader lives in `client/index.html`, and `@rdkit/rdkit` is installed server-side.
 
 ### Scientific feature backends
 | Feature | Route prefix | Backend |

@@ -9,8 +9,6 @@ import { BrandingProvider } from "@/context/branding";
 import { BlogProvider } from "@/context/blog";
 import { installAuthInterceptor } from "@/utils/authInterceptor";
 import "./tailwind.css";
-import "molstar/lib/mol-plugin-ui/skin/light.scss";
-import "./styles/molstar.css";
 
 // Auto-redirect to sign-in when any same-origin API call returns 401 (expired/invalid token).
 installAuthInterceptor();
