@@ -43,3 +43,8 @@ services/glioblastoma-predictor/*.crt
 services/glioblastoma-predictor/*.csr
 services/glioblastoma-predictor/*.p7b
 services/glioblastoma-predictor/*.ca-bundle
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules

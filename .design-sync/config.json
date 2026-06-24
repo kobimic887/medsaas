@@ -1,0 +1,42 @@
+{
+  "projectId": "ebec10a9-ae2d-4290-a6e9-f91592eebda9",
+  "shape": "package",
+  "pkg": "medsaas-web",
+  "globalName": "ChemBench",
+  "srcDir": "src",
+  "tsconfig": "jsconfig.json",
+  "cssEntry": "dist/assets/index-DUiCo0pa.css",
+  "provider": { "component": "DsPreviewProvider" },
+  "readmeHeader": ".design-sync/conventions.md",
+  "runtimeFontPrefixes": ["Inter", "Outfit"],
+  "overrides": {
+    "StatisticsCard": { "cardMode": "column" },
+    "Sidenav": { "cardMode": "single", "viewport": "1320x740" },
+    "DashboardNavbar": { "cardMode": "single", "viewport": "1100x520" },
+    "MainNavbar": { "cardMode": "single", "viewport": "1100x220" },
+    "Navbar": { "cardMode": "single", "viewport": "1100x420" },
+    "Footer": { "cardMode": "single", "viewport": "920x160" }
+  },
+  "componentSrcMap": {
+    "MessageCard": "src/widgets/cards/message-card.jsx",
+    "ProfileInfoCard": "src/widgets/cards/profile-info-card.jsx",
+    "StatisticsCard": "src/widgets/cards/statistics-card.jsx",
+    "StatisticsChart": "src/widgets/charts/statistics-chart.jsx",
+    "BrandingPreview": "src/components/BrandingPreview.jsx",
+    "Sidenav": "src/widgets/layout/sidenav.jsx",
+    "DashboardNavbar": "src/widgets/layout/dashboard-navbar.jsx",
+    "MainNavbar": "src/widgets/layout/main-navbar.jsx",
+    "Navbar": "src/widgets/layout/navbar.jsx",
+    "Footer": "src/widgets/layout/footer.jsx"
+  },
+  "dtsPropsFor": {
+    "MessageCard": "img: string; name: string; message: React.ReactNode; action?: React.ReactNode;",
+    "ProfileInfoCard": "title: string; description?: React.ReactNode; details?: Record<string, React.ReactNode>; action?: React.ReactNode;",
+    "StatisticsCard": "color?: \"white\" | \"blue-gray\" | \"gray\" | \"brown\" | \"deep-orange\" | \"orange\" | \"amber\" | \"yellow\" | \"lime\" | \"light-green\" | \"green\" | \"teal\" | \"cyan\" | \"light-blue\" | \"blue\" | \"indigo\" | \"deep-purple\" | \"purple\" | \"pink\" | \"red\"; icon: React.ReactNode; title: React.ReactNode; value: React.ReactNode; footer?: React.ReactNode;",
+    "StatisticsChart": "color?: \"white\" | \"blue-gray\" | \"gray\" | \"brown\" | \"deep-orange\" | \"orange\" | \"amber\" | \"yellow\" | \"lime\" | \"light-green\" | \"green\" | \"teal\" | \"cyan\" | \"light-blue\" | \"blue\" | \"indigo\" | \"deep-purple\" | \"purple\" | \"pink\" | \"red\"; chart: Record<string, unknown>; title: React.ReactNode; description: React.ReactNode; footer?: React.ReactNode;",
+    "BrandingPreview": "companyName: string; logoSrc?: string; palette: { primary: string; accent: string; light: string; dark: string };",
+    "Sidenav": "brandImg?: string; brandName?: string; routes: Array<Record<string, unknown>>;",
+    "Navbar": "brandName?: string; routes: Array<Record<string, unknown>>; action?: React.ReactNode;",
+    "Footer": "brandName?: string; brandLink?: string; routes?: Array<Record<string, unknown>>;"
+  }
+}
