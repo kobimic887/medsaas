@@ -8,6 +8,7 @@ This monorepo unifies the following GitHub projects into one runnable platform.
 | `services/admet/` | [kobimic887/admet](https://github.com/kobimic887/admet) | RabbitMQ worker: ADMET-AI predictions → API callback |
 | `services/gromacs-api/` | [kobimic887/gromacs-api](https://github.com/kobimic887/gromacs-api) | GROMACS + REST API (MD workflows) |
 | `services/glioblastoma-predictor/` | [kobimic887/glioblastoma-predictor](https://github.com/kobimic887/glioblastoma-predictor) | Glioblastoma drug sensitivity API |
+| `services/mcp-server/` | (in-repo) | MCP server exposing the platform's tools to Claude for Science / Life Sciences |
 | External reference only | [eitangenis/eShop](https://github.com/eitangenis/eShop) | Legacy ASINEX stock storefront and `/api/Shop` contract reference; see [docs/ASINEX-ESHOP-HANDOFF.md](./docs/ASINEX-ESHOP-HANDOFF.md) |
 
 ## Duplicates resolved
@@ -26,6 +27,7 @@ This monorepo unifies the following GitHub projects into one runnable platform.
 | RabbitMQ | 5672 (AMQP), 15672 (UI) |
 | GROMACS API | 8001 → container 8000 |
 | Glioblastoma predictor | 5000 |
+| ChemBench MCP server | 8080 |
 
 ## Syncing upstream changes
 

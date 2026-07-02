@@ -9,6 +9,7 @@ Combined monorepo for molecular research SaaS: web app, chemistry API, ADMET wor
 | `services/admet/` | RabbitMQ ADMET-AI worker |
 | `services/gromacs-api/` | GROMACS REST API |
 | `services/glioblastoma-predictor/` | Glioblastoma sensitivity API |
+| `services/mcp-server/` | MCP server exposing the platform's tools to Claude for Life Sciences |
 
 Root scripts are the supported way to install, run, build, and check the app.
 Bun is the default package runner for install, dev, build, and start. npm/Node

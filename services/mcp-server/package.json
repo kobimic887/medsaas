@@ -1,0 +1,25 @@
+{
+  "name": "medsaas-mcp-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Model Context Protocol server exposing the ChemBench drug-discovery platform to Claude for Life Sciences.",
+  "main": "src/http.js",
+  "scripts": {
+    "start": "bun src/http.js",
+    "start:bun": "bun src/http.js",
+    "start:node": "node src/http.js",
+    "dev": "bun --watch src/http.js",
+    "dev:bun": "bun --watch src/http.js",
+    "dev:node": "node --watch src/http.js",
+    "stdio": "bun src/stdio.js",
+    "stdio:node": "node src/stdio.js",
+    "smoke": "bun test/handshake.smoke.mjs",
+    "smoke:node": "node test/handshake.smoke.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "express": "^4.22.2",
+    "zod": "^3.25.0"
+  }
+}
