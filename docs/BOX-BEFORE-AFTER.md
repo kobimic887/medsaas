@@ -131,7 +131,7 @@ a licence we do not have and the other cannot be computed at all.
 | `simulation_logs`, `projects` | Mongo on Oracle | **Box**, mirror | `simulation_logs.result` holds the docking output contract — capture it before Asinex goes down |
 | `mol_price` | Mongo on Oracle | **Box**, mirror | Rides along in the dump. The source `.xlsx` is **not in the repo** — find out where it lives |
 | Tanimoto fingerprints + datasets | Postgres on Oracle | **Box**, mirror | Restored via `pg_dump`. Re-uploading CSVs is *not* equivalent — dataset ids and fingerprints would change |
-| `autogrid` grid maps | **did not exist** | **Box**, `/srv/cache` (4 TB NVMe) | New. ~60 MB per receptor, rebuildable, so deliberately not mirrored |
+| `autogrid` grid maps | **did not exist** | **Box**, `/srv/cache` (4 TB NVMe) | New. ~60 MB per receptor (**estimate — measure in Phase 4**), rebuildable, so deliberately not mirrored |
 | Docking scratch, poses, PDBQT | Asinex's disks, invisible to us | **Box**, `/srv/scratch` (same 4 TB) | Deliberately off the mirror — RAID 1 doubles writes and this is throwaway data |
 | Job archives, dumps, catalog exports | nowhere | **Box**, `/srv/archive` (24 TB HDD) | Sequential, cold |
 | Docker images, model weights, CUDA | Oracle's single disk | **Box**, mirror | DiffDock weights ~1 GB |
@@ -188,7 +188,7 @@ day one is physical setup and hardware acceptance; the migration starts later.
    - `nvidia-smi` — **two** cards, 32 GB each, driver **570 or newer**. If Coreto shipped
      the 550 branch the cards will not initialise; that is the single most likely arrival-day
      fault.
-   - `nvidia-smi --query-gpu=compute_cap --format=csv` — expect `12.0` (`sm_120`).
+   - `nvidia-smi --query-gpu=compute_cap --format=csv` — expect `12.x`, matching `sm_120`.
    - `dmidecode -t memory` — **four** 32 GB modules, DDR5-5600, ECC. Four populated channels,
      not two.
    - `lscpu` — 32 cores / 64 threads, 4.00 GHz base.

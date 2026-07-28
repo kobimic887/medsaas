@@ -543,7 +543,7 @@ availability, **do this as early as it will go**, not last.
    Match the output contract captured in Phase 0.1 — the engine is known, the field names
    are not, and `simulation.jsx` plus the two `sanitized*` endpoints read them by name.
 2. **`autogrid` map cache.** Maps are per-receptor, CPU-bound, ~30–60 s, ~60 MB, and
-   *cacheable*. Key them by PDB ID on `/srv/cache` (§6). The first dock against a protein
+   *cacheable*. Roughly 60 MB per target — an **estimate from typical box dimensions, not measured**; confirm it before trusting the cache sizing. Key them by PDB ID on `/srv/cache`. The first dock against a protein
    pays for the maps; every subsequent ligand against the same target does not. This is
    what makes 32 cores sufficient — grid generation happens once per target, not once per
    dock.
