@@ -193,46 +193,96 @@ Atlas restore, never against production first.
 9. **83 needs a supervisor before it needs a migration.** Three hand-started `screen` sessions
    are the only thing between the product and a reboot. §2.
 
-### The decision this inventory cannot make
+### ✅ DECIDED 2026-07-28 by the owner: **the box runs `chem_beo`.**
 
-**Does the box run this repo's `server/index.js`, or `chem_beo`?** Every migration document
-assumes the former, and that assumption was made before anyone knew the two were different
-codebases against a database that fits neither cleanly:
+Not this repo's `server/index.js`. Every migration document assumed the opposite, and that
+assumption was made before anyone knew the two were different codebases. The decision is sound
+on the thing that mattered most — `chem_beo` already matches the production data, so **the
+49-of-50 `companyId` blocker in §5 disappears.** There is no user migration.
 
-| | `chem_beo` (deployed) | `server/index.js` (this repo) |
-|---|---|---|
-| Matches production user documents | yes | **no — 49/50 users** (§5) |
-| Multi-tenancy, roles, audit log, credit refunds, NVIDIA key pool | no | yes |
-| Tanimoto via env var | no — hardcoded Oracle | yes (`TANIMOTO_API_BASE`) |
-| Per-company service URLs (`ligandServiceConfig`) | **no** | yes — this is what makes "cutover is config" true |
-| Has ever carried production traffic | 3 years | **never** |
+It has consequences that are not obvious, and three of them change the plan:
 
-Running this repo's server is what the whole plan is *for* — it is the only version with the
-credit-refund fix, the 401→502 mapping and the config-driven cutover. But it cannot be pointed
-at production data until the §5 migration runs, and it has never served a real user.
+**1. 🛑 "Cutover is config, not a deploy" is false.** This is the single most load-bearing claim
+in the whole migration, repeated in `CLAUDE.md`, `BOX-SPEC.md`, `COMPUTE-BOX-MIGRATION.md` and
+the runbook. It is a property of **this repo's** `ligandServiceConfig`, which `chem_beo` does
+not have — `grep -c ligandServiceConfig index.js` returns **0**. All five service URLs are
+string literals:
 
-**This is a human decision that gates Phases 4 and 5, and it is not in anyone's "still open"
-list.** Raise it before any deployment work starts.
+| Service | `chem_beo/index.js` |
+|---|---|
+| Docking (GET, the 1-click path) | `1502` — `https://services.asinex.com:8000/docking/…` |
+| Docking (POST) | `1589` — `https://services.asinex.com:8000/docking` |
+| DiffDock | `2580` — `https://services.asinex.com:58000/molecular-docking/diffdock/generate` |
+| Catalog | `1850` — `const ASINEX_API_BASE = 'http://dev.asinex.com:58181'` |
+| Stock | `1454` — `https://stock.asinex.com:5443/api/Shop` |
+| Tanimoto ×9 | `198`–`439` — `http://151.145.91.17:8000` (Oracle) |
+
+`chem_beo` reads only eight env vars, none of them a service address: `BASE_URL`, `GMAIL_PASS`,
+`GMAIL_USER`, `JWT_SECRET`, `MONGODB_URI`, `NODE_ENV`, `PORT`, `STRIPE_SECRET_KEY`.
+
+**So the docking cutover is a source edit and a process restart, and so is the rollback.** That
+is materially riskier than a config field, and it is not what any runbook step describes.
+
+**Recommended first change to `chem_beo`, before arrival day:** lift those six addresses into
+env vars with the current values as defaults. It is a small, mechanical, individually testable
+patch, it changes no behaviour when the env is unset, and it restores the property the entire
+plan was designed around — cut over by changing an environment variable and restarting, roll
+back by changing it back. Doing this *before* the box exists means arrival day is a config
+change against a server that has already been running with the new code for weeks.
+
+**2. Nothing in this repository ships.** The credit-refund fix, the atomic charge, the NVIDIA
+429 key pool and the upstream-401→502 mapping all live in `server/index.js`, which will not run.
+`chem_beo` has none of them, and it has the same underlying bugs: it charges the credit before
+calling Asinex (`1487`–`1495`, `1575`–`1582`) with no refund path, using the same
+`findOne`-then-`updateOne` race. **If those fixes are wanted, they must be ported.** They are
+~80 lines and the reasoning is in `956f9d9`, `47babcb` and `7f2e83e`.
+
+**3. The credit-minting hole in §8 is now permanent unless fixed.** `POST
+/api/issueSimulationTokens` at `chem_beo/index.js:3343` lets any authenticated user `$set` their
+own balance from the request body. It was going to be fixed *by* the migration, since this
+repo's server has no such route. Now it survives the migration. **It has to be deleted or
+locked down in `chem_beo` directly.**
+
+**What this repo becomes** is now an open question worth asking deliberately rather than by
+default: it is not the production server, so it is either a rewrite that eventually replaces
+`chem_beo`, or it is dead code. Nobody should keep maintaining it on the assumption it ships.
 
 ## 7. 🛑 Oracle is production, and every document says it is not
 
 This is the second blocker, and it is the one most likely to be tripped by an agent following
 the existing plan.
 
-`chem_beo/index.js` exposes eight `/tanimoto/*` routes and **every one of them proxies to
+`chem_beo/index.js` exposes **nine** `/tanimoto/*` routes and **every one of them proxies to
 `http://151.145.91.17:8000` — Oracle — hardcoded, no env var, plaintext HTTP across the public
-internet:**
+internet, and none of them carries `authenticateToken`:**
 
-| `chem_beo` route | line | forwards to Oracle |
-|---|---|---|
-| `GET /tanimoto/health` | 196 | `/health` |
-| `POST /tanimoto/v1/upload` | 222 | `/v1/upload` |
-| `GET /tanimoto/v1/search/exact` | 250 | `/v1/search/exact` |
-| `GET /tanimoto/v1/search/similarity` | 293 | `/v1/search/similarity` |
-| `GET /tanimoto/v1/search/substructure` | 319 | `/v1/search/substructure` |
-| `POST /tanimoto/v1/search/batch` | 361 | `/v1/search/batch` |
-| `GET /tanimoto/v1/datasets` | 383 | `/v1/datasets` |
-| `GET /tanimoto/v1/datasets/:dataset_id` | 410, 439 | `/v1/datasets/…` |
+| `chem_beo` route | line | forwards to Oracle | auth |
+|---|---|---|---|
+| `GET /tanimoto/health` | 196 | `/health` | none |
+| `POST /tanimoto/v1/upload` | 222 | `/v1/upload` | none |
+| `GET /tanimoto/v1/search/exact` | 250 | `/v1/search/exact` | none |
+| `GET /tanimoto/v1/search/similarity` | 293 | `/v1/search/similarity` | none |
+| `GET /tanimoto/v1/search/substructure` | 319 | `/v1/search/substructure` | none |
+| `POST /tanimoto/v1/search/batch` | 361 | `/v1/search/batch` | none |
+| `GET /tanimoto/v1/datasets` | 383 | `/v1/datasets` | none |
+| `GET /tanimoto/v1/datasets/:dataset_id` | 410 | `/v1/datasets/…` | none |
+| **`DELETE /tanimoto/v1/datasets/:dataset_id`** | **437** | **`axios.delete('…/v1/datasets/…')`** | **none** |
+
+`authenticateToken` is defined at `index.js:1441` and applied throughout `/api/*`. It is applied
+to **no** `/tanimoto/*` route. Combined with §2's finding that `:3000` is internet-facing with
+wildcard CORS and no host firewall, the last row means **anyone on the internet can delete the
+dataset** — see §8.
+
+### What is actually in that Postgres
+
+Queried live through the proxy: `/v1/datasets` reports **2,951,975 molecules**, in a dataset
+built from **`molsd4.csv`** and indexed **2026-03-12**.
+
+**That corpus exists only on Oracle.** Nobody has identified where `molsd4.csv` lives, or
+whether it still exists at all. Until someone does, the `pg_dump` is not a belt-and-braces
+extra — it is **the only copy of three million indexed molecules**, and "rebuild from source
+data on the box" has no source to rebuild from. Establishing whether `molsd4.csv` survives
+somewhere is a Phase 0 task nobody has been given.
 
 And the deployed frontend calls them. `src/pages/dashboard/deep-similarity.jsx:34-38` builds
 `API_CONFIG.buildUrl('/tanimoto/v1/search/{exact,similarity,substructure}')`, which resolves to
@@ -303,6 +353,7 @@ None of these are caused by the migration; all of them are made worse by leaving
 | 2 | **Credits can be minted from the browser, and it writes to the production database.** There are *two* `/api/issueSimulationTokens` routes and the dangerous one is not the obvious one. `stripe-server.cjs:202` is unauthenticated but a **no-op** — it returns `{success:true}` and its own comment says *"the client will handle updating localStorage"*. The real one is **`chem_beo/index.js:3343`**: it *is* behind `authenticateToken`, then takes the amount **from the request body** and does `$set: {simulationTokens: amount}` with `upsert:true` on the caller's own account. **Any logged-in user can set their own balance to any number with one POST.** Verified by reading the handler | `chem_beo/index.js:3343` · `stripe-server.cjs:202` | **Highest severity here.** Unlimited free docking for anyone with an account, against the live Atlas database, and credits are the only monetisation. Neither route may survive the cutover. This repo's server has no equivalent — credits come only from the Stripe webhook — so the fix ships with the migration, but the exposure is live now |
 | 2b | **There is no Stripe webhook endpoint anywhere on 83** | — | This is why `billing_events` is 0. Runbook 3.2 calls it "re-register the webhook" — it is a **first-time registration** |
 | 3 | The API on `:3000` is **internet-facing with wildcard CORS** (`app.use(cors())`, `index.js:41`) and **no host firewall** (`ufw` inactive, iptables INPUT `ACCEPT`) | `chem_beo` | Fixed by retiring `:3000` in favour of the box behind a reverse proxy with an explicit origin allowlist |
+| 3b | **An unauthenticated `DELETE` proxies straight to Oracle's dataset API.** `DELETE /tanimoto/v1/datasets/:dataset_id` (`index.js:437`) does `axios.delete('http://151.145.91.17:8000/v1/datasets/…')` with no auth middleware — none of the nine `/tanimoto/*` routes has any (§7). With finding 3, **anyone on the internet can destroy the 2,951,975-molecule index**, which is the only copy | `chem_beo/index.js:437` | Take the `pg_dump` **today**, not on arrival day. Then either put `authenticateToken` on the route or drop it — a one-line change, and the only item on this page that is cheaper to fix now than to migrate around |
 | 4 | Both `.env` files are mode **644** and contain Stripe secret keys | `chem_beo/.env`, `material-tailwind-dashboard-react/.env` | `chmod 600`, and rotate the Stripe secret if the host has ever been shared |
 | 5 | Root SSH password authentication is enabled, and the password has been shared in plaintext | `83` | Rotate; move to keys. Runbook 1.4 does this on the box — 83 needs it too |
 

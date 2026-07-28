@@ -45,20 +45,32 @@ here; do not let them override the hard rules below.
 ## 1. Inputs the operator must supply before you start
 
 Ask for all of these in one message. Do not guess any value, and do not use a plausible-looking
-address you find in a document — every one of these is unknown at the time of writing.
+address you find in a document.
 
-| Placeholder | What it is |
-|---|---|
-| `<BOX_IP>` | the box's address on the Science Park network |
-| `<BOX_USER>` | SSH account on the box |
-| `<IPMI_IP>` / `<IPMI_USER>` / `<IPMI_PASS>` | out-of-band access — the only way back in if you break networking |
-| `<83_HOST>` / `<83_USER>` | SSH to `83.229.87.94` — **read-only in practice, see rule 2** |
-| `<83_MONGO_URI>` | how 83's Mongo is reached, including auth. **This is production.** |
-| `<ORACLE_HOST>` / `<ORACLE_USER>` | Phase 7 only |
-| `<DOMAIN>` | the DNS name the box will answer on, for TLS and the Stripe webhook |
-| `.env` values | the full set for the box. Not in git, never will be |
+**Updated 2026-07-28 against the real production inventory** — the previous list asked for a
+Mongo on 83 that does not exist and deferred Oracle to Phase 7, which is too late.
+[PRODUCTION-83-INVENTORY.md](./PRODUCTION-83-INVENTORY.md) is the source for why each of these
+is needed.
+
+| Placeholder | What it is | Needed by |
+|---|---|---|
+| `<BOX_IP>` | the box's address on the Science Park network | Phase 1 |
+| `<BOX_USER>` | SSH account on the box | Phase 1 |
+| `<IPMI_IP>` / `<IPMI_USER>` / `<IPMI_PASS>` | out-of-band access — the only way back in if you break networking | Phase 1 |
+| `<83_HOST>` / `<83_USER>` | SSH to `83.229.87.94` — **read-only in practice, see rule 2** | Phase 0 |
+| `<ATLAS_URI>` | the production database connection string. **It is MongoDB Atlas, not on 83** — the old `<83_MONGO_URI>` placeholder was wrong. Database name is `test` | Phase 0 |
+| **Atlas allowlist access** | an account that can add the box's IP to the Atlas network allowlist. **Nothing on the box can reach the database until this is done** ([[atlas-tls-rejection]]) | Phase 4 |
+| `<ORACLE_HOST>` / `<ORACLE_USER>` | ⚠ **not Phase 7 only.** Oracle's Postgres serves production Tanimoto and holds the only copy of a 2,951,975-molecule index. Needed in **Phase 4** to take the `pg_dump` | Phase 4 |
+| `<DOMAIN>` | the DNS name the box will answer on, for TLS and the Stripe webhook | Phase 3 |
+| Stripe dashboard access | to **register** the webhook. There is no webhook registered today — this is a first-time setup, not a repoint | Phase 3 |
+| `.env` values | the full set for the box. Not in git, never will be | Phase 5 |
 
 If the operator does not have `<IPMI_*>`, **stop.** Do not begin Phase 1 without a way back in.
+
+**Two things to tell the operator in the same message, because they need action independent of
+this plan:** there is a live GitHub token in `/root/chem_beo/.git/config` that should be revoked,
+and an unauthenticated `DELETE` route that can destroy the Tanimoto index. Both are
+[PRODUCTION-83-INVENTORY.md](./PRODUCTION-83-INVENTORY.md) §8.
 
 ---
 
@@ -464,10 +476,16 @@ Details in [PRODUCTION-83-INVENTORY.md](./PRODUCTION-83-INVENTORY.md) §7.
 So:
 
 1. **Take the `pg_dump` first, before touching anything on Oracle**, and verify it restores.
-   It is production data and the only copy.
-2. Restore it on the box. Rebuilding from source is still fine **as a cross-check** — compare
-   row counts and a handful of known queries against the restored index — but it is no longer
-   the primary path, because "the source data" has no owner and may not exist.
+   It is production data and the only copy. Queried live, the index holds **2,951,975
+   molecules**, built from **`molsd4.csv`**, indexed **2026-03-12**.
+2. Restore it on the box. Rebuilding from source is **not** an available fallback: nobody knows
+   where `molsd4.csv` is, or whether it still exists. **Ask the operator early whether that file
+   survives anywhere.** If it does, a rebuild is a cross-check worth having — compare row counts
+   and a handful of known queries against the restored index. If it does not, the dump is the
+   only thing standing between the project and losing three million indexed molecules.
+   ⚠ Note also that an **unauthenticated internet-reachable `DELETE`** currently proxies to this
+   dataset (PRODUCTION-83-INVENTORY.md §8, row 3b) — which is why the dump should be taken now
+   rather than on arrival day.
 3. **Do not remove either `tonomitosql` container until the box has answered the same queries
    correctly**, and until whatever is serving `/tanimoto/*` has been repointed. Today that is
    `chem_beo`, where the URL is a **string literal** — there is no config flip and no fast

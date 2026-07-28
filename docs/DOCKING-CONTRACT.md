@@ -53,18 +53,52 @@ END
 
 Observed properties:
 
-- **Prepared with OpenMM 8.2** and stamped with a fixed date (`2026-05-12`) — the same string
-  appears in records created in June and July, so it is the preparation date of a **cached**
-  receptor, not the date of the dock. Asinex prepares each receptor once and reuses it.
+- **Prepared with OpenMM 8.2.** The `REMARK` date **tracks the date of the dock** — the three
+  distinct values observed are `2026-05-12`, `2026-06-01` and `2026-07-08`, matching each
+  record's own `timestamp`.
 - **Explicit hydrogens** (`H`, `H2`, `H3`, `HA`, `HB2`…). This is a protonated, minimised
   structure, not a raw RCSB download.
 - Single chain `A`, terminated `TER` / `END`, with `OXT` on the C-terminal residue.
 - Occupancy `1.00` and B-factor `0.00` throughout — B-factors were dropped in preparation.
-- **Byte-identical across all records sharing a `pdbid`.** Confirms the cache.
+- **`result.pdb` is receptor-specific.** `1cx6` and `1cx7` give different coordinates from the
+  first atom onward, so the requested `pdbid` is honoured. (Both happen to be 210,435 bytes and
+  2,601 lines — they are the same protein at the same length, not the same file.)
 
-**Implication for the rebuild:** the box needs a receptor preparation step producing the same
-kind of artifact, and it should cache per PDB ID exactly as Asinex does. This lines up with the
-`autogrid` map caching already planned in the runbook — same cache key, same lifetime.
+### ❌ Corrected 2026-07-28: the receptor is **not** cached and **not** byte-stable
+
+An earlier version of this file said the receptor was byte-identical per `pdbid` and concluded
+Asinex prepares each one once and reuses it. A hash comparison disproves it:
+
+| Pair | Result |
+|---|---|
+| two `1cx7` records | **1,308 of 2,601 lines differ** |
+| two `1cx6` records | **1,308 of 2,601 lines differ** |
+
+The differing lines are **the hydrogens**. Heavy atoms are identical across runs — `ATOM 1 N
+MET A 1` is byte-for-byte the same — while every `H`/`H2`/`H3` line carries different
+coordinates:
+
+```
+A: ATOM   2  H  MET A  1   44.679  -3.758   8.342     ← 2026-05-12 run
+B: ATOM   2  H  MET A  1   43.721  -3.902  10.160     ← 2026-06-01 run, same receptor
+```
+
+So the pipeline is: **deterministic heavy-atom structure from RCSB, then a fresh protonation and
+minimisation on every dock.** Hydrogen placement is stochastic; nothing is reused. That is also
+why the `REMARK` date moves.
+
+**Implication for the rebuild — this is the part that changed.** The box needs a receptor
+preparation step producing the same *kind* of artifact, but:
+
+- **Do not assert byte-stability anywhere**, in the service or in a test. The reference
+  implementation is not byte-stable, and a test that demands it fails against the thing it is
+  supposed to match.
+- **Caching the prepared receptor is an improvement over what Asinex does, not a copy of it.**
+  It is still the right call — it makes the second dock against a protein much faster, which is
+  a stated goal of the box — but it is a behavioural *change*, and it makes hydrogen positions
+  stable where production varies them. Say so rather than presenting it as parity.
+- The `autogrid` map cache in the runbook is unaffected: maps derive from the receptor, and
+  caching both together with the same key is coherent.
 
 ## 3. `result.sdf` — the poses
 
@@ -143,8 +177,11 @@ it closes when Moscow does.
 
 The box's AutoDock service passes when, for `pdbid=1cx7` and a SMILES from §5, it returns:
 
-- `result.pdb` — prepared receptor, explicit hydrogens, single chain, `TER`/`END`, cached and
-  byte-stable across calls for the same `pdbid`
+- `result.pdb` — prepared receptor, explicit hydrogens, single chain, `TER`/`END`, with heavy
+  atoms matching the RCSB structure for that `pdbid`. **Do not test for byte-equality across
+  calls** — the reference implementation re-minimises every time and its hydrogens move (§2). If
+  the box caches the prepared receptor, its output *will* be byte-stable; that is a deliberate
+  improvement, and the test should assert heavy-atom agreement, not file equality
 - `result.sdf` — V2000, RDKit writer line, N poses each carrying `MODEL`, `TORSDO`, `SCORE`,
   `ligand_id`, `original_smiles`, `smiles`, sorted by `SCORE` ascending (best first)
 - Scores in a plausible AutoDock range for the pair — **compare against the stored values
