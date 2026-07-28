@@ -223,6 +223,27 @@ cost to the Netherlands, and lead time.
 **Not from Coreto:** buy a third 2 TB NVMe retail (~€200) and keep it on a shelf. Pick-up
 warranty turns any drive failure into weeks of downtime; a spare turns it into an afternoon.
 
+### The two things to settle before the order goes in
+
+**1. VAT — worth ~€5.2k, and it is not automatic.** Purchaser is **Pyxis Discovery BV**,
+Science Park 408 Unit 1.05, 1098 XH Amsterdam, **VAT ID NL811799189B01**. Coreto AG is in
+Friedberg, Germany (VAT DE218312839), so this is an intra-EU B2B supply and qualifies for
+**reverse charge at 0 % VAT, delivered to Amsterdam**. On a €24,727 net order, German VAT
+would add roughly €5,200. **Ask for it explicitly and check it on the invoice** — a quote
+issued with VAT applied is the default, not an error to be corrected later.
+
+**2. The GeForce driver EULA's datacenter clause — an unexamined assumption, not a cleared one.**
+An earlier revision of this spec ruled GeForce out on that clause. The decision then flipped to
+2× RTX 5090 for the reasons in §3, and **the clause was never revisited.** The risk looks low:
+this is one company's own workstation, on its own premises, doing its own work — not a
+datacenter selling GPU capacity to third parties — and the platform is going single-tenant
+(`docs/PYXIS-ONLY.md`). But "looks low" is not the same as checked. **Raise it with the buyer
+before the order**, because it is unfixable afterwards: the alternative is RTX PRO cards, which
+is a different machine at a different price.
+
+*(Coreto shop credentials are deliberately not recorded in this repo. They are in the owner's
+email, and that is where they stay.)*
+
 ---
 
 ## 5. What is not being replaced, and why
