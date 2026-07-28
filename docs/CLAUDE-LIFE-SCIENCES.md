@@ -53,8 +53,16 @@ predict, price. Nothing needs inventing — it needs the backends behind it to b
 
 ## 3. What is broken about it today, and why
 
-Four of the fourteen tools **cannot work in the current deployment**, and it is not the MCP
-server's fault:
+Four of the fourteen tools **almost certainly cannot work in the current deployment**, and it
+is not the MCP server's fault. This is inferred from the code and compose files, not observed
+on the box — the deployed `~/medsaas/.env` is not in git and was not read, and
+`docker-compose.box.yml` passes it to the app with `env_file: .env`, so an override there
+would change the picture. Confirm before acting:
+
+```bash
+ssh oracle 'cd ~/medsaas && docker compose -f docker-compose.box.yml exec -T app env | grep _API_BASE'
+```
+
 
 1. **`platform_health`, `predict_glioblastoma`, `run_gromacs_workflow`, `get_gromacs_job`.**
    These proxy through `server/routes/scientificServices.js`, which reads `GROMACS_API_BASE`

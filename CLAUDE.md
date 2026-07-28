@@ -4,11 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Planning
 
-Before non-trivial work, write a short plan and get it agreed. There is no plugin-provided
-planning workflow in this environment — the `superpowers` plugin is present in the plugin
-cache but **not installed**, so `writing-plans`, `using-superpowers`,
-`test-driven-development`, `systematic-debugging` and `dispatching-parallel-agents` are not
-available. Do not reference them.
+Before non-trivial work, write a short plan and get it agreed.
+
+**There is no plugin-provided planning workflow enabled right now.** The `superpowers` plugin
+is cached on disk at `~/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/`
+with all fourteen of its skills present — but it is **not in `enabledPlugins`** in
+`~/.claude/settings.json` (only `frontend-design`, `codex` and `caveman` are). So
+`writing-plans`, `using-superpowers`, `test-driven-development`, `systematic-debugging`,
+`dispatching-parallel-agents`, `verification-before-completion` and the rest do **not
+resolve**. Do not reference them as though they do.
+
+It is one setting away, not gone: enable it with `/plugin` or by adding
+`"superpowers@claude-plugins-official": true` to `enabledPlugins`. If that happens, update
+this section rather than leaving it contradicting reality.
 
 The skill that does apply here is **`medsaas-dev`** (user-scoped, `~/.claude/skills/medsaas-dev/`).
 `graphify` is also installed.
