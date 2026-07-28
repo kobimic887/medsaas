@@ -163,18 +163,29 @@ Set the new `NVIDIA_*_API_KEYS` values in the box `.env` if a pool exists (0.7).
 
 **0.8 Confirm the physical setup owner** (§2) and get IPMI credentials to them.
 
-**0.9 Find out what actually serves the production API today.** `app.pyxis-discovery.com` is
-served from 83, but *what answers its `/api/*` calls* has never been established — a legacy
-`chem_beo` deployment, an nginx proxy, or something else. This is the single biggest unknown
-in the v2 launch: it is the thing being replaced, and it must not be discovered mid-cutover.
-Inventory task on 83 — read-only, change nothing there.
+**0.9 Inventory 83's backend — confirmed to exist, never described.** The owner has confirmed
+83 runs **both** the frontend and a backend answering its `/api/*`, and that the backend moves
+to the box. What that backend *is* — which repo, which version, which Mongo, which env — has
+never been written down. It is the thing being replaced; it must not be discovered
+mid-cutover. Read-only inventory, change nothing on 83.
 
 ```bash
 # on 83, read-only
-docker ps -a
-ss -ltnp
-grep -rn "proxy_pass\|server_name" /etc/nginx/ 2>/dev/null
+docker ps -a                                   # names, images, uptime
+ss -ltnp                                       # what listens where
+grep -rn "proxy_pass\|root\|server_name" /etc/nginx/ 2>/dev/null   # read, do not edit
 ```
+
+Record: the backend's repo and commit if determinable, its Mongo URI and whether the DB is
+containerised or on the host, its `.env` keys (**names only — never values into any file**),
+and the webroot path the frontend is served from. That last one is what §5.0 flips.
+
+**0.9b Measure the frontend delta.** 83's bundle is **much older** than this repo's `client/`,
+which is a strict superset. Before launch day, establish what the old bundle calls that the new
+one does not, and vice versa — an endpoint the old frontend uses and this server no longer
+serves is a rollback that silently fails. Diff the API calls in the deployed bundle against
+this repo's routes. If the deployed bundle's source is unavailable, `grep` the minified JS for
+`/api/` string literals; it is crude and it is enough.
 
 **0.10 Check 83's user documents against what this repo's server expects.** After 0.2. The
 v2 server requires `companyId`, `role`, `active`, `simulationTokens` and a `companies`
@@ -421,48 +432,103 @@ because it degrades chemistry to SQL-side validation.
 
 ## PHASE 5 — API and MCP server
 
-### 5.0 How code reaches production at all — read before deploying anything
+### 5.0 The launch is two deployments, and they are one release
+
+This is the part with the most ways to go wrong. Read it before deploying anything.
+
+**Today, 83 runs both halves:** the frontend *and* a backend answering its `/api/*`. The
+frontend bundle there is **much older than this repo's `client/`** — this repo is a strict
+superset. Arrival day changes both halves at once:
+
+| Half | From | To |
+|---|---|---|
+| Backend + Mongo | 83 (and Asinex, and Oracle's copy) | **the box** |
+| Frontend | 83, old bundle | **83, this repo's `client/dist`** |
+
+**The two halves cannot move independently.** The old bundle talks to the old backend; the new
+bundle talks to the box. Deploy the new frontend first and it calls an API that isn't serving
+yet. Move the backend first and the old frontend keeps calling 83 as though nothing happened.
+Neither half is useful alone, and a half-done cutover is the one state with no clean rollback.
 
 **There is no production deployment path for this repo today, and that is deliberate.**
 `deploy.yml` is `workflow_dispatch`-only against `environment: non-prod`; its push trigger is
 commented out at `.github/workflows/deploy.yml:6-7`. Its only target is Oracle, which is being
-discarded. So `main` has accumulated fixes that run nowhere:
+discarded. So everything on `main` — `956f9d9`'s credit refunds, atomic charge, NVIDIA key
+pool, upstream 401→502 — runs nowhere until this launch. **The box's first deploy is a launch,
+not an update:** a machine with no history starts serving a version that has never carried
+production traffic. Treat it as a release with a rehearsal and a rollback, not a `git pull`.
 
-| Landed on `main` | Ships when |
-|---|---|
-| `956f9d9` — credit refunds, atomic charge, NVIDIA key pool + 429, upstream 401→502 | v2 launch |
-| everything else merged before arrival day | v2 launch |
+#### What makes it survivable
 
-**The box's first deploy is therefore a launch, not an update.** Nothing is being upgraded in
-place; a machine with no history starts serving a version of the app that has never run in
-production. Treat it as a release with a rollback plan, not a `git pull`.
+**The bundle carries the API address.** `VITE_API_BASE_URL` is baked in at *build* time. So
+the new bundle points at the box and the old bundle points at 83's backend, as a property of
+the files themselves. That turns the whole cutover into **one atomic action — swapping which
+bundle 83 serves** — and the rollback into swapping it back. No config to coordinate, no
+window where the two halves disagree.
 
-Two things make that safe, and one makes it dangerous.
+Use a symlinked webroot so the swap is atomic and reversible:
 
-Safe: the credit and NVIDIA changes in `956f9d9` are **additive and backward compatible** —
-no schema change, no migration, no new required env var (`NVIDIA_*_API_KEY` still works
-alone; `NVIDIA_*_API_KEYS` is optional). And 5.4 below, the upstream-401→502 rule that the
-cross-origin split requires, is **already implemented** in that commit rather than being a
-launch-day task.
+```bash
+# on 83 — file operations in the webroot only.
+# DO NOT touch nginx config, TLS, DNS, or the firewall. If the webroot is not
+# already a symlink, making it one is an nginx-adjacent change: ask the owner first.
+/var/www/pyxis/releases/2026-xx-xx-v2/     # new bundle, uploaded ahead of time
+/var/www/pyxis/releases/legacy/            # the CURRENT bundle, copied and kept
+/var/www/pyxis/current -> releases/legacy  # flip this, and only this
 
-Dangerous: **the gap between this repo and whatever currently answers production is unmeasured.**
-That is 0.9 and 0.10, and neither can be skipped. If 83's user documents predate multi-tenancy,
-`companyId` is missing and every tenant-filtered query returns nothing — users log in to an
-empty account. Verify 0.10 returns `0` before cutting any traffic over.
+ln -sfn /var/www/pyxis/releases/2026-xx-xx-v2 /var/www/pyxis/current   # cut over
+ln -sfn /var/www/pyxis/releases/legacy        /var/www/pyxis/current   # roll back
+```
 
-Sequence for the launch itself:
+**Back up the existing bundle before anything else.** It is the rollback, it predates this
+repo, and there may be no other copy of it. Verify the backup is readable before proceeding.
 
-1. Confirm 0.9 and 0.10 are done and clean. **If 0.10 is non-zero, stop** — that is a data
-   migration, and it is not part of this runbook.
-2. Deploy the API to the box and keep the existing production API **running and untouched**.
-3. Point one company at the new API via `ligandServiceConfig` and the 83 build's
-   `VITE_API_BASE_URL`, exactly as 2.5 does for docking. One company, not all.
-4. Verify login, a dock, a credit balance, and a Stripe redirect on that company.
-5. Only then move the rest, and only then consider retiring the old API.
+**Rehearse the whole thing on the box first.** The box can serve the frontend itself —
+`server/index.js` serves `client/dist` when `FRONTEND_DIST` is set, which is exactly what the
+root `Dockerfile` builds. So run the new frontend against the new backend, same-origin, on the
+box, and exercise login, a dock, credits, and Stripe before 83 is touched at all. This is the
+only place a full rehearsal is possible without a vhost on 83, which the no-nginx rule forbids.
 
-Rollback is repointing the frontend build and `ligandServiceConfig` back. Keep the old
-production API alive until the box has served real traffic for a week — the same reason the
-Asinex account stays alive as DR.
+#### The data window — the one thing with no clean undo
+
+Users write to 83's Mongo continuously. A `mongodump` taken at T is stale by T+1, so anything
+written between the dump and the flip is **lost when the box becomes authoritative**.
+
+Options, in order of preference:
+
+1. **Announce a short freeze.** Dump, restore, verify counts (§4.1/§4.2), flip. Minutes, not
+   hours. Simplest and it is genuinely correct.
+2. Dump, restore, flip, then re-dump only the collections that took writes in the gap and
+   merge by `_id`. More moving parts, and `simulation_logs` merges much more safely than
+   `users` — a stale `simulationTokens` overwrite takes credits from a paying user.
+3. Replica-set sync. Correct, and far more setup than this move justifies.
+
+**Never run both backends writable against separate Mongos.** Two divergent user collections
+with real credit balances is not recoverable by any script.
+
+#### Sequence
+
+1. **0.9 and 0.10 clean.** If 0.10 is non-zero, **stop** — production users predate
+   multi-tenancy, every tenant-filtered query returns nothing, and users would log into empty
+   accounts. That is a data migration and it is not in this runbook.
+2. Box backend running and healthy. **83's backend still running and untouched.**
+3. Build `client/dist` with `VITE_API_BASE_URL` pointing at the box. Rehearse on the box.
+4. Restore 83's Mongo onto the box (§4.2). Verify counts match exactly.
+5. Copy the current 83 bundle to `releases/legacy`. **Verify it is readable.**
+6. Upload the new bundle to `releases/`. Do not flip yet.
+7. Freeze writes. Re-dump, re-restore, re-verify counts.
+8. **Flip the symlink.** This is the cutover.
+9. Verify against production immediately: login, a dock, credit balance, a Stripe redirect,
+   invite email links. Watch the box's logs live.
+10. Leave 83's old backend **running but idle** for at least a week. It is the rollback and it
+    costs nothing to leave alone.
+
+**Rollback:** flip the symlink back. The old bundle points at 83's backend, which never
+stopped. Anything written to the box during the window is then the divergence to reconcile —
+which is why step 9 happens immediately and not the next morning.
+
+Retire 83's old backend only after the box has carried real traffic for a week, and only as a
+separate, deliberate change. Same reasoning as keeping the Asinex account alive as DR.
 
 ### 5.1 Build
 

@@ -102,7 +102,7 @@ Dev URLs: frontend at **http://localhost:5173**, API at http://localhost:3000, A
 
 | Machine | What it runs |
 |---|---|
-| `83.229.87.94` (shared VPS, nginx + TLS) | **the production frontend** — `app.pyxis-discovery.com` — plus the `/convertSTR` SMILES→SDF service on `:8001`. Shared with an unrelated project; **do not modify nginx, TLS, DNS, or the firewall there.** |
+| `83.229.87.94` (shared VPS, nginx + TLS) | **all of production today** — the frontend at `app.pyxis-discovery.com`, the backend answering its `/api/*`, the production Mongo, and `/convertSTR` on `:8001`. The frontend bundle there is **much older than this repo's `client/`**, which is a strict superset. After the move 83 keeps **only the frontend**; backend, Mongo and `/convertSTR` go to the box. Shared with an unrelated project; **do not modify nginx, TLS, DNS, or the firewall there.** |
 | Oracle VPS `151.145.91.17` (Ampere arm64) | the **non-prod** full-stack copy that `deploy.yml` ships (`medsaas-app-1` + Mongo + MCP server), plus the tonomitosql stack. Ops notes in the separate `~/projects/oracle` repo. |
 | Amsterdam GPU box | **does not exist yet.** All backend and compute is planned to consolidate here — `docs/COMPUTE-BOX-MIGRATION.md`. |
 
