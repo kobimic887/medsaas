@@ -270,6 +270,77 @@ Two consequences to keep in view:
   both cards sit idle two thirds of the time. This is a real piece of work, not a config
   flag. Queue it in RabbitMQ with separate CPU-stage and GPU-stage consumers.
 
+### Will local folding actually be faster than NVIDIA's hosted NIM?
+
+Worth answering directly, because it is the one place where moving in-house may **cost**
+speed rather than gain it, and the answer changes depending on how the machine is used.
+
+**Per single cold job: probably slower.** Two reasons.
+
+1. **The card.** RTX PRO 5000 Blackwell has 48 GB of GDDR7 at roughly 1.3 TB/s. NVIDIA
+   almost certainly serves the OpenFold3 NIM on datacenter parts — H100 at ~3.35 TB/s HBM3,
+   H200 at ~4.8 TB/s. Transformer inference tracks memory bandwidth closely, so expect our
+   inference stage to be somewhere in the region of 1.5–3× slower than theirs. *Caveat: what
+   NVIDIA actually runs behind that endpoint is not published. This is an inference from
+   hardware class, not a measurement.*
+2. **The MSA, which is the bigger factor.** When you call the hosted endpoint, NVIDIA does
+   the MSA too — on their infrastructure, with the databases already resident. Locally that
+   becomes ours: ~5.5 min on four DDR5 channels, roughly ⅔ of the job. That is not a GPU
+   problem and a better GPU does not touch it.
+
+**So the honest headline: your instinct is right.** For the two features that were on hosted
+NIM — folding and molecule generation — the gain is *not* raw per-job speed.
+
+**But "only unlimited rate limits" undersells it substantially.** What is actually gained:
+
+- **Throughput instead of latency.** Their endpoint is rate-limited and metered per call.
+  Ours is limited only by hardware: ~18–20 jobs/hour sustained, 24/7, at zero marginal cost.
+  For screening — which is the actual workload — total jobs completed per day matters far
+  more than the wall clock of any one job.
+- **No data leaves the building.** Every sequence and structure currently goes to a
+  third-party API. On-prem is a real requirement for pharma work, not a nice-to-have.
+- **No vendor dependency.** No quota, no price change, no deprecation, no NVIDIA AI
+  Enterprise licence question — which is what pushed this to the OSS stack in the first place.
+- **Control.** Pinned model versions, custom weights, template and recycling parameters the
+  NIM does not expose, and Boltz-2 alongside OpenFold3 (Boltz-2 is lighter and also predicts
+  binding affinity, which OpenFold3 does not).
+
+**And the thing that inverts the comparison: cache the MSA.**
+
+The workload is protein + ligand. In practice that means **one target protein screened
+against many ligands.** The MSA depends only on the protein sequence — not on the ligand. So:
+
+| | first job on a target | every subsequent ligand |
+|---|---|---|
+| MSA | ~5.5 min | **0 — cache hit** |
+| templates | ~1 min | ~1 min |
+| inference | 2–5 min | 2–5 min |
+| I/O | ~1 min | ~1 min |
+| **total** | **~8.5 min** | **~4–7 min, GPU-bound** |
+
+Key the cache on a hash of the sequence. The hosted NIM cannot do this for you — it recomputes
+(and re-charges) per call, because it is stateless and does not know your screen is 300 ligands
+against the same protein.
+
+Once MSAs are cached, a screening run is inference-only, both cards saturated, no rate limit —
+and local wins outright. **Build the MSA cache in Phase 4; it is not an optimisation to defer,
+it is what makes the machine pay for itself.**
+
+### Everything that was *not* on NIM gets dramatically faster
+
+Only the two hosted-NIM features are ambiguous. Everything else is a straight upgrade, and the
+comparison is not close, because the thing being replaced is a **2 vCPU / 12 GB free-tier
+Ampere instance** (and for GROMACS, a CPU-only build):
+
+| Workload | Before | After | Rough expectation |
+|---|---|---|---|
+| GROMACS MD | apt build, **CPU-only**, never deployed | source build, `-DGMX_GPU=CUDA`, 2 cards | order-of-magnitude class change |
+| Tanimoto / RDKit search | 2 vCPU, 12 GB, aarch64 | 64 cores, 128 GB, x86_64 + native `rdkit-pypi` | very large |
+| ADMET | never deployed; CPU torch | 64 cores + cu128 torch | very large (mostly from the CPU) |
+| Glioblastoma predictor | never deployed | 64 cores | large |
+| AutoDock-GPU / Vina | did not exist locally | 2 cards + 64 cores | new capability |
+| Express API / Mongo / Postgres | 2 vCPU shared with everything | 64 cores, NVMe | large |
+
 ### RAM reality check
 
 The 128 GB was argued for concurrent MSA slots plus keeping the Tanimoto fingerprint index

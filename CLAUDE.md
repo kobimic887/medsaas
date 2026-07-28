@@ -31,6 +31,7 @@ commands; that workflow is retired.
 - **CI now gates deploys:** `.github/workflows/ci.yml` runs Bun and Node fallback checks on push/PR, and `deploy.yml` won't ship unless the reusable CI gate passes (`needs: test`).
 - **CI/CD source of truth:** repo-owned workflows are only `.github/workflows/ci.yml` and `.github/workflows/deploy.yml`. Dynamic GitHub Actions entries such as CodeQL, Dependency Graph, Copilot, Claude, and Codex come from GitHub settings/integrations. Current deploy builds on the box from `docker-compose.box.yml`; GHCR/GitHub Packages is legacy and unused. See `docs/CI-CD.md`.
 - **Planned: backend moves to a dedicated GPU box** (Amsterdam, x86_64, 2× RTX PRO 5000). `docs/COMPUTE-BOX-MIGRATION.md` is the full trace of every machine, API, and compute dependency plus the move plan, CUDA matrix, and storage layout. Nothing is applied yet and several decisions are still open (frontend location, public HTTPS ingress, MolMIM replacement) — read it before touching Dockerfiles, compose files, or `docs/CI-CD.md`.
+- **Planned: this stops being a SaaS.** For now and for a long time it is one product for one company, Pyxis Discovery. The marketing site, public signup and paid-plans surface are to be retired; multi-tenancy plumbing and the credit system stay. `docs/PYXIS-ONLY.md`. Nothing applied yet — do not add new tenant-facing or billing features.
 - **Docs index:** `docs/README.md`. Claude for Life Sciences / MCP: `docs/CLAUDE-LIFE-SCIENCES.md`.
 
 Bun is the default runtime and package manager for this repo. npm/Node fallbacks
