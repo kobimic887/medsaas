@@ -65,8 +65,13 @@ bun run start
 npm run build:node
 npm run start:node
 
-# Syntax-check server JS + build client (no test suite)
+# Syntax-check server JS + build client
 npm run check
+
+# The full gate — what CI runs. Run this before pushing server changes.
+# check + Biome lint + the test suite (asinex, email theming, stripe, branding,
+# ssrf, and a runtime smoke test that boots the server against a real Mongo).
+bun run ci
 
 # Infrastructure (requires Docker)
 npm run services:up          # MongoDB + RabbitMQ

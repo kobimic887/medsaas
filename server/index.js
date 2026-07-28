@@ -329,6 +329,7 @@ async function callNvidiaNim({
   const budgetSpent = () => Date.now() - started >= NVIDIA_RETRY_BUDGET_MS;
   let firstTry = true;
   let attempt = 0;
+  let sawRateLimit = false;
   let lastRateLimit = null;
 
   for (;;) {
@@ -351,6 +352,7 @@ async function callNvidiaNim({
 
         if (status === 429) {
           sawRetryableThisPass = true;
+          sawRateLimit = true;
           lastRateLimit = retryAfterSecondsFrom(error.response);
           continue; // next key
         }
@@ -385,14 +387,18 @@ async function callNvidiaNim({
     await sleep(backoffMs + jitterMs);
   }
 
-  // Budget spent and still rate limited: open the breaker so the next callers
-  // fail fast instead of piling more requests onto a limited upstream.
-  const coolOffSeconds = lastRateLimit ?? 30;
-  nvidiaBreaker.set(service, Date.now() + coolOffSeconds * 1000);
-  throw new NvidiaUpstreamError(
-    `${service} is rate limited upstream; retry shortly`,
-    { status: 503, retryAfterSeconds: coolOffSeconds }
-  );
+  // Budget spent. Only a genuine rate limit opens the breaker: timeouts and 5xx
+  // also land here, and treating a single slow fold as a rate limit would
+  // suppress the feature for every user and report a cause that never happened.
+  if (sawRateLimit) {
+    const coolOffSeconds = lastRateLimit ?? 30;
+    nvidiaBreaker.set(service, Date.now() + coolOffSeconds * 1000);
+    throw new NvidiaUpstreamError(
+      `${service} is rate limited upstream; retry shortly`,
+      { status: 503, retryAfterSeconds: coolOffSeconds }
+    );
+  }
+  throw new NvidiaUpstreamError(`${service} upstream is unavailable`, { status: 502 });
 }
 
 /**
@@ -1511,10 +1517,19 @@ async function chargeSimulationToken(req, res, feature) {
   // refund, settle up when the response finishes: a request that ends in an error
   // status produced no simulation, so it owes nothing. Explicit refunds clear the
   // flag first, so this cannot double-refund.
+  //
+  // 'close' as well as 'finish': 'finish' fires only for a fully-flushed response,
+  // so a user who navigates away from a ten-minute dock would otherwise leave the
+  // charge stranded. The writableEnded guard keeps the two from both firing.
   if (res && typeof res.on === 'function') {
     res.on('finish', () => {
       if (res.statusCode >= 400 && req.simulationTokenCharged) {
         refundSimulationToken(req, `HTTP ${res.statusCode}`).catch(() => {});
+      }
+    });
+    res.on('close', () => {
+      if (!res.writableEnded && req.simulationTokenCharged) {
+        refundSimulationToken(req, 'client disconnected before a result was sent').catch(() => {});
       }
     });
   }
@@ -2940,6 +2955,7 @@ app.post('/api/shop', ensureMongoConnected, authenticateToken, requireActiveUser
 
 app.get('/api/simulation', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   const { pdbid, smiles } = req.query;
+  let dockingSucceeded = false;
   if (!pdbid || !smiles) {
     return res.status(400).json({ error: 'pdbid and smiles are required as query parameters' });
   }
@@ -3013,6 +3029,7 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, requireActiv
       throw new Error(`Docking service returned ${response.status}`);
     }
     const data = await response.json();
+    dockingSucceeded = true;
     // Record invocation in MongoDB, including the result and simulationKey
     await simulationLogs.insertOne({
       username: req.user.username,
@@ -3025,22 +3042,29 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, requireActiv
       timestamp: new Date()
     });
 
-    if (req.user.companyId) {
-      await incrementCompanyMonthlyUsage(req.user.companyId);
+    // Bookkeeping only. The result is already persisted and the user has paid for
+    // work that was done, so a failure here must not fail the request — that would
+    // refund a dock that succeeded and is now a free cache hit forever after.
+    try {
+      if (req.user.companyId) {
+        await incrementCompanyMonthlyUsage(req.user.companyId);
+      }
+      await recordAuditEvent(req, 'simulation.run', {
+        targetType: 'simulation',
+        targetId: simulationKey,
+        pdbid,
+        smiles,
+        mode: 'GET'
+      });
+    } catch (bookkeepingError) {
+      console.error(`[simulation] GET ${simulationKey} bookkeeping failed:`, bookkeepingError.message);
     }
-
-    await recordAuditEvent(req, 'simulation.run', {
-      targetType: 'simulation',
-      targetId: simulationKey,
-      pdbid,
-      smiles,
-      mode: 'GET'
-    });
 
     res.json({ ...data, simulationKey });
   } catch (error) {
-    // The credit was taken before the docking call. No result was produced, so give
-    // it back — this is the path every Asinex/Moscow outage takes.
+    // Nothing was returned to the user, so the credit goes back either way. The
+    // status distinguishes cause: reporting a Mongo failure as a docking outage
+    // would send launch-day debugging at the wrong machine.
     await refundSimulationToken(req, `simulation GET: ${error.message}`);
     await recordAuditEvent(req, 'simulation.run', {
       targetType: 'simulation',
@@ -3048,6 +3072,9 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, requireActiv
       mode: 'GET',
       error: error.message
     }, 'error');
+    if (dockingSucceeded) {
+      return res.status(500).json({ error: 'Failed to record the simulation result' });
+    }
     res.status(502).json({ error: 'Docking service is unavailable' });
   }
 });
@@ -3087,6 +3114,7 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, requireActiv
  */
 app.post('/api/simulation', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   const { pdbid, smiles } = req.body;
+  let dockingSucceeded = false;
   if (!pdbid || !smiles) {
     return res.status(400).json({ error: 'pdbid and smiles are required in request body' });
   }
@@ -3160,6 +3188,7 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, requireActi
       throw new Error(`Docking service returned ${response.status}`);
     }
     const data = await response.json();
+    dockingSucceeded = true;
     // Record invocation in MongoDB, including the result and simulationKey
     await simulationLogs.insertOne({
       username: req.user.username,
@@ -3173,21 +3202,27 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, requireActi
       method: 'POST'
     });
 
-    if (req.user.companyId) {
-      await incrementCompanyMonthlyUsage(req.user.companyId);
+    // Bookkeeping only — see the GET handler. A failure here must not fail a
+    // request whose result is already persisted.
+    try {
+      if (req.user.companyId) {
+        await incrementCompanyMonthlyUsage(req.user.companyId);
+      }
+      await recordAuditEvent(req, 'simulation.run', {
+        targetType: 'simulation',
+        targetId: simulationKey,
+        pdbid,
+        smiles,
+        mode: 'POST'
+      });
+    } catch (bookkeepingError) {
+      console.error(`[simulation] POST ${simulationKey} bookkeeping failed:`, bookkeepingError.message);
     }
-
-    await recordAuditEvent(req, 'simulation.run', {
-      targetType: 'simulation',
-      targetId: simulationKey,
-      pdbid,
-      smiles,
-      mode: 'POST'
-    });
 
     res.json({ ...data, simulationKey });
   } catch (error) {
-    // Credit taken before the docking call; no result produced. Give it back.
+    // Nothing returned to the user, so the credit goes back either way; the status
+    // distinguishes a docking outage from a failure to record a successful dock.
     await refundSimulationToken(req, `simulation POST: ${error.message}`);
     await recordAuditEvent(req, 'simulation.run', {
       targetType: 'simulation',
@@ -3195,6 +3230,9 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, requireActi
       mode: 'POST',
       error: error.message
     }, 'error');
+    if (dockingSucceeded) {
+      return res.status(500).json({ error: 'Failed to record the simulation result' });
+    }
     res.status(502).json({ error: 'Docking service is unavailable' });
   }
 });

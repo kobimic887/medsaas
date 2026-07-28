@@ -200,13 +200,23 @@ async function main() {
     });
     check('forged signature returns 400', forgedRes.status === 400, `(got ${forgedRes.status})`);
 
-    // --- Test 4: /api/generate-molecules token consumption ---
-    console.log('\nTest 4 — /api/generate-molecules token consumption:');
+    // --- Test 4: /api/generate-molecules charges only for work that happened ---
+    //
+    // This test used to assert the opposite: that a call failing because no NVIDIA
+    // key is configured still consumed the user's credit, and that the second call
+    // was therefore rejected for having no tokens left. That was the bug, not the
+    // contract. Metered routes decrement before calling their upstream, so any
+    // upstream failure — a missing key here, an Asinex outage in production — must
+    // hand the credit back. The balance staying at 1 across two failed calls is the
+    // assertion that matters.
+    console.log('\nTest 4 — /api/generate-molecules refunds when the call never ran:');
     if (!authToken) {
       console.log('  SKIP: no auth token from signin (Test 1 failed)');
-      failed += 2;
+      failed += 4;
     } else {
-      // Call 1: token decrements 1->0, then returns 500 "NVIDIA_MOLMIM_API_KEY is not configured"
+      const before = await users.findOne({ username: 'smokeuser' });
+      const startingTokens = before?.simulationTokens;
+
       const mol1Res = await fetch(`${BASE}/api/generate-molecules`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
@@ -214,29 +224,43 @@ async function main() {
       });
       const mol1Body = await mol1Res.json().catch(() => ({}));
       check(
-        'first call returns 500 (token consumed, API key missing)',
-        mol1Res.status === 500,
+        'unconfigured upstream returns 503, not 500',
+        mol1Res.status === 503,
         `(got ${mol1Res.status}: ${JSON.stringify(mol1Body)})`
       );
       check(
-        'first call error is NVIDIA_MOLMIM_API_KEY not configured',
-        mol1Body.error === 'NVIDIA_MOLMIM_API_KEY is not configured',
+        'error does not leak the env var name',
+        typeof mol1Body.error === 'string' && !mol1Body.error.includes('NVIDIA_'),
         `(got ${JSON.stringify(mol1Body.error)})`
       );
 
-      // Verify token was actually decremented
-      const afterConsume = await users.findOne({ username: 'smokeuser' });
-      check('simulationTokens decremented 1->0', afterConsume?.simulationTokens === 0, `(got ${afterConsume?.simulationTokens})`);
+      const afterFirst = await users.findOne({ username: 'smokeuser' });
+      check(
+        'credit refunded — balance unchanged after a failed call',
+        afterFirst?.simulationTokens === startingTokens,
+        `(expected ${startingTokens}, got ${afterFirst?.simulationTokens})`
+      );
 
-      // Call 2: token exhausted -> 403
+      // Second call must behave identically. If the refund were missing, this one
+      // would fail with 403 "No simulation tokens left" instead.
       const mol2Res = await fetch(`${BASE}/api/generate-molecules`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
         body: JSON.stringify({ smi: 'CCO', num_molecules: 1 }),
       });
       const mol2Body = await mol2Res.json().catch(() => ({}));
-      check('second call returns 403 (no tokens left)', mol2Res.status === 403, `(got ${mol2Res.status}: ${JSON.stringify(mol2Body)})`);
-      check('second call error is No simulation tokens left', mol2Body.error === 'No simulation tokens left', `(got ${JSON.stringify(mol2Body.error)})`);
+      check(
+        'second call still reaches the upstream check, not a token wall',
+        mol2Res.status === 503,
+        `(got ${mol2Res.status}: ${JSON.stringify(mol2Body)})`
+      );
+
+      const afterSecond = await users.findOne({ username: 'smokeuser' });
+      check(
+        'balance still unchanged after two failed calls',
+        afterSecond?.simulationTokens === startingTokens,
+        `(expected ${startingTokens}, got ${afterSecond?.simulationTokens})`
+      );
     }
 
     // --- Test 5: password reset flow (request + confirm) ---
