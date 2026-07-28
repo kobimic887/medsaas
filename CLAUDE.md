@@ -110,7 +110,7 @@ Dev URLs: frontend at **http://localhost:5173**, API at http://localhost:3000, A
 |---|---|
 | `83.229.87.94` (shared VPS, nginx + TLS) | **all of production compute today** — inventoried 2026-07-28, see [`docs/PRODUCTION-83-INVENTORY.md`](docs/PRODUCTION-83-INVENTORY.md). nginx proxies `app.pyxis-discovery.com` to a **Vite dev server** on `:5173` (`/root/material-tailwind-dashboard-react`, the Creative Tim template — a different lineage from this repo's `client/`). The API is a **second HTTPS server on `:3000`** (`/root/chem_beo`, 73 routes) that terminates TLS itself and bypasses nginx. All hand-started in foreground shells — **a reboot ends production.** GROMACS runs here in Docker on `:8000`; `/convertSTR` on `:8001` is **down**. Shared with an unrelated project (`app.fin-srv.com` on `:4000`); **do not modify nginx, TLS, DNS, or the firewall there.** |
 | **MongoDB Atlas** (`cluster0.asrz0o3…`) | **the production database** — not on 83, not on Oracle. Database name is `test`. 50 users, 1 company, 4 simulation_logs. **49 of 50 users lack `companyId`**, which blocks deploying this repo's server against it until a data migration runs. Recommendation is to keep Atlas and move only compute. |
-| Oracle VPS `151.145.91.17` (Ampere arm64) | the **non-prod** full-stack copy that `deploy.yml` ships (`medsaas-app-1` + Mongo + MCP server), plus the tonomitosql stack. Ops notes in the separate `~/projects/oracle` repo. |
+| Oracle VPS `151.145.91.17` (Ampere arm64) | **half of it is production.** The `medsaas-*` containers that `deploy.yml` ships (app + Mongo + MCP) are genuinely non-prod and discardable. **The tonomitosql stack is not** — `chem_beo` on 83 proxies all eight `/tanimoto/*` routes here, hardcoded, and the Deep Similarity page calls them. Its Postgres is production data; its Mongo is a side-project copy. Ops notes in the separate `~/projects/oracle` repo. |
 | Amsterdam GPU box | **does not exist yet.** All backend and compute is planned to consolidate here — `docs/COMPUTE-BOX-MIGRATION.md`. |
 
 ### Server
@@ -153,12 +153,12 @@ loader lives in `client/index.html`, and `@rdkit/rdkit` is installed server-side
 |---------|-------------|---------|
 | Molecule generation | `/api/generate-molecules` | NVIDIA MolMIM, hosted (`health.api.nvidia.com`) |
 | Protein folding | `/api/openfold3/predict` | NVIDIA OpenFold3, hosted (`health.api.nvidia.com`) |
-| Tanimoto search | `/tanimoto/v1/*` | **tonomitosql** (`kobimic887/tonomitosql`) — FastAPI + Postgres/RDKit cartridge, via `TANIMOTO_API_BASE` |
+| Tanimoto search | `/tanimoto/v1/*` | **tonomitosql** (`kobimic887/tonomitosql`) — FastAPI + Postgres/RDKit cartridge, via `TANIMOTO_API_BASE`. **This is live production**, served from Oracle; `server/index.js:80` defaults to it and that default is not stale |
 | Asinex catalog / stock / docking | `/api/asinex/*`, `/api/shop` | Asinex APIs. **Per-company overridable** via `company.ligandServiceConfig` |
 | DiffDock docking | `/api/diffdock/generate` | `DIFFDOCK_API_URL` (Asinex-hosted). `server/diff_dock.sh` is **dead code** — it posts to a `localhost:8000` NIM that has never run |
-| SMILES→SDF conversion | used inside `/api/diffdock/generate` | `SDF_CONVERTER_URL` — a service on the shared `83.229.87.94` box |
-| ADMET prediction | RabbitMQ queue | `services/admet/` worker — **not currently deployed anywhere** |
-| GROMACS MD | `server/routes/scientificServices.js` | `services/gromacs-api/` — **not currently deployed anywhere**, and the image is a CPU-only apt build |
+| SMILES→SDF conversion | used inside `/api/diffdock/generate` | `SDF_CONVERTER_URL` — `83.229.87.94:8001`, and **nothing is listening there.** DiffDock is broken in production today |
+| ADMET prediction | RabbitMQ queue | `services/admet/` worker — **not deployed.** The broker does exist: CloudAMQP, configured in the deployed backend's `.env` |
+| GROMACS MD | `server/routes/scientificServices.js` | `services/gromacs-api/` — **deployed on `83.229.87.94:8000`** in Docker, healthy. The image in this repo is a CPU-only apt build |
 | Glioblastoma | `server/routes/scientificServices.js` | `services/glioblastoma-predictor/` — **not currently deployed anywhere** |
 
 No code in this repo performs an MSA, a fold, or a local dock — folding and generation are
