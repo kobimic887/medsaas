@@ -12,10 +12,19 @@
  *     simulationTokens:  int 2 · string 1 · MISSING 47
  *
  * Deploy this repo's server against that data untouched and:
- *   - buildTenantFilter keys on companyId, so 49 users see an empty account;
- *   - chargeSimulationToken filters simulationTokens: {$gt: 0}, so 47 users get
- *     "403 No simulation tokens left" on every action;
- *   - one user breaks $inc outright, because $inc on a string is a MongoDB error.
+ *
+ *   - chargeSimulationToken filters `simulationTokens: {$gt: 0}`, so the 47 users with no such
+ *     field get "403 No simulation tokens left" on every metered action. Unconditional.
+ *
+ *   - one user has simulationTokens as a STRING, and `$inc` on a string is a MongoDB error,
+ *     not a coercion — so that account errors rather than being charged.
+ *
+ *   - results go missing as they are created. buildTenantFilter (server/index.js:1065) falls
+ *     back to `{'user.username': …}` when companyId is absent, which matches the LEGACY
+ *     simulation_logs shape that chem_beo wrote (`user: {username, iat, exp}`). But THIS repo
+ *     writes `username` at the top level instead. So a user without companyId still sees their
+ *     old docks and never sees a new one — and because the cache lookup misses too, they are
+ *     charged again for a dock they already paid for.
  *
  * See docs/PRODUCTION-83-INVENTORY.md §5.
  *
@@ -44,6 +53,11 @@
  *   --company <id>        companyId to assign. Default: the single existing company, if there
  *                         is exactly one. Fails loudly if there are several.
  *   --default-tokens <n>  balance for users with no simulationTokens field. Default 0.
+ *   --set-company-name    also stamp companyName onto users. OFF by default: companyName is
+ *                         the only company field users ever see (sidebar label, email "from"),
+ *                         and leaving it unset makes getBrandName fall back to PLATFORM_NAME.
+ *                         Set PLATFORM_NAME=Pyxis Discovery instead — one env var, no company
+ *                         visible anywhere in the product.
  *   --apply               actually write. Otherwise prints what it would do and exits.
  *   --yes-i-have-a-backup required alongside --apply.
  *   --verbose             list every user and the changes proposed for them.
@@ -64,6 +78,7 @@ const APPLY = flag('apply');
 const CONFIRMED = flag('yes-i-have-a-backup');
 const VERBOSE = flag('verbose');
 const DEFAULT_TOKENS = Number(opt('default-tokens', '0'));
+const SET_COMPANY_NAME = flag('set-company-name');
 
 if (!URI) {
   console.error('No connection string. Pass --uri or set MONGODB_URI.');
@@ -139,7 +154,14 @@ async function main() {
     const set = {};
 
     if (u.companyId === undefined || u.companyId === null) { set.companyId = companyId; stats.companyId++; }
-    if (!u.companyName) { set.companyName = companyName; stats.companyName++; }
+
+    // companyName is deliberately NOT set by default. It is the only company field users ever
+    // see — getBrandName() (server/config/branding.js:13) uses it for the sidebar label and the
+    // email "from" name, and falls back to PLATFORM_NAME when it is absent. Leaving it unset
+    // means branding comes from one env var (PLATFORM_NAME=Pyxis Discovery) rather than from a
+    // database row somebody can rename by accident, and the product shows no company anywhere.
+    // companyId above is invisible plumbing and is still required — see the header.
+    if (SET_COMPANY_NAME && !u.companyName) { set.companyName = companyName; stats.companyName++; }
 
     // Everyone becomes a member. Ownership is not inferrable from legacy data, and guessing
     // wrong hands someone admin rights over the tenant — promote deliberately afterwards.
@@ -187,7 +209,7 @@ async function main() {
   console.log(`already correct, untouched      : ${stats.untouched}`);
   console.log(`to change                       : ${plan.length}`);
   console.log(`  + companyId                   : ${stats.companyId}`);
-  console.log(`  + companyName                 : ${stats.companyName}`);
+  console.log(`  + companyName                 : ${stats.companyName}${SET_COMPANY_NAME ? '' : '   (skipped — branding comes from PLATFORM_NAME)'}`);
   console.log(`  + role=member                 : ${stats.role}`);
   console.log(`  + active=true                 : ${stats.active}`);
   console.log(`  + createdAt (from ObjectId)   : ${stats.createdAt}`);

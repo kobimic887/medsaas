@@ -122,8 +122,7 @@ working fallback beside it.
 **Before the box ships** — all of this is doable now, with no deadline and `chem_beo` still
 running:
 
-1. Create a real `Pyxis Discovery` company. The only one that exists is a test tenant named
-   `kobi inc`.
+1. Set `PLATFORM_NAME=Pyxis Discovery`. **No company is created and none is shown.** See §8.
 2. Run `scripts/migrate-legacy-users.mjs` — dry run, then apply. 49 of 50 users need
    `companyId`, `role`, `active`, `createdAt`, and a numeric `simulationTokens`.
 3. Build `client/dist` and stand this repo's server up on 83 **beside** `chem_beo`, on a spare
@@ -145,8 +144,7 @@ right three weeks earlier, on a day when nothing was at stake.
 
 ## 7. What this leaves open
 
-- **Which company the legacy users join.** `kobi inc` is a test tenant; the migration should
-  target a real one. Affects sidebar labels and email branding.
+- ~~**Which company the legacy users join.**~~ **RESOLVED — see §8. No company is surfaced.**
 - **What balance the 47 users with no credits get.** The script defaults to 0 and will not
   invent balances.
 - ~~**The `chem_beo` → this-repo route delta.**~~ **RESOLVED 2026-07-28 — the delta is
@@ -167,3 +165,35 @@ right three weeks earlier, on a day when nothing was at stake.
   that, and it remains the real gate before step 5.
 - **AutoDock and DiffDock builds.** Specced against [DOCKING-CONTRACT.md](./DOCKING-CONTRACT.md)
   §6, not written blind — they cannot be compiled for sm_120 without the cards.
+
+---
+
+## 8. There is no company in the product
+
+Decided 2026-07-28: the current `app.pyxis-discovery.com` experience has no company concept and
+that is the intended one. This is the same conclusion as [PYXIS-ONLY.md](./PYXIS-ONLY.md) —
+keep the tenancy plumbing, retire the tenant-facing surface — reached from the UX side.
+
+**`companyId` is invisible plumbing and is still required.** It is how `buildTenantFilter`
+scopes queries. Users are never shown it, never asked for it, never pick one.
+
+**`companyName` is the only company field a user can perceive** — `getBrandName()`
+(`server/config/branding.js:13`) uses it for the sidebar label and the email *from* name, and
+**falls back to `PLATFORM_NAME` when it is absent.**
+
+So: leave `companyName` unset and set `PLATFORM_NAME=Pyxis Discovery`. Branding then lives in
+one environment variable instead of a database row someone can rename by accident, and nothing
+company-shaped appears anywhere. `scripts/migrate-legacy-users.mjs` skips `companyName` by
+default for exactly this reason; `--set-company-name` opts back in.
+
+Remaining UI work, which is `PYXIS-ONLY.md`'s job: hide the Company Admin route
+(`client/src/routes.jsx:135`, already `adminOnly`) and any invite-to-company flow.
+
+**Correction to an earlier claim in this file and in PRODUCTION-83-INVENTORY §5.** "49 users
+see an empty account" was too strong. `buildTenantFilter` (`server/index.js:1065`) falls back to
+`{'user.username': …}` when `companyId` is absent, and that matches the legacy `simulation_logs`
+shape. The actual failure is worse in a quieter way: **this repo writes `username` at the top
+level, not `user.username`,** so a user without `companyId` still sees their old docks but never
+sees a new one — and the cache lookup misses too, so they are charged again for a dock they
+already paid for. The credits failure (47 users, `{$gt: 0}` against a missing field) is
+unconditional and unchanged.
