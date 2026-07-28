@@ -151,15 +151,41 @@ repo and `COPY`'d into the image. Treat the existing one as compromised — it i
 owner's PC, with no surviving record. Ask the operator. A working GROMACS CUDA build is worth
 more than a clean-room rebuild.
 
-**0.6 NVIDIA 429 handling.** Neither `/api/generate-molecules` (`server/index.js:287`) nor
-`/api/openfold3/predict` (`:333`) handles a rate-limit response — both relay it straight to the
-user. Widen `NVIDIA_MOLMIM_API_KEY` and `NVIDIA_OPENFOLD_API_KEY` to comma-separated pools,
-select least-recently-429'd, exponential backoff, circuit breaker. **Code change — propose a
-diff and get it approved; do not push it as part of a migration run.**
+**0.6 NVIDIA 429 handling — DONE, `956f9d9`.** Not deployed anywhere; it ships with the v2
+launch (§4a). `callNvidiaNim()` in `server/index.js` gives each service a comma-separated key
+pool (`NVIDIA_MOLMIM_API_KEYS`, `NVIDIA_OPENFOLD_API_KEYS`), rotation on 429, bounded backoff,
+and a per-service circuit breaker. Single-key env vars still work. The same commit fixed a
+worse bug found alongside it: **every metered route charged a credit before calling its
+upstream and never refunded**, so each Asinex outage billed users for docks that never ran.
+Set the new `NVIDIA_*_API_KEYS` values in the box `.env` if a pool exists (0.7).
 
 **0.7 Collect the `.env` values** for the box. Not in git, never will be.
 
 **0.8 Confirm the physical setup owner** (§2) and get IPMI credentials to them.
+
+**0.9 Find out what actually serves the production API today.** `app.pyxis-discovery.com` is
+served from 83, but *what answers its `/api/*` calls* has never been established — a legacy
+`chem_beo` deployment, an nginx proxy, or something else. This is the single biggest unknown
+in the v2 launch: it is the thing being replaced, and it must not be discovered mid-cutover.
+Inventory task on 83 — read-only, change nothing there.
+
+```bash
+# on 83, read-only
+docker ps -a
+ss -ltnp
+grep -rn "proxy_pass\|server_name" /etc/nginx/ 2>/dev/null
+```
+
+**0.10 Check 83's user documents against what this repo's server expects.** After 0.2. The
+v2 server requires `companyId`, `role`, `active`, `simulationTokens` and a `companies`
+collection with a stable `companyId` string. If production users predate multi-tenancy, a
+data migration is part of the launch, not an afterthought.
+
+```javascript
+db.users.findOne()          // compare against server/index.js user shape
+db.companies.countDocuments()
+db.users.countDocuments({companyId: {$exists: false}})   // must be 0 before cutover
+```
 
 ---
 
@@ -395,6 +421,51 @@ because it degrades chemistry to SQL-side validation.
 
 ## PHASE 5 — API and MCP server
 
+### 5.0 How code reaches production at all — read before deploying anything
+
+**There is no production deployment path for this repo today, and that is deliberate.**
+`deploy.yml` is `workflow_dispatch`-only against `environment: non-prod`; its push trigger is
+commented out at `.github/workflows/deploy.yml:6-7`. Its only target is Oracle, which is being
+discarded. So `main` has accumulated fixes that run nowhere:
+
+| Landed on `main` | Ships when |
+|---|---|
+| `956f9d9` — credit refunds, atomic charge, NVIDIA key pool + 429, upstream 401→502 | v2 launch |
+| everything else merged before arrival day | v2 launch |
+
+**The box's first deploy is therefore a launch, not an update.** Nothing is being upgraded in
+place; a machine with no history starts serving a version of the app that has never run in
+production. Treat it as a release with a rollback plan, not a `git pull`.
+
+Two things make that safe, and one makes it dangerous.
+
+Safe: the credit and NVIDIA changes in `956f9d9` are **additive and backward compatible** —
+no schema change, no migration, no new required env var (`NVIDIA_*_API_KEY` still works
+alone; `NVIDIA_*_API_KEYS` is optional). And 5.4 below, the upstream-401→502 rule that the
+cross-origin split requires, is **already implemented** in that commit rather than being a
+launch-day task.
+
+Dangerous: **the gap between this repo and whatever currently answers production is unmeasured.**
+That is 0.9 and 0.10, and neither can be skipped. If 83's user documents predate multi-tenancy,
+`companyId` is missing and every tenant-filtered query returns nothing — users log in to an
+empty account. Verify 0.10 returns `0` before cutting any traffic over.
+
+Sequence for the launch itself:
+
+1. Confirm 0.9 and 0.10 are done and clean. **If 0.10 is non-zero, stop** — that is a data
+   migration, and it is not part of this runbook.
+2. Deploy the API to the box and keep the existing production API **running and untouched**.
+3. Point one company at the new API via `ligandServiceConfig` and the 83 build's
+   `VITE_API_BASE_URL`, exactly as 2.5 does for docking. One company, not all.
+4. Verify login, a dock, a credit balance, and a Stripe redirect on that company.
+5. Only then move the rest, and only then consider retiring the old API.
+
+Rollback is repointing the frontend build and `ligandServiceConfig` back. Keep the old
+production API alive until the box has served real traffic for a week — the same reason the
+Asinex account stays alive as DR.
+
+### 5.1 Build
+
 5.1 Build for **amd64**. Everything on Oracle was `aarch64`; every image is rebuilt.
 
 5.2 **Start the app and the MCP server together.** The MCP server is hard-wired to
@@ -410,6 +481,9 @@ because it degrades chemistry to SQL-side validation.
 5.4 **The 401 auto-logout invariant.** The client logs the user out on any 401. That path is
 now cross-origin. A CORS preflight failure or a proxy 401 must not read as "dead session".
 Reserve 401 for dead sessions only; authorisation is 403, validation 400, upstream 401 → 502.
+**The server side of this is already done** (`956f9d9`): `upstreamProxyStatus()` maps upstream
+401/403 to 502 and 429 to 503 across the NVIDIA and Tanimoto proxies. What remains is CORS
+and the proxy in front of the API — verify a preflight failure does not surface as a 401.
 
 5.5 Rewrite any stale `ligandServiceConfig` values found in 4.1.
 
