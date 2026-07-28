@@ -83,8 +83,8 @@ Measured Bun median idle RSS: 115.1 MiB, below the locked Node Phase 4 baseline 
 (the D-06 gate threshold), so Bun stays the default. Note: on the same oracle host a back-to-back
 Node sanity run measured 115.5 MiB — Bun and Node are at parity within noise, not a memory win;
 Bun passes the gate against the fixed Phase 4 baseline.
-See `.planning/phases/05-server-runtime-on-bun/BUN-BEFORE-AFTER.md` for full per-sample distributions,
-the back-to-back Node sanity run, and methodology (N=5, `/proc/<pid>/status` VmRSS, oracle aarch64 host).
+The full per-sample distributions, the back-to-back Node sanity run, and methodology
+(N=5, `/proc/<pid>/status` VmRSS, oracle aarch64 host) were captured during the Bun migration.
 
 Phase 6 makes Bun the default package runner. Phase 5 already made Bun the default API runtime.
 Vite remains the client bundler: `bun run build` invokes `bun --cwd=client run build`, which runs
