@@ -1,5 +1,5 @@
 diff --git a/index.js b/index.js
-index eaf1223..e001b34 100644
+index eaf1223..a9a6715 100644
 --- a/index.js
 +++ b/index.js
 @@ -71,7 +71,7 @@ app.use(cors());
@@ -150,12 +150,12 @@ index eaf1223..e001b34 100644
 +const ASINEX_DOCKING_BASE  = process.env.DOCKING_API_URL   || 'https://services.asinex.com:8000/docking';
 +const ASINEX_DIFFDOCK_URL  = process.env.DIFFDOCK_API_URL  || 'https://services.asinex.com:58000/molecular-docking/diffdock/generate';
 +const ASINEX_STOCK_URL     = process.env.STOCK_API_URL     || 'https://stock.asinex.com:5443/api/Shop';
-+const TANIMOTO_BASE        = process.env.TANIMOTO_API_BASE || TANIMOTO_BASE + '';
++const TANIMOTO_BASE        = process.env.TANIMOTO_API_BASE || 'http://151.145.91.17:8000';
 +
  const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/yourdbname';
  const client = new MongoClient(uri);
  let usersCollection;
-@@ -837,7 +875,21 @@ app.post('/api/signup', ensureMongoConnected, async (req, res) => {
+@@ -837,7 +875,27 @@ app.post('/api/signup', ensureMongoConnected, async (req, res) => {
    const cleanedShipping = typeof shippingAddress === 'string' && shippingAddress.trim() ? shippingAddress.trim() : undefined;
    const cleanedBilling = typeof billingAddress === 'string' && billingAddress.trim() ? billingAddress.trim() : undefined;
  
@@ -166,7 +166,13 @@ index eaf1223..e001b34 100644
 +  // "403 No simulation tokens left" forever. That is why 47 of the first 50
 +  // accounts have no credits. SIGNUP_SIMULATION_TOKENS defaults to the balance
 +  // the shared demo account carries, so a new account behaves like the demo.
-+  const signupTokens = Number.parseInt(process.env.SIGNUP_SIMULATION_TOKENS ?? '99999', 10);
++  // Defaults to 0, NOT to the demo account's 99999. Signup has no rate limit and
++  // no captcha, and 42 of the first 50 accounts are bot registrations — granting
++  // credits on signup would hand box GPU time to every bot that verifies. Set
++  // SIGNUP_SIMULATION_TOKENS deliberately once signup is rate-limited.
++  // (Backfilling the existing 47 credit-less users is a separate, one-off job:
++  //  scripts/migrate-legacy-users.mjs --default-tokens 99999.)
++  const signupTokens = Number.parseInt(process.env.SIGNUP_SIMULATION_TOKENS ?? '0', 10);
 +  const insertDoc = {
 +    username,
 +    email,
@@ -178,7 +184,7 @@ index eaf1223..e001b34 100644
    if (cleanedPhone) insertDoc.phoneNumber = cleanedPhone;
    if (cleanedShipping) insertDoc.shippingAddress = cleanedShipping;
    if (cleanedBilling) insertDoc.billingAddress = cleanedBilling;
-@@ -860,6 +912,10 @@ app.post('/api/signup', ensureMongoConnected, async (req, res) => {
+@@ -860,6 +918,10 @@ app.post('/api/signup', ensureMongoConnected, async (req, res) => {
        htmlContent: htmlContent
      });
    } catch (err) {
@@ -189,7 +195,7 @@ index eaf1223..e001b34 100644
      return res.status(500).json({ error: 'Failed to send verification email', details: err.message });
    }
  
-@@ -1451,7 +1507,7 @@ function authenticateToken(req, res, next) {
+@@ -1451,7 +1513,7 @@ function authenticateToken(req, res, next) {
  
  app.post('/api/shop', authenticateToken, async (req, res) => {
    try {
@@ -198,7 +204,16 @@ index eaf1223..e001b34 100644
        method: 'POST',
        headers: {
          'Accept': 'application/json, text/plain, */*',
-@@ -1484,22 +1540,20 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
+@@ -1473,6 +1535,8 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
+   if (!pdbid || !smiles) {
+     return res.status(400).json({ error: 'pdbid and smiles are required as query parameters' });
+   }
++  // Declared outside the try so the catch block can see it.
++  let creditCharged = false;
+   try {
+     const simulationLogs = client.db().collection('simulation_logs');
+     // Check if simulation already exists for this user, pdbid, and smiles
+@@ -1484,22 +1548,20 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
      if (existing) {
        return res.json({ ...existing.result, simulationKey: existing.simulationKey });
      }
@@ -217,7 +232,7 @@ index eaf1223..e001b34 100644
 -        { username: req.user.username },
 -        { $inc: { simulationTokens: -1 } }
 -      );
-+    let creditCharged = true;
++    creditCharged = true;
      // Generate a 12-character random key
      const simulationKey = Array.from({length: 12}, () =>
        Math.random().toString(36).charAt(2)
@@ -228,7 +243,7 @@ index eaf1223..e001b34 100644
      const response = await fetch(url, {
        method: 'GET',
        headers: {
-@@ -1507,6 +1561,7 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
+@@ -1507,6 +1569,7 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
          'Content-Type': 'application/json'
        }
      });
@@ -236,7 +251,7 @@ index eaf1223..e001b34 100644
      const data = await response.json();
      // Record invocation in MongoDB, including the result and simulationKey
      await simulationLogs.insertOne({
-@@ -1519,7 +1574,8 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
+@@ -1519,7 +1582,8 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
      });
      res.json({ ...data, simulationKey });
    } catch (error) {
@@ -246,7 +261,16 @@ index eaf1223..e001b34 100644
    }
  });
  
-@@ -1572,21 +1628,17 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
+@@ -1561,6 +1625,8 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
+   if (!pdbid || !smiles) {
+     return res.status(400).json({ error: 'pdbid and smiles are required in request body' });
+   }
++  // Declared outside the try so the catch block can see it.
++  let creditCharged = false;
+   try {
+     const simulationLogs = client.db().collection('simulation_logs');
+     // Check if simulation already exists for this user, pdbid, and smiles
+@@ -1572,21 +1638,17 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
      if (existing) {
        return res.json({ ...existing.result, simulationKey: existing.simulationKey });
      }
@@ -261,7 +285,7 @@ index eaf1223..e001b34 100644
 -      { username: req.user.username },
 -      { $inc: { simulationTokens: -1 } }
 -    );
-+    let creditCharged = true;
++    creditCharged = true;
      // Generate a 12-character random key
      const simulationKey = Array.from({length: 12}, () =>
        Math.random().toString(36).charAt(2)
@@ -272,7 +296,7 @@ index eaf1223..e001b34 100644
        method: 'POST',
        headers: {
          'Accept': 'application/json',
-@@ -1597,6 +1649,7 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
+@@ -1597,6 +1659,7 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
          smiles: smiles === decodeURIComponent(smiles) ? encodeURIComponent(smiles) : smiles
        })
      });
@@ -280,7 +304,7 @@ index eaf1223..e001b34 100644
      const data = await response.json();
      // Record invocation in MongoDB, including the result and simulationKey
      await simulationLogs.insertOne({
-@@ -1610,7 +1663,8 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
+@@ -1610,7 +1673,8 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
      });
      res.json({ ...data, simulationKey });
    } catch (error) {
@@ -290,7 +314,7 @@ index eaf1223..e001b34 100644
    }
  });
  
-@@ -1847,7 +1901,7 @@ app.post('/api/validate-token', ensureMongoConnected, async (req, res) => {
+@@ -1847,7 +1911,7 @@ app.post('/api/validate-token', ensureMongoConnected, async (req, res) => {
  });
  
  // Direct Asinex API Proxy Endpoints
@@ -299,7 +323,7 @@ index eaf1223..e001b34 100644
  
  /**
   * @swagger
-@@ -2472,7 +2526,7 @@ app.post('/api/api4/mw', async (req, res) => {
+@@ -2472,7 +2536,7 @@ app.post('/api/api4/mw', async (req, res) => {
   *       500:
   *         description: Server error or DiffDock service unavailable
   */
@@ -308,7 +332,7 @@ index eaf1223..e001b34 100644
    try {
      const {
        protein,
-@@ -2577,7 +2631,7 @@ app.post('/api/diffdock/generate', async (req, res) => {
+@@ -2577,7 +2641,7 @@ app.post('/api/diffdock/generate', async (req, res) => {
          is_staged: is_staged
        };
        logToFile('makeDiffDockRequest REQUEST: ' + JSON.stringify(requestBody));
@@ -317,7 +341,7 @@ index eaf1223..e001b34 100644
          method: 'POST',
          headers: {
            'Accept': 'application/json',
-@@ -3345,13 +3399,16 @@ app.post('/api/issueSimulationTokens', ensureMongoConnected, authenticateToken,
+@@ -3345,13 +3409,16 @@ app.post('/api/issueSimulationTokens', ensureMongoConnected, authenticateToken,
      const username = req.user.username;
      if (!username) return res.status(400).json({ error: 'No username in token' });
      // Get amount from request body, default to 50

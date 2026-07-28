@@ -88,8 +88,13 @@ call does not 404.
 `typeof simulationTokens === 'number' && > 0`. **So every account ever created by signup was
 unable to run a single simulation** — that is why 47 of the first 50 users have no credits.
 
-New accounts get `SIGNUP_SIMULATION_TOKENS`, defaulting to `99999` — the balance the shared
-demo account carries, so a new account behaves like "Proceed to Demo".
+New accounts get `SIGNUP_SIMULATION_TOKENS`, **defaulting to `0`**. Not to the demo account's
+`99999`: signup has no rate limit and no captcha, and **42 of the first 50 accounts are bot
+registrations**, so granting credits on signup would hand box GPU time to every bot that
+verifies. Set it deliberately once signup is rate-limited.
+
+Backfilling the existing 47 credit-less users is a separate, one-off job and is not this patch:
+`node scripts/migrate-legacy-users.mjs --uri "$MONGODB_URI" --default-tokens 99999`.
 
 A failing verification email used to return 500 while leaving the account behind: unverified, so
 it cannot sign in, and its username and email are taken, so it cannot sign up again. The orphan
@@ -111,6 +116,34 @@ Keeping this patch to "same product, fixed bugs":
   catalog routes changes their behaviour and needs its own testing.
 - **The `:3000` server, wildcard CORS, hardcoded demo credentials in the frontend, bot signups
   with no rate limit or captcha.** All real; all separate work.
+
+## Verified by running it, not by reading it
+
+Staged in an isolated directory on 83 on port 3999, against the real Atlas database and the
+real `.env`, with production untouched. Two bugs that `node --check` passed only surfaced when
+the process actually started:
+
+- `let creditCharged` was declared **inside** the `try` and read in the `catch`. `let` is
+  block-scoped, so the refund path — the only path that matters — was a `ReferenceError`.
+- The blanket Tanimoto URL replacement also rewrote the declaration into
+  `const TANIMOTO_BASE = process.env.TANIMOTO_API_BASE || TANIMOTO_BASE + '';`, which is a
+  self-reference and refused to boot.
+
+Both fixed. Results after the fixes:
+
+| Check | Result |
+|---|---|
+| Server boots, connects to Atlas | ✅ |
+| `GET /health` | `200` |
+| `GET /tanimoto/health` → Oracle via `TANIMOTO_BASE` | `healthy`, `molecule_count: 2951975` |
+| `GET /tanimoto/v1/search/exact` | real result |
+| `POST /api/generate-molecules` **without** a token | `401` (was open) |
+| `POST /api/issueSimulationTokens` self-grant of 123456 | `403` (was exploitable) |
+| `POST /api/signin` as `tester123` | token issued |
+| **Failed dock** (`pdbid=ZZZZ`) | `502`, and **balance 99999 → 99999** — charged then refunded |
+
+The last row is the whole point: before this patch that dock cost a credit and returned a raw
+500. The test rig was removed afterwards and production was never touched.
 
 ## After applying
 
