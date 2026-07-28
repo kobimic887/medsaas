@@ -7,6 +7,25 @@ what actually happens on the day the machine turns up.**
 
 **Status:** planning. Nothing here has been applied.
 
+> ## ⚠ Parts of this document are known wrong
+>
+> Production was inventoried on 2026-07-28 —
+> [PRODUCTION-83-INVENTORY.md](./PRODUCTION-83-INVENTORY.md) is authoritative where the two
+> disagree. The reasoning below still holds; several **facts** do not:
+>
+> | This document says | Actually |
+> |---|---|
+> | "★ MongoDB — THE production database" on 83 | **MongoDB Atlas.** No Mongo on 83 at all. Recommendation is now to *keep* Atlas and move only compute |
+> | 83 serves a "static frontend", an older bundle of this repo's `client/` | A **Vite dev server** on `:5173`, from `/root/material-tailwind-dashboard-react` — the Creative Tim template. A different lineage, not an older version. There is no bundle |
+> | "the API that actually answers" sits behind nginx | `/root/chem_beo` on `:3000`, terminating **its own TLS** and bypassing nginx entirely |
+> | Oracle is "NOT PRODUCTION… loses all connection to this project" | **Its Postgres serves live Tanimoto queries.** Removing it breaks the Deep Similarity page. Its *Mongo* is still a discardable side-project copy |
+> | GROMACS: "no live deployment" | **Deployed on 83**, Docker, `:8000`, healthy for weeks |
+> | `/convertSTR` on `83:8001` | **Down.** So `/api/diffdock/generate` is already broken in production |
+> | ADMET/RabbitMQ: "no live deployment" | The **broker exists** — CloudAMQP, configured in `chem_beo/.env`. The worker does not |
+>
+> The "After" picture and the calculation table below are unchanged in intent. Read them as the
+> destination, not as a description of the starting point.
+
 ---
 
 ## The one-line version

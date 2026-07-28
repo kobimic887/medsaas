@@ -188,13 +188,142 @@ Atlas restore, never against production first.
 6. `/convertSTR` is already down; DiffDock is already broken. Rebuild it on the box rather than
    migrating it.
 7. **GROMACS's working config is on this box** — capture it before decommissioning.
+8. **Oracle cannot be decommissioned on the schedule the runbook gives.** It serves production
+   Tanimoto. §7.
+9. **83 needs a supervisor before it needs a migration.** Three hand-started `screen` sessions
+   are the only thing between the product and a reboot. §2.
 
-## 7. Rules observed during this inventory
+### The decision this inventory cannot make
 
-Read-only throughout: `ps`, `ss`, `ls`, `grep`, `nginx -T`, and Mongo `countDocuments` /
-`findOne`. Nothing was started, stopped, edited, or deleted. nginx, TLS, DNS and the firewall
-were not touched, and the unrelated `finsrv` stack on :4000 was not inspected beyond noting the
-port. Temporary query scripts were removed after use.
+**Does the box run this repo's `server/index.js`, or `chem_beo`?** Every migration document
+assumes the former, and that assumption was made before anyone knew the two were different
+codebases against a database that fits neither cleanly:
+
+| | `chem_beo` (deployed) | `server/index.js` (this repo) |
+|---|---|---|
+| Matches production user documents | yes | **no — 49/50 users** (§5) |
+| Multi-tenancy, roles, audit log, credit refunds, NVIDIA key pool | no | yes |
+| Tanimoto via env var | no — hardcoded Oracle | yes (`TANIMOTO_API_BASE`) |
+| Per-company service URLs (`ligandServiceConfig`) | **no** | yes — this is what makes "cutover is config" true |
+| Has ever carried production traffic | 3 years | **never** |
+
+Running this repo's server is what the whole plan is *for* — it is the only version with the
+credit-refund fix, the 401→502 mapping and the config-driven cutover. But it cannot be pointed
+at production data until the §5 migration runs, and it has never served a real user.
+
+**This is a human decision that gates Phases 4 and 5, and it is not in anyone's "still open"
+list.** Raise it before any deployment work starts.
+
+## 7. 🛑 Oracle is production, and every document says it is not
+
+This is the second blocker, and it is the one most likely to be tripped by an agent following
+the existing plan.
+
+`chem_beo/index.js` exposes eight `/tanimoto/*` routes and **every one of them proxies to
+`http://151.145.91.17:8000` — Oracle — hardcoded, no env var, plaintext HTTP across the public
+internet:**
+
+| `chem_beo` route | line | forwards to Oracle |
+|---|---|---|
+| `GET /tanimoto/health` | 196 | `/health` |
+| `POST /tanimoto/v1/upload` | 222 | `/v1/upload` |
+| `GET /tanimoto/v1/search/exact` | 250 | `/v1/search/exact` |
+| `GET /tanimoto/v1/search/similarity` | 293 | `/v1/search/similarity` |
+| `GET /tanimoto/v1/search/substructure` | 319 | `/v1/search/substructure` |
+| `POST /tanimoto/v1/search/batch` | 361 | `/v1/search/batch` |
+| `GET /tanimoto/v1/datasets` | 383 | `/v1/datasets` |
+| `GET /tanimoto/v1/datasets/:dataset_id` | 410, 439 | `/v1/datasets/…` |
+
+And the deployed frontend calls them. `src/pages/dashboard/deep-similarity.jsx:34-38` builds
+`API_CONFIG.buildUrl('/tanimoto/v1/search/{exact,similarity,substructure}')`, which resolves to
+`https://app.pyxis-discovery.com:3000/tanimoto/…`. So the full live path is:
+
+```
+browser → :3000 chem_beo → 151.145.91.17:8000 tonomitosql → Postgres/RDKit
+```
+
+**Verified live, 2026-07-28**, from 83:
+
+```
+$ curl http://151.145.91.17:8000/health          → HTTP 200 in 0.15s
+$ curl http://151.145.91.17:8000/v1/datasets
+{"datasets":[{"id":3,"name":"DATA","filename":"molsd4.csv",
+              "row_count":2951975,"created_at":"2026-03-12 21:00:52+00"}],"count":1}
+```
+
+**2,951,975 molecules**, indexed 2026-03-12, in a single dataset named `DATA` built from
+`molsd4.csv`. That is the production search corpus, and it lives only on Oracle.
+
+Note also that these nine proxies carry **no `authenticateToken`** in `chem_beo` — unlike this
+repo, where all nine equivalents sit behind auth. Anyone who can reach `:3000` can query the
+corpus today.
+
+### ❌ Correction: "Oracle is a side project, not production"
+
+`deploy.yml` is titled *Build & Deploy (non-prod)* and that is true **of `medsaas-app-1`**. It
+is not true of the machine. `tonomitosql-api-1` and `tonomitosql-db-1` on the same host answer
+live user traffic from the Deep Similarity page today.
+
+Consequences, in order of how much damage the mistake does:
+
+1. **Phase 7's removal order is wrong.** It lists `tonomitosql-api-1` and `tonomitosql-db-1` as
+   items 4 and 5 to be removed "once the box has answered real queries" — but treats the whole
+   machine as discardable. Removing either **breaks a live dashboard feature**, and there is no
+   config flip to roll it back: the URL is a string literal in `chem_beo`.
+2. **The Postgres index is production data, not a non-prod artefact.** §4.3's "prefer rebuilding
+   from source data on the box" was reasoning from the belief that the index was disposable. The
+   `pg_dump` is now the primary path, and it must be taken and verified **before** anything on
+   Oracle is touched — not as a nice-to-have afterthought.
+3. **`server/index.js:80` is not a stale fallback.** The runbook calls
+   `TANIMOTO_API_BASE`'s default of `http://151.145.91.17:8000` a leftover that "silently routes
+   Tanimoto to a decommissioned host." It currently points at the *live* host. Delete it as part
+   of standing the service up on the box — not before.
+4. **Rule 4 of the runbook still holds and is unaffected.** *Mongo* must never be restored from
+   Oracle; Oracle's Mongo is genuinely a side-project copy. The correction is about **Postgres**,
+   which is a different database on the same machine. Do not let one collapse into the other.
+
+### The related trap: `ligandServiceConfig` does not exist in production
+
+The single `companies` document has **no `ligandServiceConfig` field at all**, and `chem_beo`
+never reads one — it hardcodes `services.asinex.com:8000`, `services.asinex.com:58000`,
+`dev.asinex.com:58181` and `stock.asinex.com:5443` as string literals.
+
+So Phase 0.3 is answered — there are no stale overrides — but the more important consequence is
+that **"cutover is config, not a deploy" is only true of the server in this repo.** Against what
+is deployed today, repointing docking at the box is a **code edit and a process restart on 83**.
+That property is inherited only once this repo's server is the thing running.
+
+## 8. Security findings
+
+None of these are caused by the migration; all of them are made worse by leaving them until it.
+
+| # | Finding | Where | Action |
+|---|---|---|---|
+| 1 | **A live GitHub personal access token is embedded in a git remote URL**, in the clear, for user `eitangenis` | `/root/chem_beo/.git/config` | **Revoke it now.** It grants repo access to anyone who reads that file, and it is recoverable from any backup or clone of the host |
+| 2 | **Credits can be minted from the browser.** `POST /api/issueSimulationTokens` is an unauthenticated-by-design route on `stripe-server.cjs:202`, reachable through the vite proxy, and **there is no Stripe webhook endpoint anywhere on 83** | `stripe-server.cjs:202` | This is why `billing_events` is 0. Runbook 3.2 calls it "re-register the webhook" — it is a **first-time registration**, and the frontend-callable route must not survive the cutover |
+| 3 | The API on `:3000` is **internet-facing with wildcard CORS** (`app.use(cors())`, `index.js:41`) and **no host firewall** (`ufw` inactive, iptables INPUT `ACCEPT`) | `chem_beo` | Fixed by retiring `:3000` in favour of the box behind a reverse proxy with an explicit origin allowlist |
+| 4 | Both `.env` files are mode **644** and contain Stripe secret keys | `chem_beo/.env`, `material-tailwind-dashboard-react/.env` | `chmod 600`, and rotate the Stripe secret if the host has ever been shared |
+| 5 | Root SSH password authentication is enabled, and the password has been shared in plaintext | `83` | Rotate; move to keys. Runbook 1.4 does this on the box — 83 needs it too |
+
+**Item 2 is also a correctness note for the migration.** This repo's server grants credits
+*only* from `checkout.session.completed`. Production grants them from a frontend call. Any user
+who has credits today got them by a path the new server does not implement, so **credit balances
+cannot be assumed to be reconstructable** — carry them across as data, do not try to replay them.
+
+## 9. Rules observed during this inventory
+
+Read-only throughout: `ps`, `ss`, `ls`, `grep`, `pstree`, `screen -ls`, `docker inspect`,
+`curl` against localhost, and Mongo `countDocuments` / `find` / `findOne`. Nothing was started,
+stopped, edited or deleted. nginx, TLS, DNS and the firewall were not touched, and the unrelated
+`finsrv` stack on `:4000` was not inspected beyond noting the port.
+
+**One exception, stated plainly:** the Mongo queries needed the driver and the `MONGODB_URI`,
+both of which live in `/root/chem_beo`. Three throwaway scripts (`.inv.mjs`, `.inv2.mjs`,
+`.inv3.mjs`) were written into that directory, run with `node`, and deleted in the same command.
+`git status` in `/root/chem_beo` is unchanged by this — it shows only the three untracked
+`*.json` files that were already there. **A fresh agent should not copy this pattern.** Prefer
+running the queries from your own machine against the Atlas URI, which needs nothing on 83 at
+all beyond an allowlisted IP.
 
 **No credential from this host is recorded here or anywhere in this repo** — not the SSH
 password, not the Atlas URI's user or password, not the contents of any `.env`. Field *names*

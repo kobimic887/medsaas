@@ -142,11 +142,16 @@ before starting Phase 1 — items 0.1 and 0.2 have deadlines set by someone else
 >   path; raise it now.
 > - **0.10 FAILS: 49 of 50 users have no `companyId`**, and 47 have no `simulationTokens`.
 >   A data migration is a prerequisite to cutover, not a follow-up.
+> - **Oracle serves production.** `chem_beo` proxies all eight `/tanimoto/*` routes to
+>   `151.145.91.17:8000`, hardcoded, and the Deep Similarity page calls them. **Phase 7 as
+>   written breaks a live feature.** Its Postgres is production data, not a disposable index.
+>   Rule 4 is unchanged — that is about *Mongo*, and it still holds.
 >
 > Also: `/convertSTR` on `:8001` is already **down**, so DiffDock is already broken; GROMACS
-> **is** deployed on 83 and its working config should be captured; and everything Pyxis on 83
-> runs in **hand-started foreground shells** with no restart policy, so a reboot ends production
-> until a human logs in.
+> **is** deployed on 83 and its working config should be captured; everything Pyxis on 83 runs
+> in **hand-started `screen` sessions** with no restart policy, so a reboot ends production
+> until a human logs in; and there is **a live GitHub token in `/root/chem_beo/.git/config`**
+> plus a **frontend-callable credit-minting route** — see that file's §8 before anything else.
 
 **0.1 Capture the docking output contract — DONE 2026-07-28,** see
 [DOCKING-CONTRACT.md](./DOCKING-CONTRACT.md). Four records existed; the format is fully
@@ -446,11 +451,31 @@ mongodump --uri="<83_MONGO_URI>" --out=/srv/archive/83-mongodump-$(date +%F)
 
 **Rule 4 applies: this comes from 83, never from Oracle.**
 
-### 4.3 Tanimoto / Postgres
+### 4.3 Tanimoto / Postgres — ❌ CORRECTED, this is production data
 
-Oracle's index is probably a non-prod artefact. **Prefer rebuilding from source data on the
-box** to restoring a `pg_dump`. Take the dump anyway before Phase 7 — it costs nothing and it
-is the only copy.
+**Superseded text, kept so the change is visible:** *"Oracle's index is probably a non-prod
+artefact. Prefer rebuilding from source data on the box to restoring a `pg_dump`."*
+
+That was wrong. Oracle's Postgres answers live user traffic:
+`browser → :3000 chem_beo → 151.145.91.17:8000 tonomitosql → Postgres/RDKit`, from the Deep
+Similarity page. The eight proxy routes are hardcoded in `chem_beo/index.js:196-439`.
+Details in [PRODUCTION-83-INVENTORY.md](./PRODUCTION-83-INVENTORY.md) §7.
+
+So:
+
+1. **Take the `pg_dump` first, before touching anything on Oracle**, and verify it restores.
+   It is production data and the only copy.
+2. Restore it on the box. Rebuilding from source is still fine **as a cross-check** — compare
+   row counts and a handful of known queries against the restored index — but it is no longer
+   the primary path, because "the source data" has no owner and may not exist.
+3. **Do not remove either `tonomitosql` container until the box has answered the same queries
+   correctly**, and until whatever is serving `/tanimoto/*` has been repointed. Today that is
+   `chem_beo`, where the URL is a **string literal** — there is no config flip and no fast
+   rollback.
+
+**Rule 4 is unaffected.** It forbids restoring *Mongo* from Oracle, and that still stands —
+Oracle's Mongo is a genuine side-project copy. This is Postgres, a different database on the
+same machine. Do not let the two collapse into one rule in either direction.
 
 Note: `tonomitosql`'s Dockerfile has an ARM fallback that installs without `rdkit-pypi`. On
 x86_64 it should install normally — **verify the fallback branch is not being taken silently**,
@@ -627,6 +652,22 @@ owner's PC, with no surviving record. Ask the operator whether that configuratio
 
 Missing any of these? Stop.
 
+> ### ❌ 7.0b — the machine is not what this phase assumed
+>
+> This phase was written believing Oracle was entirely a side project. **Two of its five
+> containers serve production.** `tonomitosql-api-1` and `tonomitosql-db-1` answer the Deep
+> Similarity page today, via eight hardcoded proxy routes in `chem_beo`
+> ([PRODUCTION-83-INVENTORY.md](./PRODUCTION-83-INVENTORY.md) §7).
+>
+> Add a precondition, at the top of 7.0:
+>
+> - [ ] **`/tanimoto/*` no longer resolves to `151.145.91.17` from anywhere.** Whatever serves
+>       those routes has been repointed at the box, and the repoint has been verified from a
+>       browser — not just from a shell on the box.
+>
+> Until that is true, Phase 7 does not start. The three `medsaas-*` containers remain
+> discardable; the two `tonomitosql-*` ones are a service migration, not a cleanup.
+
 ### 7.1 Removal order — one at a time, verify between each
 
 | # | Container | Remove only when |
@@ -634,8 +675,8 @@ Missing any of these? Stop.
 | 1 | `medsaas-app-1` | now — defunct non-prod copy, nobody uses it |
 | 2 | `medsaas-mcp-server-1` | the box's MCP server is reachable and **Claude Science** has connected to it (see the caveat in §"Still open") |
 | 3 | `medsaas-mongo-1` | the box's Mongo is live. **Data is discarded, not migrated** |
-| 4 | `tonomitosql-api-1` | `/tanimoto/v1/*` on the box has answered real queries |
-| 5 | `tonomitosql-db-1` | **last.** Take a final `pg_dump` to `/srv/archive` on the box first, even though the index is being rebuilt rather than restored |
+| 4 | `tonomitosql-api-1` | ⚠ **production.** `/tanimoto/v1/*` on the box has answered real queries **and** nothing routes to `151.145.91.17` any more (7.0b) |
+| 5 | `tonomitosql-db-1` | ⚠ **production data.** **Last.** A verified `pg_dump` restore already exists on the box (§4.3) — this is the only copy, and it is not being rebuilt from source |
 
 Every one of these is rule 1. Quote the command, wait for approval, run it, verify, append to
 the state file.
@@ -644,9 +685,14 @@ the state file.
 
 - Remove the `deploy.yml` Oracle target, the deploy key, and any Actions secret pointing at
   `151.145.91.17`
-- **Remove the hardcoded Oracle fallback in `TANIMOTO_API_BASE`** — `server/index.js:80`
-  defaults to `http://151.145.91.17:8000`. Leave it and a missing env var silently routes
-  Tanimoto to a decommissioned host
+- **Remove the hardcoded Oracle default in `TANIMOTO_API_BASE`** — `server/index.js:80`
+  defaults to `http://151.145.91.17:8000`. ❌ The original note here called this a pointer to a
+  "decommissioned host"; it points at the **live** service. Set `TANIMOTO_API_BASE` explicitly
+  in the box's `.env` first, prove `/tanimoto/*` works from it, and only then delete the default
+  — in that order. Removing it while it is still the thing answering is how this breaks
+- `chem_beo` has **no equivalent knob** — its Oracle URL is a string literal at eight call
+  sites. If `chem_beo` is still serving anything at this point, repointing it is a code edit and
+  a restart on 83, not a config change
 
 ### 7.3 Do not touch
 
@@ -659,7 +705,11 @@ machine. Ops notes live in `~/projects/oracle`, not this repo.
 
 - Any hardware verification in 1.1 fails
 - The mirror does not boot degraded (1.2)
-- 83's Mongo schema does not match what `server/index.js` expects (4.1)
+- **Production Mongo's schema does not match what `server/index.js` expects (4.1).**
+  ⚠ **Already tripped** — 49 of 50 users lack `companyId`. This is not a hypothetical abort
+  condition, it is the current state. See PRODUCTION-83-INVENTORY.md §5
+- **You are about to remove, stop or repoint anything on Oracle and `/tanimoto/*` still
+  resolves there** (7.0b) — that is live user traffic
 - The docking output contract was never captured and Asinex is unreachable (2.1)
 - Restored document counts do not match the source (4.2)
 - The Stripe webhook does not grant credits on a real purchase (3.3)
