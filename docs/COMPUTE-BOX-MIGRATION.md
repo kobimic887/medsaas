@@ -83,54 +83,90 @@ PubChem, and `pyxis-discovery.com`. All are already present here.
 
 ## 3. The three machines, after the move
 
+Frontend on 83 (unchanged, already there). Backend consolidates from **three** scattered
+places onto one box. Oracle stays alive in a reduced role.
+
 ```
-                    browser
-                       |
-             app.pyxis-discovery.com
-                       |
-   [ 83.229.87.94 — shared VPS, nginx + TLS ]     static frontend (client/dist)
-   also hosts: finbs prod :4000, /convertSTR :8001   |
-                       |  HTTPS to the API
-                       v
-   [ AMSTERDAM BOX — everything below this line ]
-     Express API :3000  ·  Mongo  ·  MCP :8080
-     tonomitosql :8000 + Postgres/RDKit
-     RabbitMQ  ·  ADMET worker  ·  GROMACS  ·  glioblastoma
-     MSA (MMseqs2) · OpenFold3/Boltz-2 · DiffDock · AutoDock-GPU · Vina
-     SDF converter
-                       |
-                       v
-   [ ORACLE VPS 151.145.91.17 ]  — see §8, it does NOT simply get switched off
+                          browser
+                             |
+                  app.pyxis-discovery.com
+                             |
+  ┌──────────────────────────────────────────────────────────┐
+  │ 83.229.87.94 — shared VPS, nginx + TLS      [UNCHANGED]  │
+  │   static frontend (client/dist)  ← stays here            │
+  │   also: an unrelated project on :4000                    │
+  │   /convertSTR :8001  ← MOVES to the box, then stops      │
+  └──────────────────────────────────────────────────────────┘
+                             |  HTTPS, cross-origin, bearer token
+                             v
+  ┌──────────────────────────────────────────────────────────┐
+  │ AMSTERDAM BOX — the whole backend        [DOES NOT EXIST │
+  │                                           YET, see below]│
+  │   Express API :3000 · Mongo · MCP :8080                  │
+  │   tonomitosql :8000 + Postgres/RDKit                     │
+  │   RabbitMQ · ADMET worker · GROMACS · glioblastoma        │
+  │   MSA (MMseqs2) · OpenFold3/Boltz-2                      │
+  │   DiffDock · AutoDock-GPU · Vina · SDF converter         │
+  └──────────────────────────────────────────────────────────┘
+                             |  backup target only
+                             v
+  ┌──────────────────────────────────────────────────────────┐
+  │ ORACLE VPS 151.145.91.17 — reduced, NOT switched off     │
+  │   keeps: CLIProxyAPI gateway, Codex token, offsite dumps │
+  │   loses: medsaas app, Mongo, MCP, tonomitosql            │
+  └──────────────────────────────────────────────────────────┘
 ```
 
-### Open decision A — where the frontend lives
+**The box does not exist yet.** It is ordered, not delivered. Its hostname, IP, MAC, network
+position at Science Park, and disk device names are all unknown, so every plan below is
+written against roles (`/srv/refdb`, "the box") rather than addresses. Nothing that needs a
+real address can start until it lands. What *is* known is the hardware, at the top of this
+document.
 
-The owner's instruction was *"iirc frontend stays on the 83 machine."* The **"iirc" is
-doing real work there, because the trace says otherwise:**
+### Settled — the frontend stays on 83, and it is already there
 
-- The root `Dockerfile` builds `client/dist` in a first stage, copies it into the API
-  image, and sets `FRONTEND_DIST=../client/dist`.
-- `server/index.js` therefore serves the frontend itself, from the **Oracle** container.
-- `83.229.87.94` is the shared **finbs** production VPS. Nothing in this repo deploys a
-  frontend there.
+Confirmed by the owner: **`83.229.87.94` serves the production frontend today at
+`app.pyxis-discovery.com`, and it keeps doing that.** The box gets the backend only.
 
-So "frontend stays on 83" is a **new split, not a preserved one.** That is fine and it is
-probably the right architecture — 83 already has nginx and TLS, and the box should not be
-a public web server. But it is a change, and it forces:
+The apparent contradiction in the code resolves cleanly once you notice which environment is
+which:
 
-- **CORS on the API.** Currently unnecessary because everything is same-origin.
-- **`FRONTEND_URL` / `BASE_URL` / `PLATFORM_WEBSITE_URL`** all repointed (they appear in
-  emails, Stripe redirect URLs, and invite links).
-- **The `frontend` stage of the root `Dockerfile`** either drops out of the box image or
-  stays and is simply not served.
+- The root `Dockerfile` builds `client/dist` and copies it into the API image, and
+  `server/index.js` serves it when `FRONTEND_DIST` is set. That image runs on **Oracle**.
+- But `deploy.yml` is literally named *"Build & Deploy (**non-prod**)"* and targets
+  `environment: non-prod`. So the Oracle stack is a **self-contained non-prod copy** that
+  happens to serve its own bundled frontend — it is not what users hit.
+- Production frontend = 83. That is also where the legacy `chem_beo`-era references to
+  `https://app.pyxis-discovery.com:3000` point, which is the remaining unknown below.
+
+**Unknown to confirm on the 83 box (Phase 0):** what is currently answering the production
+API for `app.pyxis-discovery.com` — a legacy `chem_beo` deployment, an nginx proxy to Oracle,
+or something else. This matters because that is the thing being replaced, and nobody should
+find out mid-cutover. It is an inventory task on 83, not a code question.
+
+Consequences of the split that still have to be built, because non-prod on Oracle never
+needed them (same-origin there):
+
+- **CORS on the API.** The dashboard on 83 will call an API on a different origin. Allowlist
+  the frontend origin explicitly; do not use `*`, because the API takes a bearer token.
+- **`FRONTEND_URL` / `BASE_URL` / `PLATFORM_WEBSITE_URL`** all repointed. These are not
+  cosmetic — they appear in invite emails, password-reset links, and Stripe success/cancel
+  redirect URLs. A wrong `BASE_URL` produces a checkout that returns the user to the wrong
+  host after paying.
+- **`VITE_API_BASE_URL` becomes required** for the 83 build. It is empty in dev because Vite
+  proxies `/api`, `/tanimoto`, `/create-checkout-session*` and `/health` to port 3000, and it
+  is empty on Oracle because the API serves the bundle. Neither applies on 83 — the built
+  frontend must be told where the API is at **build** time.
+- **The `frontend` stage of the root `Dockerfile`** either drops out of the box image or stays
+  and is simply not served. Leaving it in costs a build stage but keeps the non-prod
+  single-container mode working, which is worth something.
 - **The 401 auto-logout invariant.** The client logs the user out on any 401 from the API.
-  That path becomes cross-origin; a CORS preflight failure or a proxy 401 must not be
-  allowed to read as "dead session". Reserve 401 for dead-session only — authz is 403,
-  validation 400, upstream 401 becomes 502.
-- **Deploying `client/dist` to 83** is a new pipeline, and the finbs notes say plainly:
-  *"The VPS is shared. Do not modify nginx, TLS, DNS, firewall, or other apps."*
-
-**Recommendation:** confirm this split explicitly before any Dockerfile change.
+  That path becomes cross-origin; a CORS preflight failure or a proxy 401 must not be allowed
+  to read as "dead session". Reserve 401 for dead-session only — authz is 403, validation 400,
+  upstream 401 becomes 502.
+- **Deploying `client/dist` to 83** is a new pipeline. The rule on that box is *"The VPS is
+  shared. Do not modify nginx, TLS, DNS, firewall, or other apps."* Publishing static files
+  into an existing document root does not violate that; adding a proxy pass for the API would.
 
 ### Open decision B — public HTTPS ingress for the box (blocking)
 
@@ -422,11 +458,16 @@ it — but do not touch anything else on that machine.
 
 ## 9. Still to decide (all owner calls)
 
-1. **Frontend on 83, or keep it baked into the API image?** (§3-A) — blocks the Dockerfile
-   and CORS work.
-2. **Public HTTPS ingress for the box** (§3-B) — blocks Stripe webhooks and MCP. Caddy +
-   DNS recommended.
-3. **What replaces MolMIM** for `/api/generate-molecules` (§7 Phase 4.5).
-4. **Offsite backup target** (§6) — not Oracle, not the 8 TB disk in the same chassis.
-5. **Does the Asinex live-stock call stay?** (§4) — recommended yes, as an at-order-time
+1. **Public HTTPS ingress for the box** (§3-B) — blocks Stripe webhooks and Claude for Life
+   Sciences. Caddy + a DNS name on the box recommended; do not plan on touching nginx on 83.
+2. **What replaces MolMIM** for `/api/generate-molecules` (§7 Phase 4.5).
+3. **Offsite backup target** (§6) — not Oracle, not the 8 TB disk in the same chassis.
+4. **Does the Asinex live-stock call stay?** (§4) — recommended yes, as an at-order-time
    check only, with catalog and price served locally.
+
+Settled, recorded here so they are not re-litigated:
+
+- **Frontend stays on 83** at `app.pyxis-discovery.com` (§3). The box is backend only.
+- **Oracle is not decommissioned** (§8) — it keeps the CLIProxyAPI gateway and becomes the
+  offsite dump target.
+- **The box is the whole backend, not just compute** — Mongo included.

@@ -4,15 +4,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Planning
 
-This project uses the **superpowers** planning workflow. Before non-trivial work, use the
-`writing-plans` skill to draft a plan, and the `using-superpowers` skill to discover the
-other available skills (test-driven-development, systematic-debugging, dispatching-parallel-agents, etc.).
+Before non-trivial work, write a short plan and get it agreed. There is no plugin-provided
+planning workflow in this environment — the `superpowers` plugin is present in the plugin
+cache but **not installed**, so `writing-plans`, `using-superpowers`,
+`test-driven-development`, `systematic-debugging` and `dispatching-parallel-agents` are not
+available. Do not reference them.
+
+The skill that does apply here is **`medsaas-dev`** (user-scoped, `~/.claude/skills/medsaas-dev/`).
+`graphify` is also installed.
+
+Historical plans were in `.planning/` (97 files: GSD milestones, roadmaps, phase plans and
+codebase maps). **That directory has been deleted from the working tree but is still tracked
+in git** — the deletion is uncommitted. Recover any of it with
+`git show HEAD:.planning/<file>`. Do not write new `.planning/` files or reference `/gsd:*`
+commands; that workflow is retired.
 
 - **Milestone history (reference):** v1 ChemBench Cleanup · v2 Bun Migration — incl. **Phase 7 (Docker, CI/CD, Scripts), shipped 2026-06-05** · v3 Company Brand Colour (per-company logo-driven palette across dashboard + emails), complete.
 - **CI now gates deploys:** `.github/workflows/ci.yml` runs Bun and Node fallback checks on push/PR, and `deploy.yml` won't ship unless the reusable CI gate passes (`needs: test`).
 - **CI/CD source of truth:** repo-owned workflows are only `.github/workflows/ci.yml` and `.github/workflows/deploy.yml`. Dynamic GitHub Actions entries such as CodeQL, Dependency Graph, Copilot, Claude, and Codex come from GitHub settings/integrations. Current deploy builds on the box from `docker-compose.box.yml`; GHCR/GitHub Packages is legacy and unused. See `docs/CI-CD.md`.
 - **Planned: backend moves to a dedicated GPU box** (Amsterdam, x86_64, 2× RTX PRO 5000). `docs/COMPUTE-BOX-MIGRATION.md` is the full trace of every machine, API, and compute dependency plus the move plan, CUDA matrix, and storage layout. Nothing is applied yet and several decisions are still open (frontend location, public HTTPS ingress, MolMIM replacement) — read it before touching Dockerfiles, compose files, or `docs/CI-CD.md`.
-- **Docs index:** `docs/README.md`.
+- **Docs index:** `docs/README.md`. Claude for Life Sciences / MCP: `docs/CLAUDE-LIFE-SCIENCES.md`.
 
 Bun is the default runtime and package manager for this repo. npm/Node fallbacks
 are retained via `:node`-suffixed scripts. See the Commands section below.
@@ -71,6 +82,15 @@ Dev URLs: frontend at **http://localhost:5173**, API at http://localhost:3000, A
 - `server/` — Express API server. All routes live in `server/index.js` (one large ESM file) plus `server/routes/scientificServices.js` for microservice proxies.
 - `client/` — Vite + React 18 dashboard using Material Tailwind and Heroicons. `@` aliases to `client/src/`.
 - `services/admet/`, `services/gromacs-api/`, `services/glioblastoma-predictor/` — Scientific microservices (Docker, optional).
+- `services/mcp-server/` — ChemBench MCP server (Bun + `@modelcontextprotocol/sdk`). Exposes 14 platform tools to **Claude for Life Sciences** over stateless Streamable HTTP on `:8080/mcp`, proxying to the platform API. See `docs/CLAUDE-LIFE-SCIENCES.md`.
+
+### Where things actually run
+
+| Machine | What it runs |
+|---|---|
+| `83.229.87.94` (shared VPS, nginx + TLS) | **the production frontend** — `app.pyxis-discovery.com` — plus the `/convertSTR` SMILES→SDF service on `:8001`. Shared with an unrelated project; **do not modify nginx, TLS, DNS, or the firewall there.** |
+| Oracle VPS `151.145.91.17` (Ampere arm64) | the **non-prod** full-stack copy that `deploy.yml` ships (`medsaas-app-1` + Mongo + MCP server), plus the tonomitosql stack. Ops notes in the separate `~/projects/oracle` repo. |
+| Amsterdam GPU box | **does not exist yet.** All backend and compute is planned to consolidate here — `docs/COMPUTE-BOX-MIGRATION.md`. |
 
 ### Server
 The server is a single Express app (`server/index.js`, ESM). It starts with `node --watch index.js` in dev. Required env vars are validated at startup: `MONGODB_URI`, `JWT_SECRET` (≥32 chars), `STRIPE_SECRET_KEY`.
@@ -110,14 +130,18 @@ loader lives in `client/index.html`, and `@rdkit/rdkit` is installed server-side
 ### Scientific feature backends
 | Feature | Route prefix | Backend |
 |---------|-------------|---------|
-| Molecule generation | `/api/generate-molecules` | NVIDIA MolMIM |
-| Protein folding | `/api/openfold3/predict` | NVIDIA OpenFold3 |
-| Tanimoto search | `/tanimoto/v1/*` | External Tanimoto service |
-| Asinex catalog | `/api/asinex/*` | Asinex APIs |
-| DiffDock docking | via `server/diff_dock.sh` | DiffDock API |
-| ADMET prediction | RabbitMQ queue | `services/admet/` worker |
-| GROMACS MD | `server/routes/scientificServices.js` | `services/gromacs-api/` |
-| Glioblastoma | `server/routes/scientificServices.js` | `services/glioblastoma-predictor/` |
+| Molecule generation | `/api/generate-molecules` | NVIDIA MolMIM, hosted (`health.api.nvidia.com`) |
+| Protein folding | `/api/openfold3/predict` | NVIDIA OpenFold3, hosted (`health.api.nvidia.com`) |
+| Tanimoto search | `/tanimoto/v1/*` | **tonomitosql** (`kobimic887/tonomitosql`) — FastAPI + Postgres/RDKit cartridge, via `TANIMOTO_API_BASE` |
+| Asinex catalog / stock / docking | `/api/asinex/*`, `/api/shop` | Asinex APIs. **Per-company overridable** via `company.ligandServiceConfig` |
+| DiffDock docking | `/api/diffdock/generate` | `DIFFDOCK_API_URL` (Asinex-hosted). `server/diff_dock.sh` is **dead code** — it posts to a `localhost:8000` NIM that has never run |
+| SMILES→SDF conversion | used inside `/api/diffdock/generate` | `SDF_CONVERTER_URL` — a service on the shared `83.229.87.94` box |
+| ADMET prediction | RabbitMQ queue | `services/admet/` worker — **not currently deployed anywhere** |
+| GROMACS MD | `server/routes/scientificServices.js` | `services/gromacs-api/` — **not currently deployed anywhere**, and the image is a CPU-only apt build |
+| Glioblastoma | `server/routes/scientificServices.js` | `services/glioblastoma-predictor/` — **not currently deployed anywhere** |
+
+No code in this repo performs an MSA, a fold, or a local dock — folding and generation are
+thin proxies to NVIDIA's hosted endpoints. See `docs/COMPUTE-BOX-MIGRATION.md`.
 
 ### MongoDB collections
 Core: `users`, `companies`, `audit_logs`, `billing_events`  
