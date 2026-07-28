@@ -24,13 +24,29 @@ INPUT policy `ACCEPT` — no host firewall.
 | 8000 | `uvicorn app:app` (Docker `gromacs-api`) | — | 3 weeks |
 | 4000 | `bun dist/index.js`, user `finsrv` | — | — (**not ours** — `app.fin-srv.com`) |
 
-Every one of the Pyxis processes runs in a **foreground shell under a `pts/N` tty** — someone
-SSH'd in, started them by hand, and left. No systemd unit, no pm2, no Docker, no restart policy.
-There are also **two duplicate `concurrently` stacks** (one from Jul 02 on `pts/3`, one from
-Jul 08 on `pts/2`); only one of each pair holds its port.
+Every one of the Pyxis processes was started by hand inside a **detached GNU `screen`
+session** — three of them, owned by `root`:
+
+```
+1765.screen1   Jul 02 19:49   → npm run start   → node index.js            (chem_beo, :3000)
+1899.screen0   Jul 02 19:50   → npm run dev     → stripe-server.cjs        (:3001)
+451103.screen1 Jul 08 11:10   → npm run dev     → concurrently vite+stripe (:5173)
+```
+
+`pstree` confirms the chain: `systemd(1) → screen → bash → npm → sh → node`. No systemd unit,
+no pm2, no Docker, no restart policy, no crontab. There are **two duplicate `concurrently`
+stacks** (Jul 02 and Jul 08); only one of each pair won its port, the other is a zombie that
+failed to bind and was left running.
 
 **A reboot takes production down permanently until a human logs in and retypes the commands.**
 26 days of uptime is the only thing that has been keeping the product alive.
+
+**For an agent working here this is good news and bad news.** Good: `screen -r <pid>` reattaches
+to a real, restartable session, so the cutover mechanism (edit `src/utils/api.js`, restart vite)
+is reachable without inventing a supervisor. Bad: there is no record anywhere of the exact
+commands, and killing the wrong one of a duplicate pair is indistinguishable from killing the
+live one until the port goes quiet. **Note the PIDs before touching anything, and never restart
+`chem_beo` and the vite stack in the same step.**
 
 ### ❌ Correction: `/convertSTR` on :8001 is not running
 
