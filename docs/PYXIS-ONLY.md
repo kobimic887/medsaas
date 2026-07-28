@@ -16,11 +16,20 @@ That last point is deliberate and worth stating plainly: the Stripe *webhook and
 logic stays wired* even though public signup and checkout pages go away. It is the admin
 top-up path, and leaving it alone is one less thing to break.
 
+> **Unresolved — do not treat the credits line as final.** The owner explicitly selected
+> "leave credits exactly as is", and then said *"we can lose all the non pyxis all the saas
+> part."* Credits-as-payment **are** SaaS surface, so those two may not agree. This document
+> follows the explicit selection. If the broader statement wins, the change is: drop the
+> Stripe grant path and keep `consumeSimulationToken` as a GPU quota with manual admin top-up
+> — which matters more, not less, once folding runs on our own two cards. Confirm before
+> touching anything in this area.
+
 ---
 
-## 1. Which frontend — settled, with evidence
+## 1. Which frontend — the comparison that was asked for
 
-The question was open because nobody had looked at what 83 actually serves. Now checked:
+The owner's answer was *"look at both first, then decide"*, so this is the looking. **The
+decision is still theirs.** Recommendation and evidence below.
 
 | | `app.pyxis-discovery.com` (83) | `client/` (this repo, on Oracle) |
 |---|---|---|
@@ -30,11 +39,18 @@ The question was open because nobody had looked at what 83 actually serves. Now 
 | Has that the other lacks | *nothing* | `glioblastoma-predict`, `gromacs-md`, `company-admin` |
 | Recent work | none | dark mode, per-company brand colour, chart hardening |
 
-**The new frontend is a strict superset of the old one.** Switching loses no page and no
-feature. The old bundle is the legacy lineage the owner described as buggy, and it is a dead
-end — nobody maintains it.
+**On the source, the new frontend is a strict superset of the old one** — switching loses no
+page. The old bundle is the legacy lineage the owner described as buggy, and it is a dead end
+that nobody maintains.
 
-**Verdict: `client/` from this repo becomes `app.pyxis-discovery.com`.**
+**Recommendation: `client/` from this repo becomes `app.pyxis-discovery.com`.**
+
+**What this evidence does and does not prove.** The `<title>` match establishes *lineage*
+beyond doubt. It does not prove the deployed 83 bundle matches that repo — a deployed build can
+drift from its source, and the page fetch returned only the title, no navigation and no
+feature list. So "loses no feature" is inferred from the source trees, not observed on the
+running site. Before deleting anything on 83, open it and click through it. Cheap, and it is
+the only step that can surface a feature nobody remembers shipping.
 
 ### The catch, and it is the interesting one
 

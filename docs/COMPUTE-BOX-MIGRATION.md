@@ -322,6 +322,13 @@ Key the cache on a hash of the sequence. The hosted NIM cannot do this for you �
 (and re-charges) per call, because it is stateless and does not know your screen is 300 ligands
 against the same protein.
 
+**Caveat on that table, and it matters because this is the number that will get quoted.** The
+"0 — cache hit" line is the *expected* behaviour of an MSA keyed on sequence alone, not a
+measurement. Two things could erode it: template search may not be fully ligand-independent
+depending on which model is used, and a co-folding path may redo work the cache cannot cover.
+Treat the second column as the case to *verify* in Phase 4.1, alongside the cold-job baseline —
+same rule as every other timing in this document.
+
 Once MSAs are cached, a screening run is inference-only, both cards saturated, no rate limit —
 and local wins outright. **Build the MSA cache in Phase 4; it is not an optimisation to defer,
 it is what makes the machine pay for itself.**
