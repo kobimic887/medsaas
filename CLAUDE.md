@@ -2,23 +2,20 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## GSD Project
+## Planning
 
-This project uses GSD for planning. See `.planning/` for context.
+This project uses the **superpowers** planning workflow. Before non-trivial work, use the
+`writing-plans` skill to draft a plan, and the `using-superpowers` skill to discover the
+other available skills (test-driven-development, systematic-debugging, dispatching-parallel-agents, etc.).
 
-- **Current milestone:** v3 Company Brand Colour — complete (4/4 phases shipped 2026-06-10)
-- **Roadmap:** `.planning/ROADMAP.md`
-- **State:** `.planning/STATE.md`
-- **Codebase map:** `.planning/codebase/` (STACK, ARCHITECTURE, STRUCTURE, CONVENTIONS, INTEGRATIONS, TESTING, CONCERNS)
-- **Shipped milestones:** v1 ChemBench Cleanup · v2 Bun Migration — incl. **Phase 7 (Docker, CI/CD, Scripts), shipped 2026-06-05** · v3 Company Brand Colour (per-company logo-driven palette across dashboard + emails)
-- **No active phase** — last milestone is complete. CI now gates deploys: `.github/workflows/ci.yml` runs Bun and Node fallback checks on push/PR, and `deploy.yml` won't ship unless the reusable CI gate passes (`needs: test`).
+- **Milestone history (reference):** v1 ChemBench Cleanup · v2 Bun Migration — incl. **Phase 7 (Docker, CI/CD, Scripts), shipped 2026-06-05** · v3 Company Brand Colour (per-company logo-driven palette across dashboard + emails), complete.
+- **CI now gates deploys:** `.github/workflows/ci.yml` runs Bun and Node fallback checks on push/PR, and `deploy.yml` won't ship unless the reusable CI gate passes (`needs: test`).
 - **CI/CD source of truth:** repo-owned workflows are only `.github/workflows/ci.yml` and `.github/workflows/deploy.yml`. Dynamic GitHub Actions entries such as CodeQL, Dependency Graph, Copilot, Claude, and Codex come from GitHub settings/integrations. Current deploy builds on the box from `docker-compose.box.yml`; GHCR/GitHub Packages is legacy and unused. See `docs/CI-CD.md`.
+- **Planned: backend moves to a dedicated GPU box** (Amsterdam, x86_64, 2× RTX PRO 5000). `docs/COMPUTE-BOX-MIGRATION.md` is the full trace of every machine, API, and compute dependency plus the move plan, CUDA matrix, and storage layout. Nothing is applied yet and several decisions are still open (frontend location, public HTTPS ingress, MolMIM replacement) — read it before touching Dockerfiles, compose files, or `docs/CI-CD.md`.
+- **Docs index:** `docs/README.md`.
 
 Bun is the default runtime and package manager for this repo. npm/Node fallbacks
 are retained via `:node`-suffixed scripts. See the Commands section below.
-
-When starting work: read `.planning/STATE.md` for current context.
-When done with a phase: run `/gsd:verify-work` before moving on.
 
 ## Commands
 

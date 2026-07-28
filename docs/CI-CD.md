@@ -47,3 +47,20 @@ Files on the deploy host:
 - `~/medsaas/.env`
 
 The host `.env` must contain the runtime secrets and Mongo credentials. It is deliberately not copied from GitHub Actions and is never committed.
+
+## Planned Change: Deploy Target Moves To x86_64
+
+Everything above describes the **current** deploy target: the Oracle Cloud VPS at
+`151.145.91.17`, an Ampere A1 `aarch64` host. "The box" in this document means that machine.
+
+The backend is planned to move to a dedicated Threadripper GPU machine in Amsterdam
+(`x86_64`, two RTX PRO 5000 Blackwell cards). That invalidates one of the stated reasons for
+the current model: build-on-box exists partly to avoid cross-architecture/QEMU issues on
+arm64, and on an amd64 target a runner-side build or a registry becomes viable again.
+
+Do not pre-emptively change these workflows. The architecture switch, the CORS/frontend
+split, and the ingress decision are all still open — see
+[COMPUTE-BOX-MIGRATION.md](./COMPUTE-BOX-MIGRATION.md). Update this document in the same
+change that actually switches the target, not before, so it never describes a deploy path
+that does not exist.
+
