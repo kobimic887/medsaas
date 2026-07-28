@@ -16,13 +16,8 @@ That last point is deliberate and worth stating plainly: the Stripe *webhook and
 logic stays wired* even though public signup and checkout pages go away. It is the admin
 top-up path, and leaving it alone is one less thing to break.
 
-> **Unresolved — do not treat the credits line as final.** The owner explicitly selected
-> "leave credits exactly as is", and then said *"we can lose all the non pyxis all the saas
-> part."* Credits-as-payment **are** SaaS surface, so those two may not agree. This document
-> follows the explicit selection. If the broader statement wins, the change is: drop the
-> Stripe grant path and keep `consumeSimulationToken` as a GPU quota with manual admin top-up
-> — which matters more, not less, once folding runs on our own two cards. Confirm before
-> touching anything in this area.
+**Resolved 2026-07-28:** Stripe stays exactly as is, **and** manual admin top-up is wanted
+alongside it. Both are already in the code — see §5. Nothing to build.
 
 ---
 
@@ -100,14 +95,30 @@ an account, which creates a *company*, which makes them its `owner`. On a single
 install that is not a feature — it is an open door onto a machine with two GPUs behind it.
 Invite-only via the existing invite flow.
 
-### Branding
+### Branding — full Pyxis, and it is smaller than it looks
 
-| From | To |
-|---|---|
-| `<title>ChemBench</title>` (`client/index.html`) | `Pyxis Discovery` |
-| `PLATFORM_NAME=MedSaaS` | `Pyxis Discovery` |
-| `getBrandName(companyName)` (`server/config/branding.js`) | keeps working — the one company record is named Pyxis Discovery, so emails brand correctly with no code change |
-| `chembench-mcp` server name | leave it. Renaming an MCP server name is a client-visible contract change for no benefit |
+**Most of it is already correct.** Both `server/config/branding.js` and
+`client/src/config/branding.js` resolve the brand as *company name first, platform name only as
+fallback*. The one company record is named Pyxis Discovery, so **everything shown to a
+logged-in user, and every email, already says Pyxis.** No code change needed there.
+
+What is wrong is the **logged-out surface and two hardcoded fallbacks** — places that bypass
+the branding config entirely:
+
+| File | Current | Action |
+|---|---|---|
+| `client/index.html:7` | `<title>ChemBench</title>` | → `Pyxis Discovery` |
+| `client/src/pages/auth/sign-in.jsx:298` | `<span className="cb-auth-logo">ChemBench</span>` | → drive from `getPlatformName()` |
+| `client/src/widgets/layout/navbar.jsx:86` | `brandName: "MedSaaS"` (defaultProps) | → `Pyxis Discovery` |
+| `client/src/widgets/layout/sidenav.jsx:132` | `brandName: "MedSaaS"` (defaultProps) | → `Pyxis Discovery` |
+| `PLATFORM_NAME` / `VITE_PLATFORM_NAME` | `MedSaaS` | → `Pyxis Discovery` (env, both) |
+| `client/src/pages/auth/sign-up.jsx:74`, `widgets/layout/main-navbar.jsx:57` | `ChemBench` | nothing — both files go with the signup/marketing removal |
+
+Leave the `chembench-mcp` MCP server name alone. Renaming an MCP server is a client-visible
+contract change for no benefit.
+
+**Note the ordering trap:** setting `VITE_PLATFORM_NAME` fixes the client only at **build**
+time, not runtime. It has to be set in the environment that builds the bundle destined for 83.
 
 ---
 
@@ -130,6 +141,44 @@ Invite-only via the existing invite flow.
 - **Audit logging.** More valuable single-tenant, not less.
 
 ---
+
+## 3b. Who is admin, and how credits get topped up
+
+Both already exist. Nothing to design and nothing to build.
+
+### The role model, as it already works
+
+- **`owner`** — assigned automatically to the *first* user in a company
+  (`server/index.js:1790`: `existingCompanyUsers === 0 ? 'owner' : 'member'`). For Pyxis that
+  is whoever signed up first. There is exactly one, and they cannot be demoted, deactivated or
+  deleted (`:3652`, `:3662`, `:3717` all refuse).
+- **`member`** — what every invited user gets by default.
+- **`admin`** — granted by an existing admin/owner editing that member. Not automatic.
+- **`requireCompanyAdmin`** (`:1221`) admits `owner` **or** `admin`, and gates **19 routes**:
+  member management, invites, audit logs, branding, usage policy, the ligand-service URLs,
+  RabbitMQ health, and token issuance.
+- Separately, `adminOnly: true` on a route in `client/src/routes.jsx` hides the page from
+  members — that is menu visibility, the server check is what actually enforces.
+
+So "who will be admin" is an **operational choice, not a code change**, and it does not block
+anything: the owner already exists, and can promote anyone at any time from the Company Admin
+page. Worth deciding before inviting people, not before writing code.
+
+### Admin top-up — three existing paths
+
+| Route | Behaviour | Use for |
+|---|---|---|
+| `PATCH /api/company/members/:username` (`:3630`) | accepts `simulationTokens` in the body (`:3671`), sets that member's balance | **the normal top-up.** Already in the Company Admin UI |
+| `PATCH /api/company/usage-policy` (`:3362`) | resets **every** member to `defaultSimulationTokensPerUser` (`:3408`) | bulk reset |
+| `POST /api/issueSimulationTokens` (`:5307`) | see the warning below | — |
+
+> **Footgun worth fixing.** `/api/issueSimulationTokens` is named like a grant but its
+> implementation is `$set`, not `$inc` (`:5317`), and it **defaults to 50**. An admin calling
+> it on a user who has 200 credits silently drops them to 50. The audit event is honestly
+> named `company.tokens.user_reset`, so the *behaviour* is intentional — the **name is the
+> lie**. Options: rename it to `resetSimulationTokens`, change it to `$inc` so it matches its
+> name, or drop it since `PATCH /api/company/members/:username` already covers the case.
+> Recommend renaming; it is the only one of the three that does not change existing behaviour.
 
 ## 4. Archive, do not delete
 
@@ -156,7 +205,7 @@ This work and the box migration touch the same files, so ordering matters.
 
 1. Tag `saas-surface-v1`.
 2. Close public signup. Security win, one route, immediate.
-3. Rebrand ChemBench → Pyxis Discovery.
+3. Rebrand ChemBench → Pyxis Discovery: two env vars plus four hardcoded strings (§2).
 4. Remove the marketing routes, then the pages (lifting the macrocycle copy out first).
 5. Remove the paid-plans page and gate the checkout endpoints.
 6. Verify the remaining product end to end on Oracle: sign in → every science page loads.
@@ -176,6 +225,9 @@ one change, not two.
 ## 6. Open
 
 - **The macrocycle marketing copy** — keep it somewhere, or let it go? Blocks step 4.
+- **`/api/issueSimulationTokens`** — rename, change to `$inc`, or drop? See §3b. Recommend
+  rename. Not blocking; it is a small, isolated route.
+- **Who gets `admin`** — operational, decide before inviting people. Not a code change.
 - **What is answering the production API on 83 today?** Still unknown, still an inventory task
   on that box, and now more pressing: step 7 replaces the frontend that talks to it, so we need
   to know what we are cutting over *from*. See COMPUTE-BOX-MIGRATION.md §3.
