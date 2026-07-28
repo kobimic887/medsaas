@@ -292,7 +292,7 @@ serving real traffic for a while**:
 | Order | Container | Remove when |
 |---|---|---|
 | 1 | `medsaas-app-1` | Immediately — it is a defunct non-prod copy nobody uses |
-| 2 | `medsaas-mcp-server-1` | Once the box's MCP server is reachable and Claude for Life Sciences has connected to it |
+| 2 | `medsaas-mcp-server-1` | Once the box's MCP server is reachable and Claude Science has connected to it |
 | 3 | `medsaas-mongo-1` | Once the box's Mongo is live. Its data is **not** migrated — it is a side-project database |
 | 4 | `tonomitosql-api-1` | Once `/tanimoto/v1/*` on the box has answered real queries |
 | 5 | `tonomitosql-db-1` | **Last.** Take a final `pg_dump` to `/srv/archive` on the box before removing it, even though the index is being rebuilt rather than restored — it costs nothing and it is the only copy |

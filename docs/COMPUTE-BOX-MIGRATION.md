@@ -224,7 +224,7 @@ Two things need to reach the box from the public internet:
    the current state there is no webhook registered at all, so real purchases grant no
    credits — this move is the moment that gets fixed, and it needs a stable public HTTPS
    URL.
-2. **The MCP server**, which exists so Claude for Life Sciences can reach the platform.
+2. **The MCP server**, which exists so Claude Science can reach the platform.
 
 The box sits behind a router at Science Park with no TLS and no DNS. The obvious answer —
 terminate TLS on 83 and reverse-proxy to the box — **conflicts with the written rule on
@@ -643,7 +643,7 @@ in this order, **each only after its replacement has served real traffic for a w
 | Order | Container | Remove when |
 |---|---|---|
 | 1 | `medsaas-app-1` | Immediately — a defunct non-prod copy nobody uses |
-| 2 | `medsaas-mcp-server-1` | The box's MCP server is reachable and Claude for Life Sciences has connected |
+| 2 | `medsaas-mcp-server-1` | The box's MCP server is reachable and Claude Science has connected |
 | 3 | `medsaas-mongo-1` | The box's Mongo is live. Data **not** migrated |
 | 4 | `tonomitosql-api-1` | `/tanimoto/v1/*` on the box has answered real queries |
 | 5 | `tonomitosql-db-1` | **Last.** Take a final `pg_dump` to `/srv/archive` first — the index is being rebuilt rather than restored, but it costs nothing and it is the only copy |

@@ -120,6 +120,49 @@ Do not run phases in parallel. Each depends on the last, and the failure modes a
 
 ---
 
+## PHASE 0 — before the box exists
+
+**Runnable today, from anywhere, with no hardware.** If the operator invokes this plan before
+delivery, do Phase 0 and stop. If the box has already arrived, check what of this is done
+before starting Phase 1 — items 0.1 and 0.2 have deadlines set by someone else.
+
+**0.1 Capture the docking output contract — highest urgency item in this file.** Against 83's
+production Mongo, while Asinex is still answering:
+
+```javascript
+db.simulation_logs.find({}, {result: 1, pdbid: 1, smiles: 1}).limit(20)
+```
+
+Write the exact field names and structure to `docs/DOCKING-CONTRACT.md` in this repo, for both
+`/api/simulation` (AutoDock) and `/api/diffdock/generate`. If Moscow goes dark before this is
+captured, the contract has to be reverse-engineered from the client — a much larger task.
+
+**0.2 Inventory 83's Mongo.** It is production, nobody has ever looked at it. Full procedure in
+§4.1 — run it now, not on arrival day. Report counts to the operator.
+
+**0.3 Inventory the per-company URL overrides.**
+`db.companies.find({}, {companyId:1, name:1, ligandServiceConfig:1})`. Any non-default URL is a
+stale pointer that survives the move.
+
+**0.4 Rotate `services/glioblastoma-predictor/chemtest_tech_private.key`.** Committed to the
+repo and `COPY`'d into the image. Treat the existing one as compromised — it is in git history.
+
+**0.5 Look for where ADMET and GROMACS were deployed once.** They ran somewhere, possibly the
+owner's PC, with no surviving record. Ask the operator. A working GROMACS CUDA build is worth
+more than a clean-room rebuild.
+
+**0.6 NVIDIA 429 handling.** Neither `/api/generate-molecules` (`server/index.js:287`) nor
+`/api/openfold3/predict` (`:333`) handles a rate-limit response — both relay it straight to the
+user. Widen `NVIDIA_MOLMIM_API_KEY` and `NVIDIA_OPENFOLD_API_KEY` to comma-separated pools,
+select least-recently-429'd, exponential backoff, circuit breaker. **Code change — propose a
+diff and get it approved; do not push it as part of a migration run.**
+
+**0.7 Collect the `.env` values** for the box. Not in git, never will be.
+
+**0.8 Confirm the physical setup owner** (§2) and get IPMI credentials to them.
+
+---
+
 ## PHASE 1 — Hardware acceptance and base platform
 
 Nothing in this phase touches production. Do it all before anything else, because finding a
@@ -421,7 +464,7 @@ Missing any of these? Stop.
 | # | Container | Remove only when |
 |---|---|---|
 | 1 | `medsaas-app-1` | now — defunct non-prod copy, nobody uses it |
-| 2 | `medsaas-mcp-server-1` | the box's MCP server is reachable and Claude for Life Sciences has connected to it |
+| 2 | `medsaas-mcp-server-1` | the box's MCP server is reachable and **Claude Science** has connected to it (see the caveat in §"Still open") |
 | 3 | `medsaas-mongo-1` | the box's Mongo is live. **Data is discarded, not migrated** |
 | 4 | `tonomitosql-api-1` | `/tanimoto/v1/*` on the box has answered real queries |
 | 5 | `tonomitosql-db-1` | **last.** Take a final `pg_dump` to `/srv/archive` on the box first, even though the index is being rebuilt rather than restored |
@@ -476,3 +519,11 @@ machine. Ops notes live in `~/projects/oracle`, not this repo.
    neither route handles a 429 — see [COMPUTE-BOX-MIGRATION.md §7b](./COMPUTE-BOX-MIGRATION.md).
    That is a code change shipping on its own timeline, **not part of this runbook.**
 4. **Catalog and stock** stay on Asinex for now. Both temporary; neither blocked on hardware.
+5. **Claude Science compatibility — unverified.** The target is Anthropic's **Claude Science**
+   app, not the older "Claude for Life Sciences" naming these docs used until now. The MCP
+   server (`services/mcp-server`, 14 tools, stateless Streamable HTTP on `:8080/mcp`) was
+   built against the older integration and **nobody has checked what Claude Science actually
+   requires** — transport, auth, tool-schema or manifest differences are all unknown here.
+   Treat `docs/CLAUDE-LIFE-SCIENCES.md` as describing the server, not as a statement that it
+   is compatible. **Verify against current Anthropic documentation before relying on step
+   7.1/2**, and do not let a failed connection block the Oracle decommission without asking.

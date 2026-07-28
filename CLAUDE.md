@@ -36,7 +36,7 @@ commands; that workflow is retired.
 - **DiffDock is Asinex's, not NVIDIA's.** `diffdockApiUrl` points at `services.asinex.com:58000` — Asinex running NVIDIA's DiffDock NIM container on their own Moscow hardware. It dies with Asinex and must be rebuilt from OSS DiffDock (NVAIE was refused; NIM isn't supported on GeForce). The 1-click `/api/simulation` engine is **AutoDock**, confirmed by the Asinex/Pyxis CEO. **Catalog and stock stay on Asinex** — the catalog needs their compound file (licensing), and live stock can't be self-hosted at any price.
 - **Cutover is config, not a deploy.** `company.ligandServiceConfig` (`server/index.js:886-906`) overrides all four Asinex URLs per company from the Company Admin UI. Repointing `dockingApiUrl`/`diffdockApiUrl` at the box is the migration; repointing them back is the rollback. Keep the Asinex account alive as DR.
 - **Planned: this stops being a SaaS.** For now and for a long time it is one product for one company, Pyxis Discovery. The marketing site, public signup and paid-plans surface are to be retired; multi-tenancy plumbing and the credit system stay. `docs/PYXIS-ONLY.md`. Nothing applied yet — do not add new tenant-facing or billing features.
-- **Docs index:** `docs/README.md`. Claude for Life Sciences / MCP: `docs/CLAUDE-LIFE-SCIENCES.md`.
+- **Docs index:** `docs/README.md`. Claude Science / MCP: `docs/CLAUDE-LIFE-SCIENCES.md`.
 
 Bun is the default runtime and package manager for this repo. npm/Node fallbacks
 are retained via `:node`-suffixed scripts. See the Commands section below.
@@ -95,7 +95,7 @@ Dev URLs: frontend at **http://localhost:5173**, API at http://localhost:3000, A
 - `server/` — Express API server. All routes live in `server/index.js` (one large ESM file) plus `server/routes/scientificServices.js` for microservice proxies.
 - `client/` — Vite + React 18 dashboard using Material Tailwind and Heroicons. `@` aliases to `client/src/`.
 - `services/admet/`, `services/gromacs-api/`, `services/glioblastoma-predictor/` — Scientific microservices (Docker, optional).
-- `services/mcp-server/` — ChemBench MCP server (Bun + `@modelcontextprotocol/sdk`). Exposes 14 platform tools to **Claude for Life Sciences** over stateless Streamable HTTP on `:8080/mcp`, proxying to the platform API. See `docs/CLAUDE-LIFE-SCIENCES.md`.
+- `services/mcp-server/` — ChemBench MCP server (Bun + `@modelcontextprotocol/sdk`). Exposes 14 platform tools to **Claude Science** over stateless Streamable HTTP on `:8080/mcp`, proxying to the platform API. See `docs/CLAUDE-LIFE-SCIENCES.md`.
 
 ### Where things actually run
 
