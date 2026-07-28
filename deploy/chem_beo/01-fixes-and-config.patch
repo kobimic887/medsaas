@@ -1,0 +1,343 @@
+diff --git a/index.js b/index.js
+index eaf1223..e001b34 100644
+--- a/index.js
++++ b/index.js
+@@ -71,7 +71,7 @@ app.use(cors());
+  *             schema:
+  *               type: object
+  */
+-app.post('/api/generate-molecules', async (req, res) => {
++app.post('/api/generate-molecules', ensureMongoConnected, authenticateToken, async (req, res) => {
+   const {   smiles,
+             minSimilarity,
+             numMolecules } = req.body;
+@@ -180,7 +180,34 @@ app.get('/', (req, res) => {
+   res.redirect('/api-docs');
+ });
+ 
+-// --- Wrappers for http://151.145.91.17:8000/docs ---
++// ── Simulation credits ───────────────────────────────────────────────────────
++// Two bugs lived here. The balance was read and then written in two separate
++// operations, so two concurrent requests on one remaining credit both passed the
++// read and drove the balance negative. And the credit was taken BEFORE the
++// docking call with no way back, so every Asinex outage billed users for docks
++// that never ran — the exact failure the new box exists to remove.
++//
++// chargeSimulationCredit puts the balance test inside the update filter, so it
++// is atomic. refundSimulationCredit gives it back when the work did not happen.
++async function chargeSimulationCredit(username) {
++  const result = await usersCollection.updateOne(
++    { username, simulationTokens: { $gt: 0 } },
++    { $inc: { simulationTokens: -1 } }
++  );
++  return result.matchedCount === 1;
++}
++
++async function refundSimulationCredit(username, reason) {
++  try {
++    await usersCollection.updateOne({ username }, { $inc: { simulationTokens: 1 } });
++    console.log(`[credits] refunded ${username}: ${reason}`);
++  } catch (e) {
++    // Never let a failed refund replace the upstream error the caller reports.
++    console.error(`[credits] refund FAILED for ${username}: ${e.message}`);
++  }
++}
++
++// --- Wrappers for the Tanimoto service (TANIMOTO_BASE) ---
+ 
+ // Health check
+ /**
+@@ -195,7 +222,7 @@ app.get('/', (req, res) => {
+  */
+ app.get('/tanimoto/health', async (req, res) => {
+   try {
+-    const response = await axios.get('http://151.145.91.17:8000/health');
++    const response = await axios.get(TANIMOTO_BASE + '/health');
+     res.json(response.data);
+   } catch (error) {
+     res.status(error.response?.status || 500).json({ error: error.message });
+@@ -219,9 +246,9 @@ app.get('/tanimoto/health', async (req, res) => {
+  *       200:
+  *         description: Upload response
+  */
+-app.post('/tanimoto/v1/upload', async (req, res) => {
++app.post('/tanimoto/v1/upload', ensureMongoConnected, authenticateToken, async (req, res) => {
+   try {
+-    const response = await axios.post('http://151.145.91.17:8000/v1/upload', req.body, {
++    const response = await axios.post(TANIMOTO_BASE + '/v1/upload', req.body, {
+       headers: { 'Content-Type': 'application/json' },
+     });
+     res.json(response.data);
+@@ -249,7 +276,7 @@ app.post('/tanimoto/v1/upload', async (req, res) => {
+  */
+ app.get('/tanimoto/v1/search/exact', async (req, res) => {
+   try {
+-    const response = await axios.get('http://151.145.91.17:8000/v1/search/exact', { params: req.query });
++    const response = await axios.get(TANIMOTO_BASE + '/v1/search/exact', { params: req.query });
+     res.json(response.data);
+   } catch (error) {
+     res.status(error.response?.status || 500).json({ error: error.message });
+@@ -292,7 +319,7 @@ app.get('/tanimoto/v1/search/exact', async (req, res) => {
+  */
+ app.get('/tanimoto/v1/search/similarity', async (req, res) => {
+   try {
+-    const response = await axios.get('http://151.145.91.17:8000/v1/search/similarity', { params: req.query });
++    const response = await axios.get(TANIMOTO_BASE + '/v1/search/similarity', { params: req.query });
+     res.json(response.data);
+   } catch (error) {
+     res.status(error.response?.status || 500).json({ error: error.message });
+@@ -318,7 +345,7 @@ app.get('/tanimoto/v1/search/similarity', async (req, res) => {
+  */
+ app.get('/tanimoto/v1/search/substructure', async (req, res) => {
+   try {
+-    const response = await axios.get('http://151.145.91.17:8000/v1/search/substructure', { params: req.query });
++    const response = await axios.get(TANIMOTO_BASE + '/v1/search/substructure', { params: req.query });
+     res.json(response.data);
+   } catch (error) {
+     res.status(error.response?.status || 500).json({ error: error.message });
+@@ -358,9 +385,9 @@ app.get('/tanimoto/v1/search/substructure', async (req, res) => {
+  *       200:
+  *         description: Batch search result
+  */
+-app.post('/tanimoto/v1/search/batch', async (req, res) => {
++app.post('/tanimoto/v1/search/batch', ensureMongoConnected, authenticateToken, async (req, res) => {
+   try {
+-    const response = await axios.post('http://151.145.91.17:8000/v1/search/batch', req.body, {
++    const response = await axios.post(TANIMOTO_BASE + '/v1/search/batch', req.body, {
+       headers: { 'Content-Type': 'application/json' },
+     });
+     res.json(response.data);
+@@ -382,7 +409,7 @@ app.post('/tanimoto/v1/search/batch', async (req, res) => {
+  */
+ app.get('/tanimoto/v1/datasets', async (req, res) => {
+   try {
+-    const response = await axios.get('http://151.145.91.17:8000/v1/datasets', { params: req.query });
++    const response = await axios.get(TANIMOTO_BASE + '/v1/datasets', { params: req.query });
+     res.json(response.data);
+   } catch (error) {
+     res.status(error.response?.status || 500).json({ error: error.message });
+@@ -409,7 +436,7 @@ app.get('/tanimoto/v1/datasets', async (req, res) => {
+  */
+ app.get('/tanimoto/v1/datasets/:dataset_id', async (req, res) => {
+   try {
+-    const response = await axios.get(`http://151.145.91.17:8000/v1/datasets/${req.params.dataset_id}`);
++    const response = await axios.get(TANIMOTO_BASE + `/v1/datasets/${req.params.dataset_id}`);
+     res.json(response.data);
+   } catch (error) {
+     res.status(error.response?.status || 500).json({ error: error.message });
+@@ -434,9 +461,9 @@ app.get('/tanimoto/v1/datasets/:dataset_id', async (req, res) => {
+  *       200:
+  *         description: Dataset deleted
+  */
+-app.delete('/tanimoto/v1/datasets/:dataset_id', async (req, res) => {
++app.delete('/tanimoto/v1/datasets/:dataset_id', ensureMongoConnected, authenticateToken, async (req, res) => {
+   try {
+-    const response = await axios.delete(`http://151.145.91.17:8000/v1/datasets/${req.params.dataset_id}`);
++    const response = await axios.delete(TANIMOTO_BASE + `/v1/datasets/${req.params.dataset_id}`);
+     res.json(response.data);
+   } catch (error) {
+     res.status(error.response?.status || 500).json({ error: error.message });
+@@ -550,6 +577,17 @@ app.get('/test', (req, res) => {
+   res.json({ message: 'Test route working', timestamp: new Date().toISOString() });
+ });
+ 
++// ── Service addresses ────────────────────────────────────────────────────────
++// These were hardcoded string literals scattered through the file, which made
++// moving a service a source edit and a restart. They are now environment
++// variables that DEFAULT TO THE CURRENT VALUES, so behaviour is unchanged until
++// something is set. Cutting a service over to the new box is then one variable,
++// and rolling back is unsetting it.
++const ASINEX_DOCKING_BASE  = process.env.DOCKING_API_URL   || 'https://services.asinex.com:8000/docking';
++const ASINEX_DIFFDOCK_URL  = process.env.DIFFDOCK_API_URL  || 'https://services.asinex.com:58000/molecular-docking/diffdock/generate';
++const ASINEX_STOCK_URL     = process.env.STOCK_API_URL     || 'https://stock.asinex.com:5443/api/Shop';
++const TANIMOTO_BASE        = process.env.TANIMOTO_API_BASE || TANIMOTO_BASE + '';
++
+ const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/yourdbname';
+ const client = new MongoClient(uri);
+ let usersCollection;
+@@ -837,7 +875,21 @@ app.post('/api/signup', ensureMongoConnected, async (req, res) => {
+   const cleanedShipping = typeof shippingAddress === 'string' && shippingAddress.trim() ? shippingAddress.trim() : undefined;
+   const cleanedBilling = typeof billingAddress === 'string' && billingAddress.trim() ? billingAddress.trim() : undefined;
+ 
+-  const insertDoc = { username, email, password: hash, verified: false };
++  // simulationTokens was never set here, so every account ever created by signup
++  // could not run a single simulation: the charge requires
++  // `typeof simulationTokens === 'number' && > 0`, so new users got
++  // "403 No simulation tokens left" forever. That is why 47 of the first 50
++  // accounts have no credits. SIGNUP_SIMULATION_TOKENS defaults to the balance
++  // the shared demo account carries, so a new account behaves like the demo.
++  const signupTokens = Number.parseInt(process.env.SIGNUP_SIMULATION_TOKENS ?? '99999', 10);
++  const insertDoc = {
++    username,
++    email,
++    password: hash,
++    verified: false,
++    simulationTokens: Number.isFinite(signupTokens) && signupTokens >= 0 ? signupTokens : 0,
++    createdAt: new Date()
++  };
+   if (cleanedPhone) insertDoc.phoneNumber = cleanedPhone;
+   if (cleanedShipping) insertDoc.shippingAddress = cleanedShipping;
+   if (cleanedBilling) insertDoc.billingAddress = cleanedBilling;
+@@ -860,6 +912,10 @@ app.post('/api/signup', ensureMongoConnected, async (req, res) => {
+       htmlContent: htmlContent
+     });
+   } catch (err) {
++    // The account was already inserted above. Leaving it behind would block the
++    // user from retrying — the username and email are taken, but they can never
++    // verify, and signin requires verified.
++    await usersCollection.deleteOne({ username, verified: false });
+     return res.status(500).json({ error: 'Failed to send verification email', details: err.message });
+   }
+ 
+@@ -1451,7 +1507,7 @@ function authenticateToken(req, res, next) {
+ 
+ app.post('/api/shop', authenticateToken, async (req, res) => {
+   try {
+-    const response = await fetch('https://stock.asinex.com:5443/api/Shop', {
++    const response = await fetch(ASINEX_STOCK_URL, {
+       method: 'POST',
+       headers: {
+         'Accept': 'application/json, text/plain, */*',
+@@ -1484,22 +1540,20 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
+     if (existing) {
+       return res.json({ ...existing.result, simulationKey: existing.simulationKey });
+     }
+-    // Check and subtract simulationTokens
+-    const userDoc = await usersCollection.findOne({ username: req.user.username });
+-    if (!userDoc || typeof userDoc.simulationTokens !== 'number' || userDoc.simulationTokens <= 0) {
++    // Atomic charge. The old code read the balance and then wrote it, which two
++    // concurrent requests could both pass. It also tested userDoc.name for the
++    // demo-account exemption, but the field is `username`, so that exemption has
++    // never actually fired.
++    if (!(await chargeSimulationCredit(req.user.username))) {
+       return res.status(403).json({ error: 'No simulation tokens left' });
+     }
+-    if(userDoc.name!=="tester123")
+-      await usersCollection.updateOne(
+-        { username: req.user.username },
+-        { $inc: { simulationTokens: -1 } }
+-      );
++    let creditCharged = true;
+     // Generate a 12-character random key
+     const simulationKey = Array.from({length: 12}, () =>
+       Math.random().toString(36).charAt(2)
+     ).join('');
+     // Call external API
+-    const url = `https://services.asinex.com:8000/docking/${encodeURIComponent(pdbid)}&${encodeURIComponent(smiles)}`;
++    const url = `${ASINEX_DOCKING_BASE}/${encodeURIComponent(pdbid)}&${encodeURIComponent(smiles)}`;
+     const response = await fetch(url, {
+       method: 'GET',
+       headers: {
+@@ -1507,6 +1561,7 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
+         'Content-Type': 'application/json'
+       }
+     });
++    if (!response.ok) throw new Error(`Docking service returned ${response.status}`);
+     const data = await response.json();
+     // Record invocation in MongoDB, including the result and simulationKey
+     await simulationLogs.insertOne({
+@@ -1519,7 +1574,8 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
+     });
+     res.json({ ...data, simulationKey });
+   } catch (error) {
+-    res.status(500).json({ error: error.message });
++    if (creditCharged) await refundSimulationCredit(req.user.username, `docking failed: ${error.message}`);
++    res.status(502).json({ error: 'Docking service is unavailable' });
+   }
+ });
+ 
+@@ -1572,21 +1628,17 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
+     if (existing) {
+       return res.json({ ...existing.result, simulationKey: existing.simulationKey });
+     }
+-    // Check and subtract simulationTokens
+-    const userDoc = await usersCollection.findOne({ username: req.user.username });
+-    if (!userDoc || typeof userDoc.simulationTokens !== 'number' || userDoc.simulationTokens <= 0) {
++    // Atomic charge — see the GET handler.
++    if (!(await chargeSimulationCredit(req.user.username))) {
+       return res.status(403).json({ error: 'No simulation tokens left' });
+     }
+-    await usersCollection.updateOne(
+-      { username: req.user.username },
+-      { $inc: { simulationTokens: -1 } }
+-    );
++    let creditCharged = true;
+     // Generate a 12-character random key
+     const simulationKey = Array.from({length: 12}, () =>
+       Math.random().toString(36).charAt(2)
+     ).join('');
+     // Call external API with POST method
+-    const response = await fetch('https://services.asinex.com:8000/docking', {
++    const response = await fetch(ASINEX_DOCKING_BASE, {
+       method: 'POST',
+       headers: {
+         'Accept': 'application/json',
+@@ -1597,6 +1649,7 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
+         smiles: smiles === decodeURIComponent(smiles) ? encodeURIComponent(smiles) : smiles
+       })
+     });
++    if (!response.ok) throw new Error(`Docking service returned ${response.status}`);
+     const data = await response.json();
+     // Record invocation in MongoDB, including the result and simulationKey
+     await simulationLogs.insertOne({
+@@ -1610,7 +1663,8 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, async (req,
+     });
+     res.json({ ...data, simulationKey });
+   } catch (error) {
+-    res.status(500).json({ error: error.message });
++    if (creditCharged) await refundSimulationCredit(req.user.username, `docking failed: ${error.message}`);
++    res.status(502).json({ error: 'Docking service is unavailable' });
+   }
+ });
+ 
+@@ -1847,7 +1901,7 @@ app.post('/api/validate-token', ensureMongoConnected, async (req, res) => {
+ });
+ 
+ // Direct Asinex API Proxy Endpoints
+-const ASINEX_API_BASE = 'http://dev.asinex.com:58181';
++const ASINEX_API_BASE = process.env.ASINEX_CATALOG_BASE || 'http://dev.asinex.com:58181';
+ 
+ /**
+  * @swagger
+@@ -2472,7 +2526,7 @@ app.post('/api/api4/mw', async (req, res) => {
+  *       500:
+  *         description: Server error or DiffDock service unavailable
+  */
+-app.post('/api/diffdock/generate', async (req, res) => {
++app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, async (req, res) => {
+   try {
+     const {
+       protein,
+@@ -2577,7 +2631,7 @@ app.post('/api/diffdock/generate', async (req, res) => {
+         is_staged: is_staged
+       };
+       logToFile('makeDiffDockRequest REQUEST: ' + JSON.stringify(requestBody));
+-      const response = await fetch('https://services.asinex.com:58000/molecular-docking/diffdock/generate', {
++      const response = await fetch(ASINEX_DIFFDOCK_URL, {
+         method: 'POST',
+         headers: {
+           'Accept': 'application/json',
+@@ -3345,13 +3399,16 @@ app.post('/api/issueSimulationTokens', ensureMongoConnected, authenticateToken,
+     const username = req.user.username;
+     if (!username) return res.status(400).json({ error: 'No username in token' });
+     // Get amount from request body, default to 50
+-    const amount = typeof req.body.simulationTokens === 'number' && req.body.simulationTokens > 0 ? req.body.simulationTokens : 50;
+-    const result = await usersCollection.updateOne(
+-      { username },
+-      { $set: { simulationTokens: amount } },
+-      { upsert: true }
+-    );
+-    res.json({ message: `simulationTokens set to ${amount}`, result });
++    // The amount used to come from the request body, so any logged-in user could
++    // POST themselves an arbitrary balance. Credits are now granted only by the
++    // Stripe webhook or by an operator against the database directly. This route
++    // is kept so the frontend's existing call does not 404, but it no longer
++    // grants anything.
++    const current = await usersCollection.findOne({ username }, { projection: { simulationTokens: 1 } });
++    return res.status(403).json({
++      error: 'Credits cannot be issued from the client',
++      simulationTokens: typeof current?.simulationTokens === 'number' ? current.simulationTokens : 0
++    });
+   } catch (error) {
+     res.status(500).json({ error: error.message });
+   }
