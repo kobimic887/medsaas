@@ -126,7 +126,34 @@ Do not run phases in parallel. Each depends on the last, and the failure modes a
 delivery, do Phase 0 and stop. If the box has already arrived, check what of this is done
 before starting Phase 1 — items 0.1 and 0.2 have deadlines set by someone else.
 
-**0.1 Capture the docking output contract — highest urgency item in this file.** Against 83's
+> ## 🛑 STOP — read [PRODUCTION-83-INVENTORY.md](./PRODUCTION-83-INVENTORY.md) first
+>
+> Production was inventoried on 2026-07-28 and it is **not** what the rest of this runbook
+> assumed. Items 0.1, 0.2, 0.9, 0.9b and 0.10 are **done** — their findings are in that file,
+> and three of them invalidate steps written below:
+>
+> - **Mongo is Atlas, not on 83.** Phase 4's dump-and-restore is a cloud egress, and the
+>   recommendation is now to **keep Atlas and move only compute** — which deletes the
+>   write-freeze window and the single-chassis backup risk entirely. The box's IP must be
+>   added to the Atlas allowlist before it can serve anything.
+> - **The frontend is a Vite dev server**, proxied by nginx, with no build and no bundle. The
+>   §5.0 symlink swap has no "old bundle" to preserve, and serving a static build **requires an
+>   nginx change on 83** — the one thing the standing rule forbids without the owner. Critical
+>   path; raise it now.
+> - **0.10 FAILS: 49 of 50 users have no `companyId`**, and 47 have no `simulationTokens`.
+>   A data migration is a prerequisite to cutover, not a follow-up.
+>
+> Also: `/convertSTR` on `:8001` is already **down**, so DiffDock is already broken; GROMACS
+> **is** deployed on 83 and its working config should be captured; and everything Pyxis on 83
+> runs in **hand-started foreground shells** with no restart policy, so a reboot ends production
+> until a human logs in.
+
+**0.1 Capture the docking output contract — DONE 2026-07-28,** see
+[DOCKING-CONTRACT.md](./DOCKING-CONTRACT.md). Four records existed; the format is fully
+determined and `TORSDO` in the SDF independently confirms AutoDock. Remaining gap: **no failed
+dock was ever stored**, so the Asinex *error* shape is still uncaptured. If Asinex is still
+reachable, run a few deliberate failures (bad SMILES, unknown PDB ID) and append them.
+Original instruction, kept for reference: Against 83's
 production Mongo, while Asinex is still answering:
 
 ```javascript
@@ -137,8 +164,9 @@ Write the exact field names and structure to `docs/DOCKING-CONTRACT.md` in this 
 `/api/simulation` (AutoDock) and `/api/diffdock/generate`. If Moscow goes dark before this is
 captured, the contract has to be reverse-engineered from the client — a much larger task.
 
-**0.2 Inventory 83's Mongo.** It is production, nobody has ever looked at it. Full procedure in
-§4.1 — run it now, not on arrival day. Report counts to the operator.
+**0.2 Inventory production Mongo — DONE 2026-07-28.** It is **Atlas**, not on 83; database name
+`test`; 50 users, 1 company, 4 simulation_logs, 2 audit_logs, 0 billing_events. See
+[PRODUCTION-83-INVENTORY.md](./PRODUCTION-83-INVENTORY.md) §4.
 
 **0.3 Inventory the per-company URL overrides.**
 `db.companies.find({}, {companyId:1, name:1, ligandServiceConfig:1})`. Any non-default URL is a
