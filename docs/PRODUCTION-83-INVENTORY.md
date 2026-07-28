@@ -153,8 +153,13 @@ The legacy user document is:
 This repo's `server/index.js` expects `companyId`, `role`, `active`, and a numeric
 `simulationTokens`. Deploy it against this data as-is and:
 
-- **Every tenant-filtered query returns nothing.** `buildTenantFilter` keys on `companyId`;
-  49 users see an empty account.
+- **New results go missing as they are created.** ⚠️ *Corrected — this originally read "every
+  tenant-filtered query returns nothing", which was too strong.* `buildTenantFilter`
+  (`server/index.js:1065`) falls back to `{'user.username': …}` when `companyId` is absent, and
+  that matches the **legacy** `simulation_logs` shape. But this repo writes `username` at the
+  **top level**, so such a user still sees their old docks and **never sees a new one** — and
+  the cache lookup misses too, so they are **charged again for a dock they already paid for.**
+  See [BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md) §8.
 - **Nobody can run a simulation.** `chargeSimulationToken` filters on
   `simulationTokens: { $gt: 0 }`; 47 users have no such field, so every attempt is
   `403 No simulation tokens left`.
