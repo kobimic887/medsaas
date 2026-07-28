@@ -225,6 +225,208 @@ function fetchWithTimeout(url, opts = {}) {
   return fetch(url, { ...rest, signal: AbortSignal.timeout(timeoutMs) });
 }
 
+// ── NVIDIA hosted NIM access ────────────────────────────────────────────────
+// Molecule generation (MolMIM) and protein folding (OpenFold3) are the only two
+// features answered by health.api.nvidia.com, and they stay there permanently —
+// see docs/BOX-SPEC.md. They ran on a single free-tier key each with no 429
+// handling at all, so a rate-limit response was relayed verbatim to the user.
+//
+// Each key list is read per-service from a comma-separated env var, so an
+// account with several keys can spread load without a code change. Keys are
+// tried in order; a 429 or 5xx moves to the next key, and once every key is
+// exhausted the request backs off and retries within a bounded budget.
+//
+// Do NOT populate these pools by registering extra NVIDIA accounts to farm more
+// free keys — that breaks build.nvidia.com's terms and the failure mode is every
+// key revoked at once. Extra capacity is a paid-tier conversation with NVIDIA.
+const NVIDIA_RETRY_BUDGET_MS = 45000; // well under EXTERNAL_HTTP_TIMEOUT_LONG_MS
+const NVIDIA_BACKOFF_BASE_MS = 1000;
+const NVIDIA_BACKOFF_MAX_MS = 8000;
+
+function parseKeyPool(...envValues) {
+  const keys = [];
+  for (const value of envValues) {
+    if (!value) continue;
+    for (const key of String(value).split(',')) {
+      const trimmed = key.trim();
+      if (trimmed && !keys.includes(trimmed)) keys.push(trimmed);
+    }
+  }
+  return keys;
+}
+
+// Circuit breaker, per service. After a service has exhausted every key we stop
+// sending traffic for a cool-off so a rate-limited upstream is not hammered by
+// every user at once. State is per-process, which matches the existing in-memory
+// rate limiters; a multi-instance deployment gets one breaker per instance.
+const nvidiaBreaker = new Map();
+
+function breakerBlockedFor(service) {
+  const openUntil = nvidiaBreaker.get(service);
+  if (!openUntil) return 0;
+  const remainingMs = openUntil - Date.now();
+  if (remainingMs <= 0) {
+    nvidiaBreaker.delete(service);
+    return 0;
+  }
+  return remainingMs;
+}
+
+class NvidiaUpstreamError extends Error {
+  constructor(message, { status, retryAfterSeconds } = {}) {
+    super(message);
+    this.name = 'NvidiaUpstreamError';
+    this.status = status;
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+function retryAfterSecondsFrom(response) {
+  const header = response?.headers?.['retry-after'] ?? response?.headers?.get?.('retry-after');
+  const parsed = Number.parseInt(header, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 300) : null;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * POST to a NVIDIA NIM endpoint, rotating across the service's key pool and
+ * retrying rate limits within a bounded budget.
+ *
+ * Throws NvidiaUpstreamError with a status already translated to what this API
+ * should return — never the upstream code verbatim:
+ *   - upstream 401/403 becomes 502. Relaying a 401 would trip the client's
+ *     global "same-origin 401 means my session died" handler and log the user
+ *     out over an NVIDIA credential problem that has nothing to do with them.
+ *   - exhausted rate limits become 503 + Retry-After. Relaying 429 would be
+ *     indistinguishable from this API's own rate limiters firing.
+ */
+async function callNvidiaNim({
+  service,
+  url,
+  payload,
+  keys,
+  timeoutMs = EXTERNAL_HTTP_TIMEOUT_MS,
+  extraHeaders = {}
+}) {
+  if (!keys.length) {
+    throw new NvidiaUpstreamError(`No API key configured for ${service}`, { status: 503 });
+  }
+
+  const blockedMs = breakerBlockedFor(service);
+  if (blockedMs > 0) {
+    throw new NvidiaUpstreamError(
+      `${service} is rate limited upstream; retry shortly`,
+      { status: 503, retryAfterSeconds: Math.ceil(blockedMs / 1000) }
+    );
+  }
+
+  // The retry budget bounds *extra* work, not the first attempt: a fold can
+  // legitimately hold the connection for minutes, so the budget is only ever
+  // consulted before starting another try. Without that distinction a slow
+  // upstream would be abandoned mid-flight while it was still going to answer.
+  const started = Date.now();
+  const budgetSpent = () => Date.now() - started >= NVIDIA_RETRY_BUDGET_MS;
+  let firstTry = true;
+  let attempt = 0;
+  let lastRateLimit = null;
+
+  for (;;) {
+    let sawRetryableThisPass = false;
+
+    for (const key of keys) {
+      // Guard against stacking one full timeout per key when the upstream hangs.
+      if (!firstTry && budgetSpent()) break;
+      firstTry = false;
+
+      try {
+        const response = await axios.post(url, payload, {
+          timeout: timeoutMs,
+          headers: { Authorization: `Bearer ${key}`, Accept: 'application/json', ...extraHeaders }
+        });
+        nvidiaBreaker.delete(service);
+        return response.data;
+      } catch (error) {
+        const status = error.response?.status;
+
+        if (status === 429) {
+          sawRetryableThisPass = true;
+          lastRateLimit = retryAfterSecondsFrom(error.response);
+          continue; // next key
+        }
+        if (status === 401 || status === 403) {
+          console.error(`[nvidia] ${service}: key rejected with ${status}`);
+          continue; // a bad key must not fail the request while others remain
+        }
+        if (status >= 500 || status === undefined) {
+          sawRetryableThisPass = true;
+          continue; // upstream fault or network error — another key may land
+        }
+        // 4xx that is the caller's fault (bad SMILES, malformed body). Surface it.
+        throw new NvidiaUpstreamError(
+          error.response?.data?.detail || error.response?.data?.error || error.message,
+          { status }
+        );
+      }
+    }
+
+    if (!sawRetryableThisPass) {
+      // Every key was rejected as invalid — retrying cannot help.
+      throw new NvidiaUpstreamError(
+        `${service} upstream authentication failed`,
+        { status: 502 }
+      );
+    }
+
+    attempt += 1;
+    const backoffMs = Math.min(NVIDIA_BACKOFF_BASE_MS * 2 ** (attempt - 1), NVIDIA_BACKOFF_MAX_MS);
+    const jitterMs = Math.floor(Math.random() * 250);
+    if (Date.now() - started + backoffMs >= NVIDIA_RETRY_BUDGET_MS) break;
+    await sleep(backoffMs + jitterMs);
+  }
+
+  // Budget spent and still rate limited: open the breaker so the next callers
+  // fail fast instead of piling more requests onto a limited upstream.
+  const coolOffSeconds = lastRateLimit ?? 30;
+  nvidiaBreaker.set(service, Date.now() + coolOffSeconds * 1000);
+  throw new NvidiaUpstreamError(
+    `${service} is rate limited upstream; retry shortly`,
+    { status: 503, retryAfterSeconds: coolOffSeconds }
+  );
+}
+
+/**
+ * Status to return when relaying a failure from an upstream service.
+ *
+ * An upstream's 401/403 must never be relayed verbatim: the client treats any
+ * same-origin 401 as "my session died" and logs the user out, so a credential
+ * problem between this API and a backend would sign out a perfectly valid user.
+ * Those become 502 — the upstream failed, the caller's session is fine.
+ * A 429 likewise becomes 503, since this API has its own rate limiters and a
+ * relayed 429 would be indistinguishable from one of them firing.
+ */
+function upstreamProxyStatus(error) {
+  const status = error?.response?.status;
+  if (!status) return 502;
+  if (status === 401 || status === 403) return 502;
+  if (status === 429) return 503;
+  if (status >= 500) return 502;
+  return status;
+}
+
+// Translate any error from a NVIDIA proxy route into a response, refunding the
+// credit the request already paid, since no simulation was produced.
+async function respondNvidiaFailure(req, res, service, error) {
+  await refundSimulationToken(req, `${service}: ${error.message}`);
+
+  if (error instanceof NvidiaUpstreamError) {
+    if (error.retryAfterSeconds) res.set('Retry-After', String(error.retryAfterSeconds));
+    return res.status(error.status || 502).json({ error: error.message });
+  }
+  console.error(`[nvidia] ${service}: unexpected failure:`, error);
+  return res.status(502).json({ error: 'Upstream service failed' });
+}
+
 /**
  * @swagger
  * /api/generate-molecules:
@@ -257,19 +459,16 @@ function fetchWithTimeout(url, opts = {}) {
  *               type: object
  */
 app.post('/api/generate-molecules', ensureMongoConnected, authenticateToken, requireActiveUser, consumeSimulationToken('generate-molecules'), async (req, res) => {
-  const molmimApiKey = process.env.NVIDIA_MOLMIM_API_KEY;
-  if (!molmimApiKey) {
-    return res.status(500).json({ error: 'NVIDIA_MOLMIM_API_KEY is not configured' });
+  const keys = parseKeyPool(process.env.NVIDIA_MOLMIM_API_KEYS, process.env.NVIDIA_MOLMIM_API_KEY);
+  if (!keys.length) {
+    await refundSimulationToken(req, 'molmim: no API key configured');
+    return res.status(503).json({ error: 'Molecule generation is not configured' });
   }
 
   const {   smiles,
             minSimilarity,
             numMolecules } = req.body;
   const invoke_url = 'https://health.api.nvidia.com/v1/biology/nvidia/molmim/generate';
-  const headers = {
-    'Authorization': `Bearer ${molmimApiKey}`,
-    'Accept': 'application/json',
-  };
   const payload = {
     algorithm: 'CMA-ES',
     num_molecules: numMolecules || 30,
@@ -281,10 +480,10 @@ app.post('/api/generate-molecules', ensureMongoConnected, authenticateToken, req
     smi: smiles ,
   };
   try {
-    const response = await axios.post(invoke_url, payload, { headers });
-    res.json(response.data);
+    const data = await callNvidiaNim({ service: 'molmim', url: invoke_url, payload, keys });
+    res.json(data);
   } catch (error) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    await respondNvidiaFailure(req, res, 'molmim', error);
   }
 });
 
@@ -310,33 +509,26 @@ app.post('/api/generate-molecules', ensureMongoConnected, authenticateToken, req
  *               type: object
  */
 app.post("/api/openfold3/predict", ensureMongoConnected, authenticateToken, requireActiveUser, consumeSimulationToken('openfold3'), async (req, res) => {
-  const openfoldApiKey = process.env.NVIDIA_OPENFOLD_API_KEY;
-  if (!openfoldApiKey) {
-    return res.status(500).json({ error: 'NVIDIA_OPENFOLD_API_KEY is not configured' });
+  const keys = parseKeyPool(process.env.NVIDIA_OPENFOLD_API_KEYS, process.env.NVIDIA_OPENFOLD_API_KEY);
+  if (!keys.length) {
+    await refundSimulationToken(req, 'openfold3: no API key configured');
+    return res.status(503).json({ error: 'Protein folding is not configured' });
   }
 
   const invoke_url =
     "https://health.api.nvidia.com/v1/biology/openfold/openfold3/predict";
-  const headers = {
-    Authorization: `Bearer ${openfoldApiKey}`,
-    "Content-Type": "application/json",
-    "NVCF-POLL-SECONDS": "300",
-  };
   try {
-    const response = await axios.post(invoke_url, req.body, {
-      headers,
-      timeout: 600000,
+    const data = await callNvidiaNim({
+      service: 'openfold3',
+      url: invoke_url,
+      payload: req.body,
+      keys,
+      timeoutMs: EXTERNAL_HTTP_TIMEOUT_LONG_MS,
+      extraHeaders: { 'Content-Type': 'application/json', 'NVCF-POLL-SECONDS': '300' }
     });
-    res.json(response.data);
+    res.json(data);
   } catch (error) {
-    console.error(
-      "OpenFold3 API error:",
-      error.response?.data || error.message,
-    );
-    res.status(error.response?.status || 500).json({
-      error: error.message,
-      details: error.response?.data || null,
-    });
+    await respondNvidiaFailure(req, res, 'openfold3', error);
   }
 });
 
@@ -395,7 +587,7 @@ app.get('/tanimoto/health', ensureMongoConnected, authenticateToken, requireActi
     const response = await axios.get(`${TANIMOTO_API_BASE}/health`);
     res.json(response.data);
   } catch (error) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    res.status(upstreamProxyStatus(error)).json({ error: error.message });
   }
 });
 
@@ -423,7 +615,7 @@ app.post('/tanimoto/v1/upload', ensureMongoConnected, authenticateToken, require
     });
     res.json(response.data);
   } catch (error) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    res.status(upstreamProxyStatus(error)).json({ error: error.message });
   }
 });
 
@@ -449,7 +641,7 @@ app.get('/tanimoto/v1/search/exact', ensureMongoConnected, authenticateToken, re
     const response = await axios.get(`${TANIMOTO_API_BASE}/v1/search/exact`, { params: req.query });
     res.json(response.data);
   } catch (error) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    res.status(upstreamProxyStatus(error)).json({ error: error.message });
   }
 });
 
@@ -492,7 +684,7 @@ app.get('/tanimoto/v1/search/similarity', ensureMongoConnected, authenticateToke
     const response = await axios.get(`${TANIMOTO_API_BASE}/v1/search/similarity`, { params: req.query });
     res.json(response.data);
   } catch (error) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    res.status(upstreamProxyStatus(error)).json({ error: error.message });
   }
 });
 
@@ -518,7 +710,7 @@ app.get('/tanimoto/v1/search/substructure', ensureMongoConnected, authenticateTo
     const response = await axios.get(`${TANIMOTO_API_BASE}/v1/search/substructure`, { params: req.query });
     res.json(response.data);
   } catch (error) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    res.status(upstreamProxyStatus(error)).json({ error: error.message });
   }
 });
 
@@ -562,7 +754,7 @@ app.post('/tanimoto/v1/search/batch', ensureMongoConnected, authenticateToken, r
     });
     res.json(response.data);
   } catch (error) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    res.status(upstreamProxyStatus(error)).json({ error: error.message });
   }
 });
 
@@ -582,7 +774,7 @@ app.get('/tanimoto/v1/datasets', ensureMongoConnected, authenticateToken, requir
     const response = await axios.get(`${TANIMOTO_API_BASE}/v1/datasets`, { params: req.query });
     res.json(response.data);
   } catch (error) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    res.status(upstreamProxyStatus(error)).json({ error: error.message });
   }
 });
 
@@ -609,7 +801,7 @@ app.get('/tanimoto/v1/datasets/:dataset_id', ensureMongoConnected, authenticateT
     const response = await axios.get(`${TANIMOTO_API_BASE}/v1/datasets/${req.params.dataset_id}`);
     res.json(response.data);
   } catch (error) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    res.status(upstreamProxyStatus(error)).json({ error: error.message });
   }
 });
 
@@ -636,7 +828,7 @@ app.delete('/tanimoto/v1/datasets/:dataset_id', ensureMongoConnected, authentica
     const response = await axios.delete(`${TANIMOTO_API_BASE}/v1/datasets/${req.params.dataset_id}`);
     res.json(response.data);
   } catch (error) {
-    res.status(error.response?.status || 500).json({ error: error.message });
+    res.status(upstreamProxyStatus(error)).json({ error: error.message });
   }
 });
 
@@ -1279,45 +1471,118 @@ async function requireActiveUser(req, res, next) {
   }
 }
 
+/**
+ * Atomically take one simulation credit. The balance test lives in the update filter, not in
+ * a preceding read: two concurrent requests against a single remaining token would both pass
+ * a separate read and drive the balance negative.
+ *
+ * Returns {ok: true} on success, {ok: false, error} otherwise. Sets req.simulationTokenCharged
+ * so refundSimulationToken can give the credit back if the work it paid for never happened.
+ */
+async function chargeSimulationToken(req, res, feature) {
+  const identity = req.user.companyId
+    ? { username: req.user.username, companyId: req.user.companyId }
+    : { username: req.user.username };
+
+  const result = await usersCollection.updateOne(
+    { ...identity, active: { $ne: false }, simulationTokens: { $gt: 0 } },
+    {
+      $inc: { simulationTokens: -1 },
+      $set: { updatedAt: new Date() }
+    }
+  );
+
+  if (result.matchedCount === 0) {
+    // Only on the failure path: work out which precondition failed so the caller can say.
+    const userDoc = await usersCollection.findOne(identity, {
+      projection: { active: 1, simulationTokens: 1 }
+    });
+    if (userDoc?.active === false) {
+      return { ok: false, error: 'User account is disabled' };
+    }
+    return { ok: false, error: 'No simulation tokens left' };
+  }
+
+  req.simulationTokenCharged = feature;
+
+  // Backstop. Metered routes have many early returns between the charge and the
+  // upstream call — a missing key, a bad SMILES, an unreachable PDB — and each one
+  // used to keep the credit. Rather than rely on every branch remembering to
+  // refund, settle up when the response finishes: a request that ends in an error
+  // status produced no simulation, so it owes nothing. Explicit refunds clear the
+  // flag first, so this cannot double-refund.
+  if (res && typeof res.on === 'function') {
+    res.on('finish', () => {
+      if (res.statusCode >= 400 && req.simulationTokenCharged) {
+        refundSimulationToken(req, `HTTP ${res.statusCode}`).catch(() => {});
+      }
+    });
+  }
+
+  await recordAuditEvent(req, 'usage.token.consume', {
+    targetType: 'feature',
+    targetId: feature,
+    feature
+  });
+
+  return { ok: true };
+}
+
 function consumeSimulationToken(feature) {
   return async (req, res, next) => {
     try {
-      const userQuery = req.user.companyId
-        ? {
-            username: req.user.username,
-            companyId: req.user.companyId,
-            active: { $ne: false },
-            simulationTokens: { $gt: 0 }
-          }
-        : {
-            username: req.user.username,
-            active: { $ne: false },
-            simulationTokens: { $gt: 0 }
-          };
-
-      const result = await usersCollection.updateOne(
-        userQuery,
-        {
-          $inc: { simulationTokens: -1 },
-          $set: { updatedAt: new Date() }
-        }
-      );
-
-      if (result.matchedCount === 0) {
-        return res.status(403).json({ error: 'No simulation tokens left' });
+      const charged = await chargeSimulationToken(req, res, feature);
+      if (!charged.ok) {
+        return res.status(403).json({ error: charged.error });
       }
-
-      await recordAuditEvent(req, 'usage.token.consume', {
-        targetType: 'feature',
-        targetId: feature,
-        feature
-      });
-
       next();
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
   };
+}
+
+/**
+ * Give back the credit consumeSimulationToken took, when the simulation it paid for never
+ * ran. Every metered route decrements before calling its upstream, so an upstream that is
+ * down — Asinex during a Moscow outage, NVIDIA returning 429 — would otherwise charge for
+ * work that produced nothing.
+ *
+ * Safe to call unconditionally in a catch block: it is a no-op unless this request charged,
+ * and it clears the flag so a second call cannot mint a credit. Never throws — a failed
+ * refund must not replace the upstream error the caller is about to report.
+ */
+async function refundSimulationToken(req, reason) {
+  const feature = req?.simulationTokenCharged;
+  if (!feature) return false;
+  req.simulationTokenCharged = null;
+
+  try {
+    const userQuery = req.user.companyId
+      ? { username: req.user.username, companyId: req.user.companyId }
+      : { username: req.user.username };
+
+    const result = await usersCollection.updateOne(
+      userQuery,
+      {
+        $inc: { simulationTokens: 1 },
+        $set: { updatedAt: new Date() }
+      }
+    );
+
+    if (result.matchedCount === 0) return false;
+
+    await recordAuditEvent(req, 'usage.token.refund', {
+      targetType: 'feature',
+      targetId: feature,
+      feature,
+      reason: typeof reason === 'string' ? reason.slice(0, 200) : 'upstream failure'
+    });
+    return true;
+  } catch (error) {
+    console.error(`[credits] refund failed for ${req.user?.username} on ${feature}:`, error.message);
+    return false;
+  }
 }
 
 function requireAdmetCallbackAuth(req, res, next) {
@@ -2720,21 +2985,14 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, requireActiv
       });
       return res.json({ ...existing.result, simulationKey: existing.simulationKey });
     }
-    // Check and subtract simulationTokens
-    const userQuery = req.user.companyId
-      ? { username: req.user.username, companyId: req.user.companyId }
-      : { username: req.user.username };
-    const userDoc = await usersCollection.findOne(userQuery);
-    if (userDoc?.active === false) {
-      return res.status(403).json({ error: 'User account is disabled' });
+    // Charge the credit. Kept inline rather than moved to consumeSimulationToken because a
+    // cache hit above returns before this point and must stay free. Conditional update, not
+    // findOne-then-update: two concurrent requests on a single remaining token would both
+    // pass a separate read and drive the balance negative.
+    const charged = await chargeSimulationToken(req, res, 'simulation');
+    if (!charged.ok) {
+      return res.status(403).json({ error: charged.error });
     }
-    if (!userDoc || typeof userDoc.simulationTokens !== 'number' || userDoc.simulationTokens <= 0) {
-      return res.status(403).json({ error: 'No simulation tokens left' });
-    }
-    await usersCollection.updateOne(
-      userQuery,
-      { $inc: { simulationTokens: -1 } }
-    );
     // Generate a 12-character random key
     const simulationKey = Array.from({length: 12}, () =>
       Math.random().toString(36).charAt(2)
@@ -2749,6 +3007,11 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, requireActiv
         'Content-Type': 'application/json'
       }
     });
+    // The status was previously ignored, so an error body from the docking service
+    // was stored as a result and served from cache forever after.
+    if (!response.ok) {
+      throw new Error(`Docking service returned ${response.status}`);
+    }
     const data = await response.json();
     // Record invocation in MongoDB, including the result and simulationKey
     await simulationLogs.insertOne({
@@ -2776,13 +3039,16 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, requireActiv
 
     res.json({ ...data, simulationKey });
   } catch (error) {
+    // The credit was taken before the docking call. No result was produced, so give
+    // it back — this is the path every Asinex/Moscow outage takes.
+    await refundSimulationToken(req, `simulation GET: ${error.message}`);
     await recordAuditEvent(req, 'simulation.run', {
       targetType: 'simulation',
       targetId: `${pdbid || ''}:${smiles || ''}`,
       mode: 'GET',
       error: error.message
     }, 'error');
-    res.status(500).json({ error: error.message });
+    res.status(502).json({ error: 'Docking service is unavailable' });
   }
 });
 
@@ -2866,21 +3132,12 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, requireActi
       });
       return res.json({ ...existing.result, simulationKey: existing.simulationKey });
     }
-    // Check and subtract simulationTokens
-    const userQuery = req.user.companyId
-      ? { username: req.user.username, companyId: req.user.companyId }
-      : { username: req.user.username };
-    const userDoc = await usersCollection.findOne(userQuery);
-    if (userDoc?.active === false) {
-      return res.status(403).json({ error: 'User account is disabled' });
+    // Charge the credit — see the GET handler for why this stays inline and is a
+    // conditional update rather than a separate read.
+    const charged = await chargeSimulationToken(req, res, 'simulation');
+    if (!charged.ok) {
+      return res.status(403).json({ error: charged.error });
     }
-    if (!userDoc || typeof userDoc.simulationTokens !== 'number' || userDoc.simulationTokens <= 0) {
-      return res.status(403).json({ error: 'No simulation tokens left' });
-    }
-    await usersCollection.updateOne(
-      userQuery,
-      { $inc: { simulationTokens: -1 } }
-    );
     // Generate a 12-character random key
     const simulationKey = Array.from({length: 12}, () =>
       Math.random().toString(36).charAt(2)
@@ -2898,6 +3155,10 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, requireActi
         smiles: smiles === decodeURIComponent(smiles) ? encodeURIComponent(smiles) : smiles
       })
     });
+    // See the GET handler: an ignored status cached error bodies as results.
+    if (!response.ok) {
+      throw new Error(`Docking service returned ${response.status}`);
+    }
     const data = await response.json();
     // Record invocation in MongoDB, including the result and simulationKey
     await simulationLogs.insertOne({
@@ -2926,13 +3187,15 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, requireActi
 
     res.json({ ...data, simulationKey });
   } catch (error) {
+    // Credit taken before the docking call; no result produced. Give it back.
+    await refundSimulationToken(req, `simulation POST: ${error.message}`);
     await recordAuditEvent(req, 'simulation.run', {
       targetType: 'simulation',
       targetId: `${pdbid || ''}:${smiles || ''}`,
       mode: 'POST',
       error: error.message
     }, 'error');
-    res.status(500).json({ error: error.message });
+    res.status(502).json({ error: 'Docking service is unavailable' });
   }
 });
 
