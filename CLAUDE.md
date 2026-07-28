@@ -22,10 +22,11 @@ The skill that does apply here is **`medsaas-dev`** (user-scoped, `~/.claude/ski
 `graphify` is also installed.
 
 Historical plans were in `.planning/` (97 files: GSD milestones, roadmaps, phase plans and
-codebase maps). **That directory has been deleted from the working tree but is still tracked
-in git** — the deletion is uncommitted. Recover any of it with
-`git show HEAD:.planning/<file>`. Do not write new `.planning/` files or reference `/gsd:*`
-commands; that workflow is retired.
+codebase maps). **That directory is deleted and no longer tracked.** Its full contents are
+preserved in git history at the tag **`planning-archive`** — recover any file with
+`git show planning-archive:.planning/<file>`, or the whole tree with
+`git checkout planning-archive -- .planning`. Do not write new `.planning/` files or
+reference `/gsd:*` commands; that workflow is retired.
 
 - **Milestone history (reference):** v1 ChemBench Cleanup · v2 Bun Migration — incl. **Phase 7 (Docker, CI/CD, Scripts), shipped 2026-06-05** · v3 Company Brand Colour (per-company logo-driven palette across dashboard + emails), complete.
 - **CI now gates deploys:** `.github/workflows/ci.yml` runs Bun and Node fallback checks on push/PR, and `deploy.yml` won't ship unless the reusable CI gate passes (`needs: test`).
