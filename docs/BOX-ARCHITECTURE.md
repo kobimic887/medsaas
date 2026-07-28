@@ -149,8 +149,21 @@ right three weeks earlier, on a day when nothing was at stake.
   target a real one. Affects sidebar labels and email branding.
 - **What balance the 47 users with no credits get.** The script defaults to 0 and will not
   invent balances.
-- **The `chem_beo` → this-repo behaviour delta.** 73 routes vs this repo's set. Anything the
-  deployed frontend calls that this repo does not serve breaks at step 5 — that comparison has
-  not been done, and it is the main risk in the pre-box sequence.
+- ~~**The `chem_beo` → this-repo route delta.**~~ **RESOLVED 2026-07-28 — the delta is
+  effectively zero.** Comparing both files with path parameters normalised: `chem_beo` exposes
+  **73** routes, this repo **83**, and only **two** exist in `chem_beo` and not here:
+
+  | Route | What it is | Called by the frontend? |
+  |---|---|---|
+  | `GET /test` (`chem_beo:549`) | debug stub, returns `{message: "Test route working"}` | no |
+  | `POST /api/data` (`chem_beo:1057`) | debug stub, echoes the request body | no |
+
+  So this repo's server is a **strict superset of everything the production frontend calls.**
+  Step 5 is far safer than it looked.
+
+  **Still untested: response *shapes*.** Matching paths do not guarantee matching payloads —
+  `simulation_logs` alone is written in two different shapes by the two servers
+  ([DOCKING-CONTRACT.md](./DOCKING-CONTRACT.md) §1). Step 4's manual exercise is what catches
+  that, and it remains the real gate before step 5.
 - **AutoDock and DiffDock builds.** Specced against [DOCKING-CONTRACT.md](./DOCKING-CONTRACT.md)
   §6, not written blind — they cannot be compiled for sm_120 without the cards.
