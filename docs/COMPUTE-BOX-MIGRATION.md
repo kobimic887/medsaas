@@ -4,24 +4,35 @@
 inventory and the sequence; every code/compose/Dockerfile edit it implies is still to be
 approved.
 
-**Target machine** (Coreto RECT WS-2229C, ordered 2026-07): Threadripper 9980X 64C ·
-128 GB DDR5-5600 ECC Reg. (4×32, **four** populated channels) · 2× RTX PRO 5000 Blackwell
-48 GB (no NVLink, MIG off) · 2 TB + 4 TB Samsung 990 Pro NVMe · 8 TB WD Red Plus ·
-2×10 GbE · IPMI · Ubuntu Server 24.04 LTS. Physically at Science Park 408 Unit 1.05, 1098
-XH Amsterdam.
+**Why this is happening: Asinex's servers are in Moscow, and they go down because of the
+war.** Every docking job the platform runs today is answered from there. When it is down,
+`app.pyxis-discovery.com` cannot dock, which is the product. The box moves the docking path
+into a building we control, in the EU. Read [BOX-SPEC.md](./BOX-SPEC.md) §1 first — it is
+the reason behind every hardware choice below.
 
-**Goal as stated by the owner:** the box is the **whole backend and all computation**, as
-self-reliant as possible. The frontend is served elsewhere. Everything that can use CUDA
-should use CUDA.
+**Target machine** (Coreto **RECT WS-3229C**, RECT-ID 1493, configured 2026-07-28,
+**€24,727 net**): Threadripper **PRO 9975WX 32C** @ 4.00 GHz · 128 GB DDR5-5600 ECC Reg.
+(4×32) · **2× GeForce RTX 5090 32 GB** · **2× 2 TB Samsung 9100 PRO in RAID 1** + 1× 4 TB
+9100 PRO scratch · 24 TB Toshiba MG · 2200 W · WRX90 · 2×10 GbE · IPMI · Ubuntu Server
+24.04 LTS, headless. **36 months pick-up warranty — no on-site service in the Netherlands.**
+Physically at Science Park 408 Unit 1.05, 1098 XH Amsterdam.
 
-> **Goal revised 2026-07-28 — [BOX-SPEC.md](./BOX-SPEC.md) supersedes the hardware spec and
-> the science-stack scope in this document.** Self-reliance is no longer the objective;
-> *being best at docking* is. Folding and molecule generation **stay on NVIDIA's hosted
-> NIM** because NVIDIA runs them on faster hardware than we can buy. The box is being built
-> for **AutoDock-GPU, Vina and DiffDock** — the capability that cannot be bought from anyone.
-> Anything else that gets faster here does so incidentally and gets no budget spent on it.
-> Sections below carry inline notes where they encode the old assumption; the target-machine
-> line above is the **old** configuration and is being re-quoted.
+Full reasoning for every line of that, and what was rejected: [BOX-SPEC.md](./BOX-SPEC.md).
+
+**Goal, as revised 2026-07-28.** Self-reliance is *not* the objective — availability is.
+Folding and molecule generation **stay on NVIDIA's hosted NIM** (`health.api.nvidia.com`)
+because NVIDIA runs them on faster hardware than we can buy, and because they are not the
+thing that keeps breaking. The box is being built for **AutoDock-GPU and DiffDock**, with
+classic CPU Vina as a reference path. Anything else that gets faster here does so
+incidentally and gets no budget spent on it. Sections below carry inline notes where they
+still encode the older, broader assumption.
+
+**One correction that matters and is easy to get backwards: DiffDock is Asinex's, not
+NVIDIA's.** Only MolMIM (`server/index.js:268`) and OpenFold3 (`:319`) call
+`health.api.nvidia.com`. DiffDock calls `services.asinex.com:58000` (`:88`) — Asinex running
+NVIDIA's DiffDock **NIM container** on their own Moscow hardware. So **DiffDock dies with
+Asinex** and must be rebuilt here from OSS DiffDock (`gcorso/DiffDock`, MIT); the NIM
+container needs NVIDIA AI Enterprise, which was refused, and is not supported on GeForce.
 
 ---
 
@@ -133,11 +144,12 @@ places onto one box. Oracle stays alive in a reduced role.
   └──────────────────────────────────────────────────────────┘
 ```
 
-**The box does not exist yet.** It is ordered, not delivered. Its hostname, IP, MAC, network
-position at Science Park, and disk device names are all unknown, so every plan below is
-written against roles (`/srv/refdb`, "the box") rather than addresses. Nothing that needs a
-real address can start until it lands. What *is* known is the hardware, at the top of this
-document.
+**The box does not exist yet.** As of 2026-07-28 it is **configured and priced but not
+ordered** — Coreto still has to confirm they will build and warranty two triple-slot RTX
+5090s (BOX-SPEC §4). Its hostname, IP, MAC, network position at Science Park, and disk
+device names are all unknown, so every plan below is written against roles (`/srv/scratch`,
+"the box") rather than addresses. Nothing that needs a real address can start until it
+lands. What *is* known is the hardware, at the top of this document.
 
 ### Settled — the frontend stays on 83, and it is already there
 
@@ -279,7 +291,7 @@ flash-attn 4.
 | GROMACS | **Yes** | current image is the Ubuntu distro package = **CPU only**. Rebuild from source with `-DGMX_GPU=CUDA`; do not ship the apt build |
 | ADMET-AI (chemprop) | Yes, marginal | models are tiny, GPU barely helps — but install the **cu128 torch wheel BEFORE `admet-ai`**, see §6 |
 | ~~MSA generation (MMseqs2 / jackhmmer)~~ | n/a | **Not built.** Was the bottleneck — pure CPU + memory bandwidth, ~⅔ of job wall clock. NVIDIA keeps doing it inside the hosted call |
-| AutoDock Vina (classic) | No | CPU, embarrassingly parallel across 64 cores. **A first-class workload, not an afterthought** — this is why core count still matters |
+| AutoDock Vina (classic) | No | CPU, embarrassingly parallel across 32 cores. **A first-class workload, not an afterthought** — this is why core count still matters |
 | Tanimoto / RDKit cartridge search | No | CPU + RAM-resident index; no CUDA path exists |
 | Glioblastoma predictor | No | scikit-learn RandomForest. CPU |
 | Express API, Mongo, Postgres, RabbitMQ | No | — |
@@ -302,12 +314,14 @@ speed rather than gain it, and the answer changes depending on how the machine i
 
 **Per single cold job: probably slower.** Two reasons.
 
-1. **The card.** RTX PRO 5000 Blackwell has 48 GB of GDDR7 at roughly 1.3 TB/s. NVIDIA
+1. **The card.** An RTX 5090 has 32 GB of GDDR7 at roughly 1.79 TB/s. NVIDIA
    almost certainly serves the OpenFold3 NIM on datacenter parts — H100 at ~3.35 TB/s HBM3,
    H200 at ~4.8 TB/s. Transformer inference tracks memory bandwidth closely, so expect our
-   inference stage to be somewhere in the region of 1.5–3× slower than theirs. *Caveat: what
+   inference stage to be somewhere in the region of 2–3× slower than theirs. *Caveat: what
    NVIDIA actually runs behind that endpoint is not published. This is an inference from
-   hardware class, not a measurement.*
+   hardware class, not a measurement.* The 32 GB also sits right on OpenFold3's ~32 GB
+   working-set floor, where the old 48 GB card had margin — one more reason this stays
+   hosted rather than becoming a project.
 2. **The MSA, which is the bigger factor.** When you call the hosted endpoint, NVIDIA does
    the MSA too — on their infrastructure, with the databases already resident. Locally that
    becomes ours: ~5.5 min on four DDR5 channels, roughly ⅔ of the job. That is not a GPU
@@ -372,11 +386,11 @@ Ampere instance** (and for GROMACS, a CPU-only build):
 | Workload | Before | After | Rough expectation |
 |---|---|---|---|
 | GROMACS MD | apt build, **CPU-only**, never deployed | source build, `-DGMX_GPU=CUDA`, 2 cards | order-of-magnitude class change |
-| Tanimoto / RDKit search | 2 vCPU, 12 GB, aarch64 | 64 cores, 128 GB, x86_64 + native `rdkit-pypi` | very large |
-| ADMET | never deployed; CPU torch | 64 cores + cu128 torch | very large (mostly from the CPU) |
-| Glioblastoma predictor | never deployed | 64 cores | large |
-| AutoDock-GPU / Vina | did not exist locally | 2 cards + 64 cores | new capability |
-| Express API / Mongo / Postgres | 2 vCPU shared with everything | 64 cores, NVMe | large |
+| Tanimoto / RDKit search | 2 vCPU, 12 GB, aarch64 | 32 cores, 128 GB, x86_64 + native `rdkit-pypi` | very large |
+| ADMET | never deployed; CPU torch | 32 cores + cu128 torch | very large (mostly from the CPU) |
+| Glioblastoma predictor | never deployed | 32 cores | large |
+| AutoDock-GPU / Vina | did not exist locally | 2 cards + 32 cores | new capability |
+| Express API / Mongo / Postgres | 2 vCPU shared with everything | 32 cores, NVMe | large |
 
 ### RAM reality check
 
@@ -391,40 +405,41 @@ not four.
 
 ## 6. Storage: what goes on which medium
 
-Three devices, no RAID, no redundancy. Assign by access pattern, not by size.
-
-> **Scope changed 2026-07-28 — see [BOX-SPEC.md](./BOX-SPEC.md) §4.** `/srv/refdb` is
-> **dropped**: no MSA means no ColabFold databases. That frees ~900 GB **on the 4 TB NVMe**,
-> not a whole drive — `refdb`, `scratch` and `db` all shared that one device. Keep the 4 TB;
-> the Asinex catalog mirror with RDKit fingerprint GiST indexes and GROMACS trajectories will
-> use it. Every `refdb` row and caution below is therefore historical.
+**Rewritten 2026-07-28 for the ordered machine.** Four devices in three tiers, with three
+different failure semantics. Assign by *what losing it costs*, not by size.
 
 | Mount | Device | Contents | Why here |
 |---|---|---|---|
-| `/` | **2 TB NVMe** (990 Pro) | Ubuntu 24.04, `/var/lib/docker` (images + layers), model weights (OpenFold3/Boltz-2/DiffDock/ADMET ≈ 10–30 GB), CUDA toolchain | Boot device. Container image churn is write-heavy; keep it away from the data and scratch |
-| `/srv/refdb` | **4 TB NVMe** (990 Pro) | **ColabFold / MMseqs2 databases** — UniRef30 + envDB + PDB100, ~900 GB expanded and considerably more transiently during index build | **The most important placement decision.** MMseqs2 prefilter is random-read; NVMe is the reason the 4 TB stayed in the cart |
-| `/srv/scratch` | **4 TB NVMe** | per-job working dirs: MSA intermediates, GROMACS running trajectories, DiffDock poses | Highest-churn writes on the machine, and they pair with `refdb` reads. Keeping them off the boot device leaves Docker layer churn on its own disk. Wipe on a timer |
-| `/srv/db` | **4 TB NVMe** | Postgres `pgdata` (RDKit cartridge + fingerprint GiST indexes), Mongo `dbPath` | Random-read, latency-sensitive, and small (tens of GB) |
-| `/srv/archive` | **8 TB WD Red Plus** (HDD) | finished job outputs, completed GROMACS trajectories, raw database download tarballs, Asinex catalog dumps, nightly `mongodump` + `pg_dump` | Sequential, write-once-read-rarely. Exactly what an HDD is for |
+| `/` | **2× 2 TB Samsung 9100 PRO, RAID 1 (mdadm)** | Ubuntu 24.04, `/var/lib/docker`, Mongo `dbPath`, Postgres `pgdata` (RDKit cartridge + fingerprint GiST indexes), model weights (DiffDock/ADMET ≈ 10–30 GB), CUDA toolchain, `.env` | Everything whose loss is an **outage**. Mirrored because on-site service is not available in NL — see below |
+| `/srv/scratch` | **4 TB Samsung 9100 PRO**, unmirrored | per-job working dirs, PDBQT conversions, `autogrid` output, DiffDock poses, GROMACS running trajectories | Highest-churn writes on the machine, and **deliberately off the mirror**. Wipe on a timer |
+| `/srv/cache` | **4 TB Samsung 9100 PRO** (same device) | `autogrid` grid-map cache, keyed by PDB ID — ~60 MB per receptor | Rebuildable, so it does not need the mirror; random-read and latency-sensitive, so it does need NVMe |
+| `/srv/archive` | **24 TB Toshiba MG** (HDD) | finished job outputs, completed GROMACS trajectories, Asinex catalog dumps, nightly `mongodump` + `pg_dump`, offsite-backup staging | Sequential, write-once-read-rarely. Exactly what an HDD is for |
+
+One of four M.2 slots is left free on purpose — M.2 is user-serviceable, so capacity can be
+added later without a warranty conversation.
 
 Notes and cautions:
 
-- **Do not put `refdb` on the 8 TB HDD.** MMseqs2's prefilter does random reads across a
-  ~900 GB index; that is the access pattern HDDs are worst at, and it was the justification
-  for the 4 TB NVMe staying in the cart. How much worse it actually is has not been
-  measured — see Phase 4.1, benchmark before trusting any number, including this one.
-- **Headroom and ordering:** full ColabFold DB creation transiently needs roughly double the
-  final size, so build the indexes on `/srv/refdb` **before** `/srv/scratch` fills with job
-  data — the two share the 4 TB. Download the tarballs to `/srv/archive` (HDD), expand and
-  index onto `/srv/refdb`, and keep the tarballs on the HDD so a rebuild never re-downloads
-  ~900 GB.
-- **Backups are not solved by the 8 TB disk.** It is in the same chassis, on the same
-  power supply, in the same room. `mongodump`/`pg_dump` to `/srv/archive` protects against
-  *logical* mistakes only. **An offsite copy is still needed** — and Oracle cannot be it,
-  that box has ~24 GB free.
-- The service level on the box is **pick-up warranty**: a hardware fault means the machine
-  ships to Germany and is out of production for 1–3 weeks. Restore-elsewhere must be
-  possible from the offsite copy alone.
+- **Scratch is not on the mirror, and that is deliberate.** RAID 1 doubles every write.
+  Docking is write-churn for data that gets thrown away; putting it on the mirror would burn
+  both drives' 1200 TBW endurance at twice the rate for no benefit. Do not "tidy this up"
+  by consolidating onto the array.
+- **RAID 1 is not a backup and must not be read as one.** It survives a dead disk. It does
+  not survive a bad drop, a bad restore, a fire, or a theft. `mongodump`/`pg_dump` to
+  `/srv/archive` protects against *logical* mistakes only — and `/srv/archive` is in the
+  same chassis, on the same power supply, in the same room.
+- **An offsite copy is still needed and still unsolved.** Oracle cannot be it; that box has
+  ~24 GB free. This is open decision 4 in §9.
+- The service level on the box is **36 months pick-up, and on-site was not available for the
+  Netherlands**. A hardware fault means the machine ships to Germany and is out of production
+  for 1–3 weeks. That is why there are two GPUs and a mirrored boot pair, and it is why
+  **restore-elsewhere must be possible from the offsite copy alone.**
+- **Keep a spare 2 TB NVMe on a shelf** (~€200 retail, not from Coreto). With pick-up
+  warranty, a drive failure is otherwise weeks of downtime for a part you could swap in an
+  afternoon.
+- **Historical:** `/srv/refdb` is gone. It held ColabFold/MMseqs2 databases (~900 GB) for an
+  MSA pipeline that is no longer being built — folding stays on NIM. Any reference to
+  `refdb`, UniRef30, envDB or PDB100 elsewhere in this document is dead.
 
 ---
 
@@ -435,21 +450,39 @@ is destructive; the Oracle stack keeps running throughout.**
 
 ### Phase 0 — before the box arrives (can start now)
 
-1. Decide **A** (frontend location) and **B** (public HTTPS ingress). Both block later
-   phases.
-2. Take a full backup of what has to survive: `mongodump` of `medsaas-mongo-1` and a
+Nothing here needs the hardware. Items 1 and 2 are the two that are *only* doable now, while
+Asinex is still answering.
+
+1. **Capture the docking output contract — do this first, while Asinex is up.** The engine
+   is known (AutoDock, confirmed by the Asinex/Pyxis CEO) but the **field names are not**.
+   Pull several stored results and record the exact shape:
+   ```
+   db.simulation_logs.find({}, {result: 1, pdbid: 1, smiles: 1}).limit(20)
+   ```
+   Three consumers depend on that shape and will break silently if the local engine emits
+   something different: `client/src/pages/dashboard/simulation.jsx`,
+   `GET /api/sanitizedpdb/:simulationKey`, and `GET /api/sanitizedminimalsdf/:simulationKey`.
+   Do the same for DiffDock — `position_confidence`, `ligand_positions`, `protein` and
+   `ligand` are all read by name in `simulation.jsx`. **If Asinex goes down before this is
+   captured, the contract has to be reverse-engineered from the client.**
+2. **Inventory the persisted per-company overrides** —
+   `db.companies.find({}, {companyId:1, name:1, ligandServiceConfig:1})`. These are the
+   cutover switch (see Phase 4) and any non-default URL there is a stale pointer that
+   survives the move.
+3. Decide **B** (public HTTPS ingress). Blocks Stripe webhooks and the MCP server.
+4. Take a full backup of what has to survive: `mongodump` of `medsaas-mongo-1` and a
    `pg_dump` of `tonomitosql-db-1`. The Postgres dump *is* the Tanimoto index —
    re-uploading CSVs is not equivalent, dataset ids and fingerprints would change.
-3. Write down every value in the box's future `.env`. It is not in git and never will be.
-4. Inventory the persisted per-company overrides:
-   `db.companies.find({}, {companyId:1, name:1, ligandServiceConfig:1})`. Every non-default
-   URL there is a stale pointer that survives the move.
-5. Prepare, don't apply: an amd64 build of each image and a CUDA 12.8 base for the GPU
-   services. (The ColabFold DB download list is no longer needed — see BOX-SPEC §1.)
-6. **Settle the hardware re-quote** — [BOX-SPEC.md](./BOX-SPEC.md). Blocks the order, which
-   blocks everything after Phase 0.
+5. Write down every value in the box's future `.env`. It is not in git and never will be.
+6. Prepare, don't apply: an amd64 build of each image and a **CUDA 12.8** base for the GPU
+   services. Blackwell is **sm_120** — anything built for an older arch will not run.
 7. **Find out what is actually on 83 and which database is production.** BOX-SPEC §6 — this
-   determines whether step 2's Oracle dumps are the data that matters or a red herring.
+   determines whether step 4's Oracle dumps are the data that matters or a red herring.
+8. **Rotate `services/glioblastoma-predictor/chemtest_tech_private.key`.** It is a private
+   key committed to the repo and `COPY`'d into the image. Harmless while nothing runs;
+   a live exposure the moment Phase 3 deploys it. Treat the committed key as compromised —
+   it is in git history.
+9. Get Coreto's answer on two triple-slot RTX 5090s (BOX-SPEC §4). Blocks the order.
 
 ### Phase 1 — box arrives, base platform
 
@@ -462,9 +495,17 @@ the Science Park router are all still ours to do.
 3. **Docker published ports bypass UFW.** This bit us on Oracle: `3000` and `8080` were
    internet-reachable despite a default-deny UFW. Bind every publish to `127.0.0.1` and
    let the reverse proxy be the only listener.
-4. Partition and mount per §6.
-5. NVIDIA driver + CUDA 12.8 + `nvidia-container-toolkit`; verify `nvidia-smi` sees both
-   cards and that a container can too.
+4. **Verify the RAID 1 mirror actually boots degraded.** Coreto was asked for an EFI System
+   Partition on *both* mirror disks. Confirm it — `efibootmgr -v`, then pull one drive and
+   boot. A mirror that only boots off one disk is a mirror that does not work, and finding
+   that out during a failure is the whole thing this was bought to avoid.
+5. Partition and mount `/srv/scratch`, `/srv/cache`, `/srv/archive` per §6.
+6. **NVIDIA driver 570 branch or newer** + CUDA 12.8 + `nvidia-container-toolkit`. Verify
+   `nvidia-smi` reports both cards as `sm_120`, and that a container sees them. The 550
+   branch does not support Blackwell — if Coreto shipped it, replace it before anything else.
+7. Record sustained GPU temperatures under a real two-card load before trusting the build.
+   Two 575 W triple-slot cards in a noise-damped tower is the one thing Coreto has not
+   confirmed (BOX-SPEC §4); measure it rather than assume it.
 
 ### Phase 2 — move Pile 1 (the actual migration)
 
@@ -487,22 +528,75 @@ RabbitMQ → ADMET worker → GROMACS (CUDA rebuild) → glioblastoma. Each gets
 and each is verified end-to-end from the dashboard, since none of these paths has ever run
 in production.
 
-### Phase 4 — build Pile 3 (docking)
+### Phase 4 — docking (this is the point of the machine)
 
-Rewritten 2026-07-28. Pile 3 is now **only docking** — see [BOX-SPEC.md](./BOX-SPEC.md) §1.
+Rewritten 2026-07-28. See [BOX-SPEC.md](./BOX-SPEC.md) §1 and §5.
 
-1. **AutoDock-GPU**, built for sm_120. Benchmark a real ligand screen and record actual
-   throughput per card — every number in the purchase case is an estimate.
-2. **AutoDock Vina** (classic, CPU) across the 64 cores, as the reference/fallback path.
-3. **DiffDock** locally, cu128 torch. Repoint `dockingApiUrl` / `diffdockApiUrl` off the
-   Asinex-hosted URL. Resolve `server/diff_dock.sh` — make it real or delete it.
-4. Queue the screens through RabbitMQ; jobs are independent, so this is fan-out, not the
-   two-stage CPU/GPU pipeline the MSA would have needed.
-5. Mirror the Asinex catalog into Postgres per §4 — this is what the screens run against.
+**Phase 4 does not have to wait for Phase 2.** It is numbered last because it is the largest
+build, not because it is blocked. The cutover is a **config change, not a deploy** (see
+below), so docking can move to the box the moment Phase 1 is green — while the API, Mongo
+and the MCP server are all still on Oracle. Given the reason for the purchase is Moscow
+availability, **do this as early as it will go**, not last.
 
-**Not in Phase 4 any more:** ColabFold databases, OSS OpenFold3/Boltz-2, the MSA pipeline,
+1. **AutoDock-GPU**, built for `sm_120`. This replaces `dockingApiUrl`
+   (`services.asinex.com:8000/docking`), which the Asinex/Pyxis CEO confirms is AutoDock.
+   Match the output contract captured in Phase 0.1 — the engine is known, the field names
+   are not, and `simulation.jsx` plus the two `sanitized*` endpoints read them by name.
+2. **`autogrid` map cache.** Maps are per-receptor, CPU-bound, ~30–60 s, ~60 MB, and
+   *cacheable*. Key them by PDB ID on `/srv/cache` (§6). The first dock against a protein
+   pays for the maps; every subsequent ligand against the same target does not. This is
+   what makes 32 cores sufficient — grid generation happens once per target, not once per
+   dock.
+3. **OSS DiffDock** (`gcorso/DiffDock`, MIT), torch cu128. **Not the NIM container** — that
+   needs NVIDIA AI Enterprise, which was refused, and NIM is not supported on GeForce.
+   Asinex's `services.asinex.com:58000` *is* the NIM container on their hardware, so this is
+   a rebuild, not a lift.
+4. **AutoDock Vina** (classic, CPU) across the **32 cores**, as the reference/fallback path
+   and the second opinion when a GPU score looks wrong.
+5. **Fix the synchronous hold.** `/api/simulation` and `/api/diffdock/generate` block an HTTP
+   connection for up to **10 minutes** (`EXTERNAL_HTTP_TIMEOUT_LONG_MS`, `server/index.js:217`).
+   That is acceptable against a remote proxy; against two local cards it becomes an invisible
+   queue with no cancel and no progress. Give it a job ID and a poll endpoint, reusing the
+   RabbitMQ path ADMET already uses. Jobs are independent, so this is fan-out — not the
+   two-stage CPU/GPU pipeline an MSA would have needed.
+6. Resolve `server/diff_dock.sh` — it posts to a `localhost:8000` NIM that has never run.
+   Make it real or delete it.
+
+**Not in scope:** the Asinex catalog and stock services. `catalogApiBase` and `stockApiUrl`
+keep pointing at Asinex — the catalog because replacing it needs their compound file (a
+licensing question), and stock because **no machine can compute it**. BOX-SPEC §5. Note that
+`dev.asinex.com:58181` is in the same Moscow, so the catalog carries the same availability
+risk; 128 GB of RAM was bought partly to keep moving it a decision rather than a re-purchase.
+
+**Also not in scope any more:** ColabFold databases, OSS OpenFold3/Boltz-2, the MSA pipeline,
 and the MolMIM replacement. `/api/openfold3/predict` and `/api/generate-molecules` keep
 calling `health.api.nvidia.com` and need no work at all.
+
+#### The cutover is four fields, and it is also the rollback
+
+`company.ligandServiceConfig` (`server/index.js:886–906`, validated at `:1189`) overrides
+all four Asinex URLs **per company**, and it is editable from the Company Admin UI. Every
+request resolves them through `getRequestLigandServiceConfig(req)` rather than reading the
+env directly.
+
+| Field | Points at, after Phase 4 |
+|---|---|
+| `dockingApiUrl` | the box |
+| `diffdockApiUrl` | the box |
+| `catalogApiBase` | Asinex, unchanged |
+| `stockApiUrl` | Asinex, unchanged |
+
+Consequences worth being explicit about:
+
+- **No deploy is needed to cut over**, and none is needed to roll back. If the box misbehaves,
+  point the two URLs back at Asinex from the admin UI and the product is running again in
+  seconds — degraded to Moscow's availability, but running.
+- **Keeping the Asinex URLs valid is the disaster-recovery plan** for a machine with pick-up
+  warranty. Do not let the Asinex account lapse the day the box goes live.
+- Migration risk on the highest-value part of this project is therefore close to zero, which
+  is the argument for doing it first rather than last.
+- The same mechanism is a footgun: a company row with a stale hard-coded URL silently keeps
+  using it. That is what Phase 0.2 inventories.
 
 ### Phase 5 — decommission review
 
@@ -579,23 +673,39 @@ it — but do not touch anything else on that machine.
 
 ## 9. Still to decide (all owner calls)
 
-1. **The hardware re-quote** — [BOX-SPEC.md](./BOX-SPEC.md). Blocks the order.
+1. **Will Coreto build two triple-slot RTX 5090s in that chassis?** BOX-SPEC §4. The last
+   technical unknown, and it blocks the order.
 2. **What is on 83, and what data is actually production.** The owner states the Oracle user
    data does not matter and only 83's does — which contradicts Pile 1, where Mongo moves off
    Oracle *with a restore*. Either 83 proxies to Oracle, or 83 has an uninventoried backend
    and database. **Phase 0 depends on the answer.** See BOX-SPEC §6.
 3. **Public HTTPS ingress for the box** (§3-B) — blocks Stripe webhooks and Claude for Life
    Sciences. Caddy + a DNS name on the box recommended; do not plan on touching nginx on 83.
-4. **Offsite backup target** (§6) — not Oracle, not the 8 TB disk in the same chassis.
-5. **Does the Asinex live-stock call stay?** (§4) — recommended yes, as an at-order-time
-   check only, with catalog and price served locally.
+4. **Offsite backup target** (§6) — not Oracle, not the 24 TB disk in the same chassis, and
+   not the RAID 1 mirror. More urgent than it was: pick-up warranty means restore-elsewhere
+   has to work from the offsite copy alone.
+5. **Does the Asinex catalog eventually move too?** It is on `dev.asinex.com:58181` — the
+   same Moscow, the same war, the same availability risk as the docking services being
+   replaced. Blocked on getting the compound file, which is a licensing question. "When
+   needed," per the owner.
+6. **Live stock** (`stock.asinex.com:5443`) — cannot be self-hosted at any price. Keep
+   calling Asinex, negotiate a data feed, or drop the feature.
 
 Settled, recorded here so they are not re-litigated:
 
-- **Folding and molecule generation stay on NVIDIA's hosted NIM** (2026-07-28). The box is
-  for **docking**, the one capability that cannot be bought from anyone. Everything else that
-  gets faster here does so incidentally and gets no budget spent on it. BOX-SPEC §1.
-- **MolMIM needs no replacement** — it stays hosted. Was open item 2; now closed by the above.
+- **The reason for the whole project is that Asinex's servers are in Moscow and go down
+  because of the war** (2026-07-28). Not performance, not cost, not self-reliance. BOX-SPEC §1.
+- **Hardware is chosen**: RECT WS-3229C, 2× RTX 5090, PRO 9975WX 32C, 128 GB, RAID 1 boot
+  pair, €24,727 net. BOX-SPEC §2–3 records why, including what was rejected.
+- **Folding and molecule generation stay on NVIDIA's hosted NIM.** The box is for
+  **docking**. Everything else that gets faster here does so incidentally and gets no budget
+  spent on it.
+- **MolMIM needs no replacement** — it stays hosted.
+- **DiffDock is Asinex's, not NVIDIA's**, and must be rebuilt locally from OSS. It does not
+  survive the cut.
+- **The 1-click docking engine is AutoDock**, confirmed by the Asinex/Pyxis CEO.
+- **The docking workload is interactive single-ligand, not batch** — verified in code, not
+  assumed. It is why the GPU choice favoured per-card speed over aggregate core count.
 - **Frontend stays on 83** at `app.pyxis-discovery.com` (§3). The box is backend only.
 - **Oracle is not decommissioned** (§8) — it keeps the CLIProxyAPI gateway and becomes the
   offsite dump target.

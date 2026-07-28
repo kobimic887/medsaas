@@ -1,8 +1,8 @@
 # Improvement Backlog
 
 Prioritized, do-later plan. Drawn from this session's work (Asinex RE, the SSRF/
-timeout/CI fixes) and `.planning/codebase/CONCERNS.md`. Effort is rough; risk is
-"chance of breaking something live."
+timeout/CI fixes) and the codebase concerns captured during the Bun migration.
+Effort is rough; risk is "chance of breaking something live."
 
 ## Tier 0 — Quick wins (hours, low risk)
 
