@@ -212,7 +212,7 @@ async function main() {
     console.log('\nTest 4 — /api/generate-molecules refunds when the call never ran:');
     if (!authToken) {
       console.log('  SKIP: no auth token from signin (Test 1 failed)');
-      failed += 4;
+      failed += 7;
     } else {
       const before = await users.findOne({ username: 'smokeuser' });
       const startingTokens = before?.simulationTokens;
@@ -261,6 +261,33 @@ async function main() {
         afterSecond?.simulationTokens === startingTokens,
         `(expected ${startingTokens}, got ${afterSecond?.simulationTokens})`
       );
+
+      // The charge must still BLOCK at zero. Rewriting this test around refunds
+      // removed the only coverage of chargeSimulationToken's matchedCount === 0
+      // branch — without this, an edit that made the charge non-blocking would
+      // pass everything above.
+      await users.updateOne({ username: 'smokeuser' }, { $set: { simulationTokens: 0 } });
+      const brokeRes = await fetch(`${BASE}/api/generate-molecules`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+        body: JSON.stringify({ smi: 'CCO', num_molecules: 1 }),
+      });
+      const brokeBody = await brokeRes.json().catch(() => ({}));
+      check('zero balance returns 403', brokeRes.status === 403, `(got ${brokeRes.status}: ${JSON.stringify(brokeBody)})`);
+      check(
+        'zero balance error is No simulation tokens left',
+        brokeBody.error === 'No simulation tokens left',
+        `(got ${JSON.stringify(brokeBody.error)})`
+      );
+
+      const afterBlocked = await users.findOne({ username: 'smokeuser' });
+      check(
+        'a blocked call does not drive the balance negative',
+        afterBlocked?.simulationTokens === 0,
+        `(got ${afterBlocked?.simulationTokens})`
+      );
+
+      await users.updateOne({ username: 'smokeuser' }, { $set: { simulationTokens: startingTokens } });
     }
 
     // --- Test 5: password reset flow (request + confirm) ---

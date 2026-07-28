@@ -1484,8 +1484,12 @@ async function requireActiveUser(req, res, next) {
  *
  * Returns {ok: true} on success, {ok: false, error} otherwise. Sets req.simulationTokenCharged
  * so refundSimulationToken can give the credit back if the work it paid for never happened.
+ *
+ * Pass refundOnDisconnect: false for any route that persists a cacheable result. See the
+ * backstop below — for those routes the work outlives the connection and a disconnect refund
+ * hands back a credit for a dock that completes, gets stored, and is then served free.
  */
-async function chargeSimulationToken(req, res, feature) {
+async function chargeSimulationToken(req, res, feature, { refundOnDisconnect = true } = {}) {
   const identity = req.user.companyId
     ? { username: req.user.username, companyId: req.user.companyId }
     : { username: req.user.username };
@@ -1518,20 +1522,32 @@ async function chargeSimulationToken(req, res, feature) {
   // status produced no simulation, so it owes nothing. Explicit refunds clear the
   // flag first, so this cannot double-refund.
   //
-  // 'close' as well as 'finish': 'finish' fires only for a fully-flushed response,
-  // so a user who navigates away from a ten-minute dock would otherwise leave the
-  // charge stranded. The writableEnded guard keeps the two from both firing.
+  // 'close' as well as 'finish', but only where refundOnDisconnect allows it.
+  // 'finish' fires for a fully-flushed response; 'close' catches a client that
+  // gave up on a long request, which would otherwise strand the charge.
+  //
+  // The distinction matters and is not cosmetic. Nothing cancels the upstream call
+  // when the client disconnects — AbortSignal.timeout aborts on time, not on the
+  // browser going away — so the work continues either way. Where nothing is
+  // persisted (the NVIDIA routes, DiffDock) the user got no artifact, and
+  // refunding is right. Where the result is written to simulation_logs and served
+  // from cache on the next identical request (/api/simulation), the dock happens,
+  // is stored, and is then free forever after — so refunding on disconnect would
+  // give the credit away for work that was delivered. A "persisted" flag cannot
+  // fix that: 'close' fires long before insertOne runs.
   if (res && typeof res.on === 'function') {
     res.on('finish', () => {
       if (res.statusCode >= 400 && req.simulationTokenCharged) {
         refundSimulationToken(req, `HTTP ${res.statusCode}`).catch(() => {});
       }
     });
-    res.on('close', () => {
-      if (!res.writableEnded && req.simulationTokenCharged) {
-        refundSimulationToken(req, 'client disconnected before a result was sent').catch(() => {});
-      }
-    });
+    if (refundOnDisconnect) {
+      res.on('close', () => {
+        if (!res.writableEnded && req.simulationTokenCharged) {
+          refundSimulationToken(req, 'client disconnected before a result was sent').catch(() => {});
+        }
+      });
+    }
   }
 
   await recordAuditEvent(req, 'usage.token.consume', {
@@ -3005,7 +3021,7 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, requireActiv
     // cache hit above returns before this point and must stay free. Conditional update, not
     // findOne-then-update: two concurrent requests on a single remaining token would both
     // pass a separate read and drive the balance negative.
-    const charged = await chargeSimulationToken(req, res, 'simulation');
+    const charged = await chargeSimulationToken(req, res, 'simulation', { refundOnDisconnect: false });
     if (!charged.ok) {
       return res.status(403).json({ error: charged.error });
     }
@@ -3162,7 +3178,7 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, requireActi
     }
     // Charge the credit — see the GET handler for why this stays inline and is a
     // conditional update rather than a separate read.
-    const charged = await chargeSimulationToken(req, res, 'simulation');
+    const charged = await chargeSimulationToken(req, res, 'simulation', { refundOnDisconnect: false });
     if (!charged.ok) {
       return res.status(403).json({ error: charged.error });
     }
