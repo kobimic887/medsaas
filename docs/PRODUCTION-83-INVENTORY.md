@@ -193,14 +193,42 @@ Atlas restore, never against production first.
 9. **83 needs a supervisor before it needs a migration.** Three hand-started `screen` sessions
    are the only thing between the product and a reboot. §2.
 
-### ✅ DECIDED 2026-07-28 by the owner: **the box runs `chem_beo`.**
+### The open decision — what the NEW box runs
 
-Not this repo's `server/index.js`. Every migration document assumed the opposite, and that
-assumption was made before anyone knew the two were different codebases. The decision is sound
-on the thing that mattered most — `chem_beo` already matches the production data, so **the
-49-of-50 `companyId` blocker in §5 disappears.** There is no user migration.
+**Terminology, because it caused a misread:** "the box" in every document means the **new
+Amsterdam GPU machine**. `83.229.87.94` is the current VPS. Confirmed 2026-07-28: **83 runs
+`chem_beo`** — that is current state, not a decision about the new box.
 
-It has consequences that are not obvious, and three of them change the plan:
+**Recommendation: the new box should run neither API server. It should run the docking engines
+only.**
+
+```
+browser → 83 (chem_beo, unchanged) ──docking──► NEW BOX (AutoDock-GPU, DiffDock, convertSTR)
+               │
+               └──users/credits──► Atlas (unchanged)
+```
+
+The box was bought because Moscow goes down. That requires it to answer docking requests in the
+shape recorded in [DOCKING-CONTRACT.md](./DOCKING-CONTRACT.md) — `pdbid` + `smiles` in,
+`{pdb, sdf}` out. It does not require it to serve an API, a session, or a database.
+
+Why that is optimal rather than merely easier:
+
+- **The §5 user-migration blocker never applies.** Nothing touches the database.
+- **Cutover becomes one URL**, once the env-var lift below is done. Rollback is identical.
+- **Latency is irrelevant.** A dock takes seconds to minutes; one WAN hop is noise. There is no
+  performance case for co-locating the API with the GPUs.
+- **Blast radius is one feature.** A wrong AutoDock build breaks docking and you flip the URL
+  back. Login, billing, catalog and Tanimoto stay out of the failure path — unlike a full API
+  migration, where all of them are exposed on day one.
+- **The GPUs do GPU work.** Running Express on a €25k Threadripper is the least valuable use
+  of it.
+
+Whether the API *eventually* moves to the box, and whether that is `chem_beo` or this repo,
+then becomes a later decision made with the box already proven, rather than a bet the migration
+depends on.
+
+### Either way, these follow from `chem_beo` being what serves users
 
 **1. 🛑 "Cutover is config, not a deploy" is false.** This is the single most load-bearing claim
 in the whole migration, repeated in `CLAUDE.md`, `BOX-SPEC.md`, `COMPUTE-BOX-MIGRATION.md` and
@@ -230,7 +258,7 @@ plan was designed around — cut over by changing an environment variable and re
 back by changing it back. Doing this *before* the box exists means arrival day is a config
 change against a server that has already been running with the new code for weeks.
 
-**2. Nothing in this repository ships.** The credit-refund fix, the atomic charge, the NVIDIA
+**2. Nothing in this repository ships today.** The credit-refund fix, the atomic charge, the NVIDIA
 429 key pool and the upstream-401→502 mapping all live in `server/index.js`, which will not run.
 `chem_beo` has none of them, and it has the same underlying bugs: it charges the credit before
 calling Asinex (`1487`–`1495`, `1575`–`1582`) with no refund path, using the same
