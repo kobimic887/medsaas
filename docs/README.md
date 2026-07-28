@@ -6,7 +6,8 @@ docs that would bloat it.
 
 | Document | What it is | Status |
 |---|---|---|
-| [COMPUTE-BOX-MIGRATION.md](./COMPUTE-BOX-MIGRATION.md) | Full trace of every machine, API and compute dependency, and the plan to move the backend onto the Amsterdam GPU box. Includes the CUDA matrix, storage layout, and open decisions. | **planning — nothing applied** |
+| [BOX-SPEC.md](./BOX-SPEC.md) | The hardware re-quote. Why folding stays on NVIDIA NIM, why that inverts the GPU choice from big-VRAM to many-cores, the four card options, and the questions to put to Coreto. **Supersedes the machine spec and science-stack scope in COMPUTE-BOX-MIGRATION.** | **open — blocks the order** |
+| [COMPUTE-BOX-MIGRATION.md](./COMPUTE-BOX-MIGRATION.md) | Full trace of every machine, API and compute dependency, and the plan to move the backend onto the Amsterdam GPU box. Includes the CUDA matrix, storage layout, and open decisions. Read BOX-SPEC first — sections here carry inline notes where scope changed. | **planning — nothing applied** |
 | [PYXIS-ONLY.md](./PYXIS-ONLY.md) | Retiring the SaaS surface: this is one product for one company now. Which frontend wins (with evidence), what goes, what stays, and the archive-don't-delete sequence. | **planning — nothing applied** |
 | [CLAUDE-LIFE-SCIENCES.md](./CLAUDE-LIFE-SCIENCES.md) | The ChemBench MCP server: its 14 tools, the four that cannot work until Pile 2 is deployed, how to connect Claude for Life Sciences, and the ingress it is waiting on. | current |
 | [CI-CD.md](./CI-CD.md) | Source of truth for the two repo-owned workflows, the build-on-box deploy model, and required secrets. | current |

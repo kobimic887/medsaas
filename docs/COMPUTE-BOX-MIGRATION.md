@@ -14,6 +14,15 @@ XH Amsterdam.
 self-reliant as possible. The frontend is served elsewhere. Everything that can use CUDA
 should use CUDA.
 
+> **Goal revised 2026-07-28 — [BOX-SPEC.md](./BOX-SPEC.md) supersedes the hardware spec and
+> the science-stack scope in this document.** Self-reliance is no longer the objective;
+> *being best at docking* is. Folding and molecule generation **stay on NVIDIA's hosted
+> NIM** because NVIDIA runs them on faster hardware than we can buy. The box is being built
+> for **AutoDock-GPU, Vina and DiffDock** — the capability that cannot be bought from anyone.
+> Anything else that gets faster here does so incidentally and gets no budget spent on it.
+> Sections below carry inline notes where they encode the old assumption; the target-machine
+> line above is the **old** configuration and is being re-quoted.
+
 ---
 
 ## 1. This is not one move. It is three different jobs.
@@ -52,15 +61,21 @@ backend. The box is where they get one for the first time.
 This is the part the €25k was actually justified on, and it is worth being blunt: **no
 code in any traced repo performs an MSA, a fold, or a local dock.**
 
+> **Scope changed 2026-07-28 — read [BOX-SPEC.md](./BOX-SPEC.md) before this table.**
+> Folding and molecule generation **stay on NVIDIA's hosted NIM** and are no longer part of
+> Pile 3. The box exists for **docking**, which is the capability that cannot be bought from
+> anyone. Everything below marked *dropped* was removed by that decision.
+
 | Capability | Today | On the box |
 |---|---|---|
-| Structure prediction | `POST /api/openfold3/predict` → thin proxy to `health.api.nvidia.com` | OSS OpenFold3 and/or Boltz-2, local weights, local MSA |
-| MSA generation | none — NVIDIA does it inside their hosted call | MMseqs2 + ColabFold databases, **CPU + memory bandwidth, no GPU** |
-| Molecule generation | `POST /api/generate-molecules` → proxy to NVIDIA MolMIM | OSS replacement — open decision, see §7 |
-| Docking | `POST /api/diffdock/generate` → Asinex-hosted DiffDock URL | local DiffDock + AutoDock-GPU + Vina |
+| Docking | `POST /api/diffdock/generate` → Asinex-hosted DiffDock URL | **local DiffDock + AutoDock-GPU + Vina — this is the build** |
 | `server/diff_dock.sh` | posts to `http://localhost:8000/molecular-docking/diffdock/generate` — **a NIM that has never run** | becomes real, or gets deleted |
+| Structure prediction | `POST /api/openfold3/predict` → thin proxy to `health.api.nvidia.com` | ~~OSS OpenFold3 / Boltz-2~~ **dropped — stays on NIM** |
+| MSA generation | none — NVIDIA does it inside their hosted call | ~~MMseqs2 + ColabFold databases~~ **dropped — NVIDIA keeps doing it** |
+| Molecule generation | `POST /api/generate-molecules` → proxy to NVIDIA MolMIM | ~~OSS replacement~~ **dropped — stays on MolMIM** |
 
-The owner will not pay for NVIDIA AI Enterprise, so this is the OSS stack, not NIM.
+The owner will not pay for NVIDIA AI Enterprise. Anything built locally is therefore the OSS
+stack; the two features that stay hosted use the same public endpoints they use today.
 
 ---
 
@@ -105,8 +120,9 @@ places onto one box. Oracle stays alive in a reduced role.
   │   Express API :3000 · Mongo · MCP :8080                  │
   │   tonomitosql :8000 + Postgres/RDKit                     │
   │   RabbitMQ · ADMET worker · GROMACS · glioblastoma        │
-  │   MSA (MMseqs2) · OpenFold3/Boltz-2                      │
-  │   DiffDock · AutoDock-GPU · Vina · SDF converter         │
+  │   DiffDock · AutoDock-GPU · Vina  ← THE POINT OF THE BOX │
+  │   SDF converter                                          │
+  │   (folding + molecule gen stay on NVIDIA NIM, not here)  │
   └──────────────────────────────────────────────────────────┘
                              |  backup target only
                              v
@@ -206,7 +222,9 @@ The owner asked for this to be fully self-reliant, "mongo and asinex too". Hones
   *better* on this box: see the arm64 note in §6.
 - **SMILES→SDF conversion** — trivial RDKit call; the only reason it lives on a foreign
   VPS is history. Reimplement as a route in the tonomitosql service or a tiny sidecar.
-- **All folding, docking, MD, ADMET, and MSA compute** — that is the point of the box.
+- **Docking compute** (AutoDock-GPU, Vina, DiffDock) — that is the point of the box.
+- **MD, ADMET, glioblastoma** — come along and get much faster, but as a bonus. Not worth
+  spending on. Folding and molecule generation deliberately do **not** move (BOX-SPEC §1).
 
 ### The Asinex question — mostly yes, with one honest exception
 
@@ -217,7 +235,7 @@ There are **four** distinct Asinex dependencies, and they are not equivalent:
 | Catalog browse/search | `ASINEX_API_BASE` | **Yes.** Mirror the catalog into the local Postgres+RDKit cartridge. Exact/substructure/similarity are already implemented in tonomitosql. |
 | Stock/eShop `/api/Shop` | `ASINEX_STOCK_API_URL` | **Partly.** The *pricing* table is already reverse-engineered (`docs/ASINEX-ESHOP-REVERSE-ENGINEERING.md` §1) and a local mirror already exists in the Mongo `mol_price` collection. **Live milligram stock levels are Asinex's own inventory and cannot be computed here** — a mirror is a snapshot that goes stale. |
 | Docking `/docking` | `ASINEX_DOCKING_API_URL` | **Yes.** Replace with local AutoDock-GPU / Vina. |
-| DiffDock | `DIFFDOCK_API_URL` | **Yes.** Replace with local DiffDock on a 48 GB card. |
+| DiffDock | `DIFFDOCK_API_URL` | **Yes.** Replace with local DiffDock. VRAM is not the constraint — see BOX-SPEC §2. |
 
 So: **three of the four Asinex dependencies disappear.** The fourth (real-time stock)
 stays a vendor call by nature — you can mirror the catalog and the price table, but you
@@ -229,8 +247,9 @@ overridable**, stored on the company record as `ligandServiceConfig`. See §6.
 
 ### Cannot be self-hosted, and does not move
 
-- **NVIDIA hosted endpoints** (`health.api.nvidia.com` MolMIM + OpenFold3) — these are a
-  *replace with OSS* decision, not a migration. Until the OSS stack works, they stay.
+- **NVIDIA hosted endpoints** (`health.api.nvidia.com` MolMIM + OpenFold3) — **decided
+  2026-07-28: they stay, permanently for now.** Not "until the OSS stack works". NVIDIA runs
+  these on datacenter GPUs we will not beat per job. BOX-SPEC §1.
 - **`files.rcsb.org`** (PDB and ideal-ligand SDF fetches, used by the DiffDock route and
   `diff_dock.sh`) and **PubChem / NCI CACTUS** (client-side name→structure lookups). These
   are public reference data. A local PDB mirror is possible later; not worth it now.
@@ -243,34 +262,40 @@ overridable**, stored on the company record as `ligandServiceConfig`. See §6.
 Everything that can use CUDA should — but three of the heaviest pieces are not GPU work at
 all, and pretending otherwise is how the box ends up idle.
 
+> **Scope changed 2026-07-28 — see [BOX-SPEC.md](./BOX-SPEC.md).** Folding and molecule
+> generation stay on hosted NIM, so the OpenFold3/MSA rows below no longer describe the
+> plan. They are kept because the *reasoning* still stands and is what the decision rests on,
+> and because BOX-SPEC recommends 32 GB cards precisely to keep that decision reversible.
+
 Blackwell is **sm_120**. That means CUDA **≥ 12.8** and PyTorch **cu128** wheels
 everywhere. flash-attn must be built with `TORCH_CUDA_ARCH_LIST="12.0"`, or use
 flash-attn 4.
 
 | Workload | GPU? | What to do |
 |---|---|---|
-| OpenFold3 / Boltz-2 inference | **Yes** | cu128 torch, one model per card. 48 GB clears the ~32 GB floor; **MIG stays off** (2×24 GB is below that floor) |
-| DiffDock | **Yes** | cu128 torch |
-| AutoDock-GPU | **Yes** | build for sm_120; this is the throughput workhorse for ligand screens |
+| DiffDock | **Yes** | cu128 torch. Bandwidth-sensitive (e3nn tensor products), not purely core-count-sensitive — see BOX-SPEC §2 |
+| AutoDock-GPU | **Yes** | build for sm_120. **The throughput workhorse, and the reason the box is being bought** |
+| ~~OpenFold3 / Boltz-2 inference~~ | n/a | **Stays on NIM.** Would have needed cu128 torch, one model per card, ~32 GB floor, MIG off |
 | GROMACS | **Yes** | current image is the Ubuntu distro package = **CPU only**. Rebuild from source with `-DGMX_GPU=CUDA`; do not ship the apt build |
 | ADMET-AI (chemprop) | Yes, marginal | models are tiny, GPU barely helps — but install the **cu128 torch wheel BEFORE `admet-ai`**, see §6 |
-| **MSA generation (MMseqs2 / jackhmmer)** | **No — and this is the bottleneck** | pure CPU + memory bandwidth. ~⅔ of every job's wall clock. The cards are idle ~65–75 % of a job |
-| AutoDock Vina (classic) | No | CPU, embarrassingly parallel across 64 cores |
+| ~~MSA generation (MMseqs2 / jackhmmer)~~ | n/a | **Not built.** Was the bottleneck — pure CPU + memory bandwidth, ~⅔ of job wall clock. NVIDIA keeps doing it inside the hosted call |
+| AutoDock Vina (classic) | No | CPU, embarrassingly parallel across 64 cores. **A first-class workload, not an afterthought** — this is why core count still matters |
 | Tanimoto / RDKit cartridge search | No | CPU + RAM-resident index; no CUDA path exists |
 | Glioblastoma predictor | No | scikit-learn RandomForest. CPU |
 | Express API, Mongo, Postgres, RabbitMQ | No | — |
 
-Two consequences to keep in view:
+Two consequences that **no longer apply**, kept because they are the argument that removed
+folding from the build:
 
 - **Job shape.** ~800-token protein+ligand jobs on four memory channels: MSA ≈ 5.5 min,
   templates ≈ 1 min, inference 2–5 min, I/O ≈ 1 min → **≈ 8.5 min/job**, ~18–20 jobs/hour
-  with two cards. Eight channels would have been ~7.2 min; that option was not bought.
-- **Scheduling.** Because MSA is CPU-bound and inference is GPU-bound, the two should be
-  pipelined, not serialised — run MSA for job *n+1* while job *n* is on a card. Otherwise
-  both cards sit idle two thirds of the time. This is a real piece of work, not a config
-  flag. Queue it in RabbitMQ with separate CPU-stage and GPU-stage consumers.
+  with two cards. Eight channels would have been ~7.2 min; that option was not bought — and
+  since MSA is not being built, the eight-channel case is now moot. See BOX-SPEC §3.
+- **Scheduling.** MSA being CPU-bound and inference GPU-bound meant the two had to be
+  pipelined through RabbitMQ rather than serialised, or both cards would idle two thirds of
+  the time. That whole piece of work is removed with the MSA.
 
-### Will local folding actually be faster than NVIDIA's hosted NIM?
+### Will local folding actually be faster than NVIDIA's hosted NIM? — **answered: no, so it stays hosted**
 
 Worth answering directly, because it is the one place where moving in-house may **cost**
 speed rather than gain it, and the answer changes depending on how the machine is used.
@@ -330,8 +355,13 @@ Treat the second column as the case to *verify* in Phase 4.1, alongside the cold
 same rule as every other timing in this document.
 
 Once MSAs are cached, a screening run is inference-only, both cards saturated, no rate limit —
-and local wins outright. **Build the MSA cache in Phase 4; it is not an optimisation to defer,
-it is what makes the machine pay for itself.**
+and local wins outright.
+
+**Decision taken 2026-07-28: not now.** The cache argument is the strongest case for local
+folding, but it rests on an untested assumption, and building it means building the entire MSA
+pipeline and downloading ~900 GB of reference databases first. Weighed against a hosted
+endpoint that already works, folding stays on NIM. BOX-SPEC §2 recommends 32 GB cards so this
+can be revisited without buying hardware again.
 
 ### Everything that was *not* on NIM gets dramatically faster
 
@@ -362,6 +392,12 @@ not four.
 ## 6. Storage: what goes on which medium
 
 Three devices, no RAID, no redundancy. Assign by access pattern, not by size.
+
+> **Scope changed 2026-07-28 — see [BOX-SPEC.md](./BOX-SPEC.md) §4.** `/srv/refdb` is
+> **dropped**: no MSA means no ColabFold databases. That frees ~900 GB **on the 4 TB NVMe**,
+> not a whole drive — `refdb`, `scratch` and `db` all shared that one device. Keep the 4 TB;
+> the Asinex catalog mirror with RDKit fingerprint GiST indexes and GROMACS trajectories will
+> use it. Every `refdb` row and caution below is therefore historical.
 
 | Mount | Device | Contents | Why here |
 |---|---|---|---|
@@ -408,8 +444,12 @@ is destructive; the Oracle stack keeps running throughout.**
 4. Inventory the persisted per-company overrides:
    `db.companies.find({}, {companyId:1, name:1, ligandServiceConfig:1})`. Every non-default
    URL there is a stale pointer that survives the move.
-5. Prepare, don't apply: an amd64 build of each image, a CUDA 12.8 base for the GPU
-   services, and the ColabFold DB download list.
+5. Prepare, don't apply: an amd64 build of each image and a CUDA 12.8 base for the GPU
+   services. (The ColabFold DB download list is no longer needed — see BOX-SPEC §1.)
+6. **Settle the hardware re-quote** — [BOX-SPEC.md](./BOX-SPEC.md). Blocks the order, which
+   blocks everything after Phase 0.
+7. **Find out what is actually on 83 and which database is production.** BOX-SPEC §6 — this
+   determines whether step 2's Oracle dumps are the data that matters or a red herring.
 
 ### Phase 1 — box arrives, base platform
 
@@ -447,19 +487,22 @@ RabbitMQ → ADMET worker → GROMACS (CUDA rebuild) → glioblastoma. Each gets
 and each is verified end-to-end from the dashboard, since none of these paths has ever run
 in production.
 
-### Phase 4 — build Pile 3 (the science stack)
+### Phase 4 — build Pile 3 (docking)
 
-1. ColabFold databases onto `/srv/refdb`; benchmark a real MSA and record the actual
-   minutes — every throughput number in the purchase case is an estimate.
-2. OSS OpenFold3 and/or Boltz-2 behind an internal API matching the shape
-   `/api/openfold3/predict` already returns, so the client does not change.
-3. AutoDock-GPU + Vina; then DiffDock. Repoint `dockingApiUrl` / `diffdockApiUrl`.
-4. Pipeline the CPU (MSA) and GPU (inference) stages through RabbitMQ per §5.
-5. Decide the MolMIM replacement — **open.** MolMIM is BioNeMo/NIM and NVIDIA AI
-   Enterprise is off the table, so `/api/generate-molecules` needs a different generator
-   (REINVENT4 and similar are the usual OSS answer). Until then this one route keeps
-   calling NVIDIA's hosted endpoint.
-6. Mirror the Asinex catalog into Postgres per §4.
+Rewritten 2026-07-28. Pile 3 is now **only docking** — see [BOX-SPEC.md](./BOX-SPEC.md) §1.
+
+1. **AutoDock-GPU**, built for sm_120. Benchmark a real ligand screen and record actual
+   throughput per card — every number in the purchase case is an estimate.
+2. **AutoDock Vina** (classic, CPU) across the 64 cores, as the reference/fallback path.
+3. **DiffDock** locally, cu128 torch. Repoint `dockingApiUrl` / `diffdockApiUrl` off the
+   Asinex-hosted URL. Resolve `server/diff_dock.sh` — make it real or delete it.
+4. Queue the screens through RabbitMQ; jobs are independent, so this is fan-out, not the
+   two-stage CPU/GPU pipeline the MSA would have needed.
+5. Mirror the Asinex catalog into Postgres per §4 — this is what the screens run against.
+
+**Not in Phase 4 any more:** ColabFold databases, OSS OpenFold3/Boltz-2, the MSA pipeline,
+and the MolMIM replacement. `/api/openfold3/predict` and `/api/generate-molecules` keep
+calling `health.api.nvidia.com` and need no work at all.
 
 ### Phase 5 — decommission review
 
@@ -536,15 +579,23 @@ it — but do not touch anything else on that machine.
 
 ## 9. Still to decide (all owner calls)
 
-1. **Public HTTPS ingress for the box** (§3-B) — blocks Stripe webhooks and Claude for Life
+1. **The hardware re-quote** — [BOX-SPEC.md](./BOX-SPEC.md). Blocks the order.
+2. **What is on 83, and what data is actually production.** The owner states the Oracle user
+   data does not matter and only 83's does — which contradicts Pile 1, where Mongo moves off
+   Oracle *with a restore*. Either 83 proxies to Oracle, or 83 has an uninventoried backend
+   and database. **Phase 0 depends on the answer.** See BOX-SPEC §6.
+3. **Public HTTPS ingress for the box** (§3-B) — blocks Stripe webhooks and Claude for Life
    Sciences. Caddy + a DNS name on the box recommended; do not plan on touching nginx on 83.
-2. **What replaces MolMIM** for `/api/generate-molecules` (§7 Phase 4.5).
-3. **Offsite backup target** (§6) — not Oracle, not the 8 TB disk in the same chassis.
-4. **Does the Asinex live-stock call stay?** (§4) — recommended yes, as an at-order-time
+4. **Offsite backup target** (§6) — not Oracle, not the 8 TB disk in the same chassis.
+5. **Does the Asinex live-stock call stay?** (§4) — recommended yes, as an at-order-time
    check only, with catalog and price served locally.
 
 Settled, recorded here so they are not re-litigated:
 
+- **Folding and molecule generation stay on NVIDIA's hosted NIM** (2026-07-28). The box is
+  for **docking**, the one capability that cannot be bought from anyone. Everything else that
+  gets faster here does so incidentally and gets no budget spent on it. BOX-SPEC §1.
+- **MolMIM needs no replacement** — it stays hosted. Was open item 2; now closed by the above.
 - **Frontend stays on 83** at `app.pyxis-discovery.com` (§3). The box is backend only.
 - **Oracle is not decommissioned** (§8) — it keeps the CLIProxyAPI gateway and becomes the
   offsite dump target.
