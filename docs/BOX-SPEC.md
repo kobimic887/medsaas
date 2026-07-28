@@ -233,8 +233,8 @@ warranty turns any drive failure into weeks of downtime; a spare turns it into a
 |---|---|---|
 | 1-click docking `services.asinex.com:8000` | `dockingApiUrl` | **Yes** — AutoDock-GPU locally |
 | DiffDock `services.asinex.com:58000` | `diffdockApiUrl` | **Yes** — OSS DiffDock locally |
-| Catalog + structure search `dev.asinex.com:58181` | `catalogApiBase` | Not now. Postgres + RDKit could, but it needs the Asinex compound file — a licensing question, not a hardware one |
-| Stock & availability `stock.asinex.com:5443` | `stockApiUrl` | **Cannot be.** No machine computes whether Asinex has 5 mg on a shelf. Keep calling them, negotiate a feed, or drop the feature — owner's call, "when needed" |
+| Catalog + structure search `dev.asinex.com:58181` | `catalogApiBase` | Not now, but **temporary**. Postgres + RDKit could do it; it needs the Asinex compound file — a licensing question, not a hardware one |
+| Stock & availability `stock.asinex.com:5443` | `stockApiUrl` | Not by this machine — no computer determines whether Asinex has 5 mg on a shelf. **Also temporary**: to be moved later by other means (a data feed, or a different supplier). Buyer has accepted the interim |
 
 Pricing is already half-local: the `mol_price` collection is imported from xlsx
 (`import:mol-price`, served at `server/index.js:2316` and `:5649`). What is genuinely
@@ -242,14 +242,20 @@ missing without Asinex is **live availability**, not price.
 
 ---
 
-## 6. Still open, and it blocks Phase 0
+## 6. Answered — 83's Mongo is production
 
-**The Oracle-versus-83 data question.** The owner states the user data on Oracle does not
-matter and only the data on 83 does. That contradicts Pile 1 in
-[COMPUTE-BOX-MIGRATION.md](./COMPUTE-BOX-MIGRATION.md), which moves Mongo off Oracle *with a
-data restore*. Either 83 proxies to Oracle (and Oracle's Mongo is production after all), or
-**83 has its own backend and database that has never been inventoried**.
+Earlier versions of this document flagged the Oracle-versus-83 data question as blocking.
+**It is closed.** 83 has its own MongoDB, that is the real database, and the users are in it.
+Oracle was a side project that happened to run a full copy of the stack; its data is
+discarded, not merged, and the machine loses all connection to this project.
 
-This never blocked the hardware. It does block the migration sequence, and it turns "what
-answers the production API on 83" from a nice-to-know into the thing Phase 0 depends on.
-Answer it on that machine, not from here.
+What remains is an inventory task, not a question: **nobody has looked inside 83's Mongo** —
+collections, document counts, whether auth is on, how it is reached, whether the schema still
+matches what `server/index.js` expects. That is Phase 0 in
+[COMPUTE-BOX-MIGRATION.md](./COMPUTE-BOX-MIGRATION.md), and it is work on that machine rather
+than a code question.
+
+**Consequence worth naming here, because it is a hardware-adjacent risk:** with Oracle gone
+and 83 reduced to a static frontend, every service and every database in this project ends up
+in **one chassis**, on pick-up warranty, with no offsite backup. The RAID 1 mirror and the
+second GPU cover component failure. Nothing covers the chassis.

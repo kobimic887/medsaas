@@ -43,19 +43,25 @@ pile is actually a migration.
 
 ### Pile 1 — running today, changes host (a real move)
 
+> **Corrected 2026-07-28.** Oracle was a **side project, never production**. The production
+> database is **83's Mongo** — the users are there. Oracle's copies are discarded, not
+> migrated, and Oracle leaves the project (§7 Phase 5). Rows below say which is which.
+
 | Thing | Runs today on | Port | Moves to box as |
 |---|---|---|---|
-| Express API (`server/index.js`) + baked-in frontend | Oracle VPS `medsaas-app-1` | 3000 | API only (see §3) |
-| MongoDB 7 (`--auth`) | Oracle VPS `medsaas-mongo-1` | internal 27017 | same, plus data restore |
-| ChemBench MCP server (`services/mcp-server`) | Oracle VPS `medsaas-mcp-server-1` | 8080 | same, needs public HTTPS |
-| tonomitosql API (Tanimoto/RDKit search) | Oracle VPS `tonomitosql-api-1` | 8000 | same |
-| Postgres + RDKit cartridge (`informaticsmatters/rdkit-cartridge-debian:Release_2024_09_3`) | Oracle VPS `tonomitosql-db-1` | internal 5432 | same, plus `pgdata` restore |
+| **The production API** | **83** — never inventoried, see §3 | — | replaced by the box's Express API |
+| **MongoDB — the real one** | **83** | — | **moves, with a data restore.** Contents unknown; Phase 0 inventories it |
+| Express API + baked-in frontend | Oracle `medsaas-app-1` | 3000 | **nothing — deleted.** Defunct non-prod copy |
+| MongoDB 7 (`--auth`) | Oracle `medsaas-mongo-1` | internal 27017 | **nothing — data discarded.** Side project |
+| ChemBench MCP server (`services/mcp-server`) | Oracle `medsaas-mcp-server-1` | 8080 | rebuilt on the box, needs public HTTPS |
+| tonomitosql API (Tanimoto/RDKit search) | Oracle `tonomitosql-api-1` | 8000 | rebuilt on the box |
+| Postgres + RDKit cartridge (`informaticsmatters/rdkit-cartridge-debian:Release_2024_09_3`) | Oracle `tonomitosql-db-1` | internal 5432 | rebuilt. **Probably a non-prod index** — rebuild from source rather than restoring, but dump it before decommissioning |
 | SMILES→SDF converter (`/convertSTR`) | **the 83 box** `83.229.87.94:8001` | 8001 | rebuild on box (see §6) |
 | `mol_price` data + its importer | Mongo collection; loaded by `npm --prefix server run import:mol-price -- <mol_price.xlsx>` | — | rides along in `mongodump`, but **the xlsx source is not in the repo** — find out where it lives before it is needed again |
 
-### Pile 2 — code exists in this repo, deployed nowhere (first-time deployment)
+### Pile 2 — code exists in this repo, no live deployment
 
-Oracle runs exactly five containers. None of these is among them.
+Oracle runs exactly five containers. None of these is among them, and none is on 83 either.
 
 | Thing | Source | Notes |
 |---|---|---|
@@ -64,8 +70,14 @@ Oracle runs exactly five containers. None of these is among them.
 | GROMACS API | `services/gromacs-api/` | Ubuntu 22.04 + distro `gromacs`, **CPU-only build today** |
 | Glioblastoma predictor | `services/glioblastoma-predictor/` | Flask + scikit-learn RandomForest, CPU-only by nature |
 
-So the ADMET, GROMACS and glioblastoma features in the dashboard have never had a live
-backend. The box is where they get one for the first time.
+So the ADMET, GROMACS and glioblastoma features in the dashboard have no live backend. The
+box is where they get a supported one.
+
+**Correction 2026-07-28: "never deployed" was wrong.** ADMET and GROMACS *did* run somewhere
+at some point — possibly on the owner's PC — but no record of that deployment survives: no
+compose file, no host, no logs. **Go looking for it before rebuilding from scratch**
+(Phase 0, step 11). A working configuration is worth more than a clean-room rebuild,
+especially the GROMACS CUDA build.
 
 ### Pile 3 — does not exist anywhere yet (net-new build)
 
@@ -107,10 +119,10 @@ PubChem, and `pyxis-discovery.com`. All are already present here.
 
 ---
 
-## 3. The three machines, after the move
+## 3. The two machines, after the move
 
-Frontend on 83 (unchanged, already there). Backend consolidates from **three** scattered
-places onto one box. Oracle stays alive in a reduced role.
+Frontend on 83 (unchanged, already there). Everything else consolidates onto one box.
+**Oracle leaves the project entirely** — see §7 Phase 5.
 
 ```
                           browser
@@ -118,31 +130,39 @@ places onto one box. Oracle stays alive in a reduced role.
                   app.pyxis-discovery.com
                              |
   ┌──────────────────────────────────────────────────────────┐
-  │ 83.229.87.94 — shared VPS, nginx + TLS      [UNCHANGED]  │
+  │ 83.229.87.94 — shared VPS, nginx + TLS                   │
   │   static frontend (client/dist)  ← stays here            │
   │   also: an unrelated project on :4000                    │
+  │   MongoDB ← PRODUCTION TODAY, MOVES to the box           │
   │   /convertSTR :8001  ← MOVES to the box, then stops      │
   └──────────────────────────────────────────────────────────┘
                              |  HTTPS, cross-origin, bearer token
                              v
   ┌──────────────────────────────────────────────────────────┐
-  │ AMSTERDAM BOX — the whole backend        [DOES NOT EXIST │
+  │ AMSTERDAM BOX — everything else          [DOES NOT EXIST │
   │                                           YET, see below]│
   │   Express API :3000 · Mongo · MCP :8080                  │
   │   tonomitosql :8000 + Postgres/RDKit                     │
   │   RabbitMQ · ADMET worker · GROMACS · glioblastoma        │
-  │   DiffDock · AutoDock-GPU · Vina  ← THE POINT OF THE BOX │
+  │   AutoDock-GPU · DiffDock · Vina  ← THE POINT OF THE BOX │
   │   SDF converter                                          │
-  │   (folding + molecule gen stay on NVIDIA NIM, not here)  │
+  │   local molecule generator (NVIDIA 429 failover, §7b)    │
+  │   (folding stays on NVIDIA NIM, not here)                │
   └──────────────────────────────────────────────────────────┘
-                             |  backup target only
-                             v
+
   ┌──────────────────────────────────────────────────────────┐
-  │ ORACLE VPS 151.145.91.17 — reduced, NOT switched off     │
-  │   keeps: CLIProxyAPI gateway, Codex token, offsite dumps │
-  │   loses: medsaas app, Mongo, MCP, tonomitosql            │
+  │ ORACLE VPS 151.145.91.17 — LEAVES THIS PROJECT           │
+  │   was a side project, never production                   │
+  │   loses: medsaas app, Mongo, MCP, tonomitosql, deploy.yml│
+  │   its data is DISCARDED, not migrated                    │
+  │   keeps (owner's own, unrelated): CLIProxyAPI, Crafty,   │
+  │   the Codex token. NOT a backup target.                  │
   └──────────────────────────────────────────────────────────┘
 ```
+
+**One chassis holds everything now.** With Oracle out and 83 down to a static frontend, every
+service and every database in this project lives on the box — pick-up warranty, no offsite
+backup. The mirror and the second GPU cover component failure; nothing covers the chassis.
 
 **The box does not exist yet.** As of 2026-07-28 it is **configured and priced but not
 ordered** — Coreto still has to confirm they will build and warranty two triple-slot RTX
@@ -469,20 +489,31 @@ Asinex is still answering.
    `db.companies.find({}, {companyId:1, name:1, ligandServiceConfig:1})`. These are the
    cutover switch (see Phase 4) and any non-default URL there is a stale pointer that
    survives the move.
-3. Decide **B** (public HTTPS ingress). Blocks Stripe webhooks and the MCP server.
-4. Take a full backup of what has to survive: `mongodump` of `medsaas-mongo-1` and a
-   `pg_dump` of `tonomitosql-db-1`. The Postgres dump *is* the Tanimoto index —
-   re-uploading CSVs is not equivalent, dataset ids and fingerprints would change.
-5. Write down every value in the box's future `.env`. It is not in git and never will be.
-6. Prepare, don't apply: an amd64 build of each image and a **CUDA 12.8** base for the GPU
+3. **Inventory 83's Mongo — this is the production database and nobody has looked at it.**
+   Collections and document counts, whether auth is on, how it is reached, and whether the
+   schema matches what `server/index.js` expects today (`users`, `companies`, `audit_logs`,
+   `billing_events`, `simulation_logs`, `projects`, `mol_price`). Then `mongodump` it.
+   **Do not dump Oracle's Mongo** — that is a side project and its data is discarded.
+4. Decide **B** (public HTTPS ingress). Blocks Stripe webhooks and the MCP server.
+5. Check whether Oracle's Tanimoto index is worth restoring at all. It is a side-project
+   database, so it is probably a non-prod index — in which case **rebuild it on the box from
+   the source data** rather than restoring a `pg_dump`. Take the dump anyway before
+   decommissioning; it costs nothing and it is the only copy.
+6. Write down every value in the box's future `.env`. It is not in git and never will be.
+7. **Add 429 handling and key pooling to the two NVIDIA routes** (§10). Independent of the
+   hardware, shippable whenever — and right now a burst of use takes folding and molecule
+   generation down with no retry at all.
+8. **Find out who is physically setting the box up**, and get the IPMI credentials to them.
+9. Prepare, don't apply: an amd64 build of each image and a **CUDA 12.8** base for the GPU
    services. Blackwell is **sm_120** — anything built for an older arch will not run.
-7. **Find out what is actually on 83 and which database is production.** BOX-SPEC §6 — this
-   determines whether step 4's Oracle dumps are the data that matters or a red herring.
-8. **Rotate `services/glioblastoma-predictor/chemtest_tech_private.key`.** It is a private
-   key committed to the repo and `COPY`'d into the image. Harmless while nothing runs;
-   a live exposure the moment Phase 3 deploys it. Treat the committed key as compromised —
-   it is in git history.
-9. Get Coreto's answer on two triple-slot RTX 5090s (BOX-SPEC §4). Blocks the order.
+10. **Rotate `services/glioblastoma-predictor/chemtest_tech_private.key`.** It is a private
+    key committed to the repo and `COPY`'d into the image. Harmless while nothing runs;
+    a live exposure the moment Phase 3 deploys it. Treat the committed key as compromised —
+    it is in git history.
+11. **Go looking for where ADMET and GROMACS were deployed once.** They ran somewhere,
+    possibly the owner's PC, with no surviving record. A working configuration — especially
+    a working GROMACS CUDA build — is worth more than a clean-room rebuild in Phase 3.
+12. Get Coreto's answer on two triple-slot RTX 5090s (BOX-SPEC §4). Blocks the order.
 
 ### Phase 1 — box arrives, base platform
 
@@ -509,7 +540,9 @@ the Science Park router are all still ours to do.
 
 ### Phase 2 — move Pile 1 (the actual migration)
 
-1. Bring up Mongo and Postgres on the box; restore the Phase 0 dumps; verify counts.
+1. Bring up Mongo on the box and **restore from 83's dump, not Oracle's** — 83 is production
+   and holds the users. Verify counts against the Phase 0 inventory. Bring up Postgres and
+   either restore the Tanimoto index or rebuild it from source data, per Phase 0 step 5.
 2. Build and start the app image for **amd64** (see §6 arch note) and the tonomitosql
    stack. Point `TANIMOTO_API_BASE` at the box's own service over the compose network.
    **Cut the MCP server over in the same step as the app**, not separately — it is hard-wired
@@ -598,9 +631,84 @@ Consequences worth being explicit about:
 - The same mechanism is a footgun: a company row with a stale hard-coded URL silently keeps
   using it. That is what Phase 0.2 inventories.
 
-### Phase 5 — decommission review
+### Phase 5 — take this project off Oracle
 
-Only after everything above is green. See §8 — Oracle does not simply get turned off.
+**Revised 2026-07-28: Oracle loses all connection to this project.** It was a side project,
+never production; its Mongo is not migrated and its data is discarded. Earlier versions of
+this document kept it as a reduced host and the offsite backup target — both are wrong now.
+
+The machine keeps running as the owner's own box. What leaves is medsaas. Five containers,
+in this order, **each only after its replacement has served real traffic for a while**:
+
+| Order | Container | Remove when |
+|---|---|---|
+| 1 | `medsaas-app-1` | Immediately — a defunct non-prod copy nobody uses |
+| 2 | `medsaas-mcp-server-1` | The box's MCP server is reachable and Claude for Life Sciences has connected |
+| 3 | `medsaas-mongo-1` | The box's Mongo is live. Data **not** migrated |
+| 4 | `tonomitosql-api-1` | `/tanimoto/v1/*` on the box has answered real queries |
+| 5 | `tonomitosql-db-1` | **Last.** Take a final `pg_dump` to `/srv/archive` first — the index is being rebuilt rather than restored, but it costs nothing and it is the only copy |
+
+Then remove the `deploy.yml` target, the deploy key, and any Actions secret pointing at
+`151.145.91.17` — and **drop the hardcoded Oracle fallback in `TANIMOTO_API_BASE`**
+(`server/index.js:80` defaults to `http://151.145.91.17:8000`; leave it and a missing env var
+silently routes Tanimoto to a decommissioned host).
+
+**Do not touch** CLIProxyAPI (`:8317`), the Codex OAuth token, or Crafty (`:8443`) — owner
+tooling, unrelated to Pyxis. Ops notes for that machine are in `~/projects/oracle`.
+
+**Sequencing rule: rebuild on the box, verify against real traffic, then remove from Oracle.**
+Nothing is deleted to make room — the box has 24 TB.
+
+**Consequence to state plainly:** with Oracle gone and 83 reduced to a static frontend, every
+service and every database in this project lives in **one chassis**, on pick-up warranty, with
+no offsite backup. The mirror and the second GPU cover component failure. Nothing covers the
+chassis. See open decision 4.
+
+---
+
+## 7b. The NVIDIA rate limit — the other single point of failure
+
+Added 2026-07-28. The box solves Moscow. It does nothing about the other external dependency,
+which is currently in worse shape than anyone had noticed.
+
+Folding and molecule generation each run on **one free-tier API key**
+(`NVIDIA_OPENFOLD_API_KEY` at `server/index.js:313`, `NVIDIA_MOLMIM_API_KEY` at `:260`), and
+the free tier exhausts fast under real use. **Neither route handles a 429 at all** — both do
+`error.response?.status || 500`, so NVIDIA's rate-limit response is relayed straight to the
+user with no retry, no backoff and no queue. One burst and two dashboard features stop
+working, with no signal beyond a red toast.
+
+**1. Handle the 429. Do this regardless of everything else, and before the box arrives.**
+Cheapest available fix, helps under every scenario. Both keys are already separate env vars,
+so widen each to a comma-separated pool, select the least-recently-429'd key, back off
+exponentially, and open a circuit breaker to the failover when the whole pool is cooling. It
+converts a hard failure into a wait. Roughly sixty lines; independent of the hardware.
+
+**2. Price paid access. Nobody has asked.** Free credits are a trial, not a product. If
+folding matters to Pyxis users the honest answer may be to pay for it. Note that NVIDIA AI
+Enterprise — refused earlier on cost — is the licence for **self-hosting NIM containers**,
+which is not obviously the same product as hosted API access. Ask before assuming.
+
+**Do not create extra accounts for extra free keys.** Against build.nvidia.com's terms, and
+the failure mode is every key revoked simultaneously at the worst possible moment.
+
+**3. Self-host as failover — the cheap half only.**
+
+| Feature | Self-host? | Reasoning |
+|---|---|---|
+| **Molecule generation** (MolMIM) | **Yes** | Small model, **no MSA**, fits one 5090 easily. REINVENT4 or similar behind the circuit breaker turns a 429 into "slightly different results" instead of an error |
+| **Protein folding** (OpenFold3) | **Not yet** | Needs an MSA — the single largest engineering item on this project, and the ~900 GB ColabFold database build that was deliberately cut from the box's scope |
+
+If folding ever comes in-house, scope it as **Boltz-2 with a remote MSA server**, not
+OpenFold3 with local databases; that is days rather than weeks. Two honest caveats: it swaps
+the NVIDIA dependency for the ColabFold MSA server (also free, also rate-limited, also
+somebody else's academic infrastructure), and **32 GB of VRAM sits right at OpenFold3's
+working-set floor** — itself an argument for Boltz-2 over OpenFold3 locally. **Verify the
+remote-MSA capability before planning against it**; it is recalled, not checked.
+
+The framing that decides it: §5 asked *"is NVIDIA faster than we can be?"* — yes, still. The
+question now is *"what happens when NVIDIA returns 429?"* A slow local run beats a hard
+failure, but only where standing it up is cheap. That is generation, not folding.
 
 ---
 
@@ -657,12 +765,13 @@ Rotate it, move it to a secret, and scrub it — flagged only, nothing removed.
 ever run, and it hardcodes 8G43/ZU6. Either it becomes the real local-DiffDock caller or it
 goes; do not leave it looking functional.
 
-**Oracle is not just medsaas.** Before anyone thinks about switching it off, note what else
-lives there: `cliproxyapi.service` (the CLIProxyAPI AI gateway on `:8317` that `claude-gpt`
-and T3 Code route through — **owner tooling, unrelated to Pyxis**), Crafty on `:8443`, and
-the Codex OAuth refresh token in `~/.cli-proxy-api/auths/`. Oracle is free-tier and always
-on; keeping it as the offsite backup target and the AI gateway is the sensible outcome, not
-decommissioning it.
+**Oracle is not just medsaas.** The medsaas and tonomitosql containers leave (§7 Phase 5), but
+the machine keeps running: `cliproxyapi.service` (the CLIProxyAPI AI gateway on `:8317` that
+`claude-gpt` and T3 Code route through — **owner tooling, unrelated to Pyxis**), Crafty on
+`:8443`, and the Codex OAuth refresh token in `~/.cli-proxy-api/auths/`. Remove this
+project's five containers and its deploy plumbing; leave everything else alone. **It is not
+the offsite backup target** — that idea assumed it stayed part of the project, and it has
+~24 GB free besides.
 
 **The 83 box is shared and rules apply.** It runs finbs production on `:4000` and its notes
 say: *"The VPS is shared. Do not modify nginx, TLS, DNS, firewall, or other apps."* The
@@ -675,21 +784,24 @@ it — but do not touch anything else on that machine.
 
 1. **Will Coreto build two triple-slot RTX 5090s in that chassis?** BOX-SPEC §4. The last
    technical unknown, and it blocks the order.
-2. **What is on 83, and what data is actually production.** The owner states the Oracle user
-   data does not matter and only 83's does — which contradicts Pile 1, where Mongo moves off
-   Oracle *with a restore*. Either 83 proxies to Oracle, or 83 has an uninventoried backend
-   and database. **Phase 0 depends on the answer.** See BOX-SPEC §6.
+2. **Who physically sets the box up.** Unboxing, power, two network cables, IPMI address and
+   credentials, and the Science Park router. The owner will not be there and nobody is
+   assigned. **This blocks everything.**
 3. **Public HTTPS ingress for the box** (§3-B) — blocks Stripe webhooks and Claude for Life
    Sciences. Caddy + a DNS name on the box recommended; do not plan on touching nginx on 83.
-4. **Offsite backup target** (§6) — not Oracle, not the 24 TB disk in the same chassis, and
-   not the RAID 1 mirror. More urgent than it was: pick-up warranty means restore-elsewhere
-   has to work from the offsite copy alone.
-5. **Does the Asinex catalog eventually move too?** It is on `dev.asinex.com:58181` — the
-   same Moscow, the same war, the same availability risk as the docking services being
-   replaced. Blocked on getting the compound file, which is a licensing question. "When
-   needed," per the owner.
-6. **Live stock** (`stock.asinex.com:5443`) — cannot be self-hosted at any price. Keep
-   calling Asinex, negotiate a data feed, or drop the feature.
+4. **Offsite backup target** (§6) — and it is **now unowned**. Oracle was the placeholder and
+   Oracle is leaving. Not the 24 TB in the same chassis, not the mirror. With everything on
+   one machine and pick-up warranty, restore-elsewhere has to work from the offsite copy
+   alone. **This is the largest open risk in the plan.**
+5. **NVIDIA paid API access — never priced.** Both hosted features run on a single free-tier
+   key with no 429 handling (§10). Ask what production access costs; it decides whether local
+   folding is ever a project. Note that NVIDIA AI Enterprise, refused earlier on cost, is the
+   licence for *self-hosting* NIM, which is not obviously the same product.
+6. **When do the catalog and stock move?** Both are Moscow, both carry the same war risk as
+   the docking services being replaced, and the owner has confirmed **both are temporary**.
+   The catalog is blocked on Asinex's compound file (licensing). Stock cannot be *computed*
+   here at any price and needs a different answer — a data feed, or a different supplier.
+   Buyer has accepted the interim.
 
 Settled, recorded here so they are not re-litigated:
 
@@ -707,6 +819,14 @@ Settled, recorded here so they are not re-litigated:
 - **The docking workload is interactive single-ligand, not batch** — verified in code, not
   assumed. It is why the GPU choice favoured per-card speed over aggregate core count.
 - **Frontend stays on 83** at `app.pyxis-discovery.com` (§3). The box is backend only.
-- **Oracle is not decommissioned** (§8) — it keeps the CLIProxyAPI gateway and becomes the
-  offsite dump target.
+- **83's Mongo is production and holds the users** (2026-07-28). This closes what was open
+  item 2 in every earlier version. Oracle's Mongo belongs to a side project, was never
+  production, and its data is **discarded, not merged**. Every restore step that pointed at
+  Oracle has been repointed at 83. What remains is an inventory task: nobody has looked at
+  83's Mongo — collections, counts, auth, reachability, schema drift.
+- **Oracle leaves this project entirely** (§7 Phase 5, §8). Not a reduced host, not a backup
+  target. The machine keeps running the owner's unrelated tooling.
 - **The box is the whole backend, not just compute** — Mongo included.
+- **ADMET and GROMACS ran somewhere once**, possibly the owner's PC, with no surviving record.
+  "Never deployed" was wrong. Look for the working configuration before rebuilding from
+  scratch — particularly the GROMACS CUDA build.
