@@ -33,12 +33,46 @@
 # version of this comment suggested WireGuard/Tailscale; that was never a decision and
 # four documents repeated it as if it were. It is rejected.
 
-x-gpu: &gpu
+# ⚠ There is deliberately no shared `x-gpu` anchor any more.
+#
+# It used to reserve `driver: nvidia, capabilities: [gpu]` with no `count` and no
+# `device_ids`, and every GPU service inherited that same reservation. Which card each
+# container then got was left to the Docker/nvidia-toolkit version: a reservation with
+# no device_ids can hand EVERY card to EVERY container, and when a `deploy` reservation
+# is present the per-service NVIDIA_VISIBLE_DEVICES may be overridden rather than
+# respected. So docking and diffdock could both land on card 0 while card 1 sat idle —
+# two jobs fighting for one GPU, at half the throughput you paid for, and nothing in the
+# logs saying so.
+#
+# Each service now names its card in the reservation itself, which is unambiguous on
+# every version. NVIDIA_VISIBLE_DEVICES is kept alongside as belt-and-braces; the two
+# agree per service.
+#
+#   card 0 → docking      (AutoDock-GPU, the latency-critical path)
+#   card 1 → diffdock     (long jobs, and it must not stall an interactive dock)
+#   card 1 → admet        (first-ever deploy, low volume; shares with diffdock)
+#   card 1 → gromacs      (MD runs are long and batch-like)
+#
+# Verify after `compose up` with:
+#   docker exec box-docking  nvidia-smi -L   # must list exactly one GPU
+#   docker exec box-diffdock nvidia-smi -L   # must list exactly one, and a different UUID
+
+x-gpu0: &gpu0
   deploy:
     resources:
       reservations:
         devices:
           - driver: nvidia
+            device_ids: ['0']
+            capabilities: [gpu]
+
+x-gpu1: &gpu1
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            device_ids: ['1']
             capabilities: [gpu]
 
 x-base: &base
@@ -58,7 +92,7 @@ services:
 
   # ── Docking. The reason the box exists. ────────────────────────────────────
   docking:
-    <<: [*base, *gpu]
+    <<: [*base, *gpu0]
     build: ./docking/service
     container_name: box-docking
     ports: ["${BIND_ADDR:-127.0.0.1}:8000:8000"]
@@ -89,7 +123,7 @@ services:
 
   # ── DiffDock. Asinex-hosted today; dies with them. ─────────────────────────
   diffdock:
-    <<: [*base, *gpu]
+    <<: [*base, *gpu1]
     build: ./diffdock
     container_name: box-diffdock
     ports: ["${BIND_ADDR:-127.0.0.1}:8002:8002"]
@@ -141,7 +175,7 @@ services:
   # No port: it is a worker. It polls a Mongo job collection — CloudAMQP is retired,
   # see docs/BOX-ARCHITECTURE.md §5.
   admet:
-    <<: [*base, *gpu]
+    <<: [*base, *gpu1]
     build: ../../services/admet
     container_name: box-admet
     environment:
@@ -155,7 +189,7 @@ services:
   # The repo copy IS the deployed code — verified 2026-07-29, the only delta was a
   # trailing space. Needs a -DGMX_GPU=CUDA rebuild to be worth moving.
   gromacs:
-    <<: [*base, *gpu]
+    <<: [*base, *gpu1]
     build: ../../services/gromacs-api
     container_name: box-gromacs
     ports: ["${BIND_ADDR:-127.0.0.1}:8006:8000"]
