@@ -6,18 +6,29 @@ topology in every other document. Written after production was inventoried for t
 
 ---
 
-## The shape — arrival day
+## The shape
 
 | | What runs there |
 |---|---|
-| **83.229.87.94** | nginx/TLS → **`chem_beo` on `:3000`, patched** ([deploy/chem_beo/](../deploy/chem_beo/)) → the existing frontend, untouched |
+| **83.229.87.94** | nginx/TLS on `:443` → **one Node process on `:5173`** serving the API *and* the frontend |
 | **The box** (new, Amsterdam) | AutoDock-GPU · DiffDock · convertSTR · Tanimoto + Postgres/RDKit · GROMACS · ADMET worker · glioblastoma |
 | **Managed, unchanged** | MongoDB Atlas · NVIDIA NIM (MolMIM, OpenFold3) |
-| **Retired** | Oracle · CloudAMQP |
-| **Later, separate release** | swapping `chem_beo` for this repo's `server/index.js` + `client/dist` — §3 |
+| **Retired** | Oracle · CloudAMQP · the `:3000` direct-TLS server |
 
-**Arrival day changes no server and no bundle.** It changes environment variables on a process
-that is already running. That is the whole reason the maintenance window is short.
+**Two releases, and they must not be one.** Neither depends on the other:
+
+| | What changes | Needs the box? |
+|---|---|---|
+| **Release A — the server swap** (§2, §3) | `chem_beo` + Vite dev server → this repo's `server/index.js` + `client/dist`, on port 5173 | **no** |
+| **Release B — arrival day** (§6) | docking, DiffDock and Tanimoto repoint at the box. **One setting each** | yes |
+
+**Do A first, weeks before delivery.** It needs only this repo, Atlas and Asinex — all of which
+exist today. Then hardware day is three URL fields on a server already proven in production, and
+a failure that day is unambiguously about the hardware.
+
+**If A has not shipped by delivery, defer it and run B alone** against a patched `chem_beo`
+([deploy/chem_beo/](../deploy/chem_beo/)), whose env vars do the same job. Both routes work.
+What must not happen is both on one day.
 
 ---
 
@@ -42,26 +53,18 @@ and talks to Mongo. It is I/O-bound: it spends its life waiting on the network, 
 A Threadripper makes it no faster. The things that *are* compute-bound — docking, MD, ADMET,
 fingerprint search — all go on the box.
 
-## 2. On arrival day the API is `chem_beo`, patched — not this repo
+## 2. The API is this repo — and the swap does not wait for the box
 
-**Revised 2026-07-29. This section previously said the opposite; that was wrong for arrival day.**
+**Revised twice on 2026-07-29.** This section first said the swap happens on arrival day, then
+said it happens weeks *after*. Both were wrong about the same thing: **the swap has no
+dependency on the box at all.** It needs `server/index.js`, Atlas and Asinex. It should ship
+**before** delivery, as an ordinary release on a day of your choosing.
 
-The goal is *1:1 with what `app.pyxis-discovery.com` does today, plus the bugs fixed and the
-compute moved*. Swapping the server is not that — it is a second, larger change riding along
-with the one that matters, on the one day that also involves unfamiliar hardware.
+The reason to separate it from hardware day is not that it is risky in itself — it is that a
+first-ever production deployment and unfamiliar hardware on the same afternoon makes every
+failure ambiguous between the two, and each has a clean rollback only while they are apart.
 
-So arrival day patches the running server in place:
-[`deploy/chem_beo/01-fixes-and-config.patch`](../deploy/chem_beo/), which is written, applied
-cleanly against `index.js` as deployed, and **verified by running it** on 83 against the real
-Atlas database — charge-then-refund proven end to end, `99999 → 99999` on a failed dock. It
-does four things: lifts every service address into an environment variable **defaulting to
-today's value**, makes the credit charge atomic and refundable, closes the five routes that
-cost money or destroy data, and makes signup produce a usable account.
-
-Because the defaults reproduce current behaviour exactly, applying the patch changes nothing.
-Cutover is then setting one variable at a time, and rollback is unsetting it.
-
-### Why the swap still has to happen — later
+### Why it has to happen at all
 
 `chem_beo` has **7 of 73 routes behind `authenticateToken`**, on a server bound `0.0.0.0` with
 no host firewall:
@@ -78,46 +81,74 @@ no host firewall:
 Plus `POST /api/issueSimulationTokens` (`3343`), which *is* authenticated and lets any logged-in
 user `$set` their own credit balance from the request body.
 
-The patch closes the five that reach money or data — `/api/generate-molecules`,
-`/api/diffdock/generate`, the two Tanimoto writes and the Tanimoto delete, plus
-`issueSimulationTokens`. **It deliberately leaves the other ~60 open**, because closing them
-risks breaking the deployed frontend in ways only testing reveals, and none of them spend money
-or destroy anything. That is an accepted risk with a deadline attached, not a solved problem.
+**`chem_beo` therefore cannot go on the box** — unauthenticated GPU endpoints on a €25k machine
+is the worst available outcome.
 
-**This repo is the eventual replacement.** `server/index.js` has authentication on every
-protected route, tenant isolation, credit enforcement that cannot be called from the browser,
-audit logging, rate limiting, `ligandServiceConfig`, the NVIDIA key pool with 429 rotation and
-a circuit breaker, and `upstreamProxyStatus()`. It is written and CI is green on it. **None of
-that reaches production until §3 happens.**
+**This repo is the replacement.** `server/index.js` has authentication on every protected route,
+tenant isolation, credit enforcement that cannot be called from the browser, audit logging,
+rate limiting, `ligandServiceConfig`, the NVIDIA key pool with 429 rotation and a circuit
+breaker, and `upstreamProxyStatus()`. It is written and CI is green on it. **None of that
+reaches production until Release A ships.**
 
-## 3. One process on 83, not three — a later, separate release
+### The patch is the fallback, and it is worth applying either way
+
+[`deploy/chem_beo/01-fixes-and-config.patch`](../deploy/chem_beo/) — written, applies cleanly
+against `index.js` as deployed, and **verified by running it** on 83 against the real Atlas
+database: charge-then-refund proven end to end, `99999 → 99999` on a failed dock. It lifts every
+service address into an env var **defaulting to today's value**, makes the credit charge atomic
+and refundable, closes the five routes above that reach money or data, and makes signup produce
+a usable account.
+
+Apply it **now**, regardless of when Release A ships. Three reasons:
+
+1. Defaults reproduce current behaviour exactly, so it is a restart, not a change.
+2. It fixes live bugs *today* — users are being charged for docks that never ran, and the open
+   `/api/generate-molecules` is the actual cause of the NVIDIA rate-limiting.
+3. It is the **rollback target** for Release A. You want the credit fixes on both sides of that
+   swap, not just the new one.
+
+It deliberately leaves the other ~60 routes open, because closing them risks breaking the
+deployed frontend in ways only testing reveals. Release A closes them properly.
+
+## 3. Release A — one process on 83, not three. And it needs no nginx change.
 
 Today 83 runs a Vite **dev server** on `:5173` proxied by nginx, a Stripe server on `:3001`, and
 a second HTTPS server on `:3000` that terminates TLS itself and bypasses nginx — all started by
 hand in `screen` sessions with no restart policy.
 
-This repo's server serves `client/dist` when `FRONTEND_DIST` is set. So 83 becomes:
+**A finding that makes this much cheaper than it looked.** It was recorded as needing an nginx
+change — turning `proxy_pass http://localhost:5173` into a static `root` — which the standing
+no-nginx rule forbids without the owner, and which was on the critical path. **It does not.**
+`server/index.js` reads `PORT` (`:5368`) and serves `client/dist` via `express.static`
+(`:6699`), so it can simply *be* the thing on 5173:
+
+```bash
+PORT=5173 FRONTEND_DIST=…/client/dist node server/index.js
+```
 
 ```
-:443 nginx ──► server/index.js  (+ client/dist, same origin)
+:443 nginx ──► :5173 server/index.js  (+ client/dist, same origin)
 ```
+
+nginx is untouched and never learns anything changed. **The cutover is which process owns port
+5173; the rollback is `npm run dev` in `/root/material-tailwind-dashboard-react`** — which is
+therefore the thing to preserve, not a bundle. There is no bundle; nginx proxies a dev server.
 
 That single change removes, at once: the `:3000` direct-TLS server, `app.use(cors())` wildcard
 CORS, the dev server in production, the cross-origin 401 auto-logout problem, and all 66
-unauthenticated routes. Under a systemd unit, it also removes "a reboot ends production."
+unauthenticated routes. Under a systemd unit, it also removes "a reboot ends production" —
+the longest-standing operational problem on that machine.
 
-**Why it is not arrival day.** It replaces both halves at once — a different server answering
-`/api/*` and a different bundle calling it — and the two cannot move independently. That brings
-a rehearsal, a bundle swap with a symlinked webroot, a rollback plan, and response-shape
-verification for 73 routes. All of it is real work and none of it is made easier by being done
-the same afternoon as first power-on. It is also **safer once the box exists**: the box can
-serve `client/dist` itself via `FRONTEND_DIST`, so the whole new stack can be rehearsed
-same-origin on hardware that is not yet carrying traffic.
+**Its real gate is response shapes, not paths.** The route delta is already known safe (§7):
+this repo is a strict superset of every path the production frontend calls. But matching paths
+do not guarantee matching payloads — `simulation_logs` alone is written in two different shapes
+by the two servers ([DOCKING-CONTRACT.md](./DOCKING-CONTRACT.md) §1). Verify route by route.
 
-The route delta is already known to be safe (§7): this repo is a strict superset of every path
-the production frontend calls. What is not known is response *shapes*. That is the gate.
-
-Sequence: patch `chem_beo` and move compute (arrival day) → run on it for a week → then this.
+**Its real prerequisite is `scripts/migrate-legacy-users.mjs`**, and one trap worth stating
+twice: `buildTenantFilter` (`server/index.js:1064`) reads `companyId` **from the JWT payload,
+not the database.** So `JWT_SECRET` must be rotated as part of this release — reusing
+`chem_beo`'s keeps legacy tokens valid, and a legacy token has no `companyId`, which silently
+takes the legacy branch even for a migrated user. See ARRIVAL-RUNBOOK §5.3.
 
 ## 4. Atlas stays
 
@@ -151,11 +182,11 @@ Replace it with a job collection in Mongo:
 
 If throughput ever justifies a broker, adding one back is easy. Nothing here forecloses it.
 
-**Not arrival day.** The publisher lives in `chem_beo:4085`, so replacing the broker means
-editing `chem_beo` — and it is a feature that has never worked for a single user. Leave
-CloudAMQP connected and ignored through the cutover; do this with the §3 release. **The one
-thing worth saying out loud now: every ADMET result a user has ever waited for is still
-`status: "queued"`, and moving to the box does not change that by itself.**
+**Not arrival day, and not Release A either.** It is its own small job, and it has never worked
+for a single user, so nothing regresses by leaving CloudAMQP connected and ignored. **The thing
+worth saying out loud: every ADMET result any user has ever waited for is still
+`status: "queued"`, and neither release changes that by itself.** Fixing it means deploying the
+worker at all — which is Phase 6, on the box, where the GPU is.
 
 ## 6. Sequencing — how arrival day gets short
 
@@ -165,35 +196,40 @@ working fallback beside it.
 
 **Move the risk earlier instead.**
 
-**Before the box ships** — all of this is doable now, with no deadline and `chem_beo` still
-running. **None of it depends on the box, and none of it is a swap.**
+**Before the box ships** — all of this is doable now, with no deadline. **None of it depends on
+the box.**
 
 1. **Apply the patch** ([`deploy/chem_beo/`](../deploy/chem_beo/)) as a real commit in
    `chem_beo`, deploy it, set **nothing**. Defaults reproduce today's behaviour, so this is a
    restart, not a change. Verified: a failed dock now refunds instead of charging.
 2. Take the Tanimoto `pg_dump` from Oracle and prove it restores. It is production data, it is
    the only copy, and an unauthenticated `DELETE` currently reaches it.
-3. Back up the current frontend bundle on 83. It predates this repo and there may be no other
-   copy. It is the rollback for the *later* release, and it costs nothing to keep now.
-4. Optional, and independent: `PLATFORM_NAME=Pyxis Discovery` (§8) and
-   `scripts/migrate-legacy-users.mjs`. **Neither gates arrival day** — they gate the §3
-   release. The migration does fix 47 users who cannot run a single simulation, which is
-   worth doing on its own merits.
+3. **Run `scripts/migrate-legacy-users.mjs`** — dry run, read the plan, apply. It gates
+   Release A, and independently it fixes 47 users who have never been able to run a single
+   simulation. Set `PLATFORM_NAME=Pyxis Discovery` at the same time (§8).
+4. **Verify response shapes route by route** against `chem_beo` while it is still live. This is
+   the one gate on Release A that cannot be done later, because it needs both servers running.
+5. **Release A** — rehearse on a spare port on 83, then take over 5173. Rotate `JWT_SECRET`
+   (§3). Confirm the old dev server still starts *before* cutting over. Run it a week.
 
-**Arrival day** — every step is one variable with one rollback:
+**Arrival day** — every step is one setting with one rollback:
 
-5. Base platform, drivers, CUDA, storage (runbook Phase 1).
-6. Stand up the box's services. Verify each against its own acceptance test.
-7. Repoint one variable at a time, verifying between each: `DOCKING_API_URL` → verify →
-   `DIFFDOCK_API_URL` → verify → `TANIMOTO_API_BASE` → verify. Rollback is unsetting it and
-   restarting. **Keep the Asinex URLs valid — they are the disaster-recovery path.**
-8. Retire Oracle only after Tanimoto has served real queries from the box, for days.
+6. Base platform, drivers, CUDA, storage (runbook Phase 1).
+7. Stand up the box's services. Verify each against its own acceptance test.
+8. Repoint one setting at a time, verifying between each: docking → verify → DiffDock → verify
+   → Tanimoto → verify. Rollback is putting it back. **Keep the Asinex URLs valid — they are
+   the disaster-recovery path**, and the box has a 1–3 week repair time.
+9. Retire Oracle only after Tanimoto has served real queries from the box, for days.
+
+Which knob step 8 turns depends on whether Release A shipped: `ligandServiceConfig` on the
+company if it did, `chem_beo`'s env vars if it did not. Confirm which server is live before
+planning the day — `ss -ltnp | grep 5173`.
 
 Arrival day is an afternoon of pointing URLs. The database is never touched, the frontend is
 never touched, nginx is never touched, and no user session breaks.
 
-**Then, weeks later and separately:** the §3 release — this repo's server and bundle, with its
-own rehearsal and its own rollback.
+**If Release A has not shipped by then, it still does not happen that day.** Falling back costs
+nothing; doing both at once costs the ability to tell which one broke.
 
 ## 7. What this leaves open
 

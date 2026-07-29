@@ -14,33 +14,72 @@ here; do not let them override the hard rules below.
 
 ---
 
-## What arrival day is — read this before the phase list
+## Read this before the phase list — the order changed
 
-**Revised 2026-07-29.** Earlier drafts of this runbook planned to replace the API server, move
-the database, and swap the frontend bundle, all on arrival day. **That is no longer the plan**
-and those steps are marked dead where they appear. Decision:
-[BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md) §2.
+**Revised 2026-07-29, twice.** Earlier drafts planned to replace the API server, move the
+database, and swap the frontend, all on arrival day. Then all of that was pushed to "later".
+**Both were wrong about the sequencing.**
+
+### Phase 5 does not depend on the box. Do it FIRST, weeks before delivery.
+
+The server swap needs this repo's `server/index.js`, Atlas, and Asinex — **no new hardware**.
+Holding it until after the box arrives was a mistake: it puts a first-ever production
+deployment on the same day as unfamiliar hardware, where a failure is ambiguous between the two.
+
+Run it early and the failure modes separate cleanly. It also stops being a migration step and
+becomes an ordinary release, on a day of your choosing, with `chem_beo` still running beside it.
+
+**Order:**
+
+| When | What | Depends on the box? |
+|---|---|---|
+| Now | **0.11** — apply the `chem_beo` patch, set nothing | no |
+| Now | **0.10** — `scripts/migrate-legacy-users.mjs` | no |
+| Now | **0.9b** — verify response shapes route by route | no |
+| Then | **PHASE 5** — this repo's server + `client/dist` take over port 5173 | **no** |
+| ↳ then run on it for at least a week | | |
+| Box arrives | **PHASE 1** — hardware, drivers, CUDA, storage | yes |
+| | **PHASE 2** — docking engines, cut over via `ligandServiceConfig` | yes |
+| | **PHASE 3** — ingress | yes |
+| | **PHASE 6** — convertSTR, ADMET, GROMACS, glioblastoma | yes |
+| | **PHASE 7** — Oracle decommission, weeks later | yes |
+| never | **PHASE 4** — database migration. **Dead. Atlas stays.** | — |
+
+**If Phase 5 has not shipped by the time the box arrives, do not do it that day.** Fall back to
+the compute-only plan below: patch `chem_beo`, repoint its env vars, swap the server later.
+Both routes work; what must not happen is doing both on one day.
+
+### Either way, hardware day itself moves compute only
 
 Arrival day moves **compute only**:
 
 | | Arrival day |
 |---|---|
-| API server | `chem_beo` on 83, patched — **unchanged, not replaced** |
-| Frontend | the existing bundle on 83 — **not rebuilt, not swapped** |
+| API server | **unchanged** — whichever one is already serving, `chem_beo` or this repo's |
+| Frontend | **unchanged** — not rebuilt, not swapped |
 | Database | MongoDB Atlas — **not touched, not dumped, not migrated** |
 | nginx / TLS / DNS / Stripe | **not touched** |
-| Docking, DiffDock, Tanimoto | **repointed at the box, one environment variable at a time** |
+| Docking, DiffDock, Tanimoto | **repointed at the box, one setting at a time** |
 
-**Run: Phase 1 → 2 → 3 → 6 → 7.** Phase 4 and Phase 5 are **dead for arrival day** and say so
-at their heads. Phase 2 is the migration; the rest is consolidation.
+**Run: Phase 1 → 2 → 3 → 6 → 7.** Phase 4 is dead permanently. Phase 5 either shipped weeks
+ago or is deferred — it is never same-day. Phase 2 is the migration; the rest is consolidation.
 
-**The prerequisite is `deploy/chem_beo/01-fixes-and-config.patch`**, applied and deployed
-*before* the box arrives. Without it every address in production is a hardcoded string literal
-and there is no cutover and no rollback — only source edits on a live server. Verify with
-Phase 2.5's `grep` before you plan anything.
+**How you cut docking over depends on which server is live by then:**
 
-**Rollback for the entire day is: unset the variable, restart `chem_beo`.** No deploy, no data
-loss, no user session broken. Nothing in Phases 1–3 or 6 is irreversible.
+| If 83 is running… | Cutover is | Rollback |
+|---|---|---|
+| `chem_beo`, patched | `DOCKING_API_URL` / `DIFFDOCK_API_URL` / `TANIMOTO_API_BASE` in its `.env`, restart | unset, restart |
+| this repo's server (Phase 5 shipped) | `ligandServiceConfig` on the company, from the admin UI | edit the fields back |
+
+Check before you plan anything: `ss -ltnp | grep 5173` and Phase 2.5's `grep`.
+
+**Either way the whole day's rollback is one setting and a restart.** No deploy, no data loss,
+no user session broken. Nothing in Phases 1–3 or 6 is irreversible.
+
+⚠ **One interaction if Phase 5 shipped:** `assertConfiguredUrlsArePublic` **rejects private
+ranges and CGNAT 100.64/10 (Tailscale)** for those four fields. `chem_beo` has no such guard.
+So a private/Tailscale address for the box works on the old server and is *refused* by the new
+one — decide the box's addressing with that in mind (Phase 3.1).
 
 ---
 
@@ -178,14 +217,12 @@ before starting Phase 1 — items 0.1 and 0.2 have deadlines set by someone else
 >   is dead. There is no dump, no restore, and no write-freeze window. The box's IP must be
 >   added to the Atlas allowlist before it can serve anything.
 > - **The frontend is a Vite dev server**, proxied by nginx, with no build and no bundle. So
->   §5.0's symlink swap has no "old bundle" to preserve, and serving a static build **requires
->   an nginx change on 83** — the one thing the standing rule forbids without the owner.
->   ✅ **Not a critical path any more**: arrival day does not touch the frontend at all. It
->   becomes a blocker only for the Phase 5 release, which has no deadline. Still raise it.
+>   §5.0's symlink swap has no "old bundle" to preserve. ✅ **And it needs no nginx change** —
+>   the "must become a static `root`" claim was wrong; run this repo's server *on* 5173 instead
+>   (§5.0, inventory §6.3). The dev server's directory is the rollback: never delete it.
 > - **0.10 FAILS: 49 of 50 users have no `companyId`**, and 47 have no `simulationTokens`.
->   ⚠ **This gates the Phase 5 release, not arrival day** — `chem_beo` has no tenant filter and
->   does not care. But the 47 users with no `simulationTokens` **cannot run a single
->   simulation** and never could, and that is worth fixing on its own:
+>   ⚠ **Gates Phase 5, not hardware day** — `chem_beo` has no tenant filter and does not care.
+>   But the 47 users **cannot run a single simulation** and never could, so fix it now:
 >   `scripts/migrate-legacy-users.mjs`.
 > - **Oracle serves production.** `chem_beo` proxies all eight `/tanimoto/*` routes to
 >   `151.145.91.17:8000`, hardcoded, and the Deep Similarity page calls them. **Phase 7 as
@@ -279,7 +316,7 @@ It does four things, all independent of the box:
 restart rather than a change — which is the point of doing it weeks early rather than under a
 maintenance window. Read `deploy/chem_beo/README.md` for what it deliberately does *not* fix.
 
-**0.9b Measure the frontend delta — ⚠ Phase 5 gate, not arrival day.** 83's bundle is
+**0.9b Measure the frontend delta — ⚠ Phase 5 gate. Do it while `chem_beo` is still live.** 83's bundle is
 **much older** than this repo's `client/`,
 which is a strict superset. Before launch day, establish what the old bundle calls that the new
 one does not, and vice versa — an endpoint the old frontend uses and this server no longer
@@ -288,7 +325,7 @@ this repo's routes. If the deployed bundle's source is unavailable, `grep` the m
 `/api/` string literals; it is crude and it is enough.
 
 **0.10 Check the user documents against what this repo's server expects — DONE, and it FAILS.
-⚠ Phase 5 gate, not arrival day.** 49 of 50 lack `companyId`; 47 lack `simulationTokens`; one
+⚠ Phase 5 gate; run it now regardless.** 49 of 50 lack `companyId`; 47 lack `simulationTokens`; one
 has it as a *string*, and `$inc` on a string is a MongoDB error, not a coercion. Fix with
 `scripts/migrate-legacy-users.mjs` (idempotent, dry-run by default). The 47-user credit failure
 is worth fixing now regardless — those accounts have never been able to run anything.
@@ -575,9 +612,10 @@ So:
    dataset (PRODUCTION-83-INVENTORY.md §8, row 3b) — which is why the dump should be taken now
    rather than on arrival day.
 3. **Do not remove either `tonomitosql` container until the box has answered the same queries
-   correctly**, and until whatever is serving `/tanimoto/*` has been repointed. Today that is
-   `chem_beo`, where the URL is a **string literal** — there is no config flip and no fast
-   rollback.
+   correctly**, and until whatever is serving `/tanimoto/*` has been repointed — `chem_beo`'s
+   `TANIMOTO_API_BASE` once the patch is applied, or `server/index.js:80`'s default if Phase 5
+   has shipped. Before the patch it is a **string literal** with no config flip and no fast
+   rollback, which is the single strongest reason to apply the patch early.
 
 **Rule 4 is unaffected.** It forbids restoring *Mongo* from Oracle, and that still stands —
 Oracle's Mongo is a genuine side-project copy. This is Postgres, a different database on the
@@ -589,27 +627,29 @@ because it degrades chemistry to SQL-side validation.
 
 ---
 
-## PHASE 5 — ⛔ NOT ARRIVAL DAY. Server swap, weeks later, as its own release.
+## PHASE 5 — the server swap. **Run this BEFORE the box arrives. Never on arrival day.**
 
-> **Read this before you execute one line of it.** Revised 2026-07-29.
+> **Revised 2026-07-29.** This phase was numbered 5 because the original plan put it after the
+> hardware. **It has no dependency on the box** — it needs this repo's server, Atlas and
+> Asinex, all of which exist now. So its number is a leftover, not a sequence.
 >
-> **Arrival day does not replace the API server and does not rebuild the frontend.** 83 keeps
-> running `chem_beo`, patched ([`deploy/chem_beo/`](../../deploy/chem_beo/)) — the same process,
-> the same bundle, the same origin, the same database. The cutover is environment variables,
-> and it already happened in **Phase 2**. Decision and reasoning:
-> [BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md) §2.
+> **Do it as its own release, weeks before delivery.** Then the box is three URL fields on a
+> server that has already proven itself in production, and a failure on hardware day is
+> unambiguously about the hardware.
 >
-> **If you are executing this runbook on arrival day: Phase 4 and Phase 5 are both dead. Go
-> from Phase 3 straight to Phase 6.** Phase 2 is the migration; 6 and 7 are consolidation.
+> **If it has not shipped by delivery, defer it.** Do not run Phase 5 and Phase 1–3 on one day:
+> a first-ever production deployment plus unfamiliar hardware makes every failure ambiguous, and
+> both have their own rollback only while they are separate. Falling back costs nothing — the
+> patched `chem_beo` cuts over by env var instead.
 >
-> Everything below is the plan for the **later** release that swaps `chem_beo` for this repo's
-> `server/index.js` + `client/dist`. It is kept because it is correct *for that release* and it
-> is the hardest part of the project to think through. It runs after the box has carried real
-> docking traffic for at least a week, under its own change window, with its own approval.
+> **Preconditions, all runnable today:**
 >
-> **Its preconditions, none of which gate arrival day:** `scripts/migrate-legacy-users.mjs`
-> applied (Phase 0.10 clean), response shapes verified route by route against `chem_beo`, and
-> the current 83 bundle backed up and proven readable.
+> | | Why |
+> |---|---|
+> | **0.11** — `chem_beo` patch applied | it is the rollback target; you want the credit fixes on *both* sides |
+> | **0.10** — `scripts/migrate-legacy-users.mjs` applied, 0 users without `companyId` | this server filters `simulationTokens: {$gt: 0}` and tenant-scopes every query. Without it, 47 users get 403 on everything and new results are written where the old server cannot find them |
+> | **0.9b** — response shapes verified route by route | matching paths ≠ matching payloads. This is the real gate — see §5.0 |
+> | `/root/material-tailwind-dashboard-react` **left intact** | it *is* the rollback. There is no bundle to preserve; the rollback is restarting that dev server |
 
 ### 5.0 The launch is two deployments, and they are one release
 
@@ -646,36 +686,57 @@ it as a release with a rehearsal and a rollback, not a `git pull`.
 
 #### What makes it survivable
 
-**The bundle carries the API address.** `VITE_API_BASE_URL` is baked in at *build* time. So
-the new bundle points at the new server and the old bundle points at `chem_beo`, as a property
-of the files themselves. That turns the whole cutover into **one atomic action — swapping which
-bundle 83 serves** — and the rollback into swapping it back. No config to coordinate, no
-window where the two halves disagree. Run the new server on a spare port so both are live at
-once; `chem_beo` is the rollback and it never stops.
+**Each half carries the other's address, so neither can drift.** `VITE_API_BASE_URL` is baked
+in at *build* time — the new bundle is same-origin `/api/*`, the old dev server's code points
+at `:3000`. Which API answers is a property of which frontend is being served, not of any
+runtime config. So there is no window where the two halves disagree.
 
-Use a symlinked webroot so the swap is atomic and reversible:
+⚠ **The symlinked-webroot plan that used to be here is wrong for this host, and so is the
+"back up the existing bundle" step. There is no bundle.** nginx does not serve files — it
+proxies:
 
-```bash
-# on 83 — file operations in the webroot only.
-# DO NOT touch nginx config, TLS, DNS, or the firewall. If the webroot is not
-# already a symlink, making it one is an nginx-adjacent change: ask the owner first.
-/var/www/pyxis/releases/2026-xx-xx-v2/     # new bundle, uploaded ahead of time
-/var/www/pyxis/releases/legacy/            # the CURRENT bundle, copied and kept
-/var/www/pyxis/current -> releases/legacy  # flip this, and only this
-
-ln -sfn /var/www/pyxis/releases/2026-xx-xx-v2 /var/www/pyxis/current   # cut over
-ln -sfn /var/www/pyxis/releases/legacy        /var/www/pyxis/current   # roll back
+```
+location /  →  proxy_pass http://localhost:5173   # a Vite DEV SERVER, not a webroot
 ```
 
-**Back up the existing bundle before anything else.** It is the rollback, it predates this
-repo, and there may be no other copy of it. Verify the backup is readable before proceeding.
+**The swap is therefore which process owns port 5173** — and this needs **no nginx change**,
+which matters because rule 2 forbids one:
 
-**Rehearse the whole thing on the box first.** The box can serve the frontend itself —
-`server/index.js` serves `client/dist` when `FRONTEND_DIST` is set, which is exactly what the
-root `Dockerfile` builds. So run the new frontend against the new backend, same-origin, on the
-box, pointed at a **copy** of the database, and exercise login, a dock, credits, and Stripe
-before 83 is touched at all. This is the only place a full rehearsal is possible without a
-vhost on 83, which the no-nginx rule forbids.
+```bash
+# CUT OVER — stop Vite, then:
+PORT=5173 FRONTEND_DIST=/path/to/client/dist node server/index.js
+
+# ROLL BACK — stop it, then, in /root/material-tailwind-dashboard-react:
+npm run dev
+```
+
+`server/index.js` reads `PORT` (`:5368`) and serves `client/dist` via `express.static`
+(`:6699`). nginx proxies to 5173 either way and never learns anything changed.
+
+**What to preserve instead of a bundle: `/root/material-tailwind-dashboard-react` itself.** It
+is the rollback, it is a **different codebase** from this repo's `client/` (Creative Tim
+template lineage, not an older version), and there may be no other copy. Do not move, clean,
+`git`-modify or delete it. Confirm `npm run dev` still starts it *before* you cut over — an
+untested rollback is not a rollback.
+
+**Bonus, and the reason to prefer this over any static-root variant:** the new frontend and the
+new API end up on **one origin behind nginx's TLS**. That retires the internet-facing `:3000`
+server with wildcard CORS and no firewall, and removes the cross-origin 401 auto-logout
+problem, in the same action.
+
+**Rehearse on 83 itself, on a spare port.** ⚠ Corrected 2026-07-29 — this used to say "rehearse
+on the box", which is impossible now that Phase 5 runs *before* delivery. It does not need the
+box: stand the whole stack (server + `client/dist`, same-origin) on an unused high port on 83,
+against the real Atlas, with production untouched.
+
+**This exact technique is already proven here** — it is how the `chem_beo` patch was verified
+(port 3999, real Atlas, rig deleted afterwards), and it caught two bugs that `node --check`
+passed. Follow the same discipline: an isolated directory, a port nothing else uses, and
+**delete the rig when done** — confirm every production port is still listening before you
+walk away.
+
+Exercise: login, a dock (one that succeeds and one that fails — check the credit is refunded),
+credit balance, a Stripe redirect, an invite email link, and a Deep Similarity search.
 
 #### There is no data window — ✅ corrected 2026-07-29
 
@@ -696,55 +757,104 @@ route **before** the flip, and treat any divergence as a stop.
 
 #### Sequence
 
-1. **0.9 and 0.10 clean.** If 0.10 is non-zero, **stop** — `chargeSimulationToken` filters
-   `simulationTokens: {$gt: 0}`, so users missing that field get 403 on every metered action,
-   and `buildTenantFilter` stops matching newly-written results. Run
-   `scripts/migrate-legacy-users.mjs`. **This gates only this release, not arrival day.**
-2. New server running and healthy on a spare port, against Atlas. **`chem_beo` still running
-   and untouched.** Same docking URLs as `chem_beo` — the box does not change here.
-3. Build `client/dist` with `VITE_API_BASE_URL` pointing at the new server. Rehearse.
-4. Verify response shapes route by route against `chem_beo`, especially `simulation_logs`.
-5. Copy the current 83 bundle to `releases/legacy`. **Verify it is readable.**
-6. Upload the new bundle to `releases/`. Do not flip yet.
-7. **Flip the symlink.** This is the cutover. Seconds, and no writes are frozen.
-8. Verify against production immediately: login, a dock, credit balance, a Stripe redirect,
-   invite email links. Watch the new server's logs live.
-9. Leave `chem_beo` **running but idle** for at least a week. It is the rollback and it costs
-   nothing to leave alone.
+**None of this needs the box.** Do it weeks before delivery.
 
-**Rollback:** flip the symlink back. The old bundle points at `chem_beo`, which never stopped
-and which is looking at the same database. The only thing needing reconciliation is
-`simulation_logs` documents written in the new shape during the window — which is why step 4
-happens before the flip and step 8 happens immediately, not the next morning.
+1. **0.10 clean.** If `db.users.countDocuments({companyId: {$exists: false}})` is non-zero,
+   **stop** — `chargeSimulationToken` filters `simulationTokens: {$gt: 0}`, so users missing
+   that field get 403 on every metered action, and `buildTenantFilter` stops matching
+   newly-written results. Run `scripts/migrate-legacy-users.mjs`: dry run, read the plan, then
+   `--apply --yes-i-have-a-backup`. It self-verifies and exits non-zero if it did not converge.
+2. **Confirm the rollback works before you need it.** Verify `npm run dev` starts
+   `/root/material-tailwind-dashboard-react`, and that the site is fine after. Ugly to discover
+   at step 7.
+3. Build `client/dist` with `VITE_API_BASE_URL` **unset or same-origin** — the new server serves
+   both halves, so there is no cross-origin call to configure. Set `PLATFORM_NAME=Pyxis
+   Discovery` (BOX-ARCHITECTURE §8) and the CORS allowlist while you are there.
+4. **Rehearse on 83 on a spare port**, against real Atlas, production untouched. Exercise the
+   list above. **Delete the rig; confirm all production ports still listen.**
+5. **Verify response shapes route by route against `chem_beo`** — this is the real gate, and
+   the only failure mode that survives everything else. `simulation_logs` first (§ above), then
+   every route the deployed frontend calls (0.9b).
+6. Keep the box out of it: point the new server at **Asinex**, exactly as `chem_beo` does.
+   Changing the engine and the server together is the thing this whole ordering exists to avoid.
+7. **Cut over: stop Vite, start the new server on 5173.** Seconds. No writes frozen, no nginx
+   touched, no database changed.
+8. Verify against production **immediately**, not the next morning: login, a dock that works,
+   a dock that fails (credit must come back), credit balance, a Stripe redirect, an invite
+   email link, Deep Similarity. Watch the logs live.
+9. Leave `chem_beo` **running but idle** on `:3000` for at least a week. It is the rollback and
+   it costs nothing.
 
-Retire `chem_beo` only after the new server has carried real traffic for a week, and only as a
-separate, deliberate change. Same reasoning as keeping the Asinex account alive as DR.
+**Rollback:** stop the new server, `npm run dev` the old frontend. It calls `chem_beo` on
+`:3000`, which never stopped and is looking at the same database. The only thing needing
+reconciliation is `simulation_logs` written in the new shape during the window — which is why
+step 5 happens before the cutover and step 8 happens immediately.
 
-### 5.1 Build
+Retire `chem_beo` and `:3000` only after the new server has carried real traffic for a week,
+and only as a separate, deliberate change. Same reasoning as keeping the Asinex account alive
+as DR. **Retiring `:3000` is itself a security fix** — internet-facing, wildcard CORS, no
+firewall.
 
-5.1 Build for **amd64**. Everything on Oracle was `aarch64`; every image is rebuilt.
+### 5.1 Running it on 83
 
-5.2 **Start the app and the MCP server together.** The MCP server is hard-wired to
-`MEDSAAS_API_BASE: http://app:3000` on the compose network — it follows the app or it breaks.
+5.1 **Run it on the host, not in Docker.** It has to bind port 5173 on 83, next to an unrelated
+production project (rule 2), and its only dependencies are Node and `client/dist`. A compose
+stack buys nothing here and adds a network layer between nginx and the process.
 
-5.3 The frontend on 83 is about to call a different origin. Set:
-- CORS allowlist — the frontend origin explicitly, **never `*`** (the API takes a bearer token)
-- `FRONTEND_URL`, `BASE_URL`, `PLATFORM_WEBSITE_URL` — these appear in invite emails, password
-  resets, and Stripe redirect URLs
-- `VITE_API_BASE_URL` for the 83 build — **build-time**, so it must be set wherever that
-  bundle is built
+Put it under **systemd**, not `screen`. Everything Pyxis on 83 is hand-started in foreground
+shells today, so **a reboot ends production until a human logs in.** A unit with
+`Restart=always` fixes the longest-standing operational problem on that machine, and this is
+the moment it costs nothing extra.
 
-5.4 **The 401 auto-logout invariant.** The client logs the user out on any 401. That path is
-now cross-origin. A CORS preflight failure or a proxy 401 must not read as "dead session".
-Reserve 401 for dead sessions only; authorisation is 403, validation 400, upstream 401 → 502.
-**The server side of this is already done** (`956f9d9`): `upstreamProxyStatus()` maps upstream
-401/403 to 502 and 429 to 503 across the NVIDIA and Tanimoto proxies. What remains is CORS
-and the proxy in front of the API — verify a preflight failure does not surface as a 401.
+5.2 **The MCP server is optional and separate.** It is hard-wired to
+`MEDSAAS_API_BASE: http://app:3000` on a compose network that will not exist. Point it at
+whatever address the API actually has, or leave it off — nothing in the product depends on it,
+and Claude Science compatibility is unverified (see "Still open", item 5).
 
-5.5 Set `ligandServiceConfig` on the company to the box's docking URLs — this repo's server
-reads it and does **not** read the `DOCKING_API_URL` env vars the patch added to `chem_beo`.
-Getting this wrong sends docking back to Moscow the moment the new server takes over. There is
-nothing stale to clean up: the single company has no such field today (0.3).
+5.3 Set, before starting:
+- `PLATFORM_NAME=Pyxis Discovery` — with `companyName` unset this is the *only* brand string
+  users see (BOX-ARCHITECTURE §8). Leave it and the product says "MedSaaS".
+- `FRONTEND_URL`, `BASE_URL`, `PLATFORM_WEBSITE_URL` — these go into invite emails, password
+  resets and Stripe redirect URLs. Wrong values are only discovered by a user.
+- `MONGODB_URI` (Atlas, database `test`), `JWT_SECRET` (≥32 chars), `STRIPE_SECRET_KEY`. The
+  server refuses to start without these three.
+
+⚠ **Use a NEW `JWT_SECRET`. Do not reuse `chem_beo`'s.** Reusing it looks kind — every logged-in
+user stays logged in through the cutover — and it is a trap. `buildTenantFilter`
+(`server/index.js:1064`) reads `companyId` from **the token payload, not the database**:
+
+```js
+if (user?.companyId) return { companyId: user.companyId };
+if (user?.username)  return { 'user.username': user.username };   // legacy fallback
+```
+
+A `chem_beo` token carries only `{username, iat, exp}`. So a reused secret means every existing
+session keeps presenting a token with **no `companyId`** — for up to `JWT_EXPIRES_IN` — and
+silently takes the legacy branch **even though the user migration fixed their database record.**
+That branch matches the old `simulation_logs` shape, not the one this server writes: the user
+still sees their old docks, never sees a new one, and the cache lookup misses, **so they are
+charged again for a dock they already paid for.**
+
+Rotating the secret invalidates every legacy token, forces one clean re-login, and every
+session after that carries `companyId`. One re-login is the cheap outcome here.
+- CORS allowlist: the frontend origin explicitly, **never `*`**. Same-origin makes this nearly
+  moot, which is a reason to prefer it.
+- `VITE_API_BASE_URL` — **leave unset.** Same-origin. It is build-time, so setting it wrongly
+  bakes a bad address into the bundle and needs a rebuild to fix.
+
+5.4 **The 401 auto-logout invariant.** The client logs the user out on any same-origin 401, so
+a 401 must mean "dead session" and nothing else — authorisation is 403, validation 400, upstream
+401 → 502. **The server side is done** (`956f9d9`): `upstreamProxyStatus()` maps upstream
+401/403 → 502 and 429 → 503 across the NVIDIA and Tanimoto proxies. Serving both halves on one
+origin removes the CORS-preflight-reads-as-401 failure entirely — the other reason to prefer it.
+
+5.5 **Docking stays on Asinex at this point.** Set `ligandServiceConfig` to the *current* Asinex
+URLs, or leave it unset so the defaults apply. Do not point it at the box here — that is
+Phase 2, after the hardware exists and after this server has proven itself.
+
+⚠ When Phase 2 does arrive: this server reads `ligandServiceConfig`, **not** the
+`DOCKING_API_URL` env vars the patch added to `chem_beo`. Setting the wrong one leaves docking
+in Moscow while everything looks like it worked.
 
 ---
 
@@ -857,8 +967,11 @@ machine. Ops notes live in `~/projects/oracle`, not this repo.
 - Any port on the box is reachable from off-box that you did not intend (1.4, 3.1)
 - `chemtest_tech_private.key` has not been rotated and you are about to deploy glioblastoma
 - Any instruction anywhere tells you to restore from Oracle's Mongo
-- **Any instruction leads you to migrate the database, rebuild the frontend, replace the API
-  server, or touch nginx/TLS/DNS/Stripe.** None of those is arrival-day work
+- **Any instruction leads you to migrate the database, replace the API server, or touch
+  nginx/TLS/DNS/Stripe on hardware day.** None of those is arrival-day work — Phase 5 ships
+  weeks earlier or not at all
+- **Phase 5 only:** `/root/material-tailwind-dashboard-react` will not start, or 0.10 is
+  non-zero. Both are rollback-or-correctness gates; neither is a puzzle to work around
 
 ## Rollback by phase
 
@@ -868,7 +981,7 @@ machine. Ops notes live in `~/projects/oracle`, not this repo.
 | 2 | Unset the variable in `chem_beo`'s `.env`, restart. Seconds. Asinex never stopped |
 | 3 | Stop Caddy on the box. Nothing on 83 changed |
 | 4 | **Dead phase — nothing to undo.** Atlas is untouched throughout |
-| 5 | **Not arrival day.** For that release: flip the webroot symlink back; `chem_beo` is still running against the same database |
+| 5 | Stop the new server, `npm run dev` the old frontend on 5173. `chem_beo` on `:3000` never stopped and shares the same database. **Never arrival day** |
 | 6 | Unset `SDF_CONVERTER_URL` etc. and restart. 83's copies are still up |
 | 7 | **None. This is why 7.0 exists.** |
 

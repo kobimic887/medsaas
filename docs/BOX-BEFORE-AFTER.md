@@ -93,16 +93,23 @@ to this project. Anything in an older document that restores from Oracle is wron
   browser ─── app.pyxis-discovery.com
                      │
       ┌──────────────┴───────────────────────────────────┐
-      │ 83.229.87.94 — UNCHANGED                         │
-      │   static frontend only                           │
-      │   /convertSTR retired once the box's copy works  │
-      └──────────────┬───────────────────────────────────┘
-                     │ HTTPS, cross-origin, bearer token
-      ┌──────────────┴───────────────────────────────────┐
+      │ 83.229.87.94 — nginx + TLS, unchanged            │
+      │   :5173  server/index.js + client/dist           │
+      │          ONE process, ONE origin, systemd        │
+      │   (:3000 chem_beo retired · :3001 retired)       │
+      └───────┬──────────────────────────────┬───────────┘
+              │ bearer token                 │
+              │                    ┌─────────┴───────────┐
+              │                    │ MONGODB ATLAS       │
+              │                    │  STAYS. Not on the  │
+              │                    │  box — the box has  │
+              │                    │  no offsite backup  │
+              │                    └─────────────────────┘
+      ┌───────┴──────────────────────────────────────────┐
       │ AMSTERDAM BOX — Science Park 408 Unit 1.05       │
-      │   Express API · Mongo · MCP server               │
+      │   COMPUTE ONLY — no API, no database             │
       │   Tanimoto + Postgres/RDKit                      │
-      │   RabbitMQ · ADMET · GROMACS · glioblastoma      │
+      │   ADMET · GROMACS · glioblastoma                 │
       │   ★ AutoDock-GPU  ★ DiffDock  ★ CPU Vina         │
       │   SMILES → SDF                                   │
       │   2× RTX 5090 · 32 cores · 128 GB · RAID 1       │
@@ -122,11 +129,19 @@ to this project. Anything in an older document that restores from Oracle is wron
                                         └────────────────────────────┘
 ```
 
-**Everything runs on one chassis.** With Oracle out and 83 reduced to a static frontend, the
-box is the only machine running anything. The mirror and the second GPU cover component
-failure; **nothing covers the chassis.** That makes the offsite backup question — still
-unanswered, and no longer able to be answered with "Oracle" — the largest open risk in the
-plan.
+⚠ **Corrected 2026-07-29.** This used to read *"Everything runs on one chassis… the box is the
+only machine running anything… the offsite backup question is the largest open risk."* That was
+true of the plan where the API and the database moved too. **They do not.** The API stays on 83
+and the database stays on Atlas, so:
+
+- **The box holds no user data, no credit balances and no billing records.** Losing it loses
+  docking, not the product. Atlas keeps its own backups.
+- **The one thing that lives only on the box is the Tanimoto Postgres index** — 2,951,975
+  molecules, restored from Oracle's only copy. That is what still needs a backup, and it is a
+  far smaller problem than backing up production.
+- The box has **pick-up warranty** — no on-site service in NL, so a fault means 1–3 weeks away
+  (BOX-SPEC §3). That is precisely why the API is not on it: docking stops, the product does
+  not, and you repoint at Asinex while it is gone.
 
 ---
 
@@ -291,7 +306,8 @@ because the cutover is a config change rather than a deploy it carries almost no
     patch first or there is no cutover at all.
 
 At this point docking no longer depends on Moscow — which is the whole project — and nothing
-else has moved. **Arrival day ends here.** Steps 13–15 below are a later, separate release.
+else has moved. **Hardware day ends here.** Steps 13–15 below belong to Release A, which
+ships *before* the box — see [BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md) §2.
 
 ### Then the rest, in dependency order
 

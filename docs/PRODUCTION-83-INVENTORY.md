@@ -181,12 +181,27 @@ Atlas restore, never against production first.
 1. **Keep Atlas.** Move compute only. Add the box's IP to the Atlas allowlist. Removes the
    dump/restore, the write-freeze window, and the single-chassis backup risk in one decision.
 2. **The frontend is a rewrite, not an upgrade.** This repo's `client/` replaces a different
-   codebase. The §5.0 symlink-swap plan still works — but there is no "old bundle" directory to
+   codebase. ⚠ The §5.0 symlink-swap plan does **not** apply — see item 3. There is no bundle to
    preserve, because there is no bundle. **Rollback means restarting the Vite dev server**, so
    `/root/material-tailwind-dashboard-react` must not be touched or deleted.
-3. **Serving the new frontend needs an nginx change** — `proxy_pass` to :5173 has to become a
-   static `root`. That is exactly the change the standing rule forbids without the box owner.
-   **Raise it early; it is on the critical path.**
+3. ~~**Serving the new frontend needs an nginx change**~~ — ✅ **WRONG, corrected 2026-07-29.
+   It needs no nginx change.** The claim was that `proxy_pass http://localhost:5173` would have
+   to become a static `root`. It does not: this repo's `server/index.js` reads `PORT`
+   (`:5368`) and serves `client/dist` through `express.static` when `FRONTEND_DIST` is set
+   (`:6699`). So run it **on 5173**:
+
+   ```bash
+   PORT=5173 FRONTEND_DIST=/path/to/client/dist node server/index.js
+   ```
+
+   nginx keeps proxying to 5173 and never learns anything changed. **The swap is which process
+   owns port 5173**, and the rollback is stopping it and restarting `npm run dev` in
+   `/root/material-tailwind-dashboard-react` — which is also why that directory must never be
+   deleted. This is *better* than the symlink-webroot plan in ARRIVAL-RUNBOOK §5.0, which
+   assumed a static bundle that does not exist here.
+
+   It also gets the new frontend and the new API **on one origin through nginx's TLS**, which
+   retires `:3000` (finding 3/5 below) in the same action.
 4. **The user migration blocks the cutover.** §5.
 5. **Retiring :3000 is a security fix as well as a migration step** — an internet-facing Node
    process with wildcard CORS, no firewall, hand-started in a terminal.
