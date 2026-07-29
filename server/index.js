@@ -461,10 +461,15 @@ async function callNvidiaNim({
 // apart from the docking application returning an error of its own: one means "come
 // back later", the other means "your request was rejected".
 function describeDockingFailure(message, bodySnippet) {
-  const looksLikeProxyPage = typeof bodySnippet === 'string' &&
-    /<!DOCTYPE HTML|<HTML|page cannot be displayed/i.test(bodySnippet);
-  if (looksLikeProxyPage) {
+  const snippet = typeof bodySnippet === 'string' ? bodySnippet : '';
+  if (/<!DOCTYPE HTML|<HTML|page cannot be displayed/i.test(snippet)) {
     return 'The docking provider is unreachable right now. Your credit was not spent — please try again later.';
+  }
+  // The provider answers 404 with {"detail":"Not Found"} when it has no result for
+  // this receptor/ligand pair. That is an outcome, not an outage, and telling the
+  // user the service is down sends them to wait for a recovery that never comes.
+  if (/Docking service returned 404/.test(message) || /"detail"\s*:\s*"Not Found"/i.test(snippet)) {
+    return 'The docking provider returned no result for this receptor and ligand. Your credit was not spent — try a different pairing.';
   }
   return `Docking service is unavailable: ${message}`;
 }
