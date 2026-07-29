@@ -1,0 +1,16 @@
+# Keep the Docker context reproducible and prevent host/cache state leaking into images.
+.git
+.gitignore
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.py[cod]
+*.so
+*.egg-info/
+/srv/
+cache/
+.coverage
+htmlcov/
+README.md

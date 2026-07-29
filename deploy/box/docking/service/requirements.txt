@@ -1,0 +1,12 @@
+# Runtime dependencies are deliberately exact-pinned for repeatable Docker builds.
+fastapi==0.111.0
+gemmi==0.7.5
+httpx==0.28.1
+meeko==0.7.1
+openmm==8.2.0
+pdbfixer==1.12.0
+pydantic==2.11.0
+rdkit==2026.3.4
+scipy==1.17.1
+uvicorn==0.30.1
+vina==1.2.7
