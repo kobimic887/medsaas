@@ -622,6 +622,16 @@
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+/* The real wordmark. Its viewBox is 211x40, so height drives the size and width
+   follows; 2.25rem matches the optical weight the text logo above had at 1.75rem.
+   currentColor paints the "PYXIS" half — near-white here, against the dark auth
+   page — while the olive "discovery" and the arrow are literal brand colours
+   inside the SVG. */
+.cb-auth-logo-mark {
+  height: 2.25rem;
+  width: auto;
+  color: #f1f5f9;
+}
 .cb-auth-badge {
   font-size: 0.65rem;
   font-weight: 700;

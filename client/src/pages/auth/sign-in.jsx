@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/context/auth";
 import { API_CONFIG } from "@/utils/constants";
 import { getPlatformName } from "@/config/branding";
+import { PyxisLogo } from "@/components/PyxisLogo";
 
 const ErrorIcon = () => (
   <svg aria-hidden="true" className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -297,9 +298,13 @@ function AuthShell({ title, subtitle, children }) {
 
       <div className="cb-auth-container">
         {/* Brand. Not a link: there is no marketing home to go back to, and a
-            dead link on the one page every user sees is worse than plain text. */}
+            dead link on the one page every user sees is worse than plain text.
+            The wordmark is the real logo recovered from the legacy frontend —
+            production has always shown it here, and plain text was a visible
+            step backwards. getPlatformName() still supplies the accessible
+            name, so a rebrand does not leave the alt text lying. */}
         <div className="cb-auth-brand">
-          <span className="cb-auth-logo">{getPlatformName()}</span>
+          <PyxisLogo className="cb-auth-logo-mark" title={getPlatformName()} />
           <span className="cb-auth-badge">BETA</span>
         </div>
 
