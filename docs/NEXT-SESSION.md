@@ -69,6 +69,58 @@ Not started, and not blocking: DiffDock (`deploy/box/diffdock/` has only the cap
 ADMET, glioblastoma, Claude Science OAuth, and the marketing-copy half of the ChemBench→Pyxis
 rename.
 
+### What is still missing for arrival day — audited 2026-07-29
+
+Everything here is doable **without the box** and every one of them is on arrival day's critical
+path if it is not done first.
+
+1. **There is no network path between 83 and the box, anywhere in this repo.** `compose.yml`
+   binds `${BIND_ADDR:-127.0.0.1}` and the comments say "WireGuard/Tailscale, allowlist 83 only",
+   but no tunnel config, key material or unit exists. **Every cutover URL in
+   `deploy/box/.env.example` depends on it.** Bigger than DiffDock: nothing repoints without it,
+   and it has no fallback.
+2. **`assertConfiguredUrlsArePublic` (`server/index.js:1413`) rejects private and CGNAT ranges —
+   so shipping Release A makes the box cutover *harder*, not easier.** With the new server live,
+   the admin-UI path refuses the box's tunnel address; with `chem_beo` live, its env vars have no
+   such check. This inverts an assumption several docs lean on. Decide it now — allowlist the
+   tunnel range, or an explicit internal-hosts escape hatch — not on the afternoon.
+3. **The Tanimoto dump is PostgreSQL 17.5, archive format 1.16.** Read straight out of the
+   header of `~/backups/tanimoto/tonomitosql-20260729.dump`: `17.5 (Debian 17.5-1)`. Its
+   `CREATE EXTENSION rdkit` needs the cartridge too. `informaticsmatters/rdkit-cartridge-debian`
+   has historically shipped **older** majors, and an older `pg_restore` refuses a 1.16 archive
+   outright — `unsupported version (1.16) in file header`. A verified sha256 is not a verified
+   restore. Either pin a PG 17 cartridge image or re-dump `--format=plain`. Runbook §4.3 says
+   "prove it restores"; that has not happened.
+4. **sm_120 is the item most likely to miss the day, and it is checkable today.** RTX 5090 is
+   Blackwell — CUDA 12.8+. AutoDock-GPU is a compile flag, tractable. **OSS DiffDock is a
+   dependency-graph problem**: check whether cu128 wheels exist for the torch / torch-geometric
+   versions it pins. If they do not, there is no build, and that is worth knowing weeks out.
+5. **ADMET needs a decision, not a flag.** `services/admet/` is `amqpadmet.py` — RabbitMQ.
+   `compose.yml` asserts it polls a Mongo job collection (BOX-ARCHITECTURE §5). One of the two
+   has to change. Keeping CloudAMQP for the first deploy is legitimate: nothing regresses either
+   way, because the worker has never run at all.
+6. **`compose.yml`'s `x-gpu` anchor reserves no `device_ids`** — just `driver: nvidia,
+   capabilities: [gpu]`, with `NVIDIA_VISIBLE_DEVICES` set per service. That combination is
+   version-dependent; docking and diffdock can both end up seeing both cards. Use
+   `device_ids: ['0']` / `['1']` in the reservation. Note `admet` is pinned to device 1 next to
+   diffdock.
+7. **GROMACS is still `apt-get install gromacs` on `ubuntu:22.04`** — CPU-only. Moving that image
+   to the box buys nothing; it needs a `-DGMX_GPU=CUDA` source build to be worth the move.
+8. **`services/glioblastoma-predictor/chemtest_tech_private.key` is committed to git** and
+   `COPY`'d into the image. It is in the history — rotate before that service runs anywhere. It
+   sits behind the `glioblastoma-key-rotated` profile so it cannot start by accident.
+
+**Two of the six B-items have no 1:1 to hold, and that is fine.** DiffDock is *already broken in
+production* (`SDF_CONVERTER_URL` → `83:8001`, nothing listening), so the box's convertstr is a
+fix, not parity. ADMET and glioblastoma have **never run** — first deploy, not migration.
+
+**The rungs that make arrival day short already exist.** `DOCKING_ENGINE=replay` returns the
+committed reference payload with no GPU, and `vina` is real chemistry on CPU — both work today on
+any x86_64 host. So the day is: bring the service up on `replay`, verify 83 → box → client end to
+end through the real UI, flip to `vina`, then to `autodock-gpu`. `AutoDockGpuEngine` raising
+`DockingUnavailable` until qualification is deliberate, and `/health` fails while it is selected,
+so a half-built engine cannot silently take traffic.
+
 ---
 
 ## 0. Two live vulnerabilities, found 2026-07-29. Read before anything else.
