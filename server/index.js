@@ -6054,9 +6054,16 @@ app.get('/api/activity', ensureMongoConnected, authenticateToken, requireActiveU
     const simulationFilter = req.user.companyId
       ? { companyId: req.user.companyId }
       : { 'user.username': req.user.username };
-    // Get latest registered users
+    // Get latest registered users.
+    //
+    // Deliberately NOT selecting `email`. This is an activity ticker — "who joined" —
+    // and a username answers it. Returning addresses here handed every member of the
+    // company a roster of all 50 colleagues' emails, and because the demo account is
+    // an ordinary member reachable by anyone from the sign-in page, it handed that
+    // roster to the public too. It was invisible for a different reason: the chips
+    // rendered dark-on-dark and nobody could read them.
     const users = await db.collection('users')
-      .find(userFilter, { projection: { username: 1, email: 1, companyId: 1, companyName: 1, role: 1, createdAt: 1 } })
+      .find(userFilter, { projection: { username: 1, companyId: 1, companyName: 1, role: 1, createdAt: 1 } })
       .sort({ createdAt: -1 })
       .limit(50)
       .toArray();

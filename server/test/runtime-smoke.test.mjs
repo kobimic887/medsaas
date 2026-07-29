@@ -508,6 +508,27 @@ async function main() {
       '(a foreign origin was reflected — that is the actual CORS risk)'
     );
 
+    // --- Test 5f: the activity feed must not leak colleagues' email addresses ---
+    // /api/activity is tenant-filtered, so this was never cross-company. But every
+    // member saw every other member's address, and the demo account IS a member that
+    // anyone can sign into from the public sign-in page — so it was public.
+    console.log('\nTest 5f — /api/activity does not return email addresses:');
+    const actRes = await fetch(`${BASE}/api/activity`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    const actBody = await actRes.json().catch(() => ({}));
+    check('activity returns 200', actRes.status === 200, `(got ${actRes.status})`);
+    check(
+      'the users section carries no email field',
+      Array.isArray(actBody.users) && actBody.users.every((u) => !('email' in u)),
+      `(got ${JSON.stringify(actBody.users?.[0] || null)})`
+    );
+    check(
+      'no @ address anywhere in the payload',
+      !/[\w.+-]+@[\w.-]+\.\w+/.test(JSON.stringify(actBody)),
+      '(an email address survived in the response)'
+    );
+
     // --- Test 6: static serving (only with --assert-static) ---
     if (ASSERT_STATIC) {
       console.log('\nTest 6 — GET / serves built frontend HTML:');

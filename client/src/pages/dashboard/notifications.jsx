@@ -90,11 +90,13 @@ export function Notifications() {
         
         // Add user registrations as activities
         if (data.users && Array.isArray(data.users)) {
+          // No email. /api/activity stopped returning it — an activity ticker does
+          // not need colleagues' addresses, and the demo account is a member that
+          // anyone can sign into.
           const userActivities = data.users.map(user => ({
             type: 'user',
-            message: `User: ${user.username} (${user.email}) registered`,
+            message: `User ${user.username} registered`,
             username: user.username,
-            email: user.email,
             timestamp: null, // No timestamp in user data
             id: user._id
           }));
@@ -219,7 +221,18 @@ export function Notifications() {
                     color={getActivityChipColor(activity)}
                     variant="ghost"
                     size="sm"
-                    className="max-w-md"
+                    // Material Tailwind's ghost variant pairs dark text with a pale
+                    // tint, which assumes a light card. On the dark dashboard the
+                    // tint stays dark and the text stays dark with it: measured
+                    // text-blue-900 (rgb 13,71,161) on rgba(33,150,243,.2), which is
+                    // unreadable. Every activity was effectively invisible.
+                    //
+                    // Styled by an explicit rule in tailwind.css rather than utility
+                    // classes: `dark:!text-slate-100` lands in the class attribute but
+                    // Tailwind never emits a rule for it here, so the computed colour
+                    // stayed rgb(13,71,161). The colour coding is not lost — it lives
+                    // in the background tint, which stays per-status.
+                    className="max-w-md cb-activity-chip"
                     title={fullText}
                   />
                 );
@@ -248,7 +261,10 @@ export function Notifications() {
                 key={index}
                 color="blue"
                 variant="ghost"
-                className="border border-blue-200"
+                // Same dark-mode problem as the activity chips above: ghost keeps
+                // its dark foreground while the tint goes dark, so every tip was
+                // unreadable on the dashboard's default theme.
+                className="border border-blue-200 dark:border-slate-700 cb-activity-chip"
                 icon={<InformationCircleIcon className="h-5 w-5" />}
               >
                 <Typography variant="small" className="font-medium">

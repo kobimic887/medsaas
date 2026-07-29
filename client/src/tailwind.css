@@ -622,6 +622,21 @@
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+/* Activity chips and info alerts on the Notifications page.
+   Material Tailwind's `ghost` variant pairs a pale tint with dark text — it assumes
+   a light card. On the dark dashboard the tint stays dark and the text stays dark
+   with it: measured text-blue-900, rgb(13,71,161), on rgba(33,150,243,0.2). Every
+   activity and every tip was effectively invisible.
+
+   Written as a real rule rather than `dark:!text-slate-100` utilities because those
+   land in the class attribute but Tailwind emits no matching rule for them here, so
+   the computed colour never changed. The status colour coding is preserved: it lives
+   in the background tint, which this does not touch. */
+.dark .cb-activity-chip,
+.dark .cb-activity-chip * {
+  color: #e2e8f0 !important;
+}
+
 /* "Proceed to Demo". Kept in the olive the legacy page used (#B4B239) rather than
    restyled into this page's purple gradient — it is the same action users already
    know, and the brand colour is what makes it recognisable. Secondary weight so it
