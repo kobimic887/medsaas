@@ -273,8 +273,10 @@ $$$$
 - Writer line is RDKit's (`     RDKit          3D`).
 - Per-pose property tags, in this order: **`MODEL`, `TORSDO`, `SCORE`, `ligand_id`,
   `original_smiles`, `smiles`**.
-- `SCORE` values from one dock: `-4.547, -4.505, -4.468, -4.423, -4.345` — descending, i.e.
-  **sorted best-first**, in the kcal/mol range and sign convention of AutoDock binding affinity.
+- `SCORE` values from one dock: `-4.547, -4.505, -4.468, -4.423, -4.345` — **numerically
+  ASCENDING, i.e. most negative first, best first.** ⚠ *This file said "descending" until
+  2026-07-29; that was wrong. Each value is larger than the last.* kcal/mol, AutoDock binding
+  affinity sign convention.
 
 ### The exact bytes — read 2026-07-29 from a production record
 

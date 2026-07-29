@@ -25,7 +25,7 @@ only `result` was kept.
 | `pdbid` | `1cx7` |
 | SMILES | `Cc1c(non1)OCCn2c(ncc2[N+](=O)[O-])C` |
 | poses | 5 |
-| `SCORE` | `-4.547, -4.505, -4.468, -4.423, -4.345` — descending, best first |
+| `SCORE` | `-4.547, -4.505, -4.468, -4.423, -4.345` — numerically ascending, most negative first, best first |
 | receptor | 2,597 atoms — 1,290 heavy + 1,307 hydrogens, chain A, `TER`/`END` |
 | prepared | `REMARK   1 CREATED WITH OPENMM 8.2, 2026-05-12` |
 | search box | centred on `HED`, the co-crystal ligand, stripped during preparation |

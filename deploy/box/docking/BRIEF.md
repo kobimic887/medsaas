@@ -193,9 +193,32 @@ $$$$
 - `<smiles>` is **lowercase**; `<SCORE>` is **uppercase**. Matched case-sensitively downstream.
 - `smiles` and `original_smiles` carry the **DECODED** SMILES, even though the request delivered
   it encoded.
-- **5 poses**, sorted by `SCORE` **descending numerically** — most negative first, best first.
+- Sorted by `SCORE` **numerically ASCENDING** — most negative first, best first. ⚠ *An earlier
+  draft said "descending numerically", which contradicted its own "most negative first". The
+  reference is `-4.547, -4.505, -4.468, -4.423, -4.345`: each value is larger than the last.*
+- **5 poses in every observed dock — but do NOT hard-fail on a different count.** See below.
 - `SCORE` is AutoDock binding affinity in kcal/mol. Negative. The reference range is −4.345 to
   −4.547.
+
+### ⚠ Do NOT hard-fail on a pose count other than 5
+
+Every observed dock returned 5 poses, and it is right to emit 5 by default. **It is wrong to
+reject a dock that produced a different number.**
+
+**The user cannot perceive the pose count.** The platform de-duplicates the SDF on the
+`<smiles>` value and keeps a single best-scoring block, so 5 poses and 3 poses both render as
+**exactly one row**. Turning a usable result into a non-2xx therefore:
+
+- returns `502` to the user and refunds the credit,
+- for a dock that actually worked,
+- over a difference nothing downstream can observe.
+
+Docking engines legitimately return fewer poses for small or rigid ligands. A strict
+`len(poses) == 5` check converts that into an outage.
+
+**Correct behaviour:** emit whatever the engine produced. `WARN` when the count is not 5, with
+the count and the inputs. Fail only on **zero** poses, which is a genuinely unusable result.
+Make the expected count a config value, not an assertion.
 
 ### Why the spacing is not a style question
 
