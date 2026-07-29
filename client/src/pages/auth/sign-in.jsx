@@ -296,11 +296,12 @@ function AuthShell({ title, subtitle, children }) {
       </div>
 
       <div className="cb-auth-container">
-        {/* Brand */}
-        <Link to="/main/mainHome" className="cb-auth-brand">
+        {/* Brand. Not a link: there is no marketing home to go back to, and a
+            dead link on the one page every user sees is worse than plain text. */}
+        <div className="cb-auth-brand">
           <span className="cb-auth-logo">{getPlatformName()}</span>
           <span className="cb-auth-badge">BETA</span>
-        </Link>
+        </div>
 
         {/* Card */}
         <div className="cb-auth-card">
@@ -312,10 +313,6 @@ function AuthShell({ title, subtitle, children }) {
           {children}
         </div>
 
-        {/* Bottom link */}
-        <Link to="/main/mainHome" className="cb-auth-back">
-          ← Back to home
-        </Link>
       </div>
     </div>
   );

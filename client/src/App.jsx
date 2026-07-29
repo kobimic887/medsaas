@@ -3,14 +3,12 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { RouteFallback } from "@/widgets/layout/route-fallback";
 import { hasValidToken } from "@/utils/constants";
 
-// The three layouts split too, not just the pages inside them. Each one drags in its
-// own navbars, the sidenav and the branding hook, and a signed-out visitor landing on
-// the marketing site has no use for the dashboard shell. Imported directly rather than
-// through "@/layouts", whose barrel would re-export all three into whichever chunk
-// touched it first.
+// Both layouts split too, not just the pages inside them. Each drags in its own
+// navbar, the sidenav and the branding hook, and a signed-out visitor has no use
+// for the dashboard shell. Imported directly rather than through "@/layouts", whose
+// barrel would re-export both into whichever chunk touched it first.
 const Dashboard = lazy(() => import("@/layouts/dashboard"));
 const Auth = lazy(() => import("@/layouts/auth"));
-const MainPage = lazy(() => import("@/layouts/mainpage"));
 
 function RequireAuth({ children }) {
   // Validate expiry, not just presence — an expired token left in localStorage
@@ -35,12 +33,14 @@ function App() {
             </RequireAuth>
           }
         />
-        <Route path="/main/*" element={<MainPage />} />
         <Route
           path="/auth/*"
           element={isAuthenticated ? <Navigate to="/dashboard/controlpanel" replace /> : <Auth />}
         />
-        <Route path="*" element={<Navigate to="/main/mainHome" replace />} />
+        {/* There is no marketing site to land on any more, so the catch-all goes to
+            sign-in. An already-authenticated visitor does not stop there: /auth/*
+            above bounces them straight on to the dashboard. */}
+        <Route path="*" element={<Navigate to="/auth/sign-in" replace />} />
       </Routes>
     </Suspense>
   );

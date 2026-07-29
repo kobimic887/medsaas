@@ -26,7 +26,6 @@ import { lazy } from "react";
 const DashboardHome = lazy(() => import("@/pages/dashboard/dashboardhome"));
 const Profile = lazy(() => import("@/pages/dashboard/profile"));
 const Notifications = lazy(() => import("@/pages/dashboard/notifications"));
-const PaidPlans = lazy(() => import("@/pages/dashboard/paidplans"));
 const ControlPanel = lazy(() => import("@/pages/dashboard/controlpanel"));
 const CompanyAdmin = lazy(() => import("@/pages/dashboard/company-admin"));
 const Simulation = lazy(() => import("@/pages/dashboard/simulation"));
@@ -38,78 +37,16 @@ const GromacsMd = lazy(() => import("@/pages/dashboard/gromacs-md"));
 const GlioblastomaPredict = lazy(() => import("@/pages/dashboard/glioblastoma-predict"));
 const DeepSimilarity = lazy(() => import("@/pages/dashboard/deep-similarity"));
 
-const MainHome = lazy(() => import("@/pages/main/mainhome"));
-const Services = lazy(() => import("@/pages/main/services"));
-const AboutUs = lazy(() => import("@/pages/main/about-us"));
-const ContactUs = lazy(() => import("@/pages/main/contact-us"));
-const Insights = lazy(() => import("@/pages/main/insights"));
-const PaidPlansDescription = lazy(() => import("@/pages/main/paidplansdescription"));
-const Blog = lazy(() => import("@/pages/main/blog"));
 
 const SignIn = lazy(() => import("@/pages/auth/sign-in"));
 
-import { EyeIcon, GiftIcon } from "@heroicons/react/24/outline";
+import { EyeIcon } from "@heroicons/react/24/outline";
 
 const icon = {
   className: "w-5 h-5 text-inherit",
 };
 
 export const routes = [
-  {
-    title: "main",
-    layout: "main",
-    pages: [
-      {
-          hideFromMenu: true,
-        icon: <ServerStackIcon {...icon} />,
-        name: "mainHome",
-        path: "/mainHome",
-        element: <MainHome />,
-      },
-      {
-          hideFromMenu: true,
-        icon: <ServerStackIcon {...icon} />,
-        name: "services",
-        path: "/services",
-        element: <Services />,
-      },
-      {
-          hideFromMenu: true,
-        icon: <ServerStackIcon {...icon} />,
-        name: "about-us",
-        path: "/about-us",
-        element: <AboutUs />,
-      },
-      {
-          hideFromMenu: true,
-        icon: <ServerStackIcon {...icon} />,
-        name: "contact-us",
-        path: "/contact-us",
-        element: <ContactUs />,
-      },
-      {
-          hideFromMenu: true,
-        icon: <ServerStackIcon {...icon} />,
-        name: "insights",
-        path: "/insights",
-        element: <Insights />,
-      },
-      {
-          hideFromMenu: true,
-        icon: <ServerStackIcon {...icon} />,
-        name: "paidplansdescription",
-        path: "/paidplansdescription",
-        element: <PaidPlansDescription />,
-      },
-      {
-          hideFromMenu: true,
-        icon: <ServerStackIcon {...icon} />,
-        name: "blog",
-        path: "/blog",
-        element: <Blog />,
-      },
-    ],
-  },
   {
     layout: "dashboard",
     pages: [      {
@@ -158,13 +95,9 @@ export const routes = [
         path: "/notifications",
         element: <Notifications />,
       },
-      {
-        icon: <GiftIcon {...icon} />,
-        name: "paidplans",
-        path: "/paidplans",
-        element: <PaidPlans />,
-      },
-
+      // No self-serve plans page. Credits are topped up by an admin from Company
+      // Admin (docs/PYXIS-ONLY.md). The Stripe webhook and the whole credit-grant
+      // path are untouched — only the buy-it-yourself surface is gone.
       {
         icon: <BeakerIcon {...icon} />,
         name: "RdKit Visualiser",
