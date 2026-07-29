@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> ## ⭐ Read [`GOAL.md`](GOAL.md) first.
+>
+> It holds the owner's actual objective in their own words, and the two rules that
+> repeatedly got broken before it was written down: **don't grow the scope**, and
+> **don't remove things users recognise** — fix how a thing works, keep the thing.
+> Everything below is detail in service of that file.
+
 ## Planning
 
 Before non-trivial work, write a short plan and get it agreed.
