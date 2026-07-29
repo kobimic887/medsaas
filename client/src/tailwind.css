@@ -744,6 +744,11 @@
   gap: 0.4rem;
   margin-top: 1.5rem;
   font-size: 0.85rem;
+  /* justify-content centres the flex ITEM; it does not centre text that wraps
+     inside it. The footer used to hold two short inline pieces ("Don't have an
+     account?" + a link) and never wrapped. It now holds one longer sentence, which
+     wraps to two lines and would sit left-aligned under a centred card. */
+  text-align: center;
 }
 .cb-auth-link {
   color: var(--cb-purple);
