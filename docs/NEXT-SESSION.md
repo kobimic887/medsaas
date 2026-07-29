@@ -1,5 +1,79 @@
 # What to do next
 
+## ⏱ START HERE — session ended 2026-07-30 ~00:30 UTC
+
+**Production is live, healthy and unattended-safe.** `app.pyxis-discovery.com` → 200, all four
+services `enabled` under systemd, **0 restarts**, no leftover probe units, nothing half-deployed.
+A reboot is survivable for the first time. Repo is clean and fully pushed.
+
+**Read the box's `DEPLOYED_SHA` before assuming anything about what is running.**
+
+### The three things that matter next, in order
+
+1. **Rotate the mail password — only the owner can.** `contact@pyxis-discovery.com` at
+   **yourhosting.nl**. It was served publicly on 2026-07-29 and **is still live**: proven by an
+   SMTP `verify()` that authenticated with the credential still in `/root/chem_beo/.env`, a file
+   untouched since 2026-04-02. Anyone who took it can send mail as the company. After changing
+   it, update `EMAIL_PASS` in **both** `/root/chem_beo/.env` and `/root/pyxis/server/.env`.
+
+2. **DiffDock — the only item with no fallback.** `deploy/box/diffdock/` holds the captured
+   contract and nothing else; `compose.yml`'s `build: ./diffdock` points at a directory with no
+   Dockerfile. The route is already established (§4 of the arrival audit): **`torch 2.7.1+cu128`
+   on Python 3.9 is the single viable cell** — cp39 wheels stop after torch 2.7.1 — all four PyG
+   extensions exist for `pt27cu128`/`cp39`, and **openfold is very likely droppable** because
+   `inference.py` imports neither it, nor `esm`, nor `pytorch_lightning`, and the platform always
+   supplies a receptor structure rather than a sequence.
+
+3. **Build the new GROMACS image to prove it compiles.** `services/gromacs-api/Dockerfile` is now
+   a real CUDA source build (`GMX_GPU=CUDA`, `CMAKE_CUDA_ARCHITECTURES=120`, pinned to 2026.3
+   because 2025.x is documented broken on sm_120) and it **self-checks** — the build fails unless
+   `gmx -version` reports CUDA. **It has never been built.** Compiling for sm_120 needs only the
+   toolkit, not a Blackwell card, so it can be proven on any x86_64 Docker host. 83 qualifies, but
+   it serves production — run it niced with limited parallelism, or wait for the box.
+
+### Settled by the owner 2026-07-30 — do not re-raise
+
+| | |
+|---|---|
+| `mol_price` import | **Not wanted.** Pricing comes from Asinex. The `/api/mol-price/*` endpoints return nothing and that is fine |
+| Stripe key rotation | **Not wanted.** Test key only; no live key was ever exposed |
+| Box ingress (Caddy + firewall) | **Approach approved.** Config still needs writing |
+| ADMET transport | **Mongo, not RabbitMQ.** CloudAMQP was a successful test but is not the choice. `compose.yml` already assumes Mongo polling; `services/admet/amqpadmet.py` is still RabbitMQ, so the worker needs rewriting |
+| `tester123` credits | **Stays at 99,998.** Verbatim: *"tester HAS to stay like that. period."* |
+| Profile page | **Deleted.** Owner: *"plain bloat"* |
+| Pushing | **Always push after committing, without asking.** See CLAUDE.md |
+
+### Closed 2026-07-29/30 — verified, not assumed
+
+- **Release A cut over** at 21:51 UTC. Sign-in no longer serves its own source, `/api/activity`
+  leaks no emails, `POST /api/signup` → 403.
+- **The `'secret'` forgery hole is closed on both servers.** A forged owner token gets 401 from
+  the app and **403** from the legacy API; `chem_beo` now has a real `JWT_SECRET` and runs under
+  `pyxis-api-legacy` instead of a 27-day-old `screen`.
+- **Opening Simulation Results no longer signs you out**, nor does the compound-cart enquiry.
+  Guarded by `scripts/check-authed-fetch.mjs` in `bun run ci`.
+- **NVIDIA keys recovered.** They were hardcoded in `chem_beo/index.js:80` and `:127` — two
+  *different* keys, in no `.env`, so the cutover silently broke MolMIM and Protein Folding. Both
+  now in `/root/pyxis/server/.env`.
+- **The app is on the real Pyxis palette** and dark mode actually applies — `withMT` drops
+  Tailwind's `slate`, so every `dark:*-slate-*` class had been compiling to nothing.
+- **47 users granted 15 credits.** Reversible snapshot at `/root/pyxis-migrate/credit-grant-*/`.
+- **Docking errors name their cause** — bad PDB id (checked *before* charging), provider
+  unreachable, or no result for that pair.
+- **GPU pinning fixed** — services named a card in the reservation instead of leaving it to
+  Docker to guess.
+
+### Two mistakes worth not repeating
+
+1. **`bun run ci` locally is weaker than GitHub's.** The smoke test inherits the repo `.env`, so a
+   dev machine supplies config CI does not — Test 5e passed locally and failed on CI. Set what a
+   test needs in `childEnvFinal`, never rely on `.env`.
+2. **Appending to a `.env` without a leading newline** concatenated a secret onto `BASE_URL` and
+   corrupted it. And **`/proc/<pid>/environ` does not show dotenv-loaded variables** — it reported
+   the secret missing when it was present. Verify with `dotenv.parse()` and by testing behaviour.
+
+---
+
 ## ✅ RELEASE A IS LIVE — cut over 2026-07-29 21:51 UTC
 
 **`app.pyxis-discovery.com` is now this repo.** `pyxis-web` (bun, pid 2198082) owns 5173 and is
