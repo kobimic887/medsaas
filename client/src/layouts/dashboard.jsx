@@ -1,5 +1,6 @@
-import React from "react";
+import React, { Suspense } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { RouteFallback } from "@/widgets/layout/route-fallback";
 import {
   Sidenav,
   DashboardNavbar,
@@ -89,7 +90,17 @@ export function Dashboard() {
                     <Route
                       key={path}
                       path={path.replace(/^\/+/, "")}
-                      element={<DashboardRouteBoundary>{element}</DashboardRouteBoundary>}
+                      // Pages are lazy (routes.jsx), so a Suspense boundary is mandatory.
+                      // Per route, and inside the error boundary: the skeleton is scoped to
+                      // the page being opened rather than blanking the whole content area,
+                      // and a chunk that fails to download — stale hash after a deploy, a
+                      // dropped connection — still lands in the reload prompt rather than
+                      // on a white screen.
+                      element={
+                        <DashboardRouteBoundary>
+                          <Suspense fallback={<RouteFallback />}>{element}</Suspense>
+                        </DashboardRouteBoundary>
+                      }
                     />
                   ))
                 : []

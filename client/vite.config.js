@@ -84,6 +84,24 @@ export default defineConfig({
         return false;
       },
       output: {
+        // Split the dependencies that never change away from the app code that does.
+        // Without this every deploy invalidates one monolithic chunk and returning
+        // users re-download React, the whole Material Tailwind surface and apexcharts
+        // to pick up a one-line fix. Grouped rather than one-chunk-per-package: a
+        // hundred tiny requests is its own kind of slow.
+        manualChunks: (id) => {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('apexcharts')) return 'vendor-charts';
+          if (id.includes('@material-tailwind')) return 'vendor-ui';
+          if (id.includes('@heroicons')) return 'vendor-icons';
+          if (id.includes('react-router')) return 'vendor-router';
+          // react/react-dom last: the checks above would otherwise swallow
+          // react-apexcharts and react-router-dom into this chunk.
+          if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/scheduler/')) {
+            return 'vendor-react';
+          }
+          return 'vendor';
+        },
         // Ensure .git files are never included in output
         assetFileNames: (assetInfo) => {
           if (assetInfo.name && assetInfo.name.includes('.git')) {

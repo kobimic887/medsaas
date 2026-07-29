@@ -12,33 +12,44 @@ import {
   ArrowPathIcon,
   BuildingOfficeIcon
 } from "@heroicons/react/24/solid";
-import {
-  DashboardHome,
-  Profile,
-  Notifications,
-  PaidPlans,
-  ControlPanel,
-  CompanyAdmin,
-  Simulation,
-  MoleculeViewer,
-  Molstar3D,
-  GenerateMolecules,
-  ProteinFolding,
-  GromacsMd,
-  GlioblastomaPredict,
-  } from "@/pages/dashboard";
-import { DeepSimilarity } from "@/pages/dashboard";
-import {
-  MainHome,  
-  Services,
-  AboutUs,
-  ContactUs,
-  Insights,
-  PaidPlansDescription,
-  Blog
-} from "@/pages/main";
+import { lazy } from "react";
 
-import { SignIn, SignUp } from "@/pages/auth";
+// Every page is loaded on demand. Eagerly importing them here — which is what the
+// barrel files in pages/*/index.js encourage — put all 24 pages, the whole
+// Material Tailwind surface and apexcharts into one 2.0 MB entry chunk, which every
+// visitor downloaded in full before seeing the sign-in form. They are split per
+// route instead; the Suspense boundaries live in the three layouts.
+//
+// Import the page modules directly, NOT through "@/pages/dashboard". A barrel
+// re-exports all fourteen siblings, so lazy() through it would pull the entire
+// directory into the first chunk that touched it and undo the split silently.
+// Every page file has a default export, so no interop shim is needed.
+const DashboardHome = lazy(() => import("@/pages/dashboard/dashboardhome"));
+const Profile = lazy(() => import("@/pages/dashboard/profile"));
+const Notifications = lazy(() => import("@/pages/dashboard/notifications"));
+const PaidPlans = lazy(() => import("@/pages/dashboard/paidplans"));
+const ControlPanel = lazy(() => import("@/pages/dashboard/controlpanel"));
+const CompanyAdmin = lazy(() => import("@/pages/dashboard/company-admin"));
+const Simulation = lazy(() => import("@/pages/dashboard/simulation"));
+const MoleculeViewer = lazy(() => import("@/pages/dashboard/moleculeviewer"));
+const Molstar3D = lazy(() => import("@/pages/dashboard/molstar3d"));
+const GenerateMolecules = lazy(() => import("@/pages/dashboard/generate-molecules"));
+const ProteinFolding = lazy(() => import("@/pages/dashboard/protein-folding"));
+const GromacsMd = lazy(() => import("@/pages/dashboard/gromacs-md"));
+const GlioblastomaPredict = lazy(() => import("@/pages/dashboard/glioblastoma-predict"));
+const DeepSimilarity = lazy(() => import("@/pages/dashboard/deep-similarity"));
+
+const MainHome = lazy(() => import("@/pages/main/mainhome"));
+const Services = lazy(() => import("@/pages/main/services"));
+const AboutUs = lazy(() => import("@/pages/main/about-us"));
+const ContactUs = lazy(() => import("@/pages/main/contact-us"));
+const Insights = lazy(() => import("@/pages/main/insights"));
+const PaidPlansDescription = lazy(() => import("@/pages/main/paidplansdescription"));
+const Blog = lazy(() => import("@/pages/main/blog"));
+
+const SignIn = lazy(() => import("@/pages/auth/sign-in"));
+const SignUp = lazy(() => import("@/pages/auth/sign-up"));
+
 import { EyeIcon, GiftIcon } from "@heroicons/react/24/outline";
 
 const icon = {

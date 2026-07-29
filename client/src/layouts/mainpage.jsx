@@ -1,8 +1,10 @@
+import { Suspense } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
-import {  
+import {
   MainNavbar,
   Footer,
 } from "@/widgets/layout";
+import { RouteFallback } from "@/widgets/layout/route-fallback";
 import routes from "@/routes";
 
 export function MainPage() {
@@ -18,15 +20,18 @@ export function MainPage() {
       <div className="flex-1 flex flex-col">
         <MainNavbar />
         <div className={`flex-1 flex flex-col ${isLandingPage ? "" : "p-4"}`}>
-          <Routes>
-            {routes.flatMap(({ layout, pages }) =>
-              layout === "main"
-                ? pages.map(({ path, element }) => (
-                    <Route key={path} exact path={path} element={element} />
-                  ))
-                : []
-            )}
-          </Routes>
+          {/* Marketing pages are lazy (routes.jsx); Suspense is mandatory once they are. */}
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
+              {routes.flatMap(({ layout, pages }) =>
+                layout === "main"
+                  ? pages.map(({ path, element }) => (
+                      <Route key={path} exact path={path} element={element} />
+                    ))
+                  : []
+              )}
+            </Routes>
+          </Suspense>
         </div>
         {!isLandingPage && (
           <div className="text-blue-gray-600 dark:text-slate-400">

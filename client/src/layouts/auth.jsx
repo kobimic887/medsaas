@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { Routes, Route } from "react-router-dom";
 import {
   ChartPieIcon,
@@ -5,6 +6,7 @@ import {
   UserPlusIcon,
   ArrowRightOnRectangleIcon,
 } from "@heroicons/react/24/solid";
+import { RouteFallback } from "@/widgets/layout/route-fallback";
 import routes from "@/routes";
 
 export function Auth() {
@@ -33,15 +35,18 @@ export function Auth() {
 
   return (
     <div className="relative min-h-screen w-full">
-      <Routes>
-        {routes.flatMap(({ layout, pages }) =>
-          layout === "auth"
-            ? pages.map(({ path, element }) => (
-                <Route key={path} exact path={path} element={element} />
-              ))
-            : []
-        )}
-      </Routes>
+      {/* Sign-in and sign-up are lazy (routes.jsx); Suspense is mandatory once they are. */}
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+          {routes.flatMap(({ layout, pages }) =>
+            layout === "auth"
+              ? pages.map(({ path, element }) => (
+                  <Route key={path} exact path={path} element={element} />
+                ))
+              : []
+          )}
+        </Routes>
+      </Suspense>
     </div>
   );
 }
