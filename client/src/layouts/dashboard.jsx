@@ -7,7 +7,8 @@ import {
   Footer,
 } from "@/widgets/layout";
 import routes from "@/routes";
-import { useMaterialTailwindController } from "@/context";
+import { ThemeProvider } from "@material-tailwind/react";
+import { useMaterialTailwindController, MaterialTailwindControllerProvider } from "@/context";
 import { useBranding } from "@/hooks/useBranding";
 
 class DashboardErrorBoundary extends React.Component {
@@ -52,7 +53,20 @@ function DashboardRouteBoundary({ children }) {
   return <DashboardErrorBoundary key={pathname}>{children}</DashboardErrorBoundary>;
 }
 
+// The providers Material Tailwind needs live here rather than in main.jsx, so the
+// library is pulled in with this lazy chunk instead of the entry. DashboardShell
+// consumes the controller, so it has to sit *below* the provider — hence the split.
 export function Dashboard() {
+  return (
+    <ThemeProvider>
+      <MaterialTailwindControllerProvider>
+        <DashboardShell />
+      </MaterialTailwindControllerProvider>
+    </ThemeProvider>
+  );
+}
+
+function DashboardShell() {
   const [controller] = useMaterialTailwindController();
   const { openSidenav } = controller;
   const { brandName, logo } = useBranding();
