@@ -13,6 +13,7 @@ import {
   SunIcon,
 } from "@heroicons/react/24/solid";
 import { useAuth } from "@/context/auth";
+import { getPlatformName } from "@/config/branding";
 import { useThemeMode } from "@/context/theme";
 import { useState } from "react";
 
@@ -54,7 +55,7 @@ export function MainNavbar() {
               backgroundClip: "text",
             }}
           >
-            ChemBench
+            {getPlatformName()}
           </span>
           <span
             className={`text-xs font-medium px-2 py-0.5 rounded-full ${

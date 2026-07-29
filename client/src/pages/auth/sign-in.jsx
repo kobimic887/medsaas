@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/context/auth";
 import { API_CONFIG } from "@/utils/constants";
+import { getPlatformName } from "@/config/branding";
 
 const ErrorIcon = () => (
   <svg aria-hidden="true" className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -295,7 +296,7 @@ function AuthShell({ title, subtitle, children }) {
       <div className="cb-auth-container">
         {/* Brand */}
         <Link to="/main/mainHome" className="cb-auth-brand">
-          <span className="cb-auth-logo">ChemBench</span>
+          <span className="cb-auth-logo">{getPlatformName()}</span>
           <span className="cb-auth-badge">BETA</span>
         </Link>
 

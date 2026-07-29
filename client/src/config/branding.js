@@ -1,4 +1,4 @@
-const PLATFORM_NAME = (import.meta.env.VITE_PLATFORM_NAME || 'MedSaaS').trim();
+const PLATFORM_NAME = (import.meta.env.VITE_PLATFORM_NAME || 'Pyxis Discovery').trim();
 
 export function getPlatformName() {
   return PLATFORM_NAME;

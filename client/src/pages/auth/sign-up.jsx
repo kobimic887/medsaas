@@ -71,7 +71,7 @@ export function SignUp() {
       </div>
       <div className="flex w-full flex-col items-center justify-center px-4 py-6 lg:w-3/5">
         <div className="rounded-lg border border-blue-gray-100 bg-white px-4 py-2 capitalize shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:px-8">
-          <span className="cb-auth-logo">ChemBench</span>
+          <span className="cb-auth-logo">{platformName}</span>
         </div>
         <div className="mt-8 max-w-2xl text-center">
           <h1 className="display-3 fw-bold mb-4 text-slate-900 dark:text-slate-50">

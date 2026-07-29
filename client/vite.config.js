@@ -22,6 +22,21 @@ export default defineConfig({
       }
     },
     react(),
+    {
+      // index.html carries `%VITE_PLATFORM_NAME%` for the browser tab. Vite substitutes
+      // `%VITE_*%` only when the variable is set, and leaves the literal placeholder in the
+      // page when it is not — so an unset env var would ship a tab reading
+      // "%VITE_PLATFORM_NAME%". Fill it in here so the fallback is a real name.
+      //
+      // The rest of the app resolves the brand through src/config/branding.js, which applies
+      // the same default. This exists because index.html is static and cannot call it.
+      name: 'platform-name-in-html',
+      transformIndexHtml: {
+        order: 'pre',
+        handler: (html) =>
+          html.replaceAll('%VITE_PLATFORM_NAME%', (process.env.VITE_PLATFORM_NAME || '').trim() || 'Pyxis Discovery'),
+      },
+    },
   ],
   resolve: {
     alias: [{ find: "@", replacement: "/src" }],
