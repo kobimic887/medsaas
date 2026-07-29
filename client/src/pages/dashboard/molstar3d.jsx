@@ -11,6 +11,9 @@ export function Molstar3D() {
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState(''); // 'success', 'error', or ''
   const [moleculePrices, setMoleculePrices] = useState({}); // Store prices by SMILES
+  // Outcome of the last SDF load. 'empty' means the request succeeded but no pose
+  // survived parsing — the failure mode that used to render as a blank panel.
+  const [sdfStatus, setSdfStatus] = useState('idle'); // 'idle' | 'ok' | 'empty' | 'error'
   const [cart, setCart] = useState([]); // Shopping cart state
 
   // Function to parse SDF data
@@ -65,14 +68,19 @@ export function Molstar3D() {
         const sdfText = await response.text();
         const parsedData = parseSdfData(sdfText);
         setSdfData(parsedData);
-        console.log('SDF data loaded:', parsedData.length, 'molecules');
-        
+        setSdfStatus(parsedData.length > 0 ? 'ok' : 'empty');
+        console.log('SDF data loaded:', parsedData.length, 'poses');
+
         // Fetch prices for all molecules
         fetchAllMoleculePrices(parsedData);
       } else {
+        setSdfData([]);
+        setSdfStatus('error');
         console.error('Failed to load SDF data:', response.status);
       }
     } catch (error) {
+      setSdfData([]);
+      setSdfStatus('error');
       console.error('Error loading SDF data:', error);
     } finally {
       setIsLoading(false);
@@ -923,7 +931,16 @@ const _HideMenu =()=>{
                   </div>
                 )}
                 <Chip
-                  value={`Best of ${sdfData.length} molecules`}
+                  value={(() => {
+                    // The table de-duplicates on SMILES and keeps the best-scoring pose, so the
+                    // row count is molecules, not poses. Saying "N molecules" for N poses of one
+                    // compound was wrong every time.
+                    const molecules = new Set(
+                      sdfData.map((m) => m.smiles).filter((s) => s && s !== 'N/A')
+                    ).size;
+                    const poses = sdfData.length;
+                    return `${molecules} ${molecules === 1 ? 'molecule' : 'molecules'} · best of ${poses} ${poses === 1 ? 'pose' : 'poses'}`;
+                  })()}
                   variant="gradient"
                   color="blue"
                   size="sm"
@@ -972,13 +989,30 @@ const _HideMenu =()=>{
                         // Filter for unique molecules based on SMILES
                         return index === self.findIndex(m => m.smiles === molecule.smiles && m.smiles !== 'N/A');
                       })
-                      .sort((a, b) => parseFloat(a.score) - parseFloat(b.score)) // Sort by score (most negative first)                     
-                      .map((molecule, index) => {
-                      const isLast = index === 1; // Only 2 items, so last is index 1
+                      .sort((a, b) => parseFloat(a.score) - parseFloat(b.score)) // Sort by score (most negative first)
+                      .map((molecule, index, rows) => {
+                      const isLast = index === rows.length - 1;
                       const classes = isLast ? "p-3" : "p-3 border-b border-blue-gray-50";
                       const scoreValue = parseFloat(molecule.score);
-                      const scoreColor = scoreValue < -7 ? "green" : scoreValue < -5 ? "amber" : "red";
-                      
+                      const hasScore = Number.isFinite(scoreValue);
+                      // Weak binding is a real result, not a failure. Red is what this UI uses for
+                      // errors everywhere else, and every dock in production so far scores around
+                      // -4.5, so the old thresholds painted every successful run as broken.
+                      const scoreColor = !hasScore
+                        ? "blue-gray"
+                        : scoreValue < -9
+                          ? "green"
+                          : scoreValue < -7
+                            ? "amber"
+                            : "blue-gray";
+                      const scoreLabel = !hasScore
+                        ? null
+                        : scoreValue < -9
+                          ? "Strong"
+                          : scoreValue < -7
+                            ? "Moderate"
+                            : "Weak";
+
                       return (
                         <tr 
                           key={molecule.id} 
@@ -994,13 +1028,20 @@ const _HideMenu =()=>{
                          
                          
                           <td className={classes}>
-                            <Chip
-                              value={molecule.score}
-                              variant="ghost"
-                              color={scoreColor}
-                              size="sm"
-                              className="font-mono"
-                            />
+                            <div className="flex items-center gap-2">
+                              <Chip
+                                value={hasScore ? `${molecule.score} kcal/mol` : molecule.score}
+                                variant="ghost"
+                                color={scoreColor}
+                                size="sm"
+                                className="font-mono"
+                              />
+                              {scoreLabel && (
+                                <Typography variant="small" color="gray" className="text-xs">
+                                  {scoreLabel}
+                                </Typography>
+                              )}
+                            </div>
                           </td>
                           
                           <td className={`${classes} hidden`}>
@@ -1169,9 +1210,30 @@ const _HideMenu =()=>{
           <Card className="mx-4 mb-4">
             <div className="p-4 bg-white">
               <div className="text-center py-8">
-                <Typography variant="small" color="gray">
-                  No SDF data available. Click "Test SDF" or load an SDF file to see docking results.
-                </Typography>
+                {sdfStatus === 'empty' ? (
+                  <>
+                    <Typography variant="small" color="red" className="font-medium">
+                      The docking run returned no readable poses.
+                    </Typography>
+                    <Typography variant="small" color="gray" className="mt-1">
+                      The result came back, but nothing in it could be parsed. Try the run again;
+                      if it keeps happening the result format has changed and this is not your input.
+                    </Typography>
+                  </>
+                ) : sdfStatus === 'error' ? (
+                  <>
+                    <Typography variant="small" color="red" className="font-medium">
+                      Could not load the docking result.
+                    </Typography>
+                    <Typography variant="small" color="gray" className="mt-1">
+                      The result file could not be fetched. Try the run again.
+                    </Typography>
+                  </>
+                ) : (
+                  <Typography variant="small" color="gray">
+                    No docking results yet. Run a simulation to see poses here.
+                  </Typography>
+                )}
               </div>
             </div>
           </Card>
