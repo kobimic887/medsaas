@@ -3,7 +3,6 @@ import {
   UserCircleIcon,
   InformationCircleIcon,
   ServerStackIcon,
-  RectangleStackIcon,
   CogIcon,
   BeakerIcon,
   Square2StackIcon,
@@ -48,7 +47,6 @@ const PaidPlansDescription = lazy(() => import("@/pages/main/paidplansdescriptio
 const Blog = lazy(() => import("@/pages/main/blog"));
 
 const SignIn = lazy(() => import("@/pages/auth/sign-in"));
-const SignUp = lazy(() => import("@/pages/auth/sign-up"));
 
 import { EyeIcon, GiftIcon } from "@heroicons/react/24/outline";
 
@@ -217,13 +215,8 @@ export const routes = [
         element: <SignIn />,
         hideFromMenu: true,
       },
-      {        
-        icon: <RectangleStackIcon {...icon} />,
-        name: "sign up",
-        path: "/sign-up",
-        element: <SignUp />,
-        hideFromMenu: true,
-      },
+      // No sign-up route. Accounts are invite-only (docs/PYXIS-ONLY.md) — an admin
+      // creates them from Company Admin, and POST /api/signup refuses by default.
     ],
   },
 ];

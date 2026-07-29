@@ -77,6 +77,9 @@ const MONGODB_URI = process.env.MONGODB_URI;
 const APP_BASE_URL = (process.env.BASE_URL || '').replace(/\/$/, '');
 const FRONTEND_URL = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
 const PUBLIC_APP_URL = FRONTEND_URL || APP_BASE_URL;
+// Public signup is CLOSED unless explicitly opted into. See POST /api/signup for why.
+// Opt in with ALLOW_PUBLIC_SIGNUP=true; anything else, including unset, leaves it shut.
+const PUBLIC_SIGNUP_ENABLED = String(process.env.ALLOW_PUBLIC_SIGNUP || '').trim().toLowerCase() === 'true';
 const TANIMOTO_API_BASE = (process.env.TANIMOTO_API_BASE || 'http://151.145.91.17:8000').replace(/\/$/, '');
 const SDF_CONVERTER_URL = process.env.SDF_CONVERTER_URL || 'http://83.229.87.94:8001/convertSTR';
 // Default ligand catalog/docking endpoints. Companies override these per-company
@@ -2035,8 +2038,27 @@ app.get('/checkout-session/:sessionId', ensureMongoConnected, authenticateToken,
  *     responses:
  *       200:
  *         description: Signup successful
+ *       403:
+ *         description: Public signup is closed (the default). Accounts are invite-only.
  */
 app.post('/api/signup', authRateLimit, ensureMongoConnected, async (req, res) => {
+  // Closed by default. This is one product for one company (docs/PYXIS-ONLY.md), so
+  // an open signup is not a feature: it creates a *company* and makes the caller its
+  // owner, on an install whose compute sits behind two GPUs. Accounts come from
+  // POST /api/company/members, which requireCompanyAdmin gates.
+  //
+  // Kept as a flag rather than deleted so bootstrapping a fresh install is still one
+  // env var, and so the route keeps its tests and its swagger entry. 403, not 401 —
+  // the client logs out on any same-origin 401, and this is authorization, not a
+  // dead session.
+  if (!PUBLIC_SIGNUP_ENABLED) {
+    await recordAuditEvent(req, 'auth.signup.rejected_closed', {
+      username: typeof req.body?.username === 'string' ? req.body.username.trim() : undefined,
+    }, 'failure');
+    return res.status(403).json({
+      error: 'Public signup is closed. Ask an administrator for an invitation.',
+    });
+  }
   const { password, organization } = req.body;
   // Trim identity fields: stray whitespace from autofill/mobile keyboards
   // otherwise gets stored verbatim and makes signin impossible.

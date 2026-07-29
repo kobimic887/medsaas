@@ -353,6 +353,43 @@ async function main() {
     });
     check('reset confirm with weak password returns 400', weakPass.status === 400, `(got ${weakPass.status})`);
 
+    // --- Test 5b: public signup is closed ---
+    // This install is one product for one company (docs/PYXIS-ONLY.md). An open
+    // /api/signup does not just create a user, it creates a COMPANY and makes the
+    // caller its owner. The smoke env sets no ALLOW_PUBLIC_SIGNUP, which is the
+    // production configuration, so the route must refuse — and refuse with 403,
+    // because the client logs itself out on any same-origin 401.
+    console.log('\nTest 5b — public signup is closed:');
+    const signupRes = await fetch(`${BASE}/api/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: 'walkin', password: 'WalkIn123!', email: 'walkin@example.com',
+        organization: 'Someone Elses Lab',
+      }),
+    });
+    const signupBody = await signupRes.json().catch(() => ({}));
+    check('signup returns 403, not 200', signupRes.status === 403, `(got ${signupRes.status})`);
+    check(
+      'signup 403 is not the client-logout 401',
+      signupRes.status !== 401,
+      `(got ${signupRes.status})`
+    );
+    check(
+      'signup error points at the invite path',
+      typeof signupBody.error === 'string' && /invitation|administrator/i.test(signupBody.error),
+      `(got ${JSON.stringify(signupBody.error)})`
+    );
+    check(
+      'no user was created',
+      (await users.findOne({ username: 'walkin' })) === null,
+      '(a walk-in account exists)'
+    );
+    check(
+      'no company was created',
+      (await mongo.db().collection('companies').findOne({ name: 'Someone Elses Lab' })) === null,
+      '(a walk-in company exists)'
+    );
+
     // --- Test 6: static serving (only with --assert-static) ---
     if (ASSERT_STATIC) {
       console.log('\nTest 6 — GET / serves built frontend HTML:');

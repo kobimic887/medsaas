@@ -275,9 +275,11 @@ export function SignIn() {
         </button>
       </form>
 
+      {/* Accounts are invite-only — an administrator creates them from Company
+          Admin. Offering "Create account" here would lead to a route that no
+          longer exists and a route that refuses. */}
       <div className="cb-auth-footer">
-        <span className="text-gray-500">Don't have an account?</span>
-        <Link to="/auth/sign-up" className="cb-auth-link">Create account</Link>
+        <span className="text-gray-500">Need an account? Ask your administrator for an invitation.</span>
       </div>
     </AuthShell>
   );
