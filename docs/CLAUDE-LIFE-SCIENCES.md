@@ -4,8 +4,41 @@ The connector already exists and is coherent: `services/mcp-server/` exposes **1
 tools** over the transport Claude for Life Sciences speaks. It is built, containerised, wired
 into both compose files, and every tool path was verified against a real route (§4).
 
-**One thing stands between it and working: a public HTTPS URL.** That is the same blocker as
-Stripe webhooks — see [COMPUTE-BOX-MIGRATION.md §3-B](./COMPUTE-BOX-MIGRATION.md#open-decision-b--public-https-ingress-for-the-box-blocking).
+---
+
+## 0. In plain terms — what this actually is
+
+**Claude Science lets a scientist ask Claude to use Pyxis.** They type "find me analogues of
+aspirin under 300 Da and dock the best three against 1CX7" into Claude, and Claude performs those
+searches and docks *on this platform*, with their account and their credits, and reasons about
+the results. It is not a chatbot bolted onto the dashboard. It is Claude driving the product.
+
+The piece that makes that possible is a **connector**: a small server that publishes a menu of
+things Claude is allowed to do, and translates each one into an API call. `services/mcp-server/`
+is that server, and the menu is the 14 tools in §2. It is built and it works — every tool has
+been exercised against a real route.
+
+**Two things stand between it and a scientist using it, and neither is code:**
+
+1. **Anthropic's servers have to be able to reach it.** A remote connector is called *from*
+   Claude's infrastructure, so it needs a public HTTPS address. Today it listens on
+   `:8080` on a machine with no ingress for that port.
+2. **The sign-in step does not match.** This server expects the caller to already hold a Pyxis
+   JWT and to send it as a bearer token. Claude's custom connectors are built around the user
+   clicking "connect" and authorising through OAuth. There is nowhere in that flow for a
+   scientist to paste a raw JWT — so as it stands, there is no way for them to log in.
+
+(1) becomes nearly free after Release A: nginx already terminates TLS for
+`app.pyxis-discovery.com`, so one extra `location` block pointed at `:8080` gives it a public
+HTTPS URL on an origin that already exists. (2) is real work — an OAuth authorisation endpoint in
+front of the existing JWT issuance — and it is the piece to scope deliberately rather than to
+squeeze into the server swap.
+
+**So: do not couple this to Release A.** It shares no code with the cutover, it cannot break
+docking, and it is not on the critical path for the box. The right moment is after the swap has
+carried production traffic for a week, when the public HTTPS origin it needs already exists and
+adding a path to nginx is a small, well-understood change rather than one more variable on a day
+that has enough of them.
 
 ---
 

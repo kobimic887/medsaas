@@ -55,18 +55,31 @@ This reframes the "rotate `JWT_SECRET`" gate below. It is not cutover hygiene; i
 Release A fixes it as a by-product, because this repo's server refuses to start without a real
 one ≥32 characters.
 
-**`:3001` is an open mail relay.** `stripe-server.cjs`, in *no* document until now, running from
-`/root/material-tailwind-dashboard-react` since 2026-07-02 and reachable from the public internet
-on `83.229.87.94:3001`. It exposes unauthenticated `POST /api/send-email`, which takes an
-arbitrary `recipientEmail` and sends through the production Titan Mail account. It also exposes
-`POST /api/issueSimulationTokens` and Stripe session creation with a **client-supplied price**,
-none of it authenticated.
+**`:3001` was an open mail relay — ✅ fixed 2026-07-29.** `stripe-server.cjs`, in *no* document
+until now, running from `/root/material-tailwind-dashboard-react` since 2026-07-02 and reachable
+from the public internet. Its unauthenticated `POST /api/send-email` took an arbitrary
+`recipientEmail` and sent through the company mailbox. The three patches in `deploy/83/` pin the
+destination server-side, rate-limit both mail routes per client IP plus globally, and make
+`/api/test-email` answer only to localhost.
 
 ⚠ **Do not kill the process.** The live Vite dev server proxies `/api` → `127.0.0.1:3001`
-(`vite.config.js`), so it is the contact form's backend *and* part of the rollback path. Bind it
-to localhost or firewall `:3001` instead. Release A retires it properly: every one of those routes
+(`vite.config.js`), so it is the contact form's backend *and* part of the rollback path. It now
+runs under `systemd` as `pyxis-stripe`. Release A retires it properly: every route it serves
 exists in this repo's server behind authentication and rate limiting, and
 `/api/issueSimulationTokens` there requires a company admin.
+
+Two things still open on it, neither reachable from the app (the deployed frontend calls
+`chem_beo` on `:3000` for both): unauthenticated `POST /api/issueSimulationTokens`, which returns
+success without touching the database, and Stripe session creation with a **client-supplied
+`price`**. Both die with the process at Release A.
+
+**And it had never worked.** The transport was hardcoded to `smtp.titan.email`. This account is
+not on Titan — `EMAIL_HOST` is `server028.yourhosting.nl:587`, and Titan answers
+`535 5.7.8 authentication failed` on 465 and 587 alike. **Every contact-form submission since the
+page shipped failed**, and the visitor saw a generic error. Fixed and verified by sending a real
+message. `server/utils/emailService.js` had the same hardcoding and only worked because the real
+host appeared once, by accident, in its fallback list — also fixed, along with the `debug/logger:
+true` that was writing the `AUTH PLAIN` line (the mailbox credentials) into the log on every send.
 
 ---
 
@@ -82,17 +95,23 @@ production, not assumed:
 | Response shapes verified route by route, both servers live | ✅ **done** — 17 routes, 4 explained differences, none blocking. See below |
 | Rollback proven to start | ✅ **done** — a second Vite booted on `:5199` from `/root/material-tailwind-dashboard-react`, served 200, production untouched |
 | Rehearsal on a spare port against real Atlas | ✅ **done** — `/root/pyxis-release-a`, port 5199, `bun index.js` + `client/dist` |
-| `scripts/migrate-legacy-users.mjs` | ⏳ **dry run clean, not applied.** 49/50 users get `companyId`, 47 get `simulationTokens: 0`, 1 string balance coerced |
-| `scripts/migrate-legacy-simulation-logs.mjs` | ⏳ **dry run clean, not applied.** 5 documents, 0 orphans. **New — see below** |
+| `scripts/migrate-legacy-users.mjs` | ✅ **applied.** 49 documents written; verify says 0 users without `companyId`, 0 with unusable tokens |
+| `scripts/migrate-legacy-simulation-logs.mjs` | ✅ **applied.** 5 documents; `user.username` left in place on all 5, and `chem_beo` re-verified afterwards — history, activity and the cache hit all still work |
 | Rotate `JWT_SECRET` | ⏳ **not done, and it is now a live vulnerability — see §0** |
 | `chem_beo` patch applied | ⏳ not applied |
 
-**Run the two migrations in one window, users first.** Between them is the only interval where
-history is invisible and the cache double-charges, so do not stop halfway. **Run them with
-`node`, not `bun`** — `mongodb`'s bson calls `node:v8 isBuildingSnapshot`, which Bun 1.3.12 does
-not implement, and the script dies on import. They also need `mongodb` resolvable from the repo
-root, which a bare checkout does not have; on the rig this was `ln -s server/node_modules
-node_modules`.
+**Both migrations ran on 2026-07-29**, users first, in one window, after a logical snapshot of
+`users`, `companies` and `simulation_logs` — kept on 83 at `/root/pyxis-migrate/backup-<stamp>/`
+with a `restore.mjs` beside it that replaces documents by `_id` rather than emptying the
+collection. **47 of the 50 users now hold `simulationTokens: 0`**, which is deliberate: the
+migration does not invent credits. They had no such field before, and `chargeSimulationToken`
+filters `{$gt: 0}`, so nothing changed for them — but grant credits before telling anyone the new
+server is live.
+
+If they ever need re-running: **`node`, not `bun`** — `mongodb`'s bson calls
+`node:v8 isBuildingSnapshot`, unimplemented in Bun 1.3.12, and the script dies on import. They
+also need `mongodb` resolvable, which a bare checkout does not have; on 83 that was
+`ln -s /root/chem_beo/node_modules node_modules`.
 
 **Why the second migration exists.** `migrate-legacy-users.mjs` opens a gap it does not close.
 The moment every user has a `companyId`, `buildTenantFilter` stops taking its legacy branch and
@@ -165,10 +184,20 @@ The same log settled `/convertSTR` too: `{"smiles": "..."}` → `{"sdf": "..."}`
 line is a request at **2026-06-04T12:15:34Z with no response** — the exact moment `:8001` died,
 carrying a leading space in the SMILES. `deploy/box/convertstr/` now trims and has a test for it.
 
-### 4. `pg_dump` Oracle's Tanimoto Postgres
+### 4. `pg_dump` Oracle's Tanimoto Postgres — ✅ done 2026-07-29
 
-2,951,975 molecules, **the only copy**, and an unauthenticated `DELETE` route reaches it.
-Runbook 4.3. Do not wait for the box for this.
+2,951,975 molecules (and 2,951,975 fingerprints), confirmed by count. 14 GB on disk,
+**1.21 GB** as `pg_dump -Fc -Z6`, with a `sha256` beside it.
+
+| Copy | Where |
+|---|---|
+| on Oracle | `~ubuntu/tanimoto-backup/tonomitosql-20260729.dump` |
+| off Oracle | `~/backups/tanimoto/` on the dev Mac |
+
+Postgres 17 with the **`rdkit` 4.6.1** cartridge — the restore target needs that extension or
+the schema will not load. This is a backup, not a migration: Tanimoto compute still moves to the
+box (B3). The point is that until now the data existed in exactly one place, with an
+unauthenticated `DELETE` route pointing at it, so there was nothing to migrate *from* if it went.
 
 ### 5. Rotate the glioblastoma key
 
