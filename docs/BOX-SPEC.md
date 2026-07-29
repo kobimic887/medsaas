@@ -37,6 +37,25 @@ welcome; nothing that only benefits incidentally gets a euro.** Tanimoto search,
 GROMACS and the glioblastoma model all get faster on this machine — none of them justified
 changing a component.
 
+> ⚠ **That was a rule for choosing components, and the choosing is over. Do not carry it
+> forward into how the machine gets used.** Clarified 2026-07-29, because the shorthand had
+> drifted in `CLAUDE.md` into "those workloads get no attention", which is wrong.
+>
+> The €24,727 is spent. Every cycle those other workloads take is already paid for, and they
+> are currently running on a shared VPS, a small Ampere VPS, or nowhere at all. Moving them to
+> 32 Threadripper cores and 128 GB of ECC is a **real upgrade**, not a rounding error:
+>
+> | | Today | On the box |
+> |---|---|---|
+> | Tanimoto / RDKit search | Oracle Ampere **arm64** VPS, 2.9 M molecules | x86_64, 32 cores, 128 GB |
+> | GROMACS MD | 83, Docker, **CPU-only apt build** | CUDA build on 2× 5090 |
+> | ADMET | **never deployed.** Every job ever queued is still `status: "queued"` | GPU torch cu128 |
+> | Glioblastoma | never deployed | runs at all |
+>
+> The rule still forbids one thing, and only that thing: **spending more money, or delaying the
+> docking cutover, for their sake.** Docking goes first and alone (ARRIVAL-RUNBOOK Phase 2);
+> the rest is Phase 6, after. Within that ordering, make them as fast as the hardware allows.
+
 ### What the workload actually is — verified in code, not assumed
 
 Every docking path in this repo is **one protein, one ligand, synchronous, one credit**:

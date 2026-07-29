@@ -6,7 +6,88 @@ rather than by hardware delivery. It is now done, and this file is the reference
 AutoDock rebuild has to match.
 
 Source: the `simulation_logs` collection of the production database (MongoDB Atlas, database
-name `test`). Everything below is observed, not inferred, except where marked.
+name `test`). §1–§5 are observed, not inferred, except where marked.
+
+**§0 was added 2026-07-29 and is a different kind of evidence** — it is read from
+`server/index.js`, not from production data. It is the half that was missing: §1–§5 say what the
+engine must *return*, §0 says what it must *accept*. You cannot build the service from the
+response shape alone.
+
+---
+
+## 0. The request contract — what the box's docking service must accept
+
+The whole 1-click path, end to end:
+
+```
+ user picks a molecule from the Asinex catalog  →  SMILES lands in `searchCode`
+ user types a 4-char PDB ID
+ user clicks Dock
+        │  client/src/pages/dashboard/simulation.jsx:679-693
+        │  smiles = searchCode.replace(',', ';').trim()       ← comma becomes SEMICOLON
+        │  body   = { pdbid, smiles: encodeURIComponent(smiles) }
+        ▼
+ POST /api/simulation                              server/index.js:3131
+        │  authenticateToken → requireActiveUser → company active? → monthly cap?
+        │  CACHE LOOKUP: simulation_logs.findOne({ ...tenantFilter, pdbid, smiles })
+        │     ← hit returns free, before any charge. Matches the ENCODED smiles (§4)
+        │  CHARGE one credit, atomically, refundOnDisconnect: false
+        ▼
+ POST {dockingApiUrl}                              ← THE BOX REPLACES THIS
+        │  { pdbID: "1cx7", smiles: "<url-encoded>" }
+        │  10 minute timeout
+        ▼
+ non-2xx → throw → REFUND → 502 "Docking service is unavailable"
+ 2xx     → store { username, companyId, pdbid, smiles, result, simulationKey, method:'POST' }
+        ▼
+ { ...result, simulationKey }  →  Molstar renders result.pdb, poses from result.sdf
+```
+
+### The two call shapes
+
+| | Request |
+|---|---|
+| **POST** (`:3191`) — **the live path** | `POST {dockingApiUrl}`, JSON body `{ pdbID, smiles }` |
+| **GET** (`:3034`) | `GET {dockingApiUrl}/{encodeURIComponent(pdbid)}&{encodeURIComponent(smiles)}` |
+
+Default `dockingApiUrl`: `https://services.asinex.com:8000/docking` (`server/index.js:87`),
+per-company overridable via `ligandServiceConfig`.
+
+### Four things that will be got wrong
+
+1. **The body field is `pdbID` — capital D.** Every other layer says `pdbid`. Get it wrong and
+   the box receives `undefined` for the receptor.
+2. **`smiles` arrives URL-encoded, and must be decoded before any toolkit sees it.** The client
+   encodes once; the server's guard —
+   `smiles === decodeURIComponent(smiles) ? encodeURIComponent(smiles) : smiles` — sees it is
+   already encoded and passes it through unchanged. So the engine gets
+   `Cc1c(non1)OCCn2c(ncc2%5BN%2B%5D(%3DO)%5BO-%5D)C`, not the raw SMILES.
+3. **The GET form puts both parameters in one path segment joined by a literal `&`** — it is not
+   a query string. `…/docking/1cx7&Cc1c(non1)…`. Anything routing on `?` will not match it.
+   No production record uses GET (§5), but the route exists and is authenticated, so the box
+   should serve it or the platform should drop it — decide, do not leave it half-wired.
+4. **A comma in the SMILES becomes a semicolon** before encoding, client-side. Presumably a
+   multi-ligand separator. Whatever the box does with it must match, because the cache key is
+   the post-transformation string.
+
+### The performance requirement is a ceiling, not a target
+
+**10 minutes** (`EXTERNAL_HTTP_TIMEOUT_LONG_MS = 600000`, `server/index.js:217`). Past that the
+platform aborts, refunds, and returns 502. Asinex answers inside it today, so the box only has
+to be *not slower* to be correct — everything beyond that is the actual user-visible win, and
+it is unmeasured until the cards exist.
+
+The first dock against a receptor pays for preparation and `autogrid` maps; subsequent ligands
+against the same receptor should not. Caching those is where the box beats Moscow by more than
+raw GPU speed — see §2's note that this is an improvement over the reference, not parity.
+
+⚠ **Unverified against `chem_beo`.** §0 is read from *this repo's* server. Production runs
+`chem_beo`, and its request shape was not re-checked in the session that wrote this. §1–§5 come
+from production data and are unaffected. **Before building against §0, confirm it on 83:**
+
+```bash
+grep -n 'pdbID\|docking' /root/chem_beo/index.js
+```
 
 ---
 
