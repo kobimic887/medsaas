@@ -109,6 +109,42 @@
     background-color: rgb(20 52 48 / 0.72) !important;
   }
 
+  /* Pale -50 tints are near-white by definition, so any panel using one stayed a
+     white slab in dark mode. The "Current molecule:" box on the RdKit Visualiser is
+     `bg-brand-50 border-brand-200`, and brand-50 is now #fbfbef — paler still after
+     the palette move. Each keeps its own hue as a low-alpha wash over the dark
+     surface, so the colour still carries its meaning (error red, brand citron) and
+     the text on top stays legible. */
+  html.dark .bg-brand-50 {
+    background-color: rgb(var(--brand-500) / 0.14) !important;
+  }
+  html.dark .border-brand-200 {
+    border-color: rgb(var(--brand-500) / 0.35) !important;
+  }
+
+  html.dark .bg-red-50 {
+    background-color: rgb(239 68 68 / 0.12) !important;
+  }
+  html.dark .border-red-100,
+  html.dark .border-red-200 {
+    border-color: rgb(239 68 68 / 0.3) !important;
+  }
+
+  html.dark .bg-green-50 {
+    background-color: rgb(106 157 69 / 0.14) !important;
+  }
+  html.dark .border-green-200 {
+    border-color: rgb(106 157 69 / 0.35) !important;
+  }
+
+  html.dark .bg-amber-50,
+  html.dark .bg-orange-50 {
+    background-color: rgb(245 158 11 / 0.12) !important;
+  }
+  html.dark .border-amber-200 {
+    border-color: rgb(245 158 11 / 0.3) !important;
+  }
+
   html.dark .bg-blue-100,
   html.dark .from-blue-50,
   html.dark .via-blue-100,
