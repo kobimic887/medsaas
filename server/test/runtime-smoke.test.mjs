@@ -78,6 +78,13 @@ async function main() {
     PORT: String(PORT),
     NODE_ENV: 'test',
     NVIDIA_MOLMIM_API_KEY: '',  // Blank so handler returns 500 without calling NVIDIA
+    // Give the CORS allowlist an entry, because an EMPTY allowlist outside production
+    // deliberately reflects any origin (server/index.js — local dev convenience). Without
+    // this the suite tests that permissive branch instead of the one that ships, and
+    // Test 5e's result depends on whether a repo .env happens to exist: it passed on a
+    // dev machine and failed in CI, where there is none.
+    BASE_URL: `http://127.0.0.1:${PORT}`,
+    FRONTEND_URL: `http://127.0.0.1:${PORT}`,
   };
   if (!ASSERT_STATIC) {
     childEnvFinal.FRONTEND_DIST = '';
