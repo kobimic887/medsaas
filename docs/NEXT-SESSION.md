@@ -1,5 +1,74 @@
 # What to do next
 
+## ⏱ PICK UP HERE — session ended 2026-07-29
+
+**Production is untouched and working.** Legacy Vite on 5173, `chem_beo` on 3000,
+`stripe-server` on 3001, `pyxis-web` **disabled**, `https://app.pyxis-discovery.com` → 200.
+Nothing was cut over. No rehearsal process left running.
+
+**Release A is staged at `/root/pyxis` on 83 and fully tested.** Source, `client/dist`, deps,
+and a `.env` whose `JWT_SECRET` was generated on the box. The whole dashboard was driven
+against real Atlas through an SSH tunnel on spare port 5199.
+
+### The one command that ships it
+
+```bash
+systemctl disable --now pyxis-vite-legacy && systemctl enable --now pyxis-web
+```
+
+Rollback is the same inverted. Only user-visible effect: everyone signs in once more,
+because `JWT_SECRET` legitimately changes (that is the fix for `chem_beo` signing with the
+literal string `secret`).
+
+⚠ **The staged `/root/pyxis` predates the last four commits.** Re-copy the repo and a fresh
+`client/dist` before enabling, or the CORS, footer, contrast and email-leak fixes will not be
+in what ships.
+
+### Do these two first — they are small and they are the reason to hurry
+
+1. **Cap `tester123`'s credits.** It holds **99,998** and its password has been readable in
+   the legacy page source for as long as that frontend has been up. The new server never
+   reads that password, so rotating it breaks nothing.
+2. **Re-copy the deploy** (above), then enable.
+
+### What the dashboard test found — all fixed, all committed
+
+| Found | Status |
+|---|---|
+| Built frontend served a **blank white page** through a tunnel — CORS refusal threw, so every `/assets/*.js` 500'd | fixed, `5bc88ed` |
+| Every page footer credited **"Outwize inc"** with four links to their site | fixed, `5bc88ed` |
+| Notifications text was **dark-on-dark, unreadable** | fixed, `dcd0814` |
+| Activity feed leaked **every colleague's email address** to any member, including the public demo account | fixed, `dcd0814` |
+
+**Verified working against real Atlas:** sign-in, demo session, Control Panel (5 real records),
+Simulation (Ketcher loads), Simulation Results (Molstar initialises), RDKit Visualiser
+(renders ethanol), Deep Similarity (`/tanimoto/v1/search/exact` → 200 via Oracle), Protein
+Folding, Generate Molecules, Dashboard (real counts, charts render), Profile, GROMACS,
+Notifications. **No console errors on any page.**
+
+`gromacs-md` and `glioblastoma-predict` are deliberately `hideFromMenu` — they are not
+deployed yet and light up when the box arrives.
+
+### Known cosmetic, not fixed, not blocking
+
+- **Profile page** carries Creative Tim filler: fake contacts (Sophie B., Alexander, Ivanna)
+  with stock photos and dead REPLY buttons, plus social-network toggles ("Email me when
+  someone follows me"). Non-functional decoration on a chemistry product.
+- **Dashboard** chart captions are template text — "Last Campaign Performance Graph2",
+  "campaign sent 2 days ago".
+
+Both are removals of dead content rather than layout changes, but they were left alone
+because the standing instruction is not to move things users recognise. Worth a decision.
+
+### Still open for the box, unchanged
+
+DiffDock has no implementation (only a captured contract) — biggest gap. ADMET and
+glioblastoma have never run. GROMACS is still a CPU-only apt build. Tanimoto restore proof
+written (`scripts/verify-tanimoto-restore.sh`) but needs Docker, so run it on the box. Caddy
+config not written. sm_120/cu128 wheel check not done.
+
+---
+
 Written 2026-07-29. Delete this file once the box has arrived and Release B is done —
 it is a handoff note, not a document.
 
