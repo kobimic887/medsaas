@@ -1,4 +1,4 @@
-const PLATFORM_NAME = (process.env.PLATFORM_NAME || 'MedSaaS').trim();
+const PLATFORM_NAME = (process.env.PLATFORM_NAME || 'Pyxis Discovery').trim();
 const PLATFORM_WEBSITE_URL = (process.env.PLATFORM_WEBSITE_URL || process.env.FRONTEND_URL || '').replace(/\/$/, '');
 
 export function getPlatformName() {

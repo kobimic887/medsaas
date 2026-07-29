@@ -129,7 +129,7 @@ export function Sidenav({ brandImg, brandName, routes }) {
 
 Sidenav.defaultProps = {
   brandImg: null,
-  brandName: "MedSaaS",
+  brandName: "Pyxis Discovery",
 };
 
 Sidenav.propTypes = {

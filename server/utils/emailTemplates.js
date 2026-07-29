@@ -18,7 +18,7 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-function resolveBrandName(companyName, platformName = 'MedSaaS') {
+function resolveBrandName(companyName, platformName = 'Pyxis Discovery') {
   const company = typeof companyName === 'string' ? companyName.trim() : '';
   return company || platformName;
 }
@@ -57,7 +57,7 @@ function titleStyle(brand) {
 export function generateVerificationEmailHTML(username, verificationUrl, options = {}) {
   const {
     companyName = '',
-    platformName = 'MedSaaS',
+    platformName = 'Pyxis Discovery',
     websiteUrl = '',
     signInUrl = '',
     palette,
@@ -326,7 +326,7 @@ export function generateVerificationEmailHTML(username, verificationUrl, options
 export function generateWelcomeEmailHTML(username, options = {}) {
   const {
     companyName = '',
-    platformName = 'MedSaaS',
+    platformName = 'Pyxis Discovery',
     signInUrl = '#',
     palette,
   } = options;
@@ -424,7 +424,7 @@ export function generateWelcomeEmailHTML(username, options = {}) {
 }
 
 export function generatePasswordResetEmailHTML(username, resetUrl, options = {}) {
-  const { companyName = '', platformName = 'MedSaaS', palette } = options;
+  const { companyName = '', platformName = 'Pyxis Discovery', palette } = options;
   const brandNameRaw = resolveBrandName(companyName, platformName);
   const brandName = escapeHtml(brandNameRaw);
   const brandNameUpper = escapeHtml(brandNameRaw.toUpperCase());
@@ -524,7 +524,7 @@ export function generateInviteEmailHTML(options = {}) {
     role = 'member',
     passwordLine = '',
     signInUrl = '#',
-    platformName = 'MedSaaS',
+    platformName = 'Pyxis Discovery',
     palette,
   } = options;
   const brandNameRaw = resolveBrandName(companyName, platformName);

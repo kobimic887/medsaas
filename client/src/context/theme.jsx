@@ -1,6 +1,9 @@
 import React from "react";
 import PropTypes from "prop-types";
 
+// Deliberately keeps the old name through the Pyxis rebrand: this is a localStorage
+// key, not brand text, and renaming it would silently reset every existing user's
+// light/dark preference on first load after deploy. Exempted in scripts/check-brand.mjs.
 const THEME_STORAGE_KEY = "medsaas-theme";
 const DEFAULT_THEME = "dark";
 

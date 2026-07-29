@@ -271,7 +271,11 @@ Please contact the customer at ${userEmail} to process this order.
           name: userName,
           subject: `Shopping Cart Enquiry from ${userName}`,
           message: emailMessage,
-          recipientEmail: 'contact@chembench.io'
+          // The visitor's own address, not a destination. /api/send-email always
+          // delivers to CONTACT_RECIPIENT/EMAIL_USER and uses this only as the
+          // reply-to, so sending a brand mailbox here made every cart enquiry
+          // reply to itself instead of to the customer.
+          recipientEmail: userEmail
         })
       });
 

@@ -139,7 +139,7 @@ export async function sendTitanEmail({ name, subject, message, recipientEmail, h
       await transporter.verify();
 
       await transporter.sendMail({
-        from: process.env.EMAIL_FROM || `"${process.env.PLATFORM_NAME || 'MedSaaS'}" <${process.env.EMAIL_USER}>`,
+        from: process.env.EMAIL_FROM || `"${process.env.PLATFORM_NAME || 'Pyxis Discovery'}" <${process.env.EMAIL_USER}>`,
         to: recipientEmail,
         subject,
         text: message,
@@ -147,7 +147,7 @@ export async function sendTitanEmail({ name, subject, message, recipientEmail, h
           <h2>${subject}</h2>
           <p>${message.replace(/\n/g, '<br>')}</p>
           <hr>
-          <p><small>Sent from ${process.env.PLATFORM_NAME || 'MedSaaS'}</small></p>
+          <p><small>Sent from ${process.env.PLATFORM_NAME || 'Pyxis Discovery'}</small></p>
         </div>`
       });
 
