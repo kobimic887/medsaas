@@ -1,0 +1,24 @@
+# chem_beo, the legacy API on :3000. It terminates its own TLS and bypasses nginx.
+#
+# This stays running and idle for at least a week after Release A — it is the rollback
+# target, it costs nothing, and it is looking at the same Atlas cluster. Retiring :3000 is
+# a separate, deliberate change (and a security fix: internet-facing, wildcard CORS, no
+# firewall).
+[Unit]
+Description=Pyxis legacy API (chem_beo, port 3000)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/chem_beo
+ExecStart=/usr/bin/node index.js
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/pyxis-api-legacy.log
+StandardError=append:/var/log/pyxis-api-legacy.log
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

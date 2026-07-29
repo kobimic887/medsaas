@@ -1,0 +1,30 @@
+# stripe-server.cjs on :3001. Undocumented until 2026-07-29 and load-bearing: the legacy
+# Vite dev server proxies /api here, so this is what answers the marketing site's contact
+# form. It is also part of the rollback path — do not stop it when cutting over.
+#
+# Hardened 2026-07-29: the destination of /api/send-email is server-controlled rather than
+# taken from the request body (it was an open relay through the company mailbox), both
+# mail routes are rate limited per client IP plus globally, /api/test-email answers only
+# to localhost, and the transport reads EMAIL_HOST/EMAIL_PORT instead of hardcoding a
+# provider this account does not use.
+#
+# Release A makes this redundant: every route it serves exists in server/index.js behind
+# authentication and rate limiting. Retire it then, not before.
+[Unit]
+Description=Pyxis legacy Stripe/contact server (port 3001)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/material-tailwind-dashboard-react
+ExecStart=/usr/bin/node stripe-server.cjs
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/pyxis-stripe.log
+StandardError=append:/var/log/pyxis-stripe.log
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

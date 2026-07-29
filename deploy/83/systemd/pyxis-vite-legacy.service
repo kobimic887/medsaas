@@ -1,0 +1,29 @@
+# The legacy frontend: the Vite dev server that serves app.pyxis-discovery.com today.
+#
+# nginx proxies / -> localhost:5173, so this unit owns the public site until Release A
+# takes that port. `dev-vite-only`, NOT `npm run dev`: the full dev script also starts
+# stripe-server.cjs, which pyxis-stripe.service already owns, and the loser of that race
+# dies on EADDRINUSE. That is exactly how two half-dead `concurrently` stacks ended up on
+# this box.
+#
+# Disable this and enable pyxis-web.service to cut over. Leave the unit installed — it is
+# the rollback.
+[Unit]
+Description=Pyxis legacy frontend (Vite dev server, port 5173)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/material-tailwind-dashboard-react
+ExecStart=/usr/bin/npm run dev-vite-only
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/pyxis-vite-legacy.log
+StandardError=append:/var/log/pyxis-vite-legacy.log
+# Vite's dep-optimizer writes into node_modules/.vite, so the tree cannot be read-only.
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
