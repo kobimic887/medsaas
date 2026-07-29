@@ -91,9 +91,9 @@ is needed.
 | `<ATLAS_URI>` | the production database connection string. **It is MongoDB Atlas, not on 83** — the old `<83_MONGO_URI>` placeholder was wrong. Database name is `test` | Phase 0 |
 | **Atlas allowlist access** | an account that can add the box's IP to the Atlas network allowlist. **Nothing on the box can reach the database until this is done** ([[atlas-tls-rejection]]) | Phase 4 |
 | `<ORACLE_HOST>` / `<ORACLE_USER>` | ⚠ **not Phase 7 only.** Oracle's Postgres serves production Tanimoto and holds the only copy of a 2,951,975-molecule index. Needed in **Phase 4** to take the `pg_dump` | Phase 4 |
-| `<DOMAIN>` | the DNS name the box will answer on, for TLS and the Stripe webhook | Phase 3 |
-| Stripe dashboard access | to **register** the webhook. There is no webhook registered today — this is a first-time setup, not a repoint | Phase 3 |
-| `.env` values | the full set for the box. Not in git, never will be | Phase 5 |
+| `<DOMAIN>` | the DNS name the box answers on, for TLS. **Not for Stripe** — see below | Phase 3 |
+| ~~Stripe dashboard access~~ | ⛔ **NOT NEEDED, and do not use it.** `chem_beo` keeps serving the same origin, so Stripe has nothing to repoint. Phase 3.2 says do not touch it. (Separately: **no webhook is registered at all**, so real purchases grant no credits — a live bug, not a migration step) | — |
+| `.env` values | for the **box's own services** (docking, DiffDock, Tanimoto, GROMACS). The API's `.env` stays on 83 and is edited in place — three variables, Phase 2.5. Not in git, never will be | Phase 2 |
 
 If the operator does not have `<IPMI_*>`, **stop.** Do not begin Phase 1 without a way back in.
 
