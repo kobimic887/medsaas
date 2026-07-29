@@ -6,9 +6,23 @@
 `stripe-server` on 3001, `pyxis-web` **disabled**, `https://app.pyxis-discovery.com` → 200.
 Nothing was cut over. No rehearsal process left running.
 
-**Release A is staged at `/root/pyxis` on 83 and fully tested.** Source, `client/dist`, deps,
-and a `.env` whose `JWT_SECRET` was generated on the box. The whole dashboard was driven
-against real Atlas through an SSH tunnel on spare port 5199.
+**Release A is staged at `/root/pyxis` on 83, re-staged to `f9a2547` and re-rehearsed
+2026-07-29 21:40 UTC.** Source, `client/dist`, deps, and `server/.env` whose `JWT_SECRET`
+was generated on the box (backed up to `/root/pyxis-secrets/pyxis-web.env.bak`).
+
+⚠ **It was stale when this note was first written.** The staged `server/index.js` hashed to
+exactly **`5bc88ed`**, so it was missing `dcd0814` — meaning `/api/activity` there still
+projected `email: 1` and *enabling it would have shipped the colleague-email leak*, plus the
+dark-on-dark notifications. `client/dist` was worse than stale: built from an uncommitted
+working tree at 18:02, so it matched no commit at all. **Both replaced.** All **346** tracked
+files under `/root/pyxis` are now byte-identical to `f9a2547`, and `/root/pyxis/DEPLOYED_SHA`
+records it so this never needs hand-investigating again.
+
+Verify a re-stage took with one line — it must print `86fbfdf67080915b`:
+
+```bash
+ssh root@83.229.87.94 'sha256sum /root/pyxis/server/index.js | cut -c1-16'
+```
 
 ### The one command that ships it
 
@@ -20,16 +34,25 @@ Rollback is the same inverted. Only user-visible effect: everyone signs in once 
 because `JWT_SECRET` legitimately changes (that is the fix for `chem_beo` signing with the
 literal string `secret`).
 
-⚠ **The staged `/root/pyxis` predates the last four commits.** Re-copy the repo and a fresh
-`client/dist` before enabling, or the CORS, footer, contrast and email-leak fixes will not be
-in what ships.
+⚠ **Never `rm -rf /root/pyxis` to re-stage.** `server/.env` (the box-generated `JWT_SECRET`,
+which exists nowhere else) and `server/node_modules` are untracked, so a wipe destroys them and
+the one command above stops working. Stage **over the top** — `git archive HEAD | ssh … tar -x
+-C /root/pyxis` touches neither — and replace `client/dist` wholesale. Build the dist with
+`COPYFILE_DISABLE=1` when tarring from a Mac; the previous copy left 53 AppleDouble `._*` files
+being served as static assets.
+
+⚠ **A failed boot takes the site down and keeps it down.** `pyxis-web` has
+`Conflicts=pyxis-vite-legacy` **and** `Restart=always`, so if it cannot start, 5173 is left
+unowned and retried every 5s with nginx proxying to nothing. That is why the 5199 rehearsal is
+the gate, not the cutover.
 
 ### Do these two first — they are small and they are the reason to hurry
 
-1. **Cap `tester123`'s credits.** It holds **99,998** and its password has been readable in
-   the legacy page source for as long as that frontend has been up. The new server never
-   reads that password, so rotating it breaks nothing.
-2. **Re-copy the deploy** (above), then enable.
+1. **Cap `tester123`'s credits.** Still **99,998** (verified on Atlas 2026-07-29 21:39 UTC) and
+   its password is still readable at
+   `https://app.pyxis-discovery.com/src/pages/auth/sign-in.jsx` — verified 200, lines 23–24.
+   The new server never reads that password, so rotating it breaks nothing.
+2. **Enable the unit.** The re-stage is done.
 
 ### What the dashboard test found — all fixed, all committed
 
@@ -135,16 +158,51 @@ Everything below this section is context. These are the open items, in order.
 > verified Postgres 17 tag, and `scripts/verify-tanimoto-restore.sh` proves the restore in one
 > command (needs Docker; run it on the box).
 
-0. ✅ **Re-verified 2026-07-29. Release A is staged on 83 and ready to enable.**
+0. ✅ **Re-staged and re-rehearsed 2026-07-29 21:40 UTC. Release A is ready to enable.**
 
-   `/root/pyxis` holds the source, a locally-built `client/dist`, installed server deps, and
-   a `.env` generated on the box — Atlas URI, Stripe and mail carried over from `chem_beo`,
-   `JWT_SECRET` **freshly generated there and never transmitted**, `DEMO_USERNAME=tester123`.
+   `/root/pyxis` holds the source at `f9a2547` (all 346 tracked files byte-identical),
+   a `client/dist` rebuilt from that same clean tree, installed server deps, and
+   `server/.env` — Atlas URI, Stripe and mail carried over from `chem_beo`,
+   `JWT_SECRET` **freshly generated there and never transmitted** (64 chars),
+   `DEMO_USERNAME=tester123`.
 
-   Booted on spare port **5199** against real Atlas and checked: `/health` 200 with
-   `database: connected, dbName: test`; `/` serves the built frontend titled *Pyxis Discovery*;
-   `POST /api/signup` → **403**; `POST /api/demo-session` issues a working token for
-   `tester123` with **no password or hash anywhere in the response**.
+   Booted on spare port **5199** against real Atlas and checked:
+
+   | Check | Result |
+   |---|---|
+   | `GET /health` | 200 `{"status":"OK"}`. **Note:** plain `/health` is static — `/health/db` is the one that reports Atlas. An earlier draft claimed `/health` returns `dbName: test`; it does not |
+   | `GET /` | 200, built frontend titled *Pyxis Discovery* |
+   | `POST /api/signup` | **403** — de-SaaS gate holds |
+   | `GET /api/demo-session` | 200 `{"available":true}` — proves `DEMO_USERNAME` resolves at *runtime*, not just that the key is in the file |
+   | `POST /api/demo-session` | 200, working token, keys `message,token,user`; no password and no hash (`mustChangePassword: false` is the only string matching `/password/`) |
+   | `GET /api/activity` as the demo **member** | 200, 9,488 bytes, keys `users,projects,simulations`, **zero `"email"` fields and zero email-shaped strings** — the `dcd0814` fix, tested through the exact path that leaked |
+
+   No errors in the boot log. Rehearsal torn down, 5199 released, 5173 still owned by
+   pid 2166445 (legacy Vite), `pyxis-web` still `inactive`.
+
+   **The unit's own environment was proven separately, and this is the distinction that
+   matters.** The run above was an interactive shell with `PORT`/`FRONTEND_DIST` passed on the
+   command line, which proves the *app* works, not the *unit*. `pyxis-web.service` has **no
+   `EnvironmentFile`**, so its boot depends entirely on `server/index.js` finding `server/.env`
+   via `WorkingDirectory`, under `NoNewPrivileges=true` and a stripped systemd environment.
+   Re-run as a transient unit with the same properties, only the port changed:
+
+   ```bash
+   systemd-run --unit=pyxis-probe --collect \
+     -p WorkingDirectory=/root/pyxis/server -p NoNewPrivileges=true -p Type=simple \
+     -p Environment=PORT=5199 -p Environment=FRONTEND_DIST=/root/pyxis/client/dist \
+     /usr/local/bin/bun index.js
+   ```
+
+   Result: bound 5199, `/health` 200, **`/health/db` 200 `{"database":"connected",
+   "dbName":"test","collections":5}`**, `/` titled *Pyxis Discovery*, `/api/signup` 403,
+   `/api/demo-session` `{"available":true}`. Probe stopped, 5199 released, `app.pyxis-discovery.com`
+   still 200. **`Conflicts=` + `Restart=always` means a failed boot leaves 5173 unowned and
+   retrying — so run this probe again after any re-stage, before enabling.**
+
+   Atlas state at the same moment, read-only: 50 users, **0 without `companyId`**, 1 company,
+   `simulation_logs` 5/5 carrying `companyId` **and** both nested and top-level `username` —
+   so both migrations are genuinely applied and a rollback to `chem_beo` can still read them.
 
    Parity: **17 routes, 4 differences — the same four as the first run**, so the de-SaaS work
    added none. The check that actually matters passed: legacy and the new server derive the
@@ -268,9 +326,17 @@ path if it is not done first.
    diffdock.
 7. **GROMACS is still `apt-get install gromacs` on `ubuntu:22.04`** — CPU-only. Moving that image
    to the box buys nothing; it needs a `-DGMX_GPU=CUDA` source build to be worth the move.
-8. **`services/glioblastoma-predictor/chemtest_tech_private.key` is committed to git** and
-   `COPY`'d into the image. It is in the history — rotate before that service runs anywhere. It
-   sits behind the `glioblastoma-key-rotated` profile so it cannot start by accident.
+8. ~~**`services/glioblastoma-predictor/chemtest_tech_private.key` is committed to git.**~~
+   **Corrected 2026-07-29 — it is not, and never was.** `.gitignore:45` ignores
+   `services/glioblastoma-predictor/*.key`, `git log --all` on the exact path is empty, and
+   `git rev-list --all --objects` finds no `.key` blob on any branch or tag. So there is nothing
+   leaked and nothing to rotate for that reason.
+
+   **The real problem is the opposite one:** the key exists only as an untracked local file on
+   the dev Mac, and `Dockerfile:14` does `COPY chemtest_tech_private.key /app/`. A build on the
+   box therefore **fails outright** unless that key is transferred out of band first. That is a
+   missing-artifact item on B6, not a security item. It still sits behind the
+   `glioblastoma-key-rotated` profile so it cannot start by accident.
 
 **Two of the six B-items have no 1:1 to hold, and that is fine.** DiffDock is *already broken in
 production* (`SDF_CONVERTER_URL` → `83:8001`, nothing listening), so the box's convertstr is a
@@ -403,8 +469,13 @@ production, not assumed:
 | Rehearsal on a spare port against real Atlas | ✅ **done** — `/root/pyxis-release-a`, port 5199, `bun index.js` + `client/dist` |
 | `scripts/migrate-legacy-users.mjs` | ✅ **applied.** 49 documents written; verify says 0 users without `companyId`, 0 with unusable tokens |
 | `scripts/migrate-legacy-simulation-logs.mjs` | ✅ **applied.** 5 documents; `user.username` left in place on all 5, and `chem_beo` re-verified afterwards — history, activity and the cache hit all still work |
-| Rotate `JWT_SECRET` | ⏳ **not done, and it is now a live vulnerability — see §0** |
-| `chem_beo` patch applied | ⏳ not applied |
+| Staged deploy matches HEAD | ✅ **done 2026-07-29 21:39 UTC** — 346/346 tracked files byte-identical to `f9a2547`, `client/dist` rebuilt from the same tree, `DEPLOYED_SHA` recorded |
+| Rotate `JWT_SECRET` | ⏳ **not done, and it is a live vulnerability — see §0.** Re-verified: `/root/chem_beo/.env` has no `JWT_SECRET` key at all, and `chem_beo/index.js:1049` still reads `process.env.JWT_SECRET \|\| 'secret'` |
+| Rotate `EMAIL_PASS` and the Stripe test key | ⏳ **not done.** `/root/chem_beo/.env` mtime is **2026-04-02** — a file untouched since April cannot hold a July-rotated secret. So either the credential exposed on 2026-07-29 is still live at the provider, or it *was* rotated there and `chem_beo`'s outbound mail is silently broken right now. Both need closing |
+| Cap `tester123` credits | ⏳ **not done** — still 99,998 |
+| Grant credits to the other users | ⏳ **not done** — 47 of 50 hold `simulationTokens: 0`, 3 hold > 0 |
+| `chem_beo` patch applied | ⏳ **not applied** — `/root/chem_beo/index.js` mtime is **2026-03-26** and greps 0 occurrences of `ASINEX_DOCKING_API_URL` / `DOCKING_API_URL` |
+| Cutover | ⏳ **not done.** `pyxis-web` `disabled`/`inactive`; `pyxis-vite-legacy` active on 5173; `https://app.pyxis-discovery.com/src/pages/auth/sign-in.jsx` still returns **200** with the demo credential in plain source |
 
 **Both migrations ran on 2026-07-29**, users first, in one window, after a logical snapshot of
 `users`, `companies` and `simulation_logs` — kept on 83 at `/root/pyxis-migrate/backup-<stamp>/`
@@ -516,26 +587,31 @@ image. It is in git history — treat as compromised. Blocks B6.
 
 Codex is building two things, in parallel, in disjoint directories:
 
-| Brief | Building into | State on 2026-07-29 |
+| Brief | Building into | State on 2026-07-29 (re-checked 21:45 UTC) |
 |---|---|---|
-| `deploy/box/docking/BRIEF.md` | `deploy/box/docking/service/` | ~1,200 LOC, `Dockerfile` + `docker-compose.yml` + 2 test files. Untracked. Mid-build |
-| `deploy/box/BRIEF-SERVICES.md` | `deploy/box/convertstr/`, `deploy/box/diffdock/`, `services/admet/` | `convertstr/` started. Untracked |
+| `deploy/box/docking/BRIEF.md` | `deploy/box/docking/service/` | **41 files, tracked and committed** — no longer untracked or mid-build |
+| `deploy/box/BRIEF-SERVICES.md` | `deploy/box/convertstr/`, `deploy/box/diffdock/`, `services/admet/` | `convertstr/` 7 files, `diffdock/` 7 files, both **tracked** |
 
-Its docking plan was reviewed. Two corrections were pushed in `f426de2` — **the plan predates
-them, so check the implementation honours both**:
+Its docking plan was reviewed. Two corrections were pushed in `f426de2`, and **both are
+honoured in the committed implementation** — verified, not assumed:
 
-1. **SCORE sorts ascending** (`-4.547 → -4.345`, most negative first). Three docs said
-   descending; Codex was right and the docs were wrong.
-2. **Do not hard-fail on a pose count other than 5.** The platform de-duplicates on `<smiles>`
-   and renders one row, so the pose count is invisible to the user. Rejecting a 4-pose dock
-   returns 502 and refunds a credit for work that succeeded. Emit what the engine produced,
-   `WARN` if not 5, fail only on **zero**.
+1. **SCORE sorts ascending** (`-4.547 → -4.345`, most negative first). ✅
+   `serializer.py:22` sorts on `pose.score` ascending, and `:127` re-asserts it, raising
+   `"docking serializer did not sort scores ascending"` if it ever drifts.
+2. **Do not hard-fail on a pose count other than 5.** ✅ `service.py:94` compares against
+   `EXPECTED_POSE_COUNT` (default 5, `settings.py:60`) and only `logger.warning`s plus a
+   `pose_count_<n>` metric. The one hard failure is `serializer.py:20`,
+   `"docking produced zero poses"` — exactly the intended policy.
 
-Also unresolved from that review, neither blocking:
+Also from that review:
 
-- The plan fetches only `files.rcsb.org/download/{ID}.pdb`. RCSB returns **404** for entries
-  too large for PDB format — those exist only as mmCIF. Needs a message saying so, not a
-  generic 404.
+- **Apo receptors are handled now** — `receptor.py:316` logs `APO_RECEPTOR_FALLBACK` with a
+  reason, so a receptor with no co-crystal ligand has a defined path. What is *still* open is
+  the separate §3 item: nobody has captured what **Asinex** does with one, so there is no 1:1
+  to compare the fallback against.
+- **mmCIF is still unhandled.** `grep -i cif receptor.py` is empty, so an entry too large for
+  PDB format still fetches `files.rcsb.org/download/{ID}.pdb`, gets a **404**, and reports it
+  generically. Needs a message that names the cause. Not blocking.
 - The plan rejects `;` in SMILES with 422. Defensible, but the frontend does
   `replace(',', ';')` with **no `/g` flag**, so it only rewrites the first comma — multi-SMILES
   input arrives as `A;B,C`. Whatever it does, log and count it.
