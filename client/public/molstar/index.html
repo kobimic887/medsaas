@@ -351,6 +351,39 @@
                 } finally {
                     showLoading(false);
                 }
+            } else if (event.data && event.data.type === 'loadStructureFromData') {
+                // Load structure text the parent already fetched, rather than a URL.
+                //
+                // The parent's SDF endpoints (/api/sanitized*) require a bearer token.
+                // This iframe is a separate document with no access to it, so handing it
+                // a URL made it fetch unauthenticated and get a 401 — the structure never
+                // rendered. The parent fetches with the token and posts the text here.
+                if (!viewer) {
+                    console.error('Molstar viewer not initialized');
+                    return;
+                }
+
+                const { text, format } = event.data;
+                if (!text) {
+                    showStatus('No structure data received', 'error');
+                    return;
+                }
+
+                showLoading(true);
+
+                // loadStructureFromUrl is the only loader this build exposes, so wrap the
+                // text in an object URL. Revoked once Molstar has parsed it.
+                const blobUrl = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+                try {
+                    await viewer.loadStructureFromUrl(blobUrl, format);
+                    showStatus(`Successfully loaded ${format.toUpperCase()} structure`, 'success');
+                } catch (error) {
+                    console.error('Failed to load structure from data:', error);
+                    showStatus(`Failed to load ${format.toUpperCase()} structure`, 'error');
+                } finally {
+                    URL.revokeObjectURL(blobUrl);
+                    showLoading(false);
+                }
             } else if (event.data && event.data.type === 'loadSmilesStructure') {
                 if (!viewer) {
                     console.error('Molstar viewer not initialized');

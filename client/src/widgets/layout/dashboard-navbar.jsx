@@ -261,11 +261,16 @@ Timestamp: ${new Date(cartData.timestamp).toLocaleString()}
 Please contact the customer at ${userEmail} to process this order.
       `;
 
-      // Use the existing /api/send-email endpoint with the correct format
+      // Use the existing /api/send-email endpoint with the correct format.
+      // It requires a bearer token — without one it answers 401, and the global
+      // interceptor reads any same-origin 401 as a dead session, so submitting a
+      // cart enquiry signed the customer out instead of sending the enquiry.
+      const emailToken = getAuthToken();
       const response = await fetch(API_CONFIG.buildApiUrl('/send-email'), {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...(emailToken ? { Authorization: `Bearer ${emailToken}` } : {})
         },
         body: JSON.stringify({
           name: userName,

@@ -1,7 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import { Card, CardHeader, CardBody, Typography, Button, Chip } from "@material-tailwind/react";
 import { useNavigate } from "react-router-dom";
-import { API_CONFIG } from "@/utils/constants";
+import { API_CONFIG, getAuthToken } from "@/utils/constants";
+
+// The /api/sanitized* endpoints require a bearer token. Every same-origin 401 is
+// treated by the global interceptor as a dead session, so a bare fetch() here did
+// not merely fail to render — it signed the user out the moment this page opened.
+// Keep every call to our own API going through this.
+const authedFetch = (url, init = {}) => {
+  const token = getAuthToken();
+  return fetch(url, {
+    ...init,
+    headers: {
+      ...(init.headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+};
 
 export function Molstar3D() {
   const molstarRef = useRef(null);
@@ -63,7 +78,7 @@ export function Molstar3D() {
     try {
       console.log('Loading SDF data from URL:', url);
       setIsLoading(true);
-      const response = await fetch(url);
+      const response = await authedFetch(url);
       if (response.ok) {
         const sdfText = await response.text();
         const parsedData = parseSdfData(sdfText);
@@ -555,15 +570,32 @@ const _HideMenu =()=>{
         
 
     };
-  const loadSDFStructure = () => {
+  const loadSDFStructure = async () => {
     const sdfUrl = localStorage.getItem('molstar_sdf_url');
     if (sdfUrl && molstarRef.current) {
       console.log('Manually loading SDF:', sdfUrl);
+      // Same reason as loadSmilesIntoMolstar: this URL is one of our protected
+      // /api/sanitized* routes, so fetch it here with the token and post the text.
+      let sdfText;
+      try {
+        const response = await authedFetch(sdfUrl);
+        if (!response.ok) {
+          setMessage('Failed to load SDF structure');
+          setMessageType('error');
+          return;
+        }
+        sdfText = await response.text();
+      } catch (error) {
+        console.error('Error loading SDF structure:', error);
+        setMessage('Failed to load SDF structure');
+        setMessageType('error');
+        return;
+      }
       molstarRef.current.contentWindow.postMessage({
-        type: 'loadStructureFromUrl',
-        url: sdfUrl,
+        type: 'loadStructureFromData',
+        text: sdfText,
         format: 'sdf'
-      }, '*');     
+      }, '*');
       setTimeout(() => {
               if (molstarRef.current && molstarRef.current.contentWindow) {
                 molstarRef.current.contentWindow.eval(`
@@ -592,13 +624,14 @@ const _HideMenu =()=>{
       molstarRef.current.contentWindow.postMessage({ type: 'clearSdfStructure' }, '*');
       try {
         const sdfSpecUrl = API_CONFIG.buildApiUrl(`/sanitizedspecificsdf/${simulationKey}/${encodeURIComponent(smiles)}`);
-        const response = await fetch(sdfSpecUrl);
+        const response = await authedFetch(sdfSpecUrl);
         if (response.ok) {
-          const _sdfText = await response.text();
-          // Send SDF data to Molstar iframe
+          const sdfText = await response.text();
+          // Post the text, not the URL: the iframe is a separate document and cannot
+          // attach our bearer token, so a URL here fetches unauthenticated and 401s.
           molstarRef.current.contentWindow.postMessage({
-            type: 'loadStructureFromUrl',
-            url: sdfSpecUrl,
+            type: 'loadStructureFromData',
+            text: sdfText,
             format: 'sdf'
           }, '*');
            setTimeout(() => {
@@ -679,8 +712,8 @@ const _HideMenu =()=>{
 
       // Fetch the SDF data from the API
       const sdfSpecUrl = API_CONFIG.buildApiUrl(`/sanitizedspecificsdf/${simulationKey}/${encodeURIComponent(smiles)}`);
-      const response = await fetch(sdfSpecUrl);
-      
+      const response = await authedFetch(sdfSpecUrl);
+
       if (response.ok) {
         const sdfText = await response.text();
         
