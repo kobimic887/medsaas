@@ -217,3 +217,24 @@ inventing new ones.
 
 **Do not** expose any of these to the internet, and do not add authentication-free routes that
 cost GPU time. The platform reaches them from one fixed address.
+
+---
+
+## Concurrency — this brief runs in parallel with the other one
+
+`deploy/box/docking/BRIEF.md` and `deploy/box/BRIEF-SERVICES.md` are built **at the same time by
+different agents**. Their build directories are disjoint and neither depends on the other, so
+there is no ordering requirement.
+
+**To keep it that way, do not edit any shared file.** Specifically:
+
+| Do not touch | Why |
+|---|---|
+| `deploy/box/compose.yml` | already wires every service, with ports, GPU pinning and healthchecks. **Match it.** If it is wrong, say so in your README — do not edit it |
+| `deploy/box/.env.example` | same |
+| `docs/README.md`, `CLAUDE.md`, `docs/*.md` | the other agent may be editing them |
+| `scripts/verify-docking-response.mjs` | it encodes the platform's real parsers. Loosening it to make your output pass defeats the point |
+
+Work on your own branch or git worktree and do not commit outside your own directories. Anything
+you believe belongs in a shared file goes in **your** README as a proposed change, with the
+reason. A human merges it.

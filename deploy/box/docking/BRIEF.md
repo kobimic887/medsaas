@@ -348,8 +348,32 @@ interface from §6, and the GPU decision stays a one-line swap made later, with 
    grid dimensions).
 3. Tests that pass under `DOCKING_ENGINE=replay` with **no GPU and no network** (fixture the
    RCSB fetch), and under `vina` with network.
-4. `docker-compose.yml` fragment for the box, GPU-optional.
+4. **No compose file.** `deploy/box/compose.yml` already defines the `docking` service —
+   build `deploy/box/docking/service` on port 8000, `CACHE_DIR=/srv/cache`, `/srv/cache`
+   mounted, `DOCKING_ENGINE` selecting the backend, and a `GET /health` for its healthcheck.
+   **Conform to it.** If something there is wrong, say so in your README rather than editing it.
 
 **Do not modify** `scripts/verify-docking-response.mjs` — it encodes the platform's real
 parsers, and loosening it to make your output pass defeats the entire point. If you believe it
 is wrong, say so and explain; do not edit it.
+
+---
+
+## Concurrency — this brief runs in parallel with the other one
+
+`deploy/box/docking/BRIEF.md` and `deploy/box/BRIEF-SERVICES.md` are built **at the same time by
+different agents**. Their build directories are disjoint and neither depends on the other, so
+there is no ordering requirement.
+
+**To keep it that way, do not edit any shared file.** Specifically:
+
+| Do not touch | Why |
+|---|---|
+| `deploy/box/compose.yml` | already wires every service, with ports, GPU pinning and healthchecks. **Match it.** If it is wrong, say so in your README — do not edit it |
+| `deploy/box/.env.example` | same |
+| `docs/README.md`, `CLAUDE.md`, `docs/*.md` | the other agent may be editing them |
+| `scripts/verify-docking-response.mjs` | it encodes the platform's real parsers. Loosening it to make your output pass defeats the point |
+
+Work on your own branch or git worktree and do not commit outside your own directories. Anything
+you believe belongs in a shared file goes in **your** README as a proposed change, with the
+reason. A human merges it.
