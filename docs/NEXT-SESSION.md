@@ -46,13 +46,25 @@ being served as static assets.
 unowned and retried every 5s with nginx proxying to nothing. That is why the 5199 rehearsal is
 the gate, not the cutover.
 
-### Do these two first — they are small and they are the reason to hurry
+### Owner decisions, 2026-07-29 — do not re-litigate these
 
-1. **Cap `tester123`'s credits.** Still **99,998** (verified on Atlas 2026-07-29 21:39 UTC) and
-   its password is still readable at
-   `https://app.pyxis-discovery.com/src/pages/auth/sign-in.jsx` — verified 200, lines 23–24.
-   The new server never reads that password, so rotating it breaks nothing.
-2. **Enable the unit.** The re-stage is done.
+1. **`tester123` keeps its 99,998 credits. Decided by the owner, verbatim: "tester HAS to stay
+   like that. period."** Do not cap it, do not propose capping it again. This is the same shape
+   as the Proceed-to-Demo button in §0c — a thing the owner wants left alone. The exposure it
+   was flagged for closes on its own the moment Release A owns 5173, because the credential only
+   leaks through the *legacy* frontend's unminified source.
+2. **Everyone else got 15 credits. Applied 2026-07-29 21:48 UTC.** 47 users were at
+   `simulationTokens: 0`; all 47 now hold 15. `anton1` (1000), `kobokon` (50) and `tester123`
+   (99,998) were excluded by the filter and verified unchanged afterwards. Every balance was
+   snapshotted first — full rollback at
+   `/root/pyxis-migrate/credit-grant-<stamp>/restore.mjs`, which writes each user's previous
+   value back by `_id`.
+3. **The `chem_beo` patch will not be applied.** See §2 below for the reasoning.
+
+### So the only thing left before the box is the cutover itself
+
+The re-stage is done, the unit environment is proven, and the gates below are closed or
+consciously waived.
 
 ### What the dashboard test found — all fixed, all committed
 
@@ -470,11 +482,13 @@ production, not assumed:
 | `scripts/migrate-legacy-users.mjs` | ✅ **applied.** 49 documents written; verify says 0 users without `companyId`, 0 with unusable tokens |
 | `scripts/migrate-legacy-simulation-logs.mjs` | ✅ **applied.** 5 documents; `user.username` left in place on all 5, and `chem_beo` re-verified afterwards — history, activity and the cache hit all still work |
 | Staged deploy matches HEAD | ✅ **done 2026-07-29 21:39 UTC** — 346/346 tracked files byte-identical to `f9a2547`, `client/dist` rebuilt from the same tree, `DEPLOYED_SHA` recorded |
-| Rotate `JWT_SECRET` | ⏳ **not done, and it is a live vulnerability — see §0.** Re-verified: `/root/chem_beo/.env` has no `JWT_SECRET` key at all, and `chem_beo/index.js:1049` still reads `process.env.JWT_SECRET \|\| 'secret'` |
-| Rotate `EMAIL_PASS` and the Stripe test key | ⏳ **not done.** `/root/chem_beo/.env` mtime is **2026-04-02** — a file untouched since April cannot hold a July-rotated secret. So either the credential exposed on 2026-07-29 is still live at the provider, or it *was* rotated there and `chem_beo`'s outbound mail is silently broken right now. Both need closing |
-| Cap `tester123` credits | ⏳ **not done** — still 99,998 |
-| Grant credits to the other users | ⏳ **not done** — 47 of 50 hold `simulationTokens: 0`, 3 hold > 0 |
-| `chem_beo` patch applied | ⏳ **not applied** — `/root/chem_beo/index.js` mtime is **2026-03-26** and greps 0 occurrences of `ASINEX_DOCKING_API_URL` / `DOCKING_API_URL` |
+| Rotate `JWT_SECRET` on `chem_beo` | ⛔ **won't do separately — the cutover is the fix.** Re-verified that the hole is real: `/root/chem_beo/.env` has no `JWT_SECRET` key at all, and `chem_beo/index.js:1049` still reads `process.env.JWT_SECRET \|\| 'secret'`. But patching a secret into a server we are retiring costs a full logout of all 50 users **now**, and the cutover costs a second one **later**. Release A already refuses to boot without a real ≥32-char secret, and its `.env` has one. One logout, not two |
+| Rotate `EMAIL_PASS` | ⏳ **not done, and now proven rather than inferred.** The ambiguity is resolved: an SMTP `verify()` against `server028.yourhosting.nl:587` with the credential still in `/root/chem_beo/.env` **authenticated successfully** on 2026-07-29 21:50 UTC. So the password exposed publicly that day was never rotated at the provider and is live. Anyone who fetched it during the window can send mail as `contact@pyxis-discovery.com` — phishing from the company's own domain. **Only the owner can fix this**, in the yourhosting.nl control panel; then update `EMAIL_PASS` in `/root/chem_beo/.env` and `/root/pyxis/server/.env` |
+| Rotate the Stripe key | ⏳ **low urgency, and the earlier framing was wrong.** Corrected: `/root/chem_beo/.env` runs **`sk_live`** (its `sk_test` line is commented out — that comment is what an earlier grep misread). The key that was publicly exposed is the **`sk_test`** one, and it lives only in `/root/pyxis-secrets/stripe-server.env`, the `:3001` contact-form server. **No live key was ever exposed.** Rotate the test key at leisure |
+| Stripe behaviour across the cutover | ✅ **no change.** `/root/pyxis/server/.env` carries the **same `sk_live`** as `chem_beo`, so the compound cart charges exactly as it does today. Verified by prefix, 2026-07-29 |
+| Cap `tester123` credits | ⛔ **won't do — owner decision.** Stays at 99,998 |
+| Grant credits to the other users | ✅ **done 2026-07-29 21:48 UTC** — 47 users 0 → **15**, reversible snapshot kept |
+| `chem_beo` patch applied | ⛔ **won't do — see §2.** Confirmed not applied: `/root/chem_beo/index.js` mtime **2026-03-26**, 0 occurrences of `ASINEX_DOCKING_API_URL` / `DOCKING_API_URL` |
 | Cutover | ⏳ **not done.** `pyxis-web` `disabled`/`inactive`; `pyxis-vite-legacy` active on 5173; `https://app.pyxis-discovery.com/src/pages/auth/sign-in.jsx` still returns **200** with the demo credential in plain source |
 
 **Both migrations ran on 2026-07-29**, users first, in one window, after a logical snapshot of
@@ -523,10 +537,23 @@ different codebase from this repo's `client/`, not an older version.
 Cutover is which process owns **port 5173**. nginx already proxies there; nothing in nginx,
 TLS, DNS, or Stripe is touched. Check what holds it first: `ss -ltnp | grep 5173`.
 
-### 2. Apply the `chem_beo` patch
+### 2. The `chem_beo` patch — decided 2026-07-29: do not apply it
+
+**Keep it; do not run it.** The owner left the call open ("just do what you see best"), and the
+answer follows from Release A being staged, proven and one command away.
+
+Every fix in the patch is already in Release A **by construction** — the real `JWT_SECRET`, the
+closed money routes, the atomic refundable charge, the env-var indirection for the box URLs.
+Applying it means restarting the **live** API to improve a codebase that is being retired, and
+buying a second production restart for nothing.
+
+**It stays exactly where it is, and it stays valuable**, for one scenario: Release A slips past
+box-arrival day. In that world the patch's env vars are the *only* way to repoint docking on the
+legacy server, and it becomes a prerequisite again. Re-read this decision if the cutover has not
+happened by the time the box lands.
 
 `deploy/chem_beo/01-fixes-and-config.patch`. Written, applies cleanly, and verified by
-running it against real Atlas on an isolated port. Not yet applied.
+running it against real Atlas on an isolated port. **Deliberately not applied.**
 
 It lifts the five Asinex URLs and eight Tanimoto call sites into env vars **defaulting to
 today's values**, makes the credit charge atomic and refundable, and closes five money/data
