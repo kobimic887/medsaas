@@ -1,6 +1,5 @@
 import {
   HomeIcon,
-  UserCircleIcon,
   InformationCircleIcon,
   ServerStackIcon,
   CogIcon,
@@ -24,7 +23,6 @@ import { lazy } from "react";
 // directory into the first chunk that touched it and undo the split silently.
 // Every page file has a default export, so no interop shim is needed.
 const DashboardHome = lazy(() => import("@/pages/dashboard/dashboardhome"));
-const Profile = lazy(() => import("@/pages/dashboard/profile"));
 const Notifications = lazy(() => import("@/pages/dashboard/notifications"));
 const ControlPanel = lazy(() => import("@/pages/dashboard/controlpanel"));
 const CompanyAdmin = lazy(() => import("@/pages/dashboard/company-admin"));
@@ -80,14 +78,6 @@ export const routes = [
         path: "/company-admin",
         element: <CompanyAdmin />,
         adminOnly: true,
-      },
-
-      {
-          hideFromMenu: true,
-        icon: <UserCircleIcon {...icon} />,
-        name: "profile",
-        path: "/profile",
-        element: <Profile />,
       },
       {
         icon: <InformationCircleIcon {...icon} />,

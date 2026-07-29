@@ -599,12 +599,11 @@ Please contact the customer at ${userEmail} to process this order.
                   Simulation Tokens: {user.simulationTokens}
                 </Typography>
               </div>
-              <MenuItem className="flex items-center gap-2 dark:hover:bg-slate-800">
-                <UserCircleIcon className="h-4 w-4" />
-                <Link to="/dashboard/profile" className="w-full">
-                  Profile
-                </Link>
-              </MenuItem>
+              {/* The Profile entry is gone with the page it opened. It was Creative Tim
+                  filler — fabricated colleagues with stock photos and dead reply buttons,
+                  social-network toggles, an invented bio — and nothing on it was this
+                  product's. The two facts it did carry that users want, name and token
+                  balance, are already in this menu directly above. */}
               <hr className="my-2 border-blue-gray-50 dark:border-slate-800" />
               <MenuItem className="flex items-center gap-2 text-red-500 dark:hover:bg-slate-800" onClick={logout}>
                 Sign Out
