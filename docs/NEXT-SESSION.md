@@ -1,14 +1,57 @@
 # What to do next
 
-## ⏱ PICK UP HERE — session ended 2026-07-29
+## ✅ RELEASE A IS LIVE — cut over 2026-07-29 21:51 UTC
 
-**Production is untouched and working.** Legacy Vite on 5173, `chem_beo` on 3000,
-`stripe-server` on 3001, `pyxis-web` **disabled**, `https://app.pyxis-discovery.com` → 200.
-Nothing was cut over. No rehearsal process left running.
+**`app.pyxis-discovery.com` is now this repo.** `pyxis-web` (bun, pid 2198082) owns 5173 and is
+`enabled`, so it survives a reboot. `pyxis-vite-legacy` is `disabled`/`inactive`. It came up in
+**2 seconds** and the log holds zero errors.
 
-**Release A is staged at `/root/pyxis` on 83, re-staged to `f9a2547` and re-rehearsed
-2026-07-29 21:40 UTC.** Source, `client/dist`, deps, and `server/.env` whose `JWT_SECRET`
-was generated on the box (backed up to `/root/pyxis-secrets/pyxis-web.env.bak`).
+Verified on the live site, through nginx, not on a spare port:
+
+| | |
+|---|---|
+| `/` | 200, *Pyxis Discovery* |
+| `/health/db` | `database: connected, dbName: test, collections: 5` |
+| `/auth/sign-in` | 200 — the WordPress site's web-shop link still lands |
+| assets, plain and with a foreign `Origin` | 200 — the blank-white-page bug does not reproduce |
+| `POST /api/signup` | 403 |
+| `POST /api/demo-session` | 200, working session, **no credential in the payload** |
+| `GET /api/activity` as the demo member | 200, **zero email fields** — the leak is closed in production |
+| **`/src/pages/auth/sign-in.jsx`** | **no longer serves source.** `Tester!23` returns 0 matches anywhere on the site |
+| **forged JWT signed with the literal `'secret'`, as the owner account** | **401.** The forgery hole is closed |
+
+`/.env` and `/src/*` answer **200 with `index.html`** — that is the SPA catch-all, not a leak
+(0 bytes of secrets, `<!DOCTYPE html>`). Cosmetic: unmatched non-route paths would be better as
+404s. Not worth a change that risks routing.
+
+**Rollback is intact and one command.** The legacy codebase is untouched at
+`/root/material-tailwind-dashboard-react`, its unit is installed-but-off, `chem_beo` still
+answers on 3000, `stripe-server` on 3001, and `server/.env` is backed up at
+`/root/pyxis-secrets/pyxis-web.env.bak`:
+
+```bash
+systemctl disable --now pyxis-web && systemctl enable --now pyxis-vite-legacy
+```
+
+### ⚠ The one thing the cutover did NOT close, and the argument for deferring it is now spent
+
+`chem_beo` on **:3000 is still internet-facing and still signs with the literal string
+`secret`** — the same forged owner token that gets 401 from the app gets **200** there, and that
+API reads and writes production Atlas. Measured, not assumed, at 21:53 UTC.
+
+It was left alone all session because rotating it would log out all 50 users. **That reason is
+gone** — the cutover already logged everyone out, and `chem_beo` now serves nobody. So the fix
+costs nothing except restarting a process no user touches.
+
+It was still not done tonight, deliberately: `chem_beo` is the rollback path, it is hand-started
+in a `screen` as pid 1790, and moving it to `pyxis-api-legacy` right after a cutover means
+changing two things at once. **Do it once Release A has soaked** — add a real `JWT_SECRET` to
+`/root/chem_beo/.env` and start the unit. Note the firewall is off-limits (shared VPS), so
+closing the port is not an option.
+
+---
+
+**How it was staged**, kept because the next re-stage must follow the same shape:
 
 ⚠ **It was stale when this note was first written.** The staged `server/index.js` hashed to
 exactly **`5bc88ed`**, so it was missing `dcd0814` — meaning `/api/activity` there still
@@ -24,15 +67,14 @@ Verify a re-stage took with one line — it must print `86fbfdf67080915b`:
 ssh root@83.229.87.94 'sha256sum /root/pyxis/server/index.js | cut -c1-16'
 ```
 
-### The one command that ships it
+### The command that shipped it, for the record
 
 ```bash
 systemctl disable --now pyxis-vite-legacy && systemctl enable --now pyxis-web
 ```
 
-Rollback is the same inverted. Only user-visible effect: everyone signs in once more,
-because `JWT_SECRET` legitimately changes (that is the fix for `chem_beo` signing with the
-literal string `secret`).
+Its only user-visible effect was that everyone signs in once more, because `JWT_SECRET`
+legitimately changed.
 
 ⚠ **Never `rm -rf /root/pyxis` to re-stage.** `server/.env` (the box-generated `JWT_SECRET`,
 which exists nowhere else) and `server/node_modules` are untracked, so a wipe destroys them and
