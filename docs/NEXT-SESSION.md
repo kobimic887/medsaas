@@ -60,6 +60,35 @@ allowlist. Verified it fails on the reintroduced bug and passes once fixed.
 measures **2.43:1** — below AA. It was **2.36:1** before, so this is marginally better and is
 MT's own component styling, not a regression introduced here.
 
+### Second pass, found by the owner using it — 2026-07-30
+
+| Reported | What it actually was | Status |
+|---|---|---|
+| **MolMIM: "Molecule generation is not configured"** | **Cutover regression.** `chem_beo` **hardcodes two `nvapi-` keys in its source** (`index.js:80` MolMIM, `:127` OpenFold3) — they are in no `.env`, so they were never carried over. **Two distinct keys**, so position matters | fixed — both now in `/root/pyxis/server/.env` as `NVIDIA_MOLMIM_API_KEY` / `NVIDIA_OPENFOLD_API_KEY`. Verified: generate-molecules 200 with real output |
+| `/api/simulation` **502** | pdbid **`22rx`** — **not a real RCSB entry**. Failed 4×, then `1cxy` with the same SMILES wrote a *new* `simulation_logs` row and succeeded, so the service was fine and the input was wrong | fixed, `43c2bf6` + `3bb6647` |
+| **Show Price** flaky | Calls `/api/asinex/exact` — the **same Asinex instability**. Separately, `mol_price` **is not even a collection in Atlas**, so `/api/mol-price/*` can only ever return `total: 0` | diagnosed; see below |
+| **"Current molecule:" white in dark mode** | `bg-brand-50` — a `-50` tint is near-white, and `brand-50` is `#fbfbef`. A consequence of the palette change | fixed, `c5e1859` |
+| **Profile page** | Owner: *"just remove profiles, it's plain bloat."* Fake colleagues, dead reply buttons, social toggles, invented bio, and demo projects mixed into real ones | removed, `10d7f96` |
+| ADMET not working | **Correct and expected** — the worker has never been deployed anywhere. Phase 6 | not a bug |
+| Deep Similarity | **Working** — `substructure` returns 100 real hits from Oracle's Postgres | confirmed |
+| Stripe | Working | confirmed |
+
+**Docking errors now name the cause** instead of always saying the service is down: a malformed
+id, an id RCSB does not have (checked **before** the credit is charged), the provider answering
+with an HTML proxy page (the Moscow-outage signature), and the provider returning 404 for a pair
+it has no result for. Refunds were already correct and stay correct — four failures plus one
+success moved the balance by exactly one.
+
+⚠ **`mol_price` has never been imported into Atlas.** The collection does not exist. Show Price
+in the *Control Panel* reads Asinex, not this, so it is unaffected — but anything reading
+`/api/mol-price/*` returns nothing and always will until someone runs:
+`npm --prefix server run import:mol-price -- /path/to/mol_price.xlsx`. That needs the owner's
+spreadsheet.
+
+⚠ **Asinex is flapping right now** — 500 with an HTML proxy page, 500 empty, and 404 JSON for the
+same request within minutes. Cached docks still serve from `simulation_logs`. This is exactly
+what the box is for.
+
 ### ⚠ The one thing the cutover did NOT close, and the argument for deferring it is now spent
 
 `chem_beo` on **:3000 is still internet-facing and still signs with the literal string
