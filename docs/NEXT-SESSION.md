@@ -45,8 +45,29 @@ Nobody outside sees when A landed. The v2 announcement is still arrival day.
 
 ## What is left. Start here.
 
-Everything below this section is context. These are the open items, in order:
+Everything below this section is context. These are the open items, in order.
 
+> **Changed 2026-07-29 — the de-SaaS work is done, and it moved a gate.** The owner chose to
+> rebrand **before** the cutover, and steps 1–5 of `PYXIS-ONLY.md` §5 are applied: marketing
+> site and sign-up page deleted, signup 403 by default, accounts invite-only, plan checkout
+> admin-only, product renamed to Pyxis Discovery. Ten commits, `387cbcd`..`01dd134`.
+>
+> **The consequence, and it is the item people will forget:** the route-parity and rollback
+> evidence measured earlier on 2026-07-29 was gathered against the **pre-rebrand** frontend.
+> It no longer describes what would ship. **It has to be gathered again before the cutover**,
+> and `scripts/verify-server-swap-parity.mjs:45` reads `/root/pyxis-release-a/.env` — that rig
+> was deleted after the last run, so this means standing it back up, not re-running a script.
+> Two of the new differences are intended and predicted: `/api/signup` now answers 403 where
+> `chem_beo` answers 200/400, and `/create-checkout-session` is admin-only.
+>
+> Also settled: the box is reached by **public hostname over HTTPS, no VPN** (ARRIVAL-RUNBOOK
+> Phase 3.1), and the earlier claim that `assertConfiguredUrlsArePublic` blocks the cutover is
+> **retracted** — one call site, admin-UI only. The Tanimoto cartridge image is pinned to a
+> verified Postgres 17 tag, and `scripts/verify-tanimoto-restore.sh` proves the restore in one
+> command (needs Docker; run it on the box).
+
+0. **Re-verify Release A against the rebranded frontend.** New, and now the gate on cutover.
+   See the note above. Nothing below this line should happen before it.
 1. **Rotate `JWT_SECRET` on `chem_beo`.** Still signing with the literal string `secret` — §0.
    One `.env` line plus `systemctl restart pyxis-api-legacy`. It logs every user out, which is
    why it was not done unannounced.
