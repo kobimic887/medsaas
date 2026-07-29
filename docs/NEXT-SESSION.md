@@ -74,16 +74,30 @@ rename.
 Everything here is doable **without the box** and every one of them is on arrival day's critical
 path if it is not done first.
 
-1. **There is no network path between 83 and the box, anywhere in this repo.** `compose.yml`
-   binds `${BIND_ADDR:-127.0.0.1}` and the comments say "WireGuard/Tailscale, allowlist 83 only",
-   but no tunnel config, key material or unit exists. **Every cutover URL in
-   `deploy/box/.env.example` depends on it.** Bigger than DiffDock: nothing repoints without it,
-   and it has no fallback.
-2. **`assertConfiguredUrlsArePublic` (`server/index.js:1413`) rejects private and CGNAT ranges —
-   so shipping Release A makes the box cutover *harder*, not easier.** With the new server live,
-   the admin-UI path refuses the box's tunnel address; with `chem_beo` live, its env vars have no
-   such check. This inverts an assumption several docs lean on. Decide it now — allowlist the
-   tunnel range, or an explicit internal-hosts escape hatch — not on the afternoon.
+1. **How 83 reaches the box is undecided.** `compose.yml` binds `${BIND_ADDR:-127.0.0.1}` and
+   no ingress exists. **Every cutover URL in `deploy/box/.env.example` depends on this.**
+
+   **DECIDED 2026-07-29: no VPN, no tunnel.** Earlier comments floated "WireGuard/Tailscale";
+   that was a suggestion in a code comment, never a decision, and it is rejected — it adds a
+   third-party account and a daemon on both machines to solve a problem TLS already solves.
+
+   **The box is reached exactly the way Asinex is reached today: a public hostname over
+   HTTPS.** Production already calls `https://services.asinex.com:8000/docking` across the
+   public internet; the box replacing it the same way is a true 1:1, and rollback is putting
+   the Asinex hostname back.
+
+   Shape: every service binds `127.0.0.1`, one Caddy/nginx on `:443` with a Let's Encrypt cert
+   for a box hostname, and a host firewall allowing **only 83's IP** to reach `:443`. One open
+   port, one certificate, one allowlist entry. The "⚠ NONE of these may be exposed to the
+   internet" warning in `compose.yml` is satisfied by the firewall, not by a tunnel.
+2. ~~`assertConfiguredUrlsArePublic` makes Release A the harder path.~~ **WRONG — retracted
+   2026-07-29.** The guard at `server/index.js:1413` is called from **one** place (line 1325),
+   on `company.ligandServiceConfig` — the admin-UI path. The environment variables that
+   actually carry the cutover (`TANIMOTO_API_BASE`, `SDF_CONVERTER_URL`,
+   `ASINEX_DOCKING_API_URL`, `DIFFDOCK_API_URL`, `server/index.js:80-88`) are read straight
+   from `process.env` and never validated. Env-var cutover works identically on both servers.
+   With the public-hostname decision in item 1 the question is moot regardless: a public
+   address passes the guard anyway, so even the admin-UI path stays open.
 3. **The Tanimoto dump is PostgreSQL 17.5, archive format 1.16.** Read straight out of the
    header of `~/backups/tanimoto/tonomitosql-20260729.dump`: `17.5 (Debian 17.5-1)`. Its
    `CREATE EXTENSION rdkit` needs the cartridge too. `informaticsmatters/rdkit-cartridge-debian`
