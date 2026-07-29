@@ -262,6 +262,14 @@ one change, not two.
 - **What is answering the production API on 83 today?** Still unknown, still an inventory task
   on that box, and now more pressing: step 7 replaces the frontend that talks to it, so we need
   to know what we are cutting over *from*. See COMPUTE-BOX-MIGRATION.md §3.
-- **Will there be a public marketing site at all** (`pyxis-discovery.com` as opposed to
-  `app.`)? If yes, the deleted pages are the starting point and should be moved to their own
-  repo rather than deleted.
+- ~~**Will there be a public marketing site at all** (`pyxis-discovery.com` as opposed to
+  `app.`)?~~ **ANSWERED 2026-07-29: there already is one, and it is live.**
+  `www.pyxis-discovery.com` is a separate WordPress site — Discover Macrocycles, Services,
+  About us, Insights, Pricing, Contact — with none of it served by this repo. So the pages
+  deleted from `client/src/pages/main/` were a **duplicate of a better site**, not the only
+  copy, and the worry about the macrocycle copy being unreproducible was misplaced: it is
+  published, and `saas-surface-v1` holds the app's version as well.
+
+  That site links into the app through its **web-shop** nav item, pointing at
+  `https://app.pyxis-discovery.com/auth/sign-in` — the route this repo kept. The external
+  entry point therefore survives the cutover with no change on either side.

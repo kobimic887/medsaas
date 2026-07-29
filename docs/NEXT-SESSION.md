@@ -68,6 +68,31 @@ Everything below this section is context. These are the open items, in order.
 
 0. **Re-verify Release A against the rebranded frontend.** New, and now the gate on cutover.
    See the note above. Nothing below this line should happen before it.
+
+   **Sign-in was compared against live production on 2026-07-29** — the one page every user
+   sees, and the only part of the UX pass that does not need a login. Findings:
+
+   | | Legacy (live) | This repo | Verdict |
+   |---|---|---|---|
+   | Pyxis wordmark | real inline-SVG logo | was gradient **text** | **fixed** — logo recovered, `29dd2c7` |
+   | Forgot password | `href="#"` — **dead link** | working reset flow, covered by tests | **better** |
+   | Create account | links to `/auth/sign-up` | removed | intended (invite-only) |
+   | Proceed to Demo | public credentials, see §0c | absent | intended — **do not "restore" it** |
+   | Newsletter checkbox | present | absent | accepted loss; nothing consumes it |
+   | Theme | light | dark | different, not worse |
+
+   **What was NOT checked: everything behind the login.** The thirteen dashboard pages, the
+   compound cart, and the docking result view have not been compared. That needs an account
+   and is the rest of this item.
+
+   **Two things this comparison settled that were open questions.** There *is* a real public
+   marketing site — `www.pyxis-discovery.com`, a separate WordPress with Discover Macrocycles
+   / Services / About us / Insights / Pricing / Contact. So deleting this repo's marketing
+   pages removed a **duplicate** of a better site, not the only copy, and PYXIS-ONLY.md §6's
+   "will there be a public marketing site at all?" is answered: yes, and it already exists.
+   Second, that site enters the app through its **web-shop** link, which points at
+   `https://app.pyxis-discovery.com/auth/sign-in` — the exact route this repo kept, so the
+   external entry point survives the cutover unchanged.
 1. **Rotate `JWT_SECRET` on `chem_beo`.** Still signing with the literal string `secret` — §0.
    One `.env` line plus `systemctl restart pyxis-api-legacy`. It logs every user out, which is
    why it was not done unannounced.
@@ -158,7 +183,37 @@ so a half-built engine cannot silently take traffic.
 
 ---
 
-## 0. Two live vulnerabilities, found 2026-07-29. Read before anything else.
+## 0. Live vulnerabilities, found 2026-07-29. Read before anything else.
+
+### 0c. "Proceed to Demo" hands anyone a working production session
+
+The production sign-in page has a prominent **Proceed to Demo** button. Its handler signs in
+with credentials hard-coded in the component:
+
+```
+const handleDemoLogin = async () => {
+  setEmail("tester123");
+  setPassword("Tester!23");
+```
+
+Production serves that frontend from a **Vite dev server**, so the file is fetchable
+unminified at `https://app.pyxis-discovery.com/src/pages/auth/sign-in.jsx` — no button click
+or bundle archaeology needed. The account is a real one on the real database, so anyone who
+loads the page gets an authenticated session and whatever credits `tester123` holds.
+
+It also fetches `https://api.ipify.org` on that path, which tells a third party the IP of
+everyone who signs in this way.
+
+**The new frontend does not carry it, and that is deliberate rather than an oversight.**
+Deciding whether Pyxis wants a demo entry point at all is a product question; if it does, it
+needs an account with no credits and a password that is not in the page source. Flagging it
+here because dropping a visible production button is exactly the kind of difference that gets
+mistaken for a regression during the cutover.
+
+Fixing it on the legacy frontend before then is one line — delete the button — and does not
+depend on Release A.
+
+### 0a. The two original ones
 
 **Production JWTs are signed with the literal string `secret`.** `chem_beo:1049` is
 `jwt.sign({username}, process.env.JWT_SECRET || 'secret', {expiresIn: '1d'})`, and `chem_beo`'s
