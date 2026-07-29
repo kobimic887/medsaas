@@ -36,14 +36,25 @@ becomes an ordinary release, on a day of your choosing, with `chem_beo` still ru
 | Now | **0.11** — apply the `chem_beo` patch, set nothing | no |
 | Now | **0.10** — `scripts/migrate-legacy-users.mjs` | no |
 | Now | **0.9b** — verify response shapes route by route | no |
+| Now | **4.3a** — `pg_dump` Oracle's Tanimoto Postgres, prove it restores. **Do not wait** — an unauthenticated internet-reachable `DELETE` can wipe it | no |
 | Then | **PHASE 5** — this repo's server + `client/dist` take over port 5173 | **no** |
 | ↳ then run on it for at least a week | | |
 | Box arrives | **PHASE 1** — hardware, drivers, CUDA, storage | yes |
-| | **PHASE 2** — docking engines, cut over via `ligandServiceConfig` | yes |
+| | **PHASE 2** — docking engines, cut over | yes |
 | | **PHASE 3** — ingress | yes |
+| | **4.3b** — restore the Tanimoto dump onto the box | yes |
 | | **PHASE 6** — convertSTR, ADMET, GROMACS, glioblastoma | yes |
 | | **PHASE 7** — Oracle decommission, weeks later | yes |
-| never | **PHASE 4** — database migration. **Dead. Atlas stays.** | — |
+| never | **4.1 / 4.2** — moving the production Mongo. **Dead. Atlas stays.** | — |
+
+⚠ **"Phase 4 is dead" is wrong and dangerous shorthand — half of it is.** There are **three**
+databases and they get three different answers. Do not let them collapse:
+
+| Database | Where | What happens |
+|---|---|---|
+| Production Mongo — users, credits, billing, docking history | **Atlas** | **stays.** Never dumped, never moved (§4.1/4.2) |
+| Tanimoto Postgres — 2,951,975 molecules | **Oracle** | **copied to the box.** Production data, only copy (§4.3) |
+| Oracle's Mongo | Oracle | **discarded. Never restore from it** (hard rule 4) |
 
 **If Phase 5 has not shipped by the time the box arrives, do not do it that day.** Fall back to
 the compute-only plan below: patch `chem_beo`, repoint its env vars, swap the server later.
@@ -61,7 +72,8 @@ Arrival day moves **compute only**:
 | nginx / TLS / DNS / Stripe | **not touched** |
 | Docking, DiffDock, Tanimoto | **repointed at the box, one setting at a time** |
 
-**Run: Phase 1 → 2 → 3 → 6 → 7.** Phase 4 is dead permanently. Phase 5 either shipped weeks
+**Run: Phase 1 → 2 → 3 → 4.3 → 6 → 7.** Only **4.1/4.2** are dead (the Mongo move); **4.3 is
+live and mandatory** — it is the Tanimoto index. Phase 5 either shipped weeks
 ago or is deferred — it is never same-day. Phase 2 is the migration; the rest is consolidation.
 
 **How you cut docking over depends on which server is live by then:**
@@ -95,9 +107,16 @@ one — decide the box's addressing with that in mind (Phase 3.1).
 3. **On Oracle 151.145.91.17: do not touch CLIProxyAPI (`:8317`), Crafty (`:8443`), or
    `~/.cli-proxy-api/auths/`.** Those are the owner's separate tooling. Only the five
    medsaas/tonomitosql containers leave.
-4. **Oracle's MongoDB is discarded, not merged. Never restore from it.** Production data is
-   on 83. If any instruction, comment, or older document tells you to restore from Oracle,
-   it is stale — stop and report it.
+4. **Oracle's MongoDB is discarded, not merged. Never restore from it.** Production Mongo is
+   **MongoDB Atlas** — *not* on 83, as an earlier version of this rule said, and not on Oracle.
+   If any instruction, comment, or older document tells you to restore Mongo from Oracle, it is
+   stale — stop and report it.
+
+   ⚠ **This rule is about Mongo and nothing else.** Oracle's **Postgres** is a different
+   database on the same machine, it holds **production Tanimoto data**, it is the **only copy**,
+   and it **does** get copied to the box (§4.3). Do not let the two collapse into one rule in
+   either direction: refusing to copy the Postgres loses 2,951,975 molecules; copying the Mongo
+   overwrites production with a side project.
 5. **Secrets are supplied by the operator at runtime.** Never write a credential, key, token
    or password into this repo, into a commit, into the state file, or into any log or
    transcript. If you need one you do not have, stop and ask.
@@ -213,8 +232,8 @@ before starting Phase 1 — items 0.1 and 0.2 have deadlines set by someone else
 > assumed. Items 0.1, 0.2, 0.9, 0.9b and 0.10 are **done** — their findings are in that file,
 > and three of them invalidate steps written below:
 >
-> - **Mongo is Atlas, not on 83.** ✅ **Settled: Atlas stays and only compute moves.** Phase 4
->   is dead. There is no dump, no restore, and no write-freeze window. The box's IP must be
+> - **Mongo is Atlas, not on 83.** ✅ **Settled: Atlas stays and only compute moves.** §4.1/4.2
+>   are dead — **but not §4.3, the Tanimoto Postgres, which still moves.** There is no dump, no restore, and no write-freeze window. The box's IP must be
 >   added to the Atlas allowlist before it can serve anything.
 > - **The frontend is a Vite dev server**, proxied by nginx, with no build and no bundle. So
 >   §5.0's symlink swap has no "old bundle" to preserve. ✅ **And it needs no nginx change** —
@@ -562,10 +581,13 @@ not a migration step, and not to be fixed under a maintenance window.
 
 ---
 
-## PHASE 4 — Data
+## PHASE 4 — Data. **Half dead: 4.1/4.2 are cancelled, 4.3 is mandatory.**
 
 
-### 4.1 / 4.2 — ⛔ DEAD. DO NOT EXECUTE. The database does not move.
+### 4.1 / 4.2 — ⛔ DEAD. DO NOT EXECUTE. The **Mongo** does not move.
+
+**This kills the Mongo move only. It says nothing about §4.3, which is a different database on a
+different machine and is mandatory.**
 
 **Removed 2026-07-29.** These steps told you to inventory "83's Mongo" and `mongodump` it into
 "the box's Mongo". Both halves are wrong:
