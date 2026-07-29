@@ -33,6 +33,33 @@ answers on 3000, `stripe-server` on 3001, and `server/.env` is backed up at
 systemctl disable --now pyxis-web && systemctl enable --now pyxis-vite-legacy
 ```
 
+### Found by using it after the cutover — all fixed, all live
+
+Clicking through as the demo member found things no amount of reading had. This is the
+`GOAL.md` rule paying out again.
+
+| Found | Cause | Status |
+|---|---|---|
+| **Opening Simulation Results signed you out.** Also on the redirect after a simulation | The page fetched `/api/sanitized*` with a bare `fetch()`. Those routes are deliberately behind `authenticateToken` here where legacy served them open, so they 401'd — and `authInterceptor` reads any same-origin 401 as a dead session | fixed, `bdda736` |
+| **The compound-cart enquiry signed the customer out** instead of sending | Same shape: `POST /api/send-email` with no token | fixed, `bdda736` |
+| **The Molstar iframe could never load our SDFs** | It was handed `/api/...` URLs to fetch, but it is a separate document and cannot carry the token. It now receives the SDF *text* via a new `loadStructureFromData` message | fixed, `bdda736` |
+| **Every `dark:*-slate-*` class in the app compiled to nothing** | `withMT` **replaces** Tailwind's palette and has no `slate`. Measured live: **0** slate rules, **15** `dark:` rules in a 1,534-rule sheet. This is why the top bar stayed white in dark mode while carrying `dark:bg-slate-950/90` | fixed, `49c955b` |
+| Dark mode read as **blue**; accent was **Material green** `#4CAF50` | Slate is blue-tinted, the `--cb-*` gradient was purple/blue/cyan, and `--brand-*` mirrored `withMT`'s green | fixed, `49c955b` + `56d5bfd` |
+
+**The palette is now taken from `pyxis-discovery.com` itself, not invented:** `--sk-color-one`
+**`#b4b239`** (citron) at `brand-500`, `--sk-color-one-dark` **`#97951f`** at 600,
+`--sk-color-two` **`#072824`** (deep teal) as the dark surface, `--sk-color-six` **`#f7f7f7`**
+as the light background. Status green keeps its meaning but moves to ~95° hue so it sits with
+the citron instead of clashing.
+
+`scripts/check-authed-fetch.mjs` is now in `bun run ci` — it scans client source for `fetch()`
+to our own API with no `Authorization` header and no entry in an explicit public-route
+allowlist. Verified it fails on the reintroduced bug and passes once fixed.
+
+**Known and left alone:** Material Tailwind's `Chip` renders white on a green gradient, which
+measures **2.43:1** — below AA. It was **2.36:1** before, so this is marginally better and is
+MT's own component styling, not a regression introduced here.
+
 ### ⚠ The one thing the cutover did NOT close, and the argument for deferring it is now spent
 
 `chem_beo` on **:3000 is still internet-facing and still signs with the literal string
