@@ -693,6 +693,39 @@ So:
 1. **Take the `pg_dump` first, before touching anything on Oracle**, and verify it restores.
    It is production data and the only copy. Queried live, the index holds **2,951,975
    molecules**, built from **`molsd4.csv`**, indexed **2026-03-12**.
+
+   ✅ **Dump taken 2026-07-29** — `~/backups/tanimoto/tonomitosql-20260729.dump`, 1.2 GB,
+   sha256 verified against its `.sha256` sidecar.
+
+   ✅ **Version compatibility resolved 2026-07-29, and it was worth checking.** The dump
+   header reads `17.5 (Debian 17.5-1)`, database `tonomitosql`, **archive format 1.16**. An
+   older `pg_restore` does not degrade on a 1.16 archive, it refuses outright —
+   `unsupported version (1.16) in file header` — and the cartridge image's tags are *RDKit*
+   release numbers that say nothing about the Postgres major inside. Read from the registry,
+   `informaticsmatters/rdkit-cartridge-debian` ships **`POSTGRES_VER=17`** on `:latest`,
+   `Release_2025_03_3` and `Release_2024_09_6` alike, so there is no wrong choice today.
+
+   `deploy/box/.env` is nonetheless **pinned to `Release_2025_03_3`**
+   (amd64 `sha256:c7eeff51…`) rather than `:latest`, because `:latest` is a moving tag that
+   could be rebuilt onto Postgres 18 between now and arrival day, and the thing it would
+   break is the only copy of three million molecules.
+
+   ⚠ **Still not done: the restore itself.** The above proves the *versions* line up. It does
+   not prove this particular 1.2 GB archive restores cleanly, that `CREATE EXTENSION rdkit`
+   succeeds, or that the row count comes back at 2,951,975. That needs a real Postgres and
+   has to happen on the box (or any x86_64 host with Docker — there is no container runtime
+   on the operator's Mac). **Do it before you need it**, and assert the row count, not just
+   the exit code.
+
+   That is one command, and it makes the assertion for you:
+
+   ```bash
+   scripts/verify-tanimoto-restore.sh
+   ```
+
+   It pins the image, checks the sidecar sha256, creates the extension, restores, and then
+   **counts rows against 2,951,975** — because `pg_restore` can exit 0 having restored a
+   schema and no data. It cleans up its own container and touches nothing in production.
 2. Restore it on the box. Rebuilding from source is **not** an available fallback: nobody knows
    where `molsd4.csv` is, or whether it still exists. **Ask the operator early whether that file
    survives anywhere.** If it does, a rebuild is a cross-check worth having — compare row counts
