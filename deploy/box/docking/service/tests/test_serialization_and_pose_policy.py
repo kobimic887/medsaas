@@ -64,8 +64,13 @@ def test_serializer_reconstructs_committed_sdf_byte_for_byte() -> None:
     engine = ReplayEngine()
     expected = json.loads(files("docking_service").joinpath("assets/1cx7-asinex.json").read_text())["sdf"]
     actual = serialize_sdf(list(engine._poses), SMILES, EngineConfig())
+    # This equality is the real assertion: byte-for-byte against the captured Asinex response.
+    # It already fails if any of the below is wrong, but the explicit checks name what to look
+    # at when it does.
     assert actual == expected
-    assert actual.count(">  <smiles>  (1) \n") == 5
+    for record_number in range(1, 6):
+        assert actual.count(f">  <smiles>  ({record_number}) \n") == 1
+    assert actual.count(">  <smiles>  (1) \n") == 1
     assert "> <smiles>" not in actual
 
 
@@ -75,19 +80,23 @@ def test_serializer_has_exact_tag_order_trailing_spaces_and_shared_decoded_smile
     records = [record for record in sdf.split("$$$$\n") if record]
     assert len(records) == 5
     scores: list[float] = []
-    for record in records:
+    # "(N)" is the 1-based record number, not a constant — the committed 1cx7 reference runs
+    # (1)..(5). Asserting "(1)" on every record, as this used to, rejects the reference itself.
+    for record_number, record in enumerate(records, start=1):
         tags = [line for line in record.splitlines() if line.startswith(">")]
         assert tags == [
-            ">  <MODEL>  (1) ",
-            ">  <TORSDO>  (1) ",
-            ">  <SCORE>  (1) ",
-            ">  <ligand_id>  (1) ",
-            ">  <original_smiles>  (1) ",
-            ">  <smiles>  (1) ",
+            f">  <MODEL>  ({record_number}) ",
+            f">  <TORSDO>  ({record_number}) ",
+            f">  <SCORE>  ({record_number}) ",
+            f">  <ligand_id>  ({record_number}) ",
+            f">  <original_smiles>  ({record_number}) ",
+            f">  <smiles>  ({record_number}) ",
         ]
         assert all(tag.endswith(" ") for tag in tags)
         assert record.count(f"\n{SMILES}\n\n") == 2
-        score_line = record.split(">  <SCORE>  (1) \n", 1)[1].split("\n", 1)[0]
+        # And the title is the 0-based pose ordinal for the same position.
+        assert f"0:0:{record_number - 1}\n     RDKit          3D\n" in record
+        score_line = record.split(f">  <SCORE>  ({record_number}) \n", 1)[1].split("\n", 1)[0]
         scores.append(float(score_line))
     assert scores == sorted(scores)
 

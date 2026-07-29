@@ -61,14 +61,36 @@ def _dock(request: dict[str, Any]) -> list[dict[str, Any]]:
     return poses
 
 
+def _canonical(provenance: dict[str, Any]) -> dict[str, Any]:
+    """Round-trip through JSON so what is compared is what was stored.
+
+    `Box.center` and `Box.size` are **tuples** (models.py). META.json is JSON, which has no
+    tuple: they are written as arrays and read back as lists. `_valid_maps` compares the
+    stored value against the live one field by field, and `[0.0, 0.0, 0.0] != (0.0, 0.0, 0.0)`
+    in Python — so a perfectly good, complete, checksum-matching map subcache was rejected on
+    every single lookup and Vina recomputed the whole grid every time. The cache had a 0% hit
+    rate from the day it was written.
+
+    That is the expensive half of the warm path: computing all atom-type maps over a docking
+    box is tens of seconds of CPU, and skipping it is the latency change a user actually
+    feels (docs/NEXT-SESSION.md, "the cache itself is worth every line").
+
+    Canonicalising here rather than at the comparison keeps one definition of the provenance
+    shape. The cache key is unaffected — it is already a hash of `json.dumps(...)`, and a tuple
+    and a list serialise identically — so subcaches published before this fix stay valid and
+    start being *used* rather than being silently rebuilt.
+    """
+    return json.loads(json.dumps(provenance, sort_keys=True, separators=(",", ":")))
+
+
 def _ensure_maps(vina_cls: object, receptor: Path, maps_root: Path, box: dict[str, Any], cfg: dict[str, Any]) -> Path:
     maps_root.mkdir(parents=True, exist_ok=True)
-    provenance = {
+    provenance = _canonical({
         "receptor_pdbqt_sha256": _sha256(receptor), "scoring_function": cfg["scoring_function"],
         "center": box["center"], "size": box["size"], "spacing": cfg["map_spacing"],
         "force_even_voxels": cfg["force_even_voxels"], "seed": cfg["seed"], "cpu": cfg["cpu"],
         "no_refine": cfg["no_refine"], "vina_version": _vina_version(),
-    }
+    })
     key = sha256(json.dumps(provenance, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     target = maps_root / key
     # Receptor entries are atomically published directories; map locks live outside them.

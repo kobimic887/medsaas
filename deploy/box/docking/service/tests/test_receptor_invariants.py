@@ -236,7 +236,13 @@ def test_atom_only_pdb_strips_hetatm_and_preserves_ter_between_protein_segments(
     assert lines[1].startswith("ATOM")
     assert lines[2].startswith("TER")
     assert lines[3].startswith("ATOM")
-    assert lines[4] == "END"
+    # BOTH chain terminators survive. The test used to expect "END" here, i.e. that the
+    # trailing TER was dropped — which contradicts the function's own contract ("retaining TER
+    # boundaries between protein segments") and would merge two chains into one for anything
+    # downstream that reads chain breaks.
+    assert lines[4].startswith("TER")
+    assert lines[5] == "END"
+    assert len(lines) == 6
     assert "HETATM" not in result
 
 

@@ -23,7 +23,13 @@ def test_replay_uses_supported_fixture_through_cache(tmp_path: Path) -> None:
 
     assert response.pdb
     assert response.sdf.count("$$$$") == 5
-    assert response.sdf.count(">  <smiles>  (1) ") == 5
+    # The "(N)" is the 1-based record number, not a constant. This used to assert "(1)" five
+    # times, which the committed 1cx7 reference itself does not satisfy — it runs (1)..(5).
+    for record_number in range(1, 6):
+        assert response.sdf.count(f">  <smiles>  ({record_number}) ") == 1
+    # And the titles are the 0-based pose ordinal, 0:0:0 .. 0:0:4.
+    for ordinal in range(5):
+        assert f"0:0:{ordinal}\n     RDKit          3D\n" in response.sdf
     assert (tmp_path / "receptors" / "1cx7" / "META.json").is_file()
 
 
