@@ -1,5 +1,5 @@
 // Design-system bundle entry for /design-sync (claude.ai/design).
-// Re-exports the reusable components onto window.ChemBench and provides a
+// Re-exports the reusable components onto the design-sync global and provides a
 // single preview-context wrapper (MemoryRouter + the app's controller/auth/
 // theme providers) so context-coupled layout widgets render in isolation.
 import React from "react";
@@ -19,8 +19,6 @@ export { BrandingPreview } from "./src/components/BrandingPreview";
 // Layout
 export { Sidenav } from "./src/widgets/layout/sidenav";
 export { DashboardNavbar } from "./src/widgets/layout/dashboard-navbar";
-export { MainNavbar } from "./src/widgets/layout/main-navbar";
-export { Navbar } from "./src/widgets/layout/navbar";
 export { Footer } from "./src/widgets/layout/footer";
 
 // Preview-only context wrapper (cfg.provider). Not a component card.
