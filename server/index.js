@@ -152,7 +152,20 @@ app.use(cors({
     if (allowedOrigins.size === 0 && process.env.NODE_ENV !== 'production') {
       return callback(null, true);
     }
-    return callback(new Error('CORS origin is not allowed'));
+    // Refuse by omitting the CORS headers, NOT by throwing.
+    //
+    // Throwing here used to reject the whole request, which Express turned into a
+    // 500 — for every path, including index.html and /assets/*.js. Any browser
+    // sending an unexpected Origin got a blank white page and a stack trace in the
+    // log instead of the app. That is reachable in ordinary operations: an SSH
+    // tunnel, hitting the box by IP, or any future staging hostname. It cost a
+    // rehearsal here before it could cost a cutover.
+    //
+    // Omitting the headers is the correct refusal and loses no protection. CORS is
+    // enforced by the browser: with no Access-Control-Allow-Origin, a cross-origin
+    // page still cannot read the response. A 500 protected nothing extra and broke
+    // same-origin serving, which is how this server delivers the entire frontend.
+    return callback(null, false);
   },
   credentials: true
 }));

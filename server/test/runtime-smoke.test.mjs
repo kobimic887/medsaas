@@ -488,6 +488,26 @@ async function main() {
       '(a token came back)'
     );
 
+    // --- Test 5e: an unexpected Origin must not take the whole app down ---
+    // Refusing CORS by throwing turned every request from an unlisted origin into
+    // a 500 — index.html and /assets/*.js included — so the browser got a blank
+    // page. Found in rehearsal through an SSH tunnel, which is exactly the kind of
+    // ordinary operational access that hits it.
+    console.log('\nTest 5e — a disallowed Origin does not 500 the app:');
+    const weirdOrigin = { Origin: 'https://not-the-configured-origin.example' };
+    const healthOdd = await fetch(`${BASE}/health`, { headers: weirdOrigin });
+    check('GET /health with a foreign Origin still 200s', healthOdd.status === 200, `(got ${healthOdd.status})`);
+    check(
+      'and it is specifically not a 500',
+      healthOdd.status !== 500,
+      '(the throwing CORS refusal is back)'
+    );
+    check(
+      'the response carries no Access-Control-Allow-Origin for that origin',
+      healthOdd.headers.get('access-control-allow-origin') !== 'https://not-the-configured-origin.example',
+      '(a foreign origin was reflected — that is the actual CORS risk)'
+    );
+
     // --- Test 6: static serving (only with --assert-static) ---
     if (ASSERT_STATIC) {
       console.log('\nTest 6 — GET / serves built frontend HTML:');
