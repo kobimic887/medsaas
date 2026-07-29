@@ -1,0 +1,5 @@
+# Captured 2026-02-25T13:00:43.316Z from 83.229.87.94:/root/chem_beo/diffdock_api.log
+# DiffDock answered a POST with an HTML error page and no JSON body.
+# JSON.parse() on this throws — the client must not assume a JSON body on any status.
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">

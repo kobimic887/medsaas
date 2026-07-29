@@ -840,7 +840,12 @@ export function Simulation() {
         localStorage.setItem('diffdock_ligand_position', diffDockResult.ligand_positions[0]);
       }
       if (diffDockResult.position_confidence && diffDockResult.position_confidence.length > 0) {
-        const confidenceScore = diffDockResult.position_confidence[diffDockResult.position_confidence.length - 1]; // Get confidence score of the last position
+        // Index 0, to match the pose stored above. DiffDock returns both arrays ranked
+        // best-first and index-aligned: in every captured production response
+        // (deploy/box/diffdock/reference/) position_confidence is strictly descending —
+        // a 100-pose run ran -0.10 down to -4.89. Reading the LAST element, as this did,
+        // labelled the best pose with the worst pose's confidence.
+        const confidenceScore = diffDockResult.position_confidence[0];
         if (confidenceScore !== null && confidenceScore !== undefined) {
           localStorage.setItem('diffdock_confidence_score', confidenceScore.toString());
         }
