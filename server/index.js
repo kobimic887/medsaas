@@ -164,6 +164,34 @@ app.use((_req, res, next) => {
   next();
 });
 
+/**
+ * The address to rate-limit against.
+ *
+ * In production this server sits behind nginx (`proxy_pass http://localhost:5173`), so every
+ * request arrives from 127.0.0.1 and `req.ip` is the same value for all 50 users. Keying the
+ * limiters on it means **30 failed logins from one person locks every account out** —
+ * `authRateLimit` is 30 per 15 minutes — and five contact-form submissions close the form for
+ * everybody. The limiter stops being a defence and becomes a denial of service anyone can
+ * trigger. This exact defect was found live on the legacy `:3001` server the same day.
+ *
+ * `X-Real-IP` is the header to read, not `X-Forwarded-For`: nginx sets it with
+ * `proxy_set_header X-Real-IP $remote_addr`, which **overwrites** whatever the caller sent,
+ * whereas `X-Forwarded-For` is built with `$proxy_add_x_forwarded_for` and therefore begins
+ * with anything the client cared to invent.
+ *
+ * Trusting a header means trusting whoever can set it, so this is opt-out: set `TRUST_PROXY=0`
+ * if this server is ever exposed directly, where a caller could forge the header and evade the
+ * limit entirely. Behind nginx — the only deployment this has — trusting it is both correct and
+ * necessary.
+ */
+function clientAddress(req) {
+  if (process.env.TRUST_PROXY !== '0') {
+    const realIp = req.headers['x-real-ip'];
+    if (typeof realIp === 'string' && realIp.trim()) return realIp.trim();
+  }
+  return req.ip || req.socket.remoteAddress || 'unknown';
+}
+
 function createRateLimiter({ windowMs, max, name }) {
   const hits = new Map();
   let lastSweep = Date.now();
@@ -182,7 +210,7 @@ function createRateLimiter({ windowMs, max, name }) {
       lastSweep = now;
     }
 
-    const key = `${name}:${req.ip || req.socket.remoteAddress || 'unknown'}`;
+    const key = `${name}:${clientAddress(req)}`;
     const record = hits.get(key) || { count: 0, resetAt: now + windowMs };
 
     if (record.resetAt <= now) {

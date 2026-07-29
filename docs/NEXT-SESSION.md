@@ -43,6 +43,34 @@ Nobody outside sees when A landed. The v2 announcement is still arrival day.
 
 ---
 
+## What is left. Start here.
+
+Everything below this section is context. These are the open items, in order:
+
+1. **Rotate `JWT_SECRET` on `chem_beo`.** Still signing with the literal string `secret` — §0.
+   One `.env` line plus `systemctl restart pyxis-api-legacy`. It logs every user out, which is
+   why it was not done unannounced.
+2. **Rotate the mail password.** `EMAIL_PASS` was readable at
+   `https://app.pyxis-discovery.com/.env` for roughly twenty minutes on 2026-07-29 (§0b).
+   Also rotate `STRIPE_SECRET_KEY` in `/root/pyxis-secrets/stripe-server.env` — that one was a
+   **test** key and was exposed far longer, since before this session.
+3. **Grant credits.** 47 of 50 users now hold `simulationTokens: 0`. They had no such field
+   before, so nothing changed for them — but they cannot run anything, and the new server says
+   "No simulation tokens left" rather than explaining why.
+4. **Apply `deploy/chem_beo/01-fixes-and-config.patch`.** Unchanged from before.
+5. **Then cut over** — `systemctl disable --now pyxis-vite-legacy && systemctl enable --now
+   pyxis-web`, after copying this repo and a locally-built `client/dist` to `/root/pyxis`.
+   `deploy/83/systemd/README.md` has the exact commands and the rollback.
+6. Hand `chem_beo` to systemd too (`systemctl start pyxis-api-legacy`) — it is the last process
+   still hand-started in a `screen`, so a reboot still stops the API. Left alone here because it
+   means restarting the live API.
+
+Not started, and not blocking: DiffDock (`deploy/box/diffdock/` has only the captured contract),
+ADMET, glioblastoma, Claude Science OAuth, and the marketing-copy half of the ChemBench→Pyxis
+rename.
+
+---
+
 ## 0. Two live vulnerabilities, found 2026-07-29. Read before anything else.
 
 **Production JWTs are signed with the literal string `secret`.** `chem_beo:1049` is
@@ -54,6 +82,26 @@ token for any of the 50 accounts**, on an API that is internet-facing on `:3000`
 This reframes the "rotate `JWT_SECRET`" gate below. It is not cutover hygiene; it is the fix. And
 Release A fixes it as a by-product, because this repo's server refuses to start without a real
 one ≥32 characters.
+
+### 0b. `https://app.pyxis-discovery.com/.env` served the file publicly — ✅ closed 2026-07-29
+
+`/root/material-tailwind-dashboard-react/vite.config.js` set `server.fs.deny: ['.git',
+'.git/**']`. **`fs.deny` replaces Vite's defaults rather than extending them**, and the defaults
+are what block `.env` — so overriding it with only the `.git` patterns handed the file to anyone
+who asked for it, through the public HTTPS site.
+
+It held `STRIPE_SECRET_KEY` (a **test** key, exposed since long before this session) and, for
+about twenty minutes, `EMAIL_PASS` — added while fixing the contact form, before this was known.
+**Rotate the mail password**, and the Stripe test key.
+
+Fixed three ways: every non-`VITE_` value moved to `/root/pyxis-secrets/stripe-server.env`
+(mode 600, outside the webroot) and loaded via the unit's `EnvironmentFile`; `fs.deny` restored
+to `['.env', '.env.*', '*.{crt,pem,key}', 'custom.secret', '.git', '.git/**']`; and backups of
+the old file moved to `/root/pyxis-backups/`. Verified: all `.env` paths now return **403**.
+
+Note Vite had the old contents cached in memory — its own `server.watch.ignored` covers
+`**/.env*`, so editing the file on disk changed nothing until the process restarted. That
+restart is what put `:5173` under systemd.
 
 **`:3001` was an open mail relay — ✅ fixed 2026-07-29.** `stripe-server.cjs`, in *no* document
 until now, running from `/root/material-tailwind-dashboard-react` since 2026-07-02 and reachable

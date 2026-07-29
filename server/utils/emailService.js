@@ -84,16 +84,22 @@ function buildConfigs() {
     });
   } else {
     console.error(
-      '[email] EMAIL_HOST is not set. Falling back to guessing the SMTP host, which is ' +
-      'how the contact form silently broke. Set EMAIL_HOST and EMAIL_PORT.'
+      '[email] EMAIL_HOST is not set. Falling back to the host production has always used. ' +
+      'Set EMAIL_HOST and EMAIL_PORT — see .env.example.'
     );
   }
 
-  // Last resort only, and only if it is not already the configured host.
-  if (host !== 'smtp.titan.email') {
+  // Last resort, and only if it is not already the configured host. This is the host
+  // production actually sends through, verified against the live credentials on 2026-07-29.
+  // It is a legacy default in the same sense as the Asinex URLs in the chem_beo patch: an env
+  // var defaulting to today's value. It is deliberately NOT smtp.titan.email — every comment
+  // in this repo used to say Titan, Titan answers `535 authentication failed` for this
+  // account, and falling back to it would turn "EMAIL_HOST unset" into total, silent mail
+  // failure rather than a degraded send with a loud log line.
+  if (host !== 'server028.yourhosting.nl') {
     configs.push({
-      name: 'smtp.titan.email:587 (last resort)',
-      host: 'smtp.titan.email',
+      name: 'server028.yourhosting.nl:587 (legacy default — set EMAIL_HOST)',
+      host: 'server028.yourhosting.nl',
       port: 587,
       secure: false,
       requireTLS: true,
