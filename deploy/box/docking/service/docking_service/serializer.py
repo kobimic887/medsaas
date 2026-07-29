@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import re
 
 from .errors import DockingFailure
 from .models import Pose
@@ -8,6 +9,8 @@ from .settings import EngineConfig
 
 _BUG_TAG_ORDER = ("MODEL", "TORSDO", "SCORE", "ligand_id", "original_smiles", "smiles")
 _CLEAN_TAG_ORDER = ("MODEL", "TORSDOF", "SCORE", "ligand_id", "original_smiles", "smiles")
+# The leading newlines are record-separator bytes; see validate_serialized_sdf.
+_TITLE_RE = re.compile(r"\n*0:0:(?P<ordinal>\d+)\n     RDKit          3D\n")
 
 
 def serialize_sdf(poses: list[Pose], smiles: str, config: EngineConfig) -> str:
@@ -17,7 +20,7 @@ def serialize_sdf(poses: list[Pose], smiles: str, config: EngineConfig) -> str:
 
     sorted_poses = sorted(poses, key=lambda pose: pose.score)
     rendered: list[str] = []
-    for pose in sorted_poses:
+    for record_number, pose in enumerate(sorted_poses, start=1):
         if not math.isfinite(pose.score) or not pose.mol_block.rstrip().endswith("M  END"):
             raise DockingFailure("docking produced an unusable pose")
         torsdof = pose.torsdof if pose.torsdof is not None else config.default_torsdof
@@ -31,8 +34,12 @@ def serialize_sdf(poses: list[Pose], smiles: str, config: EngineConfig) -> str:
             "original_smiles": smiles,
             "smiles": smiles,
         }
+        # The "(N)" is the 1-based record number within the file, not a constant. RDKit's
+        # SDWriter emits it that way and so does Asinex: the committed 1cx7 reference runs
+        # (1)..(5) across its five poses. Writing (1) everywhere diverges from the reference
+        # at every pose after the first.
         properties = "".join(
-            f">  <{tag}>  (1) \n{values[tag]}\n\n" for tag in tag_order
+            f">  <{tag}>  ({record_number}) \n{values[tag]}\n\n" for tag in tag_order
         )
         rendered.append(f"{pose.mol_block}{properties}$$$$\n")
 
@@ -47,9 +54,21 @@ def validate_serialized_sdf(sdf: str, smiles: str, config: EngineConfig) -> None
         raise DockingFailure("docking serializer produced no SDF records")
 
     scores: list[float] = []
-    for record in records:
-        if not record.startswith("0:0:0\n     RDKit          3D\n") or "M  END\n" not in record:
+    for record_number, record in enumerate(records, start=1):
+        # Two things this used to get wrong, both confirmed against the committed 1cx7
+        # reference and an independent capture taken 2026-07-29:
+        #
+        #   * the title's third field is the 0-based pose ordinal, so the five reference
+        #     poses are titled 0:0:0 .. 0:0:4, not 0:0:0 five times;
+        #   * splitting on "$$$$" leaves every record after the first with a leading
+        #     newline, because the delimiter line is followed by a blank one.
+        #
+        # Pinning this to a bare "0:0:0" prefix rejected the reference itself.
+        title = _TITLE_RE.match(record)
+        if title is None or "M  END\n" not in record:
             raise DockingFailure("docking serializer produced an invalid V2000 record")
+        if int(title.group("ordinal")) != record_number - 1:
+            raise DockingFailure("docking serializer wrote a pose title out of order")
         torsion_tag = "TORSDO" if config.reproduce_torsdo_bug else "TORSDOF"
         expected = [
             ("MODEL", None),
@@ -61,7 +80,7 @@ def validate_serialized_sdf(sdf: str, smiles: str, config: EngineConfig) -> None
         ]
         cursor = record.index("M  END\n") + len("M  END\n")
         for tag, expected_value in expected:
-            prefix = f">  <{tag}>  (1) \n"
+            prefix = f">  <{tag}>  ({record_number}) \n"
             if not record.startswith(prefix, cursor):
                 raise DockingFailure(f"docking serializer wrote malformed {tag} tag")
             cursor += len(prefix)

@@ -17,6 +17,20 @@ from .settings import PREP_VERSION, ReceptorConfig
 
 logger = logging.getLogger(__name__)
 
+# How far an original heavy atom may appear to move before we call it moved.
+#
+# It cannot be zero, and it cannot be 1e-9.  addMissingHydrogens rebuilds the position array
+# through OpenMM's Modeller, which stores coordinates in single precision, so every heavy atom
+# comes back with float32 noise on it: measured against the committed 1cx7 fixture, the median
+# apparent displacement is 7.6e-7 A and the maximum is 2.4e-6 A.  A 1e-9 gate therefore rejects
+# a structure PDBFixer did not touch.
+#
+# 1e-4 A sits ~40x above that noise floor and 10x below the 0.001 A quantum the PDB format can
+# even express, so a real displacement — PDBFixer nudging an atom moves it by >=0.01 A — still
+# trips it.  Compare _assert_written_coordinate_gate, which uses half of the written 0.001 A
+# quantum for the same reason.
+COORDINATE_TOLERANCE_ANGSTROM = 1e-4
+
 # Deliberately visible.  These groups cannot establish the holo docking box.
 # Monatomic ions, waters, buffers, cryoprotectants, precipitants and common additives are excluded.
 COCRYSTAL_EXCLUSION_RESNAMES = frozenset(
@@ -333,7 +347,7 @@ def _assert_topology_coordinate_gate(topology: object, positions: object, source
     actual = _topology_heavy_coordinates(topology, positions, unit)
     for key, source_coordinate in source.items():
         coordinate = actual.get(key)
-        if coordinate is None or max(abs(a - b) for a, b in zip(coordinate, source_coordinate, strict=True)) > 1e-9:
+        if coordinate is None or max(abs(a - b) for a, b in zip(coordinate, source_coordinate, strict=True)) > COORDINATE_TOLERANCE_ANGSTROM:
             raise StructureError("PDBFixer moved, dropped, or ambiguously changed an original heavy atom")
 
 

@@ -53,7 +53,10 @@ def _dock(request: dict[str, Any]) -> list[dict[str, Any]]:
         lines = Chem.MolToMolBlock(molecule, confId=index, forceV3000=False).splitlines()
         if len(lines) < 4 or lines[-1] != "M  END":
             raise RuntimeError("RDKit could not write a V2000 Vina pose")
-        lines[0:3] = ["0:0:0", "     RDKit          3D", ""]
+        # Third field is the pose ordinal, matching the reference (0:0:0 .. 0:0:4 for five
+        # poses). Vina returns poses in ascending-energy order and serialize_sdf re-sorts on
+        # the same key, so this index survives serialization unchanged.
+        lines[0:3] = [f"0:0:{index}", "     RDKit          3D", ""]
         poses.append({"mol_block": "\n".join(lines) + "\n", "model": str(index + 1), "torsdof": torsdof, "score": score, "score_text": f"{score:.3f}", "ligand_id": "0"})
     return poses
 

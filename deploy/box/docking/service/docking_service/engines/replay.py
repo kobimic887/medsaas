@@ -9,7 +9,11 @@ from ..errors import UnsupportedFixtureError
 from ..models import Box, NormalizedRequest, Pose
 from ..settings import EngineConfig
 
-_TAG_RE = re.compile(r"^>  <(?P<name>[^>]+)>  \(1\) $", re.MULTILINE)
+# "(N)" is the 1-based record number within the SDF, not a constant. The committed 1cx7
+# reference runs (1)..(5) across its five poses, so pinning this to \(1\) parsed pose 1 and
+# then raised "malformed property tag" on pose 2. The record number is checked separately,
+# against the record's own position — see _parse_tags.
+_TAG_RE = re.compile(r"^>  <(?P<name>[^>]+)>  \((?P<record>\d+)\) $", re.MULTILINE)
 
 
 class ReplayEngine:
@@ -53,17 +57,22 @@ class ReplayEngine:
     @classmethod
     def _parse_sdf(cls, sdf: str) -> tuple[Pose, ...]:
         poses: list[Pose] = []
+        record_number = 0
         for record in sdf.split("$$$$"):
             if not record.strip():
                 continue
+            record_number += 1
             if not record.endswith("\n"):
                 raise RuntimeError("invalid committed replay fixture: SDF record is not newline-terminated")
             marker = "M  END\n"
             marker_index = record.find(marker)
             if marker_index < 0:
                 raise RuntimeError("invalid committed replay fixture: molecule block lacks M  END")
-            mol_block = record[: marker_index + len(marker)]
-            tags = cls._parse_tags(record[marker_index + len(marker) :])
+            # Splitting on "$$$$" leaves the delimiter's own trailing newline at the head of
+            # every following record. It belongs to the separator, not to the molecule, and
+            # carrying it into mol_block makes the serializer emit it a second time.
+            mol_block = record[: marker_index + len(marker)].lstrip("\n")
+            tags = cls._parse_tags(record[marker_index + len(marker) :], record_number)
             try:
                 torsdo_match = re.fullmatch(r"F\s+(\d+)", tags["TORSDO"])
                 torsdof = int(torsdo_match.group(1)) if torsdo_match else None
@@ -83,7 +92,7 @@ class ReplayEngine:
         return tuple(poses)
 
     @staticmethod
-    def _parse_tags(properties: str) -> dict[str, str]:
+    def _parse_tags(properties: str, record_number: int) -> dict[str, str]:
         lines = properties.splitlines()
         tags: dict[str, str] = {}
         index = 0
@@ -94,6 +103,8 @@ class ReplayEngine:
                     raise RuntimeError("invalid committed replay fixture: malformed property tag")
                 index += 1
                 continue
+            if int(match.group("record")) != record_number:
+                raise RuntimeError("invalid committed replay fixture: property tag record number is out of order")
             if index + 2 >= len(lines) or lines[index + 2] != "":
                 raise RuntimeError("invalid committed replay fixture: malformed property value")
             tags[match.group("name")] = lines[index + 1]
