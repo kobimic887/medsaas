@@ -24,6 +24,7 @@ docs that would bloat it.
 
 | Document | What it is | Status |
 |---|---|---|
+| [NEXT-SESSION.md](./NEXT-SESSION.md) | **Start here.** What ships when, what to do today without the box, what Codex is mid-way through building, and a prompt to paste into a fresh session. Everything is announced as **v2 on arrival day**; only the server swap *deploys* earlier, and it says why. **Delete once Release B is done.** | **current — the working handoff** |
 | [BOX-SPEC.md](./BOX-SPEC.md) | **What was ordered and why.** The machine exists because Asinex's servers are in Moscow and go down because of the war. RECT WS-3229C, 2× RTX 5090, €24,727 net — with the reasoning for every line and what was rejected. **Supersedes the machine spec and science-stack scope in COMPUTE-BOX-MIGRATION.** | **configured — one Coreto answer outstanding** |
 | [BOX-BEFORE-AFTER.md](./BOX-BEFORE-AFTER.md) | The plain-language version: what runs where today, what runs where afterwards, where every piece of data lives on each side, what a Pyxis user notices, and what happens from first SSH onward. Start here if you want the picture rather than the sequence. | **planning — nothing applied** |
 | [BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md) | **Decision record: what runs where, and why.** API stays on 83 (pick-up warranty means the box will be gone 1–3 weeks someday); box gets all compute; Atlas stays; CloudAMQP goes. §2 is the arrival-day/later split. Supersedes the topology in every other document. | **current — read first, revised 2026-07-29** |
