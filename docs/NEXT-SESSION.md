@@ -89,21 +89,28 @@ spreadsheet.
 same request within minutes. Cached docks still serve from `simulation_logs`. This is exactly
 what the box is for.
 
-### ⚠ The one thing the cutover did NOT close, and the argument for deferring it is now spent
+### ✅ The `'secret'` forgery hole is closed — 2026-07-29 23:2x UTC
 
-`chem_beo` on **:3000 is still internet-facing and still signs with the literal string
-`secret`** — the same forged owner token that gets 401 from the app gets **200** there, and that
-API reads and writes production Atlas. Measured, not assumed, at 21:53 UTC.
+`chem_beo` on :3000 signed every JWT with the literal string `secret` and is internet-facing.
+A forged owner token returned **200** there all night. It now returns **403**; an unauthenticated
+request returns 401; the API still answers on :3000, so the rollback path is intact.
 
-It was left alone all session because rotating it would log out all 50 users. **That reason is
-gone** — the cutover already logged everyone out, and `chem_beo` now serves nobody. So the fix
-costs nothing except restarting a process no user touches.
+A real `JWT_SECRET` (64 hex, generated on the box) is in `/root/chem_beo/.env`, and the process
+moved from a 27-day-old hand-started `screen` to **`pyxis-api-legacy`**, so all four services now
+survive a reboot. No users were affected — nothing was connected to :3000.
 
-It was still not done tonight, deliberately: `chem_beo` is the rollback path, it is hand-started
-in a `screen` as pid 1790, and moving it to `pyxis-api-legacy` right after a cutover means
-changing two things at once. **Do it once Release A has soaked** — add a real `JWT_SECRET` to
-`/root/chem_beo/.env` and start the unit. Note the firewall is off-limits (shared VPS), so
-closing the port is not an option.
+⚠ **Two traps, both hit on the way:**
+1. **The file had no trailing newline**, so `printf 'JWT_SECRET=…' >>` concatenated onto the last
+   line and produced `BASE_URL=https://app.pyxis-discovery.comJWT_SECRET=…` — which set no
+   secret *and* corrupted `BASE_URL`. Always `printf '\n%s\n'`, and verify with
+   `dotenv.parse()`, never with `grep`.
+2. **`/proc/<pid>/environ` does not show dotenv-loaded variables.** It holds the process's
+   *initial* environment; `dotenv/config` writes into `process.env` at runtime. Checking it will
+   tell you the secret is missing when it is present. Test behaviour — forge a token and see what
+   the API says — not the environment.
+
+The firewall stays off-limits (shared VPS), so closing the port was never an option; fixing the
+signing key was.
 
 ---
 
