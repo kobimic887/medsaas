@@ -66,8 +66,41 @@ Everything below this section is context. These are the open items, in order.
 > verified Postgres 17 tag, and `scripts/verify-tanimoto-restore.sh` proves the restore in one
 > command (needs Docker; run it on the box).
 
-0. **Re-verify Release A against the rebranded frontend.** New, and now the gate on cutover.
-   See the note above. Nothing below this line should happen before it.
+0. ✅ **Re-verified 2026-07-29. Release A is staged on 83 and ready to enable.**
+
+   `/root/pyxis` holds the source, a locally-built `client/dist`, installed server deps, and
+   a `.env` generated on the box — Atlas URI, Stripe and mail carried over from `chem_beo`,
+   `JWT_SECRET` **freshly generated there and never transmitted**, `DEMO_USERNAME=tester123`.
+
+   Booted on spare port **5199** against real Atlas and checked: `/health` 200 with
+   `database: connected, dbName: test`; `/` serves the built frontend titled *Pyxis Discovery*;
+   `POST /api/signup` → **403**; `POST /api/demo-session` issues a working token for
+   `tester123` with **no password or hash anywhere in the response**.
+
+   Parity: **17 routes, 4 differences — the same four as the first run**, so the de-SaaS work
+   added none. The check that actually matters passed: legacy and the new server derive the
+   **identical docking cache key** and both returned the stored record, so no dock ran and no
+   credit was spent. That is the double-charge / invisible-results failure mode, and it is clean.
+   The two expected deltas sit outside those 17 and were checked directly — `/api/signup`
+   200→403, `/create-checkout-session` 500→401.
+
+   Rehearsal torn down. **`pyxis-web` is still `disabled`, the legacy Vite still owns 5173, and
+   `https://app.pyxis-discovery.com` still answers 200.** Nothing user-facing has changed.
+
+   **⚠ Two things found while doing this.**
+   - The legacy `/api/signup` check returned **200 and created a real account** in production
+     Atlas. It was deleted (back to 50 users, 1 company). Anyone can do this right now; it stays
+     true until this ships.
+   - **`tester123` holds 99,998 simulation credits**, and its password has been readable in the
+     legacy page source for as long as that frontend has been up. Cap the balance and rotate
+     the password. The new server never reads that password, so rotating it breaks nothing.
+
+   **The cutover is now one command**, and its only user-visible effect is that everyone is
+   signed out once, because `JWT_SECRET` legitimately changes:
+   ```
+   systemctl disable --now pyxis-vite-legacy && systemctl enable --now pyxis-web
+   ```
+   Rollback is the same command inverted; `deploy/83/systemd/README.md` has it.
 
    **Sign-in was compared against live production on 2026-07-29** — the one page every user
    sees, and the only part of the UX pass that does not need a login. Findings:
