@@ -1,7 +1,11 @@
 # Patches for `chem_beo`
 
 `chem_beo` (`eitangenis/chem_beo`, running on 83 as `/root/chem_beo`) is the production API.
-It stays the API — see [BOX-ARCHITECTURE.md](../../docs/BOX-ARCHITECTURE.md). The goal is
+**It stays the API through arrival day** — [BOX-ARCHITECTURE.md](../../docs/BOX-ARCHITECTURE.md)
+§2. Replacing it with this repo's server is a separate release with no deadline, weeks later
+(§3 there, ARRIVAL-RUNBOOK Phase 5). **This patch is the prerequisite for arrival day**: without
+it, every service address in production is a hardcoded string literal and there is no cutover
+and no rollback. The goal is
 **1:1 with what `app.pyxis-discovery.com` does today, plus the bugs fixed and the compute moved
 to the box.** These patches are that work, prepared ahead of arrival day so the maintenance
 window is short.

@@ -1,5 +1,17 @@
 # Compute Box Migration — full trace and move plan
 
+> ## ⚠ The plan in this document is superseded. The trace is not.
+>
+> **2026-07-29.** This was written before production was inventoried, and it assumes the whole
+> backend **and the database** move onto the box. **That is not what happens.** Atlas stays,
+> the API server stays on 83, the frontend is not rebuilt, and arrival day repoints three
+> environment variables. See [BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md) §2 for the decision
+> and [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) for the steps.
+>
+> **Still worth reading, and not replaced anywhere else:** the dependency trace (every machine,
+> API and repo), the CUDA/driver matrix, the storage layout, and the per-service notes. Read it
+> for *what depends on what*. Do not execute its sequence.
+
 **Status:** planning. **Nothing has been changed or removed.** This document is the
 inventory and the sequence; every code/compose/Dockerfile edit it implies is still to be
 approved.

@@ -25,6 +25,13 @@ what actually happens on the day the machine turns up.**
 >
 > The "After" picture and the calculation table below are unchanged in intent. Read them as the
 > destination, not as a description of the starting point.
+>
+> **Added 2026-07-29 — the "arrival day" narrative here is now too big.** Wherever this document
+> describes arrival day as moving the backend, migrating the database, or swapping the frontend:
+> it does not. **Arrival day repoints three environment variables in `chem_beo` and nothing
+> else.** The API server, the frontend, the database, nginx and Stripe are all untouched.
+> [BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md) §2. The *destination* this document describes is
+> still the destination — it is reached in two releases, not one.
 
 ---
 
@@ -272,15 +279,19 @@ because the cutover is a config change rather than a deploy it carries almost no
 
 10. Build **AutoDock-GPU** for `sm_120` and **OSS DiffDock** on torch cu128. Stand up the
     `autogrid` map cache on `/srv/cache`.
-11. **Validate against the captured contract** — run the same protein/ligand pairs that are
-    already in `simulation_logs` and diff the output shape field by field. The engine is
-    known; the field names are not, and three consumers read them by name.
-12. **Cut over one company** by editing `ligandServiceConfig` in the admin UI: point
-    `dockingApiUrl` and `diffdockApiUrl` at the box, leave catalog and stock on Asinex. Watch
-    it. Roll back by editing the same two fields.
+11. **Validate against the captured contract** — [DOCKING-CONTRACT.md](./DOCKING-CONTRACT.md),
+    captured 2026-07-28 while Asinex still answered. Field names and structure must match
+    exactly; three consumers read them by name. Scores need not match — different engines and
+    builds differ. **The receptor PDB is not byte-stable**, so the test cannot be a diff.
+12. **Cut over.** ⚠ Corrected 2026-07-29: **not** `ligandServiceConfig`, and not per company —
+    production runs `chem_beo`, which has no such field. Set `DOCKING_API_URL`, then
+    `DIFFDOCK_API_URL`, then `TANIMOTO_API_BASE` in its `.env`, **one at a time with a restart
+    and a check between each**. Catalog and stock stay on Asinex. Roll back by unsetting.
+    The env vars exist only because of [`deploy/chem_beo/`](../deploy/chem_beo/) — apply that
+    patch first or there is no cutover at all.
 
 At this point docking no longer depends on Moscow — which is the whole project — and nothing
-else has moved.
+else has moved. **Arrival day ends here.** Steps 13–15 below are a later, separate release.
 
 ### Then the rest, in dependency order
 
