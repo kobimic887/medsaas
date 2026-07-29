@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/context/auth";
 import { API_CONFIG } from "@/utils/constants";
@@ -29,6 +29,19 @@ export function SignIn() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { login } = useAuth();
+
+  // Whether to offer the demo at all. Defaults to hidden and only appears once
+  // the server confirms an account is configured, so a misconfigured deploy
+  // shows one button fewer rather than one that errors when pressed.
+  const [demoAvailable, setDemoAvailable] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(API_CONFIG.buildApiUrl('/demo-session'))
+      .then((r) => (r.ok ? r.json() : { available: false }))
+      .then((d) => { if (!cancelled) setDemoAvailable(Boolean(d?.available)); })
+      .catch(() => { /* no demo button; sign-in still works */ });
+    return () => { cancelled = true; };
+  }, []);
 
   // Forgot-password request flow
   const [showForgot, setShowForgot] = useState(false);
@@ -72,6 +85,31 @@ export function SignIn() {
       }
     } catch (err) {
       setError(err.message || "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // "Proceed to Demo" — same button, same place, same words as the page it
+  // replaces. The difference is invisible: the legacy version typed
+  // tester123/Tester!23 into the form from the component source, which anyone
+  // could read off the server. Here the server looks the demo account up itself
+  // and hands back an ordinary session, so no password is ever in the page.
+  const handleDemoSession = async () => {
+    clearMessages();
+    setLoading(true);
+    try {
+      const res = await fetch(API_CONFIG.buildApiUrl('/demo-session'), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "The demo is unavailable right now");
+      const loginResult = login(data.user, data.token);
+      if (!loginResult.success) throw new Error(loginResult.error || "Login failed");
+      navigate("/dashboard/controlpanel");
+    } catch (err) {
+      setError(err.message || "The demo is unavailable right now");
     } finally {
       setLoading(false);
     }
@@ -275,6 +313,24 @@ export function SignIn() {
           ) : "Sign In"}
         </button>
       </form>
+
+      {/* Hidden only when the server reports no demo account configured, so a
+          broken button never ships. Placed under the form rather than above the
+          title as the legacy page had it: the same action, but it no longer
+          competes with the sign-in the returning user actually came for. */}
+      {demoAvailable && (
+        <div className="cb-auth-demo">
+          <span className="cb-auth-demo-rule">or</span>
+          <button
+            type="button"
+            onClick={handleDemoSession}
+            disabled={loading}
+            className="cb-auth-demo-btn"
+          >
+            Proceed to Demo
+          </button>
+        </div>
+      )}
 
       {/* Accounts are invite-only — an administrator creates them from Company
           Admin. Offering "Create account" here would lead to a route that no

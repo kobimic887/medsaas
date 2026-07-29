@@ -77,7 +77,7 @@ Everything below this section is context. These are the open items, in order.
    | Pyxis wordmark | real inline-SVG logo | was gradient **text** | **fixed** — logo recovered, `29dd2c7` |
    | Forgot password | `href="#"` — **dead link** | working reset flow, covered by tests | **better** |
    | Create account | links to `/auth/sign-up` | removed | intended (invite-only) |
-   | Proceed to Demo | public credentials, see §0c | absent | intended — **do not "restore" it** |
+   | Proceed to Demo | public credentials, see §0c | **present**, server-side auth | **kept, and fixed** |
    | Newsletter checkbox | present | absent | accepted loss; nothing consumes it |
    | Theme | light | dark | different, not worse |
 
@@ -204,14 +204,28 @@ loads the page gets an authenticated session and whatever credits `tester123` ho
 It also fetches `https://api.ipify.org` on that path, which tells a third party the IP of
 everyone who signs in this way.
 
-**The new frontend does not carry it, and that is deliberate rather than an oversight.**
-Deciding whether Pyxis wants a demo entry point at all is a product question; if it does, it
-needs an account with no credits and a password that is not in the page source. Flagging it
-here because dropping a visible production button is exactly the kind of difference that gets
-mistaken for a regression during the cutover.
+**The button stays. It is a wanted feature — owner, 2026-07-29 — and removing it is exactly
+the kind of change that makes returning users stop recognising the product.** An earlier draft
+of this section recommended deleting it; that was wrong and is retracted.
 
-Fixing it on the legacy frontend before then is one line — delete the button — and does not
-depend on Release A.
+**Fixed by moving the credential, not the button** (`server/index.js`, `POST /api/demo-session`).
+The server looks the demo account up from `DEMO_USERNAME` and issues an ordinary session; the
+browser never receives a password, and the demo account's password can now be rotated to
+something nobody knows without touching the frontend. The `api.ipify.org` call is gone with it.
+`GET /api/demo-session` reports whether a demo is configured, so the button hides itself rather
+than erroring on a deploy that has no demo account.
+
+Same label, same action, and it sits under the sign-in form instead of above the title — the
+one placement change, so it stops competing with the sign-in that returning users came for.
+
+**Two things still to do on production, neither of them code:**
+1. **Set `DEMO_USERNAME`** in the new server's env, or the button will not appear after cutover.
+2. **Rotate `tester123`'s password.** It has been readable in page source for as long as the
+   legacy frontend has been up, so treat it as public. The new endpoint never reads it, so
+   rotating it breaks nothing.
+
+Until Release A ships, the legacy page still leaks it — that is an argument for shipping, not
+for editing the legacy frontend.
 
 ### 0a. The two original ones
 

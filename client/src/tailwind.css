@@ -622,6 +622,52 @@
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+/* "Proceed to Demo". Kept in the olive the legacy page used (#B4B239) rather than
+   restyled into this page's purple gradient — it is the same action users already
+   know, and the brand colour is what makes it recognisable. Secondary weight so it
+   reads as the alternative to signing in, not a competing primary. */
+.cb-auth-demo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+.cb-auth-demo-rule {
+  position: relative;
+  width: 100%;
+  text-align: center;
+  font-size: 0.75rem;
+  color: rgb(100 116 139);
+}
+.cb-auth-demo-rule::before,
+.cb-auth-demo-rule::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: calc(50% - 1.25rem);
+  height: 1px;
+  background: rgb(51 65 85 / 0.6);
+}
+.cb-auth-demo-rule::before { left: 0; }
+.cb-auth-demo-rule::after { right: 0; }
+.cb-auth-demo-btn {
+  width: 100%;
+  padding: 0.7rem 1rem;
+  border-radius: 0.6rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #B4B239;
+  background: transparent;
+  border: 1px solid rgb(180 178 57 / 0.45);
+  transition: background 0.2s, border-color 0.2s;
+}
+.cb-auth-demo-btn:hover:not(:disabled) {
+  background: rgb(180 178 57 / 0.12);
+  border-color: rgb(180 178 57 / 0.8);
+}
+.cb-auth-demo-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* The real wordmark. Its viewBox is 211x40, so height drives the size and width
    follows; 2.25rem matches the optical weight the text logo above had at 1.75rem.
    currentColor paints the "PYXIS" half — near-white here, against the dark auth

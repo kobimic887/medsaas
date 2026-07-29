@@ -463,6 +463,31 @@ async function main() {
     });
     check('a member cannot invite', memberInvite.status === 403, `(got ${memberInvite.status})`);
 
+    // --- Test 5d: the demo session, and that it carries no password ---
+    // The legacy page typed tester123/Tester!23 into the form from component
+    // source that production served unminified. The button is a wanted feature
+    // and stays; what must not come back is the credential in the client.
+    console.log('\nTest 5d — demo session:');
+    const demoOff = await fetch(`${BASE}/api/demo-session`);
+    const demoOffBody = await demoOff.json().catch(() => ({}));
+    check(
+      'unset DEMO_USERNAME reports unavailable',
+      demoOffBody.available === false,
+      `(got ${JSON.stringify(demoOffBody)})`
+    );
+    const demoPostOff = await fetch(`${BASE}/api/demo-session`, { method: 'POST' });
+    check(
+      'POST with no demo configured returns 404, not a session',
+      demoPostOff.status === 404,
+      `(got ${demoPostOff.status})`
+    );
+    const demoOffPost = await demoPostOff.json().catch(() => ({}));
+    check(
+      'no token is issued when no demo is configured',
+      !demoOffPost.token,
+      '(a token came back)'
+    );
+
     // --- Test 6: static serving (only with --assert-static) ---
     if (ASSERT_STATIC) {
       console.log('\nTest 6 — GET / serves built frontend HTML:');

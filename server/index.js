@@ -2473,6 +2473,96 @@ app.post('/api/password-reset/confirm', authRateLimit, ensureMongoConnected, asy
  *       200:
  *         description: Signin successful
  */
+/**
+ * @swagger
+ * /api/demo-session:
+ *   post:
+ *     summary: Start a read-only demo session without credentials
+ *     tags: [Authentication]
+ *     responses:
+ *       200:
+ *         description: Demo session issued (same shape as /api/signin)
+ *       404:
+ *         description: No demo account is configured
+ */
+// "Proceed to Demo" — the button the legacy sign-in page has always had, kept
+// because it is a wanted product feature.
+//
+// What changes is only where the credentials live. The legacy implementation put
+// them in the component:
+//
+//     const handleDemoLogin = async () => { setEmail("tester123"); setPassword("Tester!23");
+//
+// and production serves that frontend from a Vite dev server, so anyone could read
+// them unminified at /src/pages/auth/sign-in.jsx and sign in as that account
+// directly — no button needed. Moving the lookup server-side means the browser
+// never sees a password, and the demo account's password can be rotated to
+// something nobody knows without touching the frontend at all.
+//
+// DEMO_USERNAME is required; unset means no demo and the button hides itself.
+// The account is an ordinary user record, so every downstream guard — active,
+// verified, company, credits — applies to it unchanged.
+app.post('/api/demo-session', authRateLimit, ensureMongoConnected, async (req, res) => {
+  const demoUsername = (process.env.DEMO_USERNAME || '').trim();
+  if (!demoUsername) {
+    return res.status(404).json({ error: 'No demo account is configured' });
+  }
+  const user = await usersCollection.findOne({ username: demoUsername });
+  if (!user) {
+    console.warn(`demo-session: DEMO_USERNAME="${demoUsername}" matches no user`);
+    return res.status(404).json({ error: 'No demo account is configured' });
+  }
+  if (user.active === false || !user.verified) {
+    return res.status(403).json({ error: 'The demo account is not available right now' });
+  }
+  if (user.companyId) {
+    const company = await getCompanyRecord(user.companyId);
+    if (!company || company.active === false) {
+      return res.status(403).json({ error: 'The demo account is not available right now' });
+    }
+  }
+  const token = jwt.sign({
+    username: user.username,
+    email: user.email,
+    userId: user._id.toString(),
+    companyId: user.companyId || null,
+    companyName: user.companyName || null,
+    role: user.role || 'member',
+    demo: true
+  }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+  res.json({
+    message: 'Demo session started',
+    token,
+    user: {
+      username: user.username,
+      email: user.email,
+      companyId: user.companyId || null,
+      companyName: user.companyName || null,
+      role: user.role || 'member',
+      simulationTokens: typeof user.simulationTokens === 'number' ? user.simulationTokens : 0,
+      verified: user.verified,
+      mustChangePassword: false,
+      demo: true
+    }
+  });
+  await recordAuditEvent(req, 'auth.demo_session.start', {
+    actorUsername: user.username,
+    targetType: 'user',
+    targetId: user.username
+  });
+});
+
+/**
+ * @swagger
+ * /api/demo-session:
+ *   get:
+ *     summary: Whether a demo account is configured (drives the button's visibility)
+ *     tags: [Authentication]
+ */
+app.get('/api/demo-session', (_req, res) => {
+  res.json({ available: Boolean((process.env.DEMO_USERNAME || '').trim()) });
+});
+
 app.post('/api/signin', authRateLimit, ensureMongoConnected, async (req, res) => {
   const { password } = req.body;
   // Identifier may be a username or an email; trim it and match email
