@@ -1926,8 +1926,15 @@ app.post('/create-checkout-session-onetime', checkoutRateLimit, ensureMongoConne
   }
 });
 
-// Create checkout session endpoint
-app.post('/create-checkout-session', checkoutRateLimit, ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+// Credit-plan checkout. The self-serve plans page is gone (docs/PYXIS-ONLY.md), so
+// nothing in the UI calls this any more — it is kept, not deleted, because it is the
+// only path that buys credits through Stripe and the webhook that grants them is
+// explicitly untouched. Narrowed from requireActiveUser to requireCompanyAdmin: on a
+// single-company install, buying plans is the owner's decision, not each member's.
+//
+// Not to be confused with /create-checkout-session-onetime below, which the compound
+// cart still calls for every active user. That is the e-shop, and it stays open.
+app.post('/create-checkout-session', checkoutRateLimit, ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (req, res) => {
   try {
     const { planName, isYearly } = req.body;
     const plan = getPlan(planName);
