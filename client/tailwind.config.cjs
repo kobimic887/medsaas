@@ -23,6 +23,25 @@ module.exports = withMT({
         // dark tone (#072824, --sk-color-two on pyxis-discovery.com), so restoring the
         // palette also moves the whole dark theme onto brand without touching a single
         // component's class list.
+        // withMT renders green-* as Material Design green (#4CAF50 at 500) — the
+        // bright grass green on every COMPLETED chip, and the "non-Pyxis green" that
+        // prompted this. Status colour has to stay green (success reads as green, and
+        // recolouring it citron would both lose that signal and collide with the
+        // brand accent), so this shifts hue rather than abandoning it: ~95° instead of
+        // Material's ~122°, which makes it a yellow-leaning green that sits beside the
+        // citron #b4b239 instead of clashing with it.
+        green: {
+          50: "#f2f7ed",
+          100: "#e0edd6",
+          200: "#c3dcaf",
+          300: "#a1c883",
+          400: "#83b45f",
+          500: "#6a9d45",
+          600: "#558235",
+          700: "#43672a",
+          800: "#344f21",
+          900: "#263a18",
+        },
         slate: {
           50: "#f0f5f4",
           100: "#dde8e6",
