@@ -390,6 +390,79 @@ async function main() {
       '(a walk-in company exists)'
     );
 
+    // --- Test 5c: the invite path still creates a usable account ---
+    // Closing signup made POST /api/company/members the ONLY way an account comes
+    // into existence, and nothing exercised it. The three things that would each
+    // silently break the product: the route refusing an admin, the new member
+    // landing with zero credits (they would see "No simulation tokens left" on
+    // every page), and the account not actually being able to sign in.
+    console.log('\nTest 5c — an admin can invite a member who can then sign in:');
+    const companies = mongo.db(DB_NAME).collection('companies');
+    await companies.insertOne({
+      companyId: 'comp_invite',
+      name: 'Invite Test Lab',
+      usagePolicy: { defaultSimulationTokensPerUser: 7 },
+      createdAt: new Date(),
+    });
+    await users.insertOne({
+      username: 'inviteowner',
+      email: 'owner@example.com',
+      password: await bcrypt.hash('OwnerPass1!', 10),
+      companyId: 'comp_invite',
+      role: 'owner',
+      verified: true,
+      active: true,
+      simulationTokens: 0,
+      createdAt: new Date(),
+    });
+    const ownerLogin = await fetch(`${BASE}/api/signin`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'inviteowner', password: 'OwnerPass1!' }),
+    });
+    const ownerToken = (await ownerLogin.json().catch(() => ({}))).token;
+    check('owner can sign in', ownerLogin.status === 200 && !!ownerToken, `(got ${ownerLogin.status})`);
+
+    const inviteRes = await fetch(`${BASE}/api/company/members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ownerToken}` },
+      body: JSON.stringify({
+        username: 'invitee', email: 'invitee@example.com', password: 'InviteePass1!',
+      }),
+    });
+    const inviteBody = await inviteRes.json().catch(() => ({}));
+    check('invite returns 201', inviteRes.status === 201, `(got ${inviteRes.status}: ${JSON.stringify(inviteBody)})`);
+
+    const invited = await users.findOne({ username: 'invitee' });
+    check('invited member exists', !!invited, '(no user row)');
+    check(
+      'invited member inherits the company',
+      invited?.companyId === 'comp_invite',
+      `(got ${invited?.companyId})`
+    );
+    // The whole point of keeping the usage policy: an invited user who lands on
+    // zero credits cannot run anything, and the UI only says "No simulation
+    // tokens left" without explaining why.
+    check(
+      'invited member starts with the policy credit balance, not zero',
+      invited?.simulationTokens === 7,
+      `(got ${invited?.simulationTokens})`
+    );
+
+    const inviteeLogin = await fetch(`${BASE}/api/signin`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'invitee', password: 'InviteePass1!' }),
+    });
+    check('invited member can sign in', inviteeLogin.status === 200, `(got ${inviteeLogin.status})`);
+
+    // A member must not be able to invite — otherwise closing signup bought nothing.
+    const inviteeToken = (await inviteeLogin.json().catch(() => ({}))).token;
+    const memberInvite = await fetch(`${BASE}/api/company/members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${inviteeToken}` },
+      body: JSON.stringify({ username: 'gatecrash', email: 'gatecrash@example.com' }),
+    });
+    check('a member cannot invite', memberInvite.status === 403, `(got ${memberInvite.status})`);
+
     // --- Test 6: static serving (only with --assert-static) ---
     if (ASSERT_STATIC) {
       console.log('\nTest 6 — GET / serves built frontend HTML:');
