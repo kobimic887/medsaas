@@ -4,7 +4,35 @@ Reference material for the medsaas / Pyxis Discovery platform. Architecture and 
 live in the repo root [`CLAUDE.md`](../CLAUDE.md); this directory holds the longer-form
 docs that would bloat it.
 
-> **Start here, 2026-07-29.** The docs went through several conflicting plans. The settled one is
+> ## If you read one thing, read this box
+>
+> **The state, 2026-07-29.** Order below is the real order. Ignore phase numbers in
+> ARRIVAL-RUNBOOK — they are historical, not a sequence.
+>
+> | # | What | State |
+> |---|---|---|
+> | 1 | **De-SaaS + Pyxis rebrand** — marketing site and sign-up deleted, signup 403 by default, accounts invite-only, plan checkout admin-only | **APPLIED** ([PYXIS-ONLY.md](./PYXIS-ONLY.md) status table) |
+> | 2 | **Re-verify Release A** — parity + rollback, against the *rebranded* frontend | **OPEN, and now on the critical path** |
+> | 3 | **Release A cutover** — this repo takes port 5173 from the Vite dev server. No box, no nginx change, no new hardware | ready once 2 passes |
+> | 4 | **Release B, arrival day** — docking/DiffDock/Tanimoto repoint at the box, one env var at a time | needs the box |
+>
+> **Why 2 exists:** the owner chose rebrand-**before**-cutover. The parity and rollback
+> evidence gathered on 2026-07-29 was measured against the pre-rebrand frontend, so it no
+> longer describes what would ship. Re-running it needs the rehearsal rig stood back up —
+> it was deleted after the last run.
+>
+> **Three decisions that override anything older you read:**
+> - **The box is reached by a public hostname over HTTPS.** No VPN, no tunnel. Caddy on
+>   `:443`, services on loopback, firewall admits only 83. Any doc suggesting
+>   WireGuard/Tailscale is superseded — that was one code comment, never a decision.
+> - **`assertConfiguredUrlsArePublic` does not block the cutover.** One call site, admin-UI
+>   only; the cutover env vars are never validated. An earlier audit said otherwise and was
+>   wrong.
+> - **The database does not move, and the frontend swap needs no nginx change.**
+>
+> ---
+>
+> The docs went through several conflicting plans. The settled one is
 > **two releases that must not be one day:**
 >
 > - **Release A — the server swap.** This repo's `server/index.js` + `client/dist` take over
@@ -38,7 +66,7 @@ docs that would bloat it.
 | [scripts/verify-docking-response.mjs](../scripts/verify-docking-response.mjs) | **Run before cutting docking over.** Pushes a candidate engine payload through both production parsers byte-for-byte and prints the pose table the dashboard would render. Validated against a real Asinex response. Exit 0 = it reaches the user. | **written and validated** |
 | [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) | **Agent-executable.** `execute the plan docs/ARRIVAL-RUNBOOK.md`. Every step with its command, expected output, and what to do on mismatch; hard rules, destructive-step gating, a resumable state file, rollback per phase, and abort conditions. **Phase 5 runs before delivery; hardware day runs 1·2·3·4.3·6·7.** Only **4.1/4.2** (moving the production Mongo) are dead — **4.3, the Tanimoto Postgres copy from Oracle, is mandatory.** Phase numbers are historical, not an order. | **ready to run — revised 2026-07-29** |
 | [COMPUTE-BOX-MIGRATION.md](./COMPUTE-BOX-MIGRATION.md) | Full trace of every machine, API and compute dependency. Still the best map of *what depends on what*. ⚠ **Its topology and sequencing are superseded** by BOX-ARCHITECTURE — it predates the production inventory and assumes the whole backend and database move to the box. Read it for the dependency trace and the CUDA matrix, not for the plan. | **reference — plan superseded** |
-| [PYXIS-ONLY.md](./PYXIS-ONLY.md) | Retiring the SaaS surface: this is one product for one company now. Which frontend wins (with evidence), what goes, what stays, and the archive-don't-delete sequence. | **planning — nothing applied** |
+| [PYXIS-ONLY.md](./PYXIS-ONLY.md) | Retiring the SaaS surface: this is one product for one company now. Which frontend wins (with evidence), what goes, what stays, and the archive-don't-delete sequence. **Its §5 steps 1–5 are applied — the status table at the top says which commit did what.** Step 6, verifying the remaining product end to end, is the open one. | **APPLIED 2026-07-29 — step 6 open** |
 | [CLAUDE-LIFE-SCIENCES.md](./CLAUDE-LIFE-SCIENCES.md) | The ChemBench MCP server: its 14 tools, the four that cannot work until Pile 2 is deployed, how to connect Claude Science, and the ingress it is waiting on. | current |
 | [CI-CD.md](./CI-CD.md) | Source of truth for the two repo-owned workflows, the build-on-box deploy model, and required secrets. | current |
 | [STRIPE_LIVE_CUTOVER.md](./STRIPE_LIVE_CUTOVER.md) | Steps to move Stripe from test to live keys. | reference |

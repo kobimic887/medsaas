@@ -1,6 +1,35 @@
 # Pyxis only — retiring the SaaS surface
 
-**Status:** plan. Nothing applied.
+**Status: §5 steps 1–5 are APPLIED (2026-07-29).** This is no longer a plan for the code
+half. Step 6 (verify the remaining product end to end) is open, and steps 7–8 belong to the
+box migration and are untouched.
+
+| §5 step | State | Commit |
+|---|---|---|
+| 1. Tag `saas-surface-v1` | **done** — local tag, not pushed | tag |
+| 2. Close public signup | **done** — 403 by default, `ALLOW_PUBLIC_SIGNUP` to reopen | `1241e1a` |
+| 3. Rebrand to Pyxis Discovery | **done** — incl. inverting the brand guard | `5b57937` |
+| 4. Remove marketing routes, then pages | **done** — routes `1901596`, files `a4c6a37` | |
+| 5. Remove paid-plans, gate checkout | **done** — plan checkout now admin-only | `f6b04f4` |
+| 6. Verify end to end | **open** — see the UX parity pass, below | |
+| 7–8. Deploy to 83, CORS | **untouched** — arrival-day work | |
+
+**The order was the owner's call, and it differs from what §5 recommended.** §5 assumed the
+de-SaaS work could land any time; the recommendation at the time of doing it was to ship the
+server swap first and rebrand after, so the parity and rollback evidence gathered on
+2026-07-29 stayed valid. The owner chose rebrand-first, so **that evidence must be gathered
+again** before the cutover — the frontend being deployed is no longer the one that was
+verified. That re-verification is the real remaining cost of this ordering, and it is
+step 6.
+
+**What did NOT change, and must not be assumed to have:** the Stripe webhook, `PLAN_CATALOG`,
+`consumeSimulationToken`, `simulationTokens`, `billing_events`, the companies collection,
+roles, audit logging, and `/api/send-email`. Credits behave exactly as before.
+
+**One thing this work found rather than changed:** the invite path was never tested, and after
+step 2 it is the only way an account can exist. It is now covered end to end (`1ee9f59`),
+including that an invited member inherits `defaultSimulationTokensPerUser` rather than landing
+on zero — which is the state 47 of the 50 production users are in today.
 
 **The decision (owner, 2026-07-28):** for now and for a long time, this is **not a SaaS**. It
 is one product for one company — Pyxis Discovery. `app.pyxis-discovery.com` must work very
@@ -202,7 +231,8 @@ not "never". So this is a **retirement, not a demolition**:
 
 This work and the box migration touch the same files, so ordering matters.
 
-**Do first, before the box arrives — it needs no new hardware:**
+**Do first, before the box arrives — it needs no new hardware.** ✅ **Steps 1–5 applied
+2026-07-29; see the status table at the top of this file. Step 6 is open.**
 
 1. Tag `saas-surface-v1`.
 2. Close public signup. Security win, one route, immediate.
