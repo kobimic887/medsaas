@@ -365,10 +365,38 @@ path if it is not done first.
    outright — `unsupported version (1.16) in file header`. A verified sha256 is not a verified
    restore. Either pin a PG 17 cartridge image or re-dump `--format=plain`. Runbook §4.3 says
    "prove it restores"; that has not happened.
-4. **sm_120 is the item most likely to miss the day, and it is checkable today.** RTX 5090 is
-   Blackwell — CUDA 12.8+. AutoDock-GPU is a compile flag, tractable. **OSS DiffDock is a
-   dependency-graph problem**: check whether cu128 wheels exist for the torch / torch-geometric
-   versions it pins. If they do not, there is no build, and that is worth knowing weeks out.
+4. **sm_120 — ✅ checked 2026-07-29. There is a build, and here is the exact cell.**
+
+   RTX 5090 is Blackwell, sm_120, CUDA 12.8+. AutoDock-GPU is a compile flag, tractable.
+   OSS DiffDock was the open question, because it pins **`torch==1.13.1+cu117`** and four
+   *compiled* PyG extensions built against that exact pair
+   (`torch-scatter==2.1.0+pt113cu117`, `torch-sparse==0.6.16+pt113cu117`,
+   `torch-cluster==1.6.0+pt113cu117`, `torch-spline-conv==1.2.1+pt113cu117`). CUDA 11.7
+   predates Blackwell entirely, so **nothing in DiffDock's pinned graph runs on a 5090** and
+   the prebuilt `rbgcsail/diffdock` image does not either.
+
+   **All four extensions do exist for `pt27cu128`** on `data.pyg.org`, at patch-level bumps —
+   `torch_scatter 2.1.2`, `torch_sparse 0.6.18`, `torch_cluster 1.6.3`,
+   `torch_spline_conv 1.2.2` — for `linux_x86_64` and for **`cp39`**, the Python DiffDock pins.
+
+   **The one narrow constraint, and it is worth writing down:** `torch` ships `cp39` wheels for
+   **2.7.0 and 2.7.1 only**. From 2.8.0 the minimum is Python 3.10. So
+   **`torch==2.7.1+cu128` on Python 3.9 is the single cell** that keeps DiffDock's pinned
+   interpreter. Go newer on torch and the Python bump comes with it.
+
+   **And the hardest dependency is probably not needed at all.** `openfold` (pinned to a git
+   commit, with custom CUDA kernels — by far the worst thing to build against CUDA 12.8) comes
+   in through `fair-esm[esmfold]`, and ESMFold is only used for the `--protein_sequence` path.
+   `inference.py` imports **neither `openfold`, nor `esm`, nor `pytorch_lightning`**. The
+   platform always supplies a receptor *structure* (the RCSB fetch in `DOCKING-CONTRACT.md`),
+   never a bare sequence, so an inference-only service can very likely drop both openfold and
+   Lightning.
+
+   ⚠ **What this does and does not prove.** It proves the wheels exist and the import surface
+   is smaller than the requirements file implies. It does **not** prove DiffDock's model code
+   is free of torch-1.13 APIs removed by 2.7, and it is not a successful build. The build is
+   still real work — but it is now ordinary porting work, not a dead end, which is what this
+   check existed to find out.
 5. **ADMET needs a decision, not a flag.** `services/admet/` is `amqpadmet.py` — RabbitMQ.
    `compose.yml` asserts it polls a Mongo job collection (BOX-ARCHITECTURE §5). One of the two
    has to change. Keeping CloudAMQP for the first deploy is legitimate: nothing regresses either
