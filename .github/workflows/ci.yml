@@ -89,3 +89,39 @@ jobs:
 
       - name: Check + tests
         run: npm run ci:node
+
+  box-services:
+    # The compute services that move to the Amsterdam box. Both are qualified for
+    # linux/amd64 only and both need a Docker daemon, so this is the only place they
+    # can be exercised before the hardware exists:
+    #
+    #   - the dev Macs are arm64 and have no Docker;
+    #   - 83 has Docker but 2 GB of RAM, no swap and 8.6 GB free, and is production
+    #     shared with an unrelated tenant. rdkit + openmm + vina would OOM pip or fill
+    #     the disk, and a full disk on 83 is an outage.
+    #
+    # An ubuntu-latest runner is the right architecture, is free, and risks nothing.
+    # Deliberately NOT wired into deploy.yml's gate: deploy.yml ships the API, and
+    # these are compute services with a separate lifecycle.
+    name: box compute services (linux/amd64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: convertSTR — container suite, offline
+        run: |
+          docker build --platform linux/amd64 --target test \
+            --tag pyxis-convertstr:test deploy/box/convertstr
+          docker run --rm --platform linux/amd64 \
+            --network none --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=512m \
+            pyxis-convertstr:test
+
+      - name: docking — container suite, HTTP replay, and the immutable verifier
+        # test.sh builds both targets, runs the replay suite with --network none,
+        # stands the service on an internal-only network, and checks a real dock
+        # against the committed 1cx7 baseline using scripts/verify-docking-response.mjs.
+        # RUN_VINA stays unset: that suite downloads from RCSB and runs CPU Vina,
+        # which would make CI depend on an external host.
+        run: deploy/box/docking/service/test.sh

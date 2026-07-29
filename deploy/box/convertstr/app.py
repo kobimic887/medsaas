@@ -72,7 +72,13 @@ def _parse_sdf(sdf: str) -> Chem.Mol | None:
 
 def convert_smiles(smiles: str) -> str:
     """Convert one SMILES string into a validated deterministic 3D SDF record."""
-    if not smiles.strip():
+    # Trim before anything else. The platform does not sanitise what the user typed: the last
+    # request the old service ever received, logged on 83 at 2026-06-04T12:15:34Z, was
+    # {"smiles": " C#Cc1ccc(cc1)C#C"} — a leading space straight from the search box. Leading
+    # and trailing whitespace is never meaningful in a SMILES, so accept it rather than
+    # rejecting a molecule the user spelled correctly.
+    smiles = smiles.strip()
+    if not smiles:
         raise ConversionError("SMILES must not be empty")
     if ";" in smiles:
         raise ConversionError("SMILES containing ';' are not supported")

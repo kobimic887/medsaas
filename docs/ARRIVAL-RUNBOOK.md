@@ -772,11 +772,28 @@ which matters because rule 2 forbids one:
 
 ```bash
 # CUT OVER — stop Vite, then:
-PORT=5173 FRONTEND_DIST=/path/to/client/dist node server/index.js
+PORT=5173 FRONTEND_DIST=/path/to/client/dist bun server/index.js
 
 # ROLL BACK — stop it, then, in /root/material-tailwind-dashboard-react:
-npm run dev
+npm run dev-vite-only
 ```
+
+⚠ **`npm run dev` is the wrong rollback command** — corrected 2026-07-29, by running it. That
+script is `concurrently "node stripe-server.cjs" "vite"`, and `stripe-server.cjs` is *already*
+holding `:3001` from a shell started 2026-07-02. So `npm run dev` starts Vite and then loses its
+other half to `EADDRINUSE`. There are two half-dead `concurrently` stacks on the box today for
+exactly that reason: one kept `stripe-server`, the other kept `vite`. **`dev-vite-only` is the
+rollback**, and `:3001` must be left alone because Vite proxies `/api` to it.
+
+⚠ **Use `bun`, not `node`.** 83 runs **Node v18.19.1**; this repo has no `engines` floor and is
+Bun-first. Bun 1.3.12 is already installed at `/usr/local/bin/bun` and the rehearsal ran on it
+against real Atlas without incident. Do not discover Node 18's limits during a cutover.
+
+**Rehearsal result, 2026-07-29:** `/root/pyxis-release-a` on port 5199, `bun index.js` +
+`client/dist`, real Atlas. Connected, created indexes, served `client/dist` and `/health`, and
+passed a 17-route shape comparison against `chem_beo`. Build `client/dist` **on a dev machine and
+`scp` it** — Vite 8 will not run on Node 18, and building on 83 would put a Node upgrade on the
+critical path for no reason.
 
 `server/index.js` reads `PORT` (`:5368`) and serves `client/dist` via `express.static`
 (`:6699`). nginx proxies to 5173 either way and never learns anything changed.

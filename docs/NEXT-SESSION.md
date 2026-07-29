@@ -43,23 +43,86 @@ Nobody outside sees when A landed. The v2 announcement is still arrival day.
 
 ---
 
+## 0. Two live vulnerabilities, found 2026-07-29. Read before anything else.
+
+**Production JWTs are signed with the literal string `secret`.** `chem_beo:1049` is
+`jwt.sign({username}, process.env.JWT_SECRET || 'secret', {expiresIn: '1d'})`, and `chem_beo`'s
+`.env` sets no `JWT_SECRET`, so the fallback is what is live. Verified by minting a token with
+`'secret'` and using it against the production API — it authenticated. **Anyone can forge a valid
+token for any of the 50 accounts**, on an API that is internet-facing on `:3000`.
+
+This reframes the "rotate `JWT_SECRET`" gate below. It is not cutover hygiene; it is the fix. And
+Release A fixes it as a by-product, because this repo's server refuses to start without a real
+one ≥32 characters.
+
+**`:3001` is an open mail relay.** `stripe-server.cjs`, in *no* document until now, running from
+`/root/material-tailwind-dashboard-react` since 2026-07-02 and reachable from the public internet
+on `83.229.87.94:3001`. It exposes unauthenticated `POST /api/send-email`, which takes an
+arbitrary `recipientEmail` and sends through the production Titan Mail account. It also exposes
+`POST /api/issueSimulationTokens` and Stripe session creation with a **client-supplied price**,
+none of it authenticated.
+
+⚠ **Do not kill the process.** The live Vite dev server proxies `/api` → `127.0.0.1:3001`
+(`vite.config.js`), so it is the contact form's backend *and* part of the rollback path. Bind it
+to localhost or firewall `:3001` instead. Release A retires it properly: every one of those routes
+exists in this repo's server behind authentication and rate limiting, and
+`/api/issueSimulationTokens` there requires a company admin.
+
+---
+
 ## Do these now — no box required
 
 ### 1. Ship Release A
 
-Full steps: **`ARRIVAL-RUNBOOK.md` Phase 5**. Gates, all runnable today:
+Full steps: **`ARRIVAL-RUNBOOK.md` Phase 5**. Gate status as of **2026-07-29**, measured on
+production, not assumed:
 
-- [ ] Run `scripts/migrate-legacy-users.mjs`. 49 of 50 production users have no `companyId`.
-- [ ] **Rotate `JWT_SECRET`.** Not optional, and not a hygiene task —
-      `buildTenantFilter` (`server/index.js:1064`) reads `companyId` from the **JWT payload,
-      not the database**. Reusing `chem_beo`'s secret keeps legacy tokens valid, and those
-      tokens have no `companyId`, so a migrated user still takes the legacy branch: their
-      results go invisible, the cache misses, and they get charged twice.
-- [ ] Verify response shapes route by route **while both servers are still running**. Once
-      5173 changes hands this is no longer possible.
-- [ ] Confirm the old dev server still starts: `npm run dev` in
-      `/root/material-tailwind-dashboard-react`. **Never delete that directory** — it is the
-      rollback, and a different codebase from this repo's `client/`.
+| Gate | State |
+|---|---|
+| Response shapes verified route by route, both servers live | ✅ **done** — 17 routes, 4 explained differences, none blocking. See below |
+| Rollback proven to start | ✅ **done** — a second Vite booted on `:5199` from `/root/material-tailwind-dashboard-react`, served 200, production untouched |
+| Rehearsal on a spare port against real Atlas | ✅ **done** — `/root/pyxis-release-a`, port 5199, `bun index.js` + `client/dist` |
+| `scripts/migrate-legacy-users.mjs` | ⏳ **dry run clean, not applied.** 49/50 users get `companyId`, 47 get `simulationTokens: 0`, 1 string balance coerced |
+| `scripts/migrate-legacy-simulation-logs.mjs` | ⏳ **dry run clean, not applied.** 5 documents, 0 orphans. **New — see below** |
+| Rotate `JWT_SECRET` | ⏳ **not done, and it is now a live vulnerability — see §0** |
+| `chem_beo` patch applied | ⏳ not applied |
+
+**Run the two migrations in one window, users first.** Between them is the only interval where
+history is invisible and the cache double-charges, so do not stop halfway. **Run them with
+`node`, not `bun`** — `mongodb`'s bson calls `node:v8 isBuildingSnapshot`, which Bun 1.3.12 does
+not implement, and the script dies on import. They also need `mongodb` resolvable from the repo
+root, which a bare checkout does not have; on the rig this was `ln -s server/node_modules
+node_modules`.
+
+**Why the second migration exists.** `migrate-legacy-users.mjs` opens a gap it does not close.
+The moment every user has a `companyId`, `buildTenantFilter` stops taking its legacy branch and
+filters on `{companyId}` — but every `simulation_logs` document was written by `chem_beo`, which
+nests `user.username` and writes no `companyId`. Verified on Atlas: 5 documents, 5 nested, 0 with
+either field. So dock history vanishes and `/api/simulation`'s cache lookup
+(`server/index.js:3165`) misses, **charging a credit again for a dock already paid for**. The new
+script backfills both fields additively and leaves `user` in place, so `chem_beo` can still read
+the documents after a rollback.
+
+**The four parity differences, all benign:**
+
+1. A garbage token gets **403 from `chem_beo`, 401 from this server**. 401 is the correct one —
+   the client treats a same-origin 401 as a dead session and logs out, which is what a malformed
+   token should cause.
+2. `/api/activity` omits `createdAt` on users. Nothing in this repo's client reads it.
+3. `/api/tanimoto/v1/*` (legacy) vs `/tanimoto/v1/*` (this repo). Each frontend calls its own
+   server's path, and the halves ship together, so they cannot disagree.
+4. `/api/asinex/exact/CCO` returns **500 on both** — `"Unexpected end of JSON input"`, Asinex
+   answering with an empty body. Pre-existing, identical before and after, not a cutover risk.
+
+The `/api/simulation` cache hit returned the **stored** `simulationKey` on both servers: no dock
+ran and no credit was spent.
+
+⚠ **The rollback command in the runbook is wrong.** `npm run dev` in
+`/root/material-tailwind-dashboard-react` runs `concurrently "node stripe-server.cjs" "vite"` —
+and `stripe-server.cjs` is *already running* on `:3001` from a different shell, so that half dies
+on `EADDRINUSE`. There are two half-dead `concurrently` stacks on the box right now for exactly
+this reason. **The rollback is `npm run dev-vite-only`.** Never delete that directory — it is a
+different codebase from this repo's `client/`, not an older version.
 
 Cutover is which process owns **port 5173**. nginx already proxies there; nothing in nginx,
 TLS, DNS, or Stripe is touched. Check what holds it first: `ss -ltnp | grep 5173`.
@@ -80,17 +143,27 @@ the only way to repoint docking on the legacy server. See `deploy/chem_beo/READM
 
 ### 3. Capture from Asinex while Moscow still answers
 
-This expires without warning. Each of these is a `curl` against production and belongs in
-`deploy/box/docking/reference/`:
+- [x] ~~**A DiffDock response.**~~ ✅ **Done 2026-07-29, and no call to Moscow was needed.**
+      This item said the schema was "completely uncaptured". It was wrong: `chem_beo` has been
+      logging every request and response to `/root/chem_beo/diffdock_api.log` since February —
+      7.9 MB, 24 pairs, 8 successful. `deploy/box/diffdock/reference/` is the extracted contract,
+      with a README covering the three things a reimplementation must get right: failure arrives
+      as **HTTP 200** with `status: "failed"`, arrays are **padded to `num_poses`** with empty
+      strings so length is not a pose count, and `position_confidence` is **ranked best-first and
+      index-aligned** with `ligand_positions`.
+- [x] ~~**A failed dock.**~~ ✅ **Done** — both distinct failure strings are in the same
+      directory, along with the HTML error page DiffDock sometimes returns instead of JSON.
+      Also `/root/chem_beo/output.json`, `output4.json` and `/root/output2.json` are three
+      stored failed responses.
+- [ ] **An apo-structure dock.** Still open. Every stored dock has a co-crystal ligand, which is
+      where the search box centre comes from. A receptor without one has no centre by that rule,
+      and nobody knows what Asinex does.
+- [ ] **A failed `/api/simulation` dock** (AutoDock, not DiffDock). Still open — the platform
+      only writes `simulation_logs` on success, so that engine's error shape is still unknown.
 
-- [ ] **A DiffDock response.** The response schema is **completely uncaptured** — no DiffDock
-      result was ever stored. The DiffDock service in `BRIEF-SERVICES.md` is being built blind
-      until this exists. Highest value item on this list.
-- [ ] **A failed dock.** The platform only writes on success, so Asinex's error shape is
-      unknown.
-- [ ] **An apo-structure dock.** Every stored dock has a co-crystal ligand, which is where the
-      search box centre comes from. A receptor without one has no centre by that rule, and
-      nobody knows what Asinex does.
+The same log settled `/convertSTR` too: `{"smiles": "..."}` → `{"sdf": "..."}`, and its last
+line is a request at **2026-06-04T12:15:34Z with no response** — the exact moment `:8001` died,
+carrying a leading space in the SMILES. `deploy/box/convertstr/` now trims and has a test for it.
 
 ### 4. `pg_dump` Oracle's Tanimoto Postgres
 

@@ -107,6 +107,33 @@ def test_rejects_invalid_request_bodies(
     assert_error(response, expected_statuses)
 
 
+@pytest.mark.parametrize(
+    "padded",
+    [f" {ASPIRIN}", f"{ASPIRIN} ", f"  {ASPIRIN}\n", f"\t{ASPIRIN}\r\n"],
+    ids=["leading", "trailing", "both", "tab-crlf"],
+)
+def test_untrimmed_smiles_converts_identically(client: TestClient, padded: str) -> None:
+    """The platform sends whatever the user typed.
+
+    The very last request the old 83:8001 service received, logged 2026-06-04T12:15:34Z, was
+    {"smiles": " C#Cc1ccc(cc1)C#C"} — leading space and all. Whitespace carries no meaning in
+    a SMILES, so a padded string must produce byte-identical output, not an error.
+    """
+    clean = client.post("/convertSTR", json={"smiles": ASPIRIN})
+    response = client.post("/convertSTR", json={"smiles": padded})
+
+    assert response.status_code == 200
+    assert response.json()["sdf"] == clean.json()["sdf"]
+
+
+def test_whitespace_only_smiles_is_still_rejected(client: TestClient) -> None:
+    """Trimming must not turn "   " into a parse error with a misleading message."""
+    response = client.post("/convertSTR", json={"smiles": "   \n\t "})
+
+    assert_error(response, {400})
+    assert "empty" in response.json()["error"].lower()
+
+
 def test_rejects_semicolon_smiles(client: TestClient) -> None:
     response = client.post("/convertSTR", json={"smiles": "CC;O"})
 
