@@ -282,9 +282,18 @@ stale survives the move. Relevant again only at the Phase 5 release.
 **0.4 Rotate `services/glioblastoma-predictor/chemtest_tech_private.key`.** Committed to the
 repo and `COPY`'d into the image. Treat the existing one as compromised — it is in git history.
 
-**0.5 Look for where ADMET and GROMACS were deployed once.** They ran somewhere, possibly the
-owner's PC, with no surviving record. Ask the operator. A working GROMACS CUDA build is worth
-more than a clean-room rebuild.
+**0.5 Look for where ADMET and GROMACS were deployed once — ✅ RESOLVED 2026-07-29.**
+
+- **GROMACS: the repo IS the deployed code.** `/root/gromacs-api` on 83 was diffed against
+  `services/gromacs-api`. The **Dockerfile is byte-identical**; `app.py` differs by **one
+  trailing space and one missing final newline**. Nothing to recover. Config captured:
+  `WORK_DIR=/data`, `MAX_UPLOAD_SIZE=104857600`, `JOB_TIMEOUT=3600`, bind mount `./data:/data`,
+  `restart: unless-stopped`, `uvicorn app:app --host 0.0.0.0 --port 8000`. It is a **CPU-only
+  apt build** and needs `-DGMX_GPU=CUDA` to be worth moving.
+- **ADMET: never deployed anywhere.** Nothing to find. `services/admet/` is the only copy and
+  it has never run against production.
+- **convertSTR: source does not exist**, on 83 or anywhere. Clean-room rebuild from a
+  three-line contract — [deploy/box/BRIEF-SERVICES.md](../deploy/box/BRIEF-SERVICES.md) §1.
 
 **0.6 NVIDIA 429 handling — DONE, `956f9d9`.** Not deployed anywhere; it ships with the v2
 launch (§4a). `callNvidiaNim()` in `server/index.js` gives each service a comma-separated key

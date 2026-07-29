@@ -1,0 +1,172 @@
+# The Amsterdam box — compute only. No API server, no database.
+#
+# The platform API stays on 83 and MongoDB stays on Atlas; see docs/BOX-ARCHITECTURE.md.
+# Everything here is something the platform CALLS, addressed by one environment variable
+# each, so cutover and rollback are a variable and a restart.
+#
+#   docker compose -f deploy/box/compose.yml --env-file deploy/box/.env up -d docking
+#
+# Bring services up ONE AT A TIME, verifying each against its acceptance test before the
+# next (ARRIVAL-RUNBOOK Phase 2 and 6). `docker compose up -d` with no service name starts
+# everything at once, which is the opposite of the plan.
+#
+# ── Ports, and why these numbers ──────────────────────────────────────────────
+#   8000  docking      AutoDock-GPU. Replaces services.asinex.com:8000/docking
+#   8001  convertstr   SMILES->SDF. Same port as the dead 83:8001, so the cutover is a
+#                      HOST swap only and SDF_CONVERTER_URL keeps its shape
+#   8002  diffdock     Replaces services.asinex.com:58000
+#   8003  tanimoto     Replaces Oracle 151.145.91.17:8000
+#   8005  glioblastoma
+#   8006  gromacs      NOTE: 8004 deliberately skipped — 83 runs GROMACS on 8000 today and
+#                      reusing a low number invites a copy-paste mistake during cutover
+#
+# ⚠ NONE of these may be exposed to the internet. They are unauthenticated compute on a
+# EUR 24,727 machine, and chem_beo's open /api/diffdock/generate is exactly how the NVIDIA
+# quota got drained. Bind to a private interface or a WireGuard/Tailscale address and
+# allowlist 83 only. See ARRIVAL-RUNBOOK Phase 3.1 for the one interaction with
+# assertConfiguredUrlsArePublic, which REJECTS private and CGNAT ranges.
+
+x-gpu: &gpu
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            capabilities: [gpu]
+
+x-base: &base
+  restart: unless-stopped
+  networks: [box]
+  logging:
+    driver: json-file
+    options: { max-size: "50m", max-file: "5" }
+
+networks:
+  box:
+
+volumes:
+  tanimoto-pg:
+
+services:
+
+  # ── Docking. The reason the box exists. ────────────────────────────────────
+  docking:
+    <<: [*base, *gpu]
+    build: ./docking/service
+    container_name: box-docking
+    ports: ["${BIND_ADDR:-127.0.0.1}:8000:8000"]
+    environment:
+      DOCKING_ENGINE: "${DOCKING_ENGINE:-autodock-gpu}"
+      CACHE_DIR: /srv/cache
+      NVIDIA_VISIBLE_DEVICES: "0"
+    volumes:
+      - /srv/cache:/srv/cache          # prepared receptors + autogrid maps — see BRIEF §5
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ── SMILES -> SDF. Currently DOWN in production, which is why DiffDock is broken. ──
+  convertstr:
+    <<: *base
+    build: ./convertstr
+    container_name: box-convertstr
+    ports: ["${BIND_ADDR:-127.0.0.1}:8001:8001"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── DiffDock. Asinex-hosted today; dies with them. ─────────────────────────
+  diffdock:
+    <<: [*base, *gpu]
+    build: ./diffdock
+    container_name: box-diffdock
+    ports: ["${BIND_ADDR:-127.0.0.1}:8002:8002"]
+    environment:
+      DIFFDOCK_ENGINE: "${DIFFDOCK_ENGINE:-oss}"
+      NVIDIA_VISIBLE_DEVICES: "1"
+      CONVERTSTR_URL: http://convertstr:8001/convertSTR
+    depends_on: [convertstr]
+    volumes:
+      - /srv/models/diffdock:/models:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # ── Tanimoto search. Moves off Oracle's arm64 VPS. ─────────────────────────
+  # Image comes from the separate repo kobimic887/tonomitosql. Its Dockerfile has an ARM
+  # fallback that installs WITHOUT rdkit-pypi; on x86_64 it must NOT take that branch,
+  # because it silently degrades chemistry to SQL-side validation. Verify after build:
+  #   docker compose exec tanimoto python -c "import rdkit; print(rdkit.__version__)"
+  tanimoto:
+    <<: *base
+    image: "${TANIMOTO_IMAGE:-tonomitosql:latest}"
+    container_name: box-tanimoto
+    ports: ["${BIND_ADDR:-127.0.0.1}:8003:8000"]
+    environment:
+      DATABASE_URL: postgresql://${PG_USER}:${PG_PASSWORD}@tanimoto-db:5432/${PG_DB}
+    depends_on: [tanimoto-db]
+
+  tanimoto-db:
+    <<: *base
+    image: "${TANIMOTO_DB_IMAGE:-informaticsmatters/rdkit-cartridge-debian:latest}"
+    container_name: box-tanimoto-db
+    environment:
+      POSTGRES_USER: "${PG_USER}"
+      POSTGRES_PASSWORD: "${PG_PASSWORD}"
+      POSTGRES_DB: "${PG_DB}"
+    volumes:
+      - tanimoto-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER} -d ${PG_DB}"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+
+  # ── ADMET. Has NEVER been deployed. Every job ever queued is still "queued". ──
+  # No port: it is a worker. It polls a Mongo job collection — CloudAMQP is retired,
+  # see docs/BOX-ARCHITECTURE.md §5.
+  admet:
+    <<: [*base, *gpu]
+    build: ../../services/admet
+    container_name: box-admet
+    environment:
+      MONGODB_URI: "${MONGODB_URI}"
+      ADMET_CALLBACK_URL: "${ADMET_CALLBACK_URL}"
+      ADMET_CALLBACK_TOKEN: "${ADMET_CALLBACK_TOKEN}"
+      NVIDIA_VISIBLE_DEVICES: "1"
+    profiles: ["extras"]
+
+  # ── GROMACS. Deployed on 83 today, CPU-only apt build. ─────────────────────
+  # The repo copy IS the deployed code — verified 2026-07-29, the only delta was a
+  # trailing space. Needs a -DGMX_GPU=CUDA rebuild to be worth moving.
+  gromacs:
+    <<: [*base, *gpu]
+    build: ../../services/gromacs-api
+    container_name: box-gromacs
+    ports: ["${BIND_ADDR:-127.0.0.1}:8006:8000"]
+    environment:
+      WORK_DIR: /data
+      MAX_UPLOAD_SIZE: "104857600"
+      JOB_TIMEOUT: "3600"
+    volumes:
+      - /srv/gromacs/data:/data
+    profiles: ["extras"]
+
+  # ── Glioblastoma. Never deployed anywhere. ─────────────────────────────────
+  # ⚠ services/glioblastoma-predictor/chemtest_tech_private.key is COMMITTED TO GIT and
+  # COPY'd into the image. Treat it as compromised — it is in the history. ROTATE IT
+  # BEFORE THIS SERVICE RUNS ANYWHERE. Left behind a profile so it cannot start by accident.
+  glioblastoma:
+    <<: *base
+    build: ../../services/glioblastoma-predictor
+    container_name: box-glioblastoma
+    ports: ["${BIND_ADDR:-127.0.0.1}:8005:8000"]
+    profiles: ["glioblastoma-key-rotated"]
