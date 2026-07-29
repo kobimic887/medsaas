@@ -504,16 +504,40 @@ DiffDock's contract too: `position_confidence`, `ligand_positions`, `protein`, `
 Record the **actual** size per receptor in the state file. The ~60 MB figure in the docs is an
 estimate from typical box dimensions and has never been measured.
 
-### 2.4 Validate before cutting anything over
+### 2.4 Validate before cutting anything over — this is the gate, not a formality
 
-Run the same protein/ligand pairs already present in `simulation_logs` through the local
-engines and **diff the output field by field** against the stored Asinex results.
+**Run the script. It is not optional and it is not a diff you can eyeball.**
 
-**Expect:** same field names, same structure, chemically comparable poses and scores.
-Absolute score parity is not expected — different builds and different engines differ. **Field
-names and structure must match exactly**, or the frontend breaks silently.
+```bash
+node scripts/verify-docking-response.mjs --url http://<box>:8000/docking \
+  --pdbid 1cx7 --smiles 'Cc1c(non1)OCCn2c(ncc2[N+](=O)[O-])C' --save candidate.json
+```
 
-Delegate this diff to a strong reasoning model with both outputs attached.
+Exit **0** required. It pushes the payload through both production parsers
+(`/api/sanitizedminimalsdf` and the client's `parseSdfData`) and prints the pose table the
+dashboard would render.
+
+**Why a field-by-field diff is not enough.** The two parsers disagree about strictness. A
+payload that is chemically perfect and passes any reasonable SDF validator will still render
+**nothing** if a property tag is written `> <smiles>` instead of `>  <smiles>` — the server
+drops every pose, returns **HTTP 200** with an empty body, and the user gets a receptor with no
+ligands, no score, and no error anywhere. [DOCKING-CONTRACT.md](./DOCKING-CONTRACT.md) §7.
+
+Then, and only then, judge the chemistry:
+
+- Run the same protein/ligand pairs already in `simulation_logs` and compare scores against the
+  four stored reference docks. **Score parity is not expected** — different engines and builds
+  differ. Field names and structure must match exactly.
+- **Do not diff `result.pdb` for byte-equality.** The reference re-protonates every dock;
+  1,308 of 2,601 lines differ between two runs of the same input (§2). Compare heavy atoms.
+- **Red badges are normal.** The UI colours anything at or above −5 red, and every real dock
+  production has ever produced scores −4.3 to −4.6. Red is not a regression.
+- **Decide the `TORSDO` question** (§3): Asinex emits tag `TORSDO` with the value `"F 5"`, a
+  truncation of AutoDock's `TORSDOF 5`. Reproduce the bug, or emit `<TORSDOF>` and change
+  `molstar3d.jsx:52` in the same release. Not one without the other.
+
+Delegate the chemistry judgement to a strong reasoning model with both outputs attached. Do not
+delegate the plumbing check — run the script.
 
 ### 2.5 Cut over — one environment variable at a time
 

@@ -209,10 +209,55 @@ $$$$
 - `SCORE` values from one dock: `-4.547, -4.505, -4.468, -4.423, -4.345` — descending, i.e.
   **sorted best-first**, in the kcal/mol range and sign convention of AutoDock binding affinity.
 
-**`TORSDO` is the tell.** It is AutoDock's `TORSDOF` (torsional degrees of freedom) record,
-carried through the PDBQT→SDF conversion. Together with the score range this is independent
-confirmation of what the Asinex/Pyxis CEO stated: **the 1-click `/api/simulation` engine is
-AutoDock.** Nothing here is DiffDock-shaped.
+### The exact bytes — read 2026-07-29 from a production record
+
+```
+44: ">  <MODEL>  (1) "
+45: "1"
+46: ""
+47: ">  <TORSDO>  (1) "
+48: "F 5"
+49: ""
+50: ">  <SCORE>  (1) "
+51: "-4.547"
+52: ""
+53: ">  <ligand_id>  (1) "
+54: "0"
+55: ""
+56: ">  <original_smiles>  (1) "
+57: "Cc1c(non1)OCCn2c(ncc2[N+](=O)[O-])C"
+58: ""
+59: ">  <smiles>  (1) "
+60: "Cc1c(non1)OCCn2c(ncc2[N+](=O)[O-])C"
+```
+
+Four things a rebuild must copy exactly, because a parser downstream depends on each:
+
+- **`>` then TWO spaces**, then `<TAG>`, then two spaces, `(1)`, and a **trailing space**.
+  `/api/sanitizedminimalsdf` matches with `line.startsWith('>  <smiles>')` — a literal. One
+  space instead of two and every pose is dropped. See §7.
+- **The value is on the NEXT line**, followed by a blank line.
+- **`<smiles>` is lowercase, `<SCORE>` is uppercase.** Both are matched case-sensitively.
+- **`smiles` and `original_smiles` are the DECODED SMILES**, even though the engine was *sent*
+  the URL-encoded form (§0, §4) and the platform *stores* the encoded form. The engine decodes
+  on the way in and echoes plain text on the way out.
+
+**`TORSDO` is the tell — and it is a bug.** ⚠ *Corrected 2026-07-29; this previously said the
+tag was AutoDock's `TORSDOF` "carried through the conversion", which is not what the bytes show.*
+The tag name is `TORSDO` and its **value is the string `"F 5"`**. AutoDock's PDBQT records
+torsional degrees of freedom as `TORSDOF 5`; Asinex's PDBQT→SDF converter split that line at a
+fixed column, so the `F` ended up in the value. It is a truncation artifact, faithfully stored
+for months.
+
+That makes it **stronger** evidence, not weaker: nothing but an AutoDock PDBQT produces a
+mangled `TORSDOF`. Together with the score range it independently confirms what the
+Asinex/Pyxis CEO stated — **the 1-click `/api/simulation` engine is AutoDock.** Nothing here is
+DiffDock-shaped.
+
+**Decide deliberately whether to reproduce the bug.** The dashboard reads `TORSDO` and displays
+it; emit a clean `<TORSDOF>` with value `5` and that column reads `N/A`, because
+`properties.TORSDO` is undefined. Either emit `<TORSDO>` / `"F 5"` bug-for-bug, or emit
+`<TORSDOF>` and change `molstar3d.jsx:52` in the same release. Do not do one without the other.
 
 ## 4. `smiles` is stored URL-encoded
 
@@ -271,3 +316,77 @@ The box's AutoDock service passes when, for `pdbid=1cx7` and a SMILES from §5, 
 The client renders `result.pdb` in Molstar and `result.sdf` as poses. Getting the field names
 right matters more than matching scores exactly — a different-but-valid docking result is
 acceptable, a differently-shaped payload breaks the dashboard.
+
+---
+
+## 7. How the response reaches the screen — and how it silently doesn't
+
+**The client never renders `result` directly.** `POST /api/simulation` returns
+`{pdb, sdf, simulationKey}`, and `simulation.jsx:775` throws the payload away, keeps only
+`simulationKey`, and sends the browser to Molstar with two **URLs**:
+
+```
+POST /api/simulation ──► { pdb, sdf, simulationKey }
+        │  simulation.jsx:775-793 — keeps simulationKey, stores two URLs in localStorage
+        ▼
+ /dashboard/molstar3d
+        ├─► GET /api/sanitizedpdb/{key}          → receptor, \n converted to CRLF → Molstar
+        └─► GET /api/sanitizedminimalsdf/{key}   → REDUCED poses → parseSdfData() → the table
+```
+
+So the engine's output is re-read from Mongo and passed through **two more transforms** before
+anyone sees it. Both endpoints are `authenticateToken` + `buildTenantFilter`, so the JWT
+`companyId` trap (ARRIVAL-RUNBOOK §5.3) makes the *viewer* 404 as well.
+
+### The reduction, and why 5 poses become 1
+
+`/api/sanitizedminimalsdf` (`server/index.js:3359`) splits on `$$$$`, and for each block reads
+`>  <smiles>` and `>  <SCORE>` **as literal string prefixes**. It then keys a map on the SMILES
+value, keeping the block with the **lowest** score. Every pose of one ligand carries the same
+`<smiles>`, so **5 poses collapse to 1 — the best-scoring one.** That is the "minimal" in the
+route name, and it is why the viewer lists one row per ligand, not five.
+
+Two consequences for the box:
+
+- **Emit one `<smiles>` shared by all poses of a ligand.** If each pose carries a different
+  SMILES the reduction does nothing and the user sees 5 rows where production shows 1.
+- **Omit `<smiles>` and every block is dropped.** The map stays empty.
+
+### The failure mode that matters: it returns HTTP 200
+
+If no block matches, `reducedSDF` is `"" + "\n$$$$\n"` — and it is sent with **status 200** and
+`Content-Type: chemical/x-sdf`. The client's `parseSdfData` filters empty entries and gets zero
+molecules.
+
+**What the user sees: the dock succeeds, a credit is spent, the receptor renders in Molstar, and
+the ligand table is empty. No score. No poses. No error, in the browser or in any log.**
+
+The two parsers disagree about strictness, which is what makes this possible — the client's is
+a regex (`/<([^>]+)>/`, spacing-agnostic) and would have coped fine. It never gets the chance.
+
+### `scripts/verify-docking-response.mjs` — run this before cutting over
+
+Runs a candidate payload through **both parsers, byte-for-byte the production logic**, and
+prints what the dashboard would show.
+
+```bash
+# against the box
+node scripts/verify-docking-response.mjs --url http://<box>:8000/docking \
+  --pdbid 1cx7 --smiles 'Cc1c(non1)OCCn2c(ncc2[N+](=O)[O-])C' --save candidate.json
+
+# against a saved payload, optionally compared to a captured Asinex reference
+node scripts/verify-docking-response.mjs --file candidate.json --baseline asinex-real.json
+```
+
+Exit 0 means the receptor renders and the pose table populates with numeric scores. **Validated
+2026-07-29 against a real production Asinex response** (2,597 atoms, 1,307 hydrogens, 5 poses →
+1 row, `SCORE -4.547`) — it passes. Fed the same payload with `> <smiles>` instead of
+`>  <smiles>`, it fails with all three symptoms named.
+
+It checks **plumbing, not chemistry.** Scores still have to be compared against the four stored
+reference docks by someone who can judge them.
+
+⚠ **Note what the real scores do to the UI.** `molstar3d.jsx:980` colours a score green below
+−7, amber below −5, red otherwise. Production's reference values are −4.345 to −4.547, so **every
+real dock the platform has ever produced shows a red badge.** Do not read red as a regression
+caused by the box.
