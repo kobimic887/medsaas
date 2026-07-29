@@ -455,6 +455,38 @@ async function callNvidiaNim({
  * A 429 likewise becomes 503, since this API has its own rate limiters and a
  * relayed 429 would be indistinguishable from one of them firing.
  */
+// Asinex sits behind an edge proxy that answers with a Microsoft "The page cannot be
+// displayed" HTML page — as HTTP 500 — when the docking host itself is unreachable.
+// That is the Moscow-outage signature (docs/BOX-SPEC.md), and it is worth telling
+// apart from the docking application returning an error of its own: one means "come
+// back later", the other means "your request was rejected".
+function describeDockingFailure(message, bodySnippet) {
+  const looksLikeProxyPage = typeof bodySnippet === 'string' &&
+    /<!DOCTYPE HTML|<HTML|page cannot be displayed/i.test(bodySnippet);
+  if (looksLikeProxyPage) {
+    return 'The docking provider is unreachable right now. Your credit was not spent — please try again later.';
+  }
+  return `Docking service is unavailable: ${message}`;
+}
+
+// A PDB id that does not exist reaches Asinex, fails there, and comes back as a
+// generic 500 — so the user is told the service is down when in fact they typed an
+// id that is not in the RCSB. Checked against RCSB directly, and ONLY an explicit
+// 404 counts: if RCSB is slow or unreachable we proceed to the dock rather than
+// letting a third host become a hard dependency of the docking path.
+async function pdbEntryIsMissing(pdbid) {
+  if (!/^[0-9][A-Za-z0-9]{3}$/.test(String(pdbid))) return 'format';
+  try {
+    const probe = await fetchWithTimeout(`https://files.rcsb.org/download/${encodeURIComponent(pdbid)}.pdb`, {
+      method: 'HEAD',
+      timeoutMs: 10000
+    });
+    return probe.status === 404 ? 'missing' : null;
+  } catch {
+    return null; // RCSB unreachable — not the user's problem, carry on.
+  }
+}
+
 function upstreamProxyStatus(error) {
   const status = error?.response?.status;
   if (!status) return 502;
@@ -3181,6 +3213,18 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, requireActiv
     // cache hit above returns before this point and must stay free. Conditional update, not
     // findOne-then-update: two concurrent requests on a single remaining token would both
     // pass a separate read and drive the balance negative.
+    // Before charging, not after. A dock for a PDB id that does not exist fails at the
+    // provider and surfaces as "the docking service is unavailable", which sends the
+    // user to look at our status page when they actually mistyped an id. Only an
+    // explicit RCSB 404 (or a malformed id) stops the run.
+    const pdbProblem = await pdbEntryIsMissing(pdbid);
+    if (pdbProblem) {
+      return res.status(400).json({
+        error: pdbProblem === 'format'
+          ? `"${pdbid}" is not a valid PDB id. They are four characters, starting with a digit — for example 1CX7.`
+          : `PDB entry "${pdbid}" was not found in the RCSB. Check the id and try again.`
+      });
+    }
     const charged = await chargeSimulationToken(req, res, 'simulation', { refundOnDisconnect: false });
     if (!charged.ok) {
       return res.status(403).json({ error: charged.error });
@@ -3202,7 +3246,12 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, requireActiv
     // The status was previously ignored, so an error body from the docking service
     // was stored as a result and served from cache forever after.
     if (!response.ok) {
-      throw new Error(`Docking service returned ${response.status}`);
+      // Keep a slice of the body: it is what distinguishes the provider's edge proxy
+      // being down from the docking application rejecting the request.
+      const bodySnippet = await response.text().catch(() => '');
+      const failure = new Error(`Docking service returned ${response.status}`);
+      failure.bodySnippet = bodySnippet.slice(0, 300);
+      throw failure;
     }
     const data = await response.json();
     dockingSucceeded = true;
@@ -3251,7 +3300,7 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, requireActiv
     if (dockingSucceeded) {
       return res.status(500).json({ error: 'Failed to record the simulation result' });
     }
-    res.status(502).json({ error: 'Docking service is unavailable' });
+    res.status(502).json({ error: describeDockingFailure(error.message, error.bodySnippet) });
   }
 });
 
@@ -3338,6 +3387,18 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, requireActi
     }
     // Charge the credit — see the GET handler for why this stays inline and is a
     // conditional update rather than a separate read.
+    // Before charging, not after. A dock for a PDB id that does not exist fails at the
+    // provider and surfaces as "the docking service is unavailable", which sends the
+    // user to look at our status page when they actually mistyped an id. Only an
+    // explicit RCSB 404 (or a malformed id) stops the run.
+    const pdbProblem = await pdbEntryIsMissing(pdbid);
+    if (pdbProblem) {
+      return res.status(400).json({
+        error: pdbProblem === 'format'
+          ? `"${pdbid}" is not a valid PDB id. They are four characters, starting with a digit — for example 1CX7.`
+          : `PDB entry "${pdbid}" was not found in the RCSB. Check the id and try again.`
+      });
+    }
     const charged = await chargeSimulationToken(req, res, 'simulation', { refundOnDisconnect: false });
     if (!charged.ok) {
       return res.status(403).json({ error: charged.error });
@@ -3361,7 +3422,12 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, requireActi
     });
     // See the GET handler: an ignored status cached error bodies as results.
     if (!response.ok) {
-      throw new Error(`Docking service returned ${response.status}`);
+      // Keep a slice of the body: it is what distinguishes the provider's edge proxy
+      // being down from the docking application rejecting the request.
+      const bodySnippet = await response.text().catch(() => '');
+      const failure = new Error(`Docking service returned ${response.status}`);
+      failure.bodySnippet = bodySnippet.slice(0, 300);
+      throw failure;
     }
     const data = await response.json();
     dockingSucceeded = true;
@@ -3409,7 +3475,7 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, requireActi
     if (dockingSucceeded) {
       return res.status(500).json({ error: 'Failed to record the simulation result' });
     }
-    res.status(502).json({ error: 'Docking service is unavailable' });
+    res.status(502).json({ error: describeDockingFailure(error.message, error.bodySnippet) });
   }
 });
 
