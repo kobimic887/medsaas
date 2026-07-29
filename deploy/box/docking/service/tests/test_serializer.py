@@ -36,7 +36,11 @@ def test_serializer_sorts_numerically_and_reproduces_parser_sensitive_bytes() ->
         EngineConfig(),
     )
 
-    records = [record for record in sdf.split("$$$$") if record]
+    # `.strip()`, not truthiness: the file ends "$$$$\n", so splitting on the bare delimiter
+    # always leaves a trailing "\n" element. Filtering on `if record` kept it and made this
+    # assert 3 == 2 — it just had never been run. validate_serialized_sdf splits the same way
+    # and has always used .strip().
+    records = [record for record in sdf.split("$$$$") if record.strip()]
     assert len(records) == 2
     assert records[0].startswith("0:0:0\n     RDKit          3D\n")
     assert "\n-4.547\n\n" in records[0]
