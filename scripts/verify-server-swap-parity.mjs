@@ -41,8 +41,13 @@ import { MongoClient } from 'mongodb';
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // chem_beo terminates TLS with a cert for another name
 
+// The rehearsal rig is wherever it was staged this time. It was /root/pyxis-release-a
+// on the first run and that directory was deleted afterwards, so the path is an
+// argument now rather than a constant — the deploy itself (/root/pyxis) works as its
+// own rig, since nothing serves it until pyxis-web is enabled.
+const RIG_ENV_PATH = process.env.RIG_ENV_PATH || '/root/pyxis/server/.env';
 const RIG_ENV = Object.fromEntries(
-  fs.readFileSync('/root/pyxis-release-a/.env', 'utf8')
+  fs.readFileSync(RIG_ENV_PATH, 'utf8')
     .split('\n').filter((l) => l && !l.startsWith('#') && l.includes('='))
     .map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)])
 );
