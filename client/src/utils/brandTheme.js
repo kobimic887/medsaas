@@ -24,20 +24,25 @@ const SHADE_KEYS = Object.freeze([
   "900",
 ]);
 
-// Material Design green channel triplets — the exact colours withMT renders for
-// green-* today. Deliberately duplicated from the :root block in tailwind.css so
-// that no-JS first paint and the writer's reset path share one source of truth.
+// Pyxis citron channel triplets — 500 is #b4b239 and 600 is #97951f, the
+// --sk-color-one / --sk-color-one-dark pair from pyxis-discovery.com. This was
+// Material Design green (#4CAF50 at 500), which was never a Pyxis colour; it was
+// just what withMT renders for green-*.
+//
+// Deliberately duplicated from the :root block in tailwind.css so that no-JS first
+// paint and the writer's reset path share one source of truth. Change both or
+// neither — a mismatch shows up as a colour flash between first paint and hydration.
 export const DEFAULT_BRAND_SCALE = Object.freeze({
-  50: "232 245 233",
-  100: "200 230 201",
-  200: "165 214 167",
-  300: "129 199 132",
-  400: "102 187 106",
-  500: "76 175 80",
-  600: "67 160 71",
-  700: "56 142 60",
-  800: "46 125 50",
-  900: "27 94 32",
+  50: "251 251 239",
+  100: "245 245 214",
+  200: "234 234 173",
+  300: "220 220 127",
+  400: "203 203 86",
+  500: "180 178 57",
+  600: "151 149 31",
+  700: "118 117 24",
+  800: "88 87 19",
+  900: "59 58 13",
 });
 
 // Reuse companyBranding.js validation semantics: trim + uppercase, must match

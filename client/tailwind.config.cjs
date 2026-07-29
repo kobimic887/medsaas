@@ -7,6 +7,35 @@ module.exports = withMT({
   theme: {
     extend: {
       colors: {
+        // `slate` has to be declared here or it does not exist.
+        //
+        // withMT REPLACES Tailwind's colour palette with Material Tailwind's own,
+        // which has blue-gray but no slate. The dashboard is written throughout in
+        // dark:bg-slate-950/90, dark:border-slate-800, dark:text-slate-100 — and every
+        // one of those compiled to nothing. Measured on the live site: 0 rules
+        // mentioning slate, and only 15 `dark:` rules in the entire 1,534-rule sheet.
+        // That is why the dashboard top bar stayed white in dark mode while carrying
+        // a dark:bg-slate-950/90 class, and it is why tailwind.css had to hand-write
+        // `.dark .cb-activity-chip` instead of using a utility.
+        //
+        // The values are NOT Tailwind's slate, which is blue-tinted and is the other
+        // half of why dark mode read as blue. This is a neutral inked with the Pyxis
+        // dark tone (#072824, --sk-color-two on pyxis-discovery.com), so restoring the
+        // palette also moves the whole dark theme onto brand without touching a single
+        // component's class list.
+        slate: {
+          50: "#f0f5f4",
+          100: "#dde8e6",
+          200: "#bccfcb",
+          300: "#93aeaa",
+          400: "#648b85",
+          500: "#456f68",
+          600: "#325852",
+          700: "#234440",
+          800: "#143430",
+          900: "#072824",
+          950: "#03120f",
+        },
         // Brand color family resolving to runtime CSS variables. Channel form
         // with the alpha-value placeholder is required so opacity modifiers
         // (e.g. shadow-brand-500/20) work. Plain hex would break every /N

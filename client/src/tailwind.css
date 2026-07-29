@@ -7,52 +7,71 @@
    ════════════════════════════════════════════════════════════════════════════ */
 
 :root {
-  /* Brand theme defaults — Material Design green (what withMT renders for
-     green-*). Channel triplets so brand-* utilities + /opacity modifiers work.
-     Overridden at runtime by BrandingProvider for companies with a custom
-     palette; removing the inline vars restores these byte-identical defaults. */
-  --brand-50:  232 245 233;
-  --brand-100: 200 230 201;
-  --brand-200: 165 214 167;
-  --brand-300: 129 199 132;
-  --brand-400: 102 187 106;
-  --brand-500: 76 175 80;
-  --brand-600: 67 160 71;
-  --brand-700: 56 142 60;
-  --brand-800: 46 125 50;
-  --brand-900: 27 94 32;
+  /* Brand theme defaults — the Pyxis citron, read off pyxis-discovery.com itself:
+     --sk-color-one #b4b239 is 500 and --sk-color-one-dark #97951f is 600, which is
+     exactly the pair the brand site uses for a link and its hover. This used to be
+     Material Design green (#4CAF50), a bright grass green that belongs to no brand
+     here — it was simply what withMT renders for green-*.
+
+     Channel triplets so brand-* utilities + /opacity modifiers work. Overridden at
+     runtime by BrandingProvider for companies with a custom palette; removing the
+     inline vars restores these defaults.
+
+     ⚠ Keep in lockstep with DEFAULT_BRAND_SCALE in src/utils/brandTheme.js — the
+     duplication is deliberate (see the comment there) and they must not drift. */
+  --brand-50:  251 251 239;
+  --brand-100: 245 245 214;
+  --brand-200: 234 234 173;
+  --brand-300: 220 220 127;
+  --brand-400: 203 203 86;
+  --brand-500: 180 178 57;
+  --brand-600: 151 149 31;
+  --brand-700: 118 117 24;
+  --brand-800: 88 87 19;
+  --brand-900: 59 58 13;
 }
 
 :root {
-  --cb-bg:        #0a0a0f;
-  --cb-surface:   #12121a;
+  /* These were the retired product's colours — a purple, a blue and a cyan, plus a
+     four-stop gradient across all three. That gradient is what painted the Sign In
+     button, the hero and every badge, and it is the reason dark mode read as blue.
+     Repointed at the Pyxis palette: citron accent, deep teal (#072824) and the
+     brand's deep navy as surfaces. The `--cb-` variable names are left alone on
+     purpose — they are referenced ~40 times in this file, and renaming them would
+     be churn with no visible effect. */
+  --cb-bg:        #03120f;
+  --cb-surface:   #072824;
   --cb-border:    rgba(255,255,255,0.06);
-  --cb-purple:    #a855f7;
-  --cb-blue:      #3b82f6;
-  --cb-cyan:      #06b6d4;
-  --cb-emerald:   #10b981;
-  --cb-gradient:  linear-gradient(135deg, #a855f7 0%, #6366f1 40%, #3b82f6 70%, #06b6d4 100%);
+  --cb-purple:    #b4b239; /* brand citron — the primary accent */
+  --cb-blue:      #97951f; /* citron, darker — the hover/secondary step */
+  --cb-cyan:      #4d8b80; /* muted teal, for the third gradient stop */
+  --cb-emerald:   #7fb069; /* success only; kept green so "good" still reads good */
+  --cb-gradient:  linear-gradient(135deg, #b4b239 0%, #97951f 40%, #2a6c61 75%, #072824 100%);
 }
 
 @layer base {
+  /* Light mode is #f7f7f7 (--sk-color-six on the brand site), not the near-white
+     slate-50 it was. Body text is the brand's deep teal #072824 rather than navy
+     slate-900 — that pair is what makes the light theme read as Pyxis instead of
+     as a default Tailwind page. */
   html {
-    background: #f8fafc;
+    background: #f7f7f7;
   }
 
   html.dark {
-    background: #020617;
+    background: #03120f;
   }
 
   body {
     min-height: 100vh;
-    background: #f8fafc;
-    color: #0f172a;
+    background: #f7f7f7;
+    color: #072824;
     transition: background-color 0.2s ease, color 0.2s ease;
   }
 
   html.dark body {
-    background: #020617;
-    color: #e2e8f0;
+    background: #03120f;
+    color: #dde8e6;
   }
 
   #root {
@@ -61,14 +80,20 @@
 
   html.dark ::selection {
     background: rgb(var(--brand-500) / 0.32);
-    color: #f8fafc;
+    color: #f0f5f4;
   }
 }
 
+/* Dark-mode overrides for Material Tailwind's light-only classes.
+   Every colour below was a literal Tailwind slate or blue hex — slate-900, slate-950,
+   slate-700, blue-950 and so on. That is the other reason dark mode read as blue:
+   even where it worked, it was painted in a blue-tinted neutral. They now use the
+   Pyxis dark scale from tailwind.config.cjs, step for step at the same positions, so
+   contrast relationships are unchanged and only the hue moves. */
 @layer components {
   html.dark .bg-white {
-    background-color: #0f172a !important;
-    color: #e2e8f0;
+    background-color: #072824 !important;
+    color: #dde8e6;
   }
 
   html.dark .bg-gray-50,
@@ -77,21 +102,21 @@
   html.dark .bg-slate-50,
   html.dark .bg-blue-gray-50,
   html.dark .bg-blue-gray-50\/40 {
-    background-color: #020617 !important;
+    background-color: #03120f !important;
   }
 
   html.dark .bg-blue-50 {
-    background-color: rgb(23 37 84 / 0.72) !important;
+    background-color: rgb(20 52 48 / 0.72) !important;
   }
 
   html.dark .bg-blue-100,
   html.dark .from-blue-50,
   html.dark .via-blue-100,
   html.dark .to-blue-200 {
-    --tw-gradient-from: #0f172a var(--tw-gradient-from-position) !important;
-    --tw-gradient-to: rgb(15 23 42 / 0) var(--tw-gradient-to-position) !important;
-    --tw-gradient-stops: var(--tw-gradient-from), #172554 var(--tw-gradient-via-position), #1e3a8a var(--tw-gradient-to-position) !important;
-    background-color: #172554 !important;
+    --tw-gradient-from: #072824 var(--tw-gradient-from-position) !important;
+    --tw-gradient-to: rgb(7 40 36 / 0) var(--tw-gradient-to-position) !important;
+    --tw-gradient-stops: var(--tw-gradient-from), #143430 var(--tw-gradient-via-position), #234440 var(--tw-gradient-to-position) !important;
+    background-color: #143430 !important;
   }
 
   html.dark .border-blue-gray-50,
@@ -102,11 +127,11 @@
   html.dark .border-t,
   html.dark .border-gray-200,
   html.dark .border-gray-300 {
-    border-color: #334155 !important;
+    border-color: #234440 !important;
   }
 
   html.dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]) {
-    border-color: #334155 !important;
+    border-color: #234440 !important;
   }
 
   html.dark .text-blue-gray-900,
@@ -116,38 +141,38 @@
   html.dark .text-gray-900,
   html.dark .text-gray-800,
   html.dark .text-gray-700 {
-    color: #e2e8f0 !important;
+    color: #dde8e6 !important;
   }
 
   html.dark .text-blue-gray-600,
   html.dark .text-blue-gray-500,
   html.dark .text-gray-600,
   html.dark .text-gray-500 {
-    color: #94a3b8 !important;
+    color: #93aeaa !important;
   }
 
   html.dark .text-blue-gray-400,
   html.dark .text-gray-400 {
-    color: #64748b !important;
+    color: #648b85 !important;
   }
 
   html.dark input,
   html.dark textarea,
   html.dark select {
-    background-color: #0f172a !important;
-    border-color: #334155 !important;
-    color: #e2e8f0 !important;
+    background-color: #072824 !important;
+    border-color: #234440 !important;
+    color: #dde8e6 !important;
   }
 
   html.dark input::placeholder,
   html.dark textarea::placeholder {
-    color: #64748b !important;
+    color: #648b85 !important;
   }
 
   html.dark .hover\:bg-blue-gray-50:hover,
   html.dark .hover\:bg-gray-100:hover,
   html.dark .hover\:bg-gray-200:hover {
-    background-color: #1e293b !important;
+    background-color: #143430 !important;
   }
 
   html.dark .shadow-sm,
@@ -161,19 +186,19 @@
   html.dark .apexcharts-xaxis-label,
   html.dark .apexcharts-yaxis-label,
   html.dark .apexcharts-legend-text {
-    fill: #cbd5e1 !important;
-    color: #cbd5e1 !important;
+    fill: #93aeaa !important;
+    color: #93aeaa !important;
   }
 
   html.dark .apexcharts-gridline {
-    stroke: #334155 !important;
+    stroke: #234440 !important;
   }
 
   html.dark .apexcharts-tooltip,
   html.dark .apexcharts-tooltip-title {
-    background: #0f172a !important;
-    border-color: #334155 !important;
-    color: #e2e8f0 !important;
+    background: #072824 !important;
+    border-color: #234440 !important;
+    color: #dde8e6 !important;
   }
 }
 
@@ -181,7 +206,7 @@
 .cb-landing {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   background: var(--cb-bg);
-  color: #e2e8f0;
+  color: #dde8e6;
   overflow-x: hidden;
 }
 
@@ -285,7 +310,7 @@
 
 .cb-hero-subtitle {
   font-size: clamp(1rem, 2vw, 1.2rem);
-  color: #94a3b8;
+  color: #648b85;
   max-width: 620px;
   margin: 0 auto 2rem;
   line-height: 1.7;
@@ -313,7 +338,7 @@
 .cb-stat-label {
   display: block;
   font-size: 0.8rem;
-  color: #64748b;
+  color: #456f68;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -337,11 +362,11 @@
   animation: cb-gradient-shift 4s ease infinite;
   transition: transform 0.2s, box-shadow 0.3s;
   text-decoration: none;
-  box-shadow: 0 0 24px rgba(168,85,247,0.25);
+  box-shadow: 0 0 24px rgba(180,178,57,0.25);
 }
 .cb-btn-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 0 40px rgba(168,85,247,0.4);
+  box-shadow: 0 0 40px rgba(180,178,57,0.4);
   color: #fff;
   text-decoration: none;
 }
@@ -352,7 +377,7 @@
   border-radius: 9999px;
   font-weight: 600;
   font-size: 0.95rem;
-  color: #e2e8f0;
+  color: #dde8e6;
   border: 1px solid rgba(255,255,255,0.12);
   background: rgba(255,255,255,0.04);
   backdrop-filter: blur(8px);
@@ -390,7 +415,7 @@
   margin-bottom: 0.5rem;
 }
 .cb-section-subtitle {
-  color: #64748b;
+  color: #456f68;
   font-size: 1.05rem;
   max-width: 540px;
   margin: 0 auto;
@@ -411,12 +436,12 @@
   content: '';
   position: absolute; inset: 0;
   border-radius: inherit;
-  background: linear-gradient(160deg, rgba(168,85,247,0.05) 0%, transparent 50%);
+  background: linear-gradient(160deg, rgba(180,178,57,0.05) 0%, transparent 50%);
   opacity: 0;
   transition: opacity 0.35s;
 }
 .cb-glass-card:hover {
-  border-color: rgba(168,85,247,0.25);
+  border-color: rgba(180,178,57,0.25);
   transform: translateY(-4px);
   box-shadow: 0 12px 40px rgba(0,0,0,0.35);
 }
@@ -444,7 +469,7 @@
   transition: border-color 0.3s, transform 0.3s, box-shadow 0.3s;
 }
 .cb-feature-card:hover {
-  border-color: rgba(99,102,241,0.3);
+  border-color: rgba(42,108,97,0.3);
   transform: translateY(-3px);
   box-shadow: 0 8px 30px rgba(0,0,0,0.3);
 }
@@ -465,26 +490,26 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin-bottom: 1rem;
-  background: rgba(168,85,247,0.12);
+  background: rgba(180,178,57,0.12);
   color: var(--cb-purple);
-  border: 1px solid rgba(168,85,247,0.2);
+  border: 1px solid rgba(180,178,57,0.2);
 }
 .cb-badge-blue {
-  background: rgba(59,130,246,0.12);
+  background: rgba(151,149,31,0.12);
   color: var(--cb-blue);
-  border-color: rgba(59,130,246,0.2);
+  border-color: rgba(151,149,31,0.2);
 }
 
 /* ═══════════════════════════════ SHOWCASE ═══════════════════════════════ */
 .cb-showcase-card {
   border-radius: 1.25rem;
   border: 1px solid var(--cb-border);
-  background: linear-gradient(135deg, rgba(168,85,247,0.06), rgba(99,102,241,0.04));
+  background: linear-gradient(135deg, rgba(180,178,57,0.06), rgba(42,108,97,0.04));
   padding: 3px;
   overflow: hidden;
 }
 .cb-showcase-blue {
-  background: linear-gradient(135deg, rgba(59,130,246,0.06), rgba(6,182,212,0.04));
+  background: linear-gradient(135deg, rgba(151,149,31,0.06), rgba(77,139,128,0.04));
 }
 .cb-showcase-inner {
   border-radius: 1.15rem;
@@ -507,15 +532,15 @@
   align-items: center;
   justify-content: center;
   border-radius: 0.875rem;
-  border: 1px solid rgba(168,85,247,0.15);
-  background: rgba(168,85,247,0.04);
+  border: 1px solid rgba(180,178,57,0.15);
+  background: rgba(180,178,57,0.04);
   color: var(--cb-purple);
   animation: cb-cell-pulse 3s ease-in-out infinite;
   transition: border-color 0.3s, background 0.3s;
 }
 .cb-molecule-cell:hover {
   border-color: var(--cb-purple);
-  background: rgba(168,85,247,0.12);
+  background: rgba(180,178,57,0.12);
 }
 @keyframes cb-cell-pulse {
   0%, 100% { opacity: 0.6; transform: scale(1); }
@@ -531,14 +556,14 @@
   font-family: 'Outfit', sans-serif;
 }
 .cb-score-good {
-  background: rgba(16,185,129,0.12);
+  background: rgba(127,176,105,0.12);
   color: var(--cb-emerald);
-  border: 1px solid rgba(16,185,129,0.25);
+  border: 1px solid rgba(127,176,105,0.25);
 }
 .cb-score-mid {
-  background: rgba(59,130,246,0.12);
+  background: rgba(151,149,31,0.12);
   color: var(--cb-blue);
-  border: 1px solid rgba(59,130,246,0.25);
+  border: 1px solid rgba(151,149,31,0.25);
 }
 
 /* ═══════════════════════════════ CTA SECTION ════════════════════════════ */
@@ -634,7 +659,7 @@
    in the background tint, which this does not touch. */
 .dark .cb-activity-chip,
 .dark .cb-activity-chip * {
-  color: #e2e8f0 !important;
+  color: #dde8e6 !important;
 }
 
 /* "Proceed to Demo". Kept in the olive the legacy page used (#B4B239) rather than
@@ -653,7 +678,7 @@
   width: 100%;
   text-align: center;
   font-size: 0.75rem;
-  color: rgb(100 116 139);
+  color: rgb(69 111 104);
 }
 .cb-auth-demo-rule::before,
 .cb-auth-demo-rule::after {
@@ -662,7 +687,7 @@
   top: 50%;
   width: calc(50% - 1.25rem);
   height: 1px;
-  background: rgb(51 65 85 / 0.6);
+  background: rgb(35 68 64 / 0.6);
 }
 .cb-auth-demo-rule::before { left: 0; }
 .cb-auth-demo-rule::after { right: 0; }
@@ -691,16 +716,16 @@
 .cb-auth-logo-mark {
   height: 2.25rem;
   width: auto;
-  color: #f1f5f9;
+  color: #f0f5f4;
 }
 .cb-auth-badge {
   font-size: 0.65rem;
   font-weight: 700;
   padding: 0.2rem 0.5rem;
   border-radius: 9999px;
-  background: rgba(168,85,247,0.12);
+  background: rgba(180,178,57,0.12);
   color: var(--cb-purple);
-  border: 1px solid rgba(168,85,247,0.2);
+  border: 1px solid rgba(180,178,57,0.2);
   letter-spacing: 0.08em;
 }
 
@@ -724,7 +749,7 @@
   margin: 0 0 0.4rem;
 }
 .cb-auth-subtitle {
-  color: #64748b;
+  color: #456f68;
   font-size: 0.9rem;
   margin: 0;
 }
@@ -742,7 +767,7 @@
 .cb-auth-label {
   font-size: 0.8rem;
   font-weight: 600;
-  color: #94a3b8;
+  color: #648b85;
   letter-spacing: 0.02em;
 }
 .cb-auth-input {
@@ -751,18 +776,18 @@
   border-radius: 0.65rem;
   border: 1px solid rgba(255,255,255,0.08);
   background: rgba(255,255,255,0.04);
-  color: #e2e8f0;
+  color: #dde8e6;
   font-size: 0.9rem;
   font-family: inherit;
   outline: none;
   transition: border-color 0.25s, box-shadow 0.25s;
 }
 .cb-auth-input::placeholder {
-  color: #475569;
+  color: #325852;
 }
 .cb-auth-input:focus {
   border-color: var(--cb-purple);
-  box-shadow: 0 0 0 3px rgba(168,85,247,0.12);
+  box-shadow: 0 0 0 3px rgba(180,178,57,0.12);
 }
 
 .cb-auth-submit {
@@ -779,12 +804,12 @@
   background-size: 200% 200%;
   animation: cb-gradient-shift 4s ease infinite;
   transition: transform 0.2s, box-shadow 0.3s;
-  box-shadow: 0 0 20px rgba(168,85,247,0.2);
+  box-shadow: 0 0 20px rgba(180,178,57,0.2);
   margin-top: 0.5rem;
 }
 .cb-auth-submit:hover {
   transform: translateY(-1px);
-  box-shadow: 0 0 30px rgba(168,85,247,0.35);
+  box-shadow: 0 0 30px rgba(180,178,57,0.35);
 }
 .cb-auth-submit:disabled {
   opacity: 0.6;
@@ -828,18 +853,18 @@
   transition: color 0.2s;
 }
 .cb-auth-link:hover {
-  color: #c084fc;
+  color: #cbcb56;
 }
 
 .cb-auth-back {
   margin-top: 1.5rem;
   font-size: 0.8rem;
-  color: #475569;
+  color: #325852;
   text-decoration: none;
   transition: color 0.2s;
 }
 .cb-auth-back:hover {
-  color: #94a3b8;
+  color: #648b85;
 }
 
 .cb-auth-checkbox {
