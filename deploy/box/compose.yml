@@ -22,9 +22,16 @@
 #
 # ⚠ NONE of these may be exposed to the internet. They are unauthenticated compute on a
 # EUR 24,727 machine, and chem_beo's open /api/diffdock/generate is exactly how the NVIDIA
-# quota got drained. Bind to a private interface or a WireGuard/Tailscale address and
-# allowlist 83 only. See ARRIVAL-RUNBOOK Phase 3.1 for the one interaction with
-# assertConfiguredUrlsArePublic, which REJECTS private and CGNAT ranges.
+# quota got drained.
+#
+# How that is enforced, decided 2026-07-29 (ARRIVAL-RUNBOOK Phase 3.1) — NO VPN:
+#   1. every port below binds ${BIND_ADDR}, which defaults to 127.0.0.1
+#   2. Caddy on :443 with a Let's Encrypt cert reverse-proxies to those loopback ports
+#   3. the host firewall admits only 83's IP to :443
+# So the box is reached by a public hostname over HTTPS — exactly how Asinex is reached
+# today — and the firewall, not a tunnel, is what keeps everyone else out. An earlier
+# version of this comment suggested WireGuard/Tailscale; that was never a decision and
+# four documents repeated it as if it were. It is rejected.
 
 x-gpu: &gpu
   deploy:

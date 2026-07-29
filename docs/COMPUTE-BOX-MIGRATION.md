@@ -756,10 +756,16 @@ image with `torch.cuda.is_available()`.
 Tailscale)**, plus IPv6 loopback/link-local/ULA. It only checks values that **differ from
 the default**, so:
 
-- Wiring `dockingApiUrl` or `diffdockApiUrl` to the box over a LAN or Tailscale address
+- Wiring `dockingApiUrl` or `diffdockApiUrl` to the box over a LAN or VPN address
   **fails at runtime with a confusing error.**
-- Use the compose service name resolved inside the Docker network, or a real public
-  hostname, or change the defaults rather than setting per-company overrides.
+- ⚠ **This is now moot, and recorded only so the guard is not rediscovered as a blocker.**
+  The box's address was settled on 2026-07-29 as a **public hostname over HTTPS**, not a
+  private or VPN address (ARRIVAL-RUNBOOK Phase 3.1) — a public hostname passes the guard.
+  Independently, the guard has a **single call site**, on the admin-UI path; the environment
+  variables that actually carry the cutover are read straight from `process.env` and never
+  validated, so env-var cutover was never subject to it on either server.
+- Use a real public hostname, or the compose service name resolved inside the Docker
+  network, rather than setting per-company overrides.
 - `TANIMOTO_API_BASE`, `GROMACS_API_BASE`, `GLIOBLASTOMA_API_BASE` and
   `SDF_CONVERTER_URL` are **not** subject to this check — only the four ligand fields.
 

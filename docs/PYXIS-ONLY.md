@@ -133,9 +133,10 @@ time, not runtime. It has to be set in the environment that builds the bundle de
   management and the ligand-service URLs live — all of which get *more* useful when the
   backend moves, because those URLs have to be repointed at the box.
 - **`ligandServiceConfig`.** Now effectively global config with one row. Keep it; it is how the
-  Asinex and DiffDock URLs get repointed without a redeploy. Note the trap:
-  `assertConfiguredUrlsArePublic` rejects private and Tailscale addresses (see
-  [COMPUTE-BOX-MIGRATION.md §8](./COMPUTE-BOX-MIGRATION.md#8-gotchas-found-in-the-trace)).
+  Asinex and DiffDock URLs get repointed without a redeploy. The trap this used to warn about
+  — `assertConfiguredUrlsArePublic` rejecting private and CGNAT addresses — **no longer
+  applies**: the box is addressed by a public hostname (ARRIVAL-RUNBOOK Phase 3.1), and the
+  guard has one call site on this path only, so the env-var route was never subject to it.
 - **`consumeSimulationToken`, `simulationTokens`, `billing_events`, the Stripe webhook.**
   Unchanged, per the decision.
 - **Audit logging.** More valuable single-tenant, not less.

@@ -88,10 +88,13 @@ Check before you plan anything: `ss -ltnp | grep 5173` and Phase 2.5's `grep`.
 **Either way the whole day's rollback is one setting and a restart.** No deploy, no data loss,
 no user session broken. Nothing in Phases 1–3 or 6 is irreversible.
 
-⚠ **One interaction if Phase 5 shipped:** `assertConfiguredUrlsArePublic` **rejects private
-ranges and CGNAT 100.64/10 (Tailscale)** for those four fields. `chem_beo` has no such guard.
-So a private/Tailscale address for the box works on the old server and is *refused* by the new
-one — decide the box's addressing with that in mind (Phase 3.1).
+**The box's address is a public hostname, decided 2026-07-29.** Not a VPN — see Phase 3.1.
+That also disposes of a warning this runbook used to carry, that
+`assertConfiguredUrlsArePublic` would refuse the box on the new server but not the old one.
+It would only ever have applied to a private or CGNAT address, and there is not going to be
+one. Two independent reasons it is moot: a public hostname passes the guard, and the guard
+has a single call site on the admin-UI path — the environment variables that actually carry
+the cutover are never validated at all.
 
 ---
 
@@ -608,11 +611,30 @@ is consolidation.
 
 **The box's services must not be reachable from the internet unauthenticated.** They are
 docking and search engines on a €24,727 machine, and `chem_beo` reaches them from a fixed
-address. Bind them to a private path — WireGuard, a Tailscale tunnel, or an allowlist for 83's
-IP — before any of them answers a public request. ⚠ **But note the interaction with Phase 5:**
-this repo's `assertConfiguredUrlsArePublic` **rejects private ranges and CGNAT 100.64/10
-(Tailscale)** for the four `ligandServiceConfig` fields. `chem_beo` has no such guard, so a
-private address works on arrival day and would need addressing at the Phase 5 release.
+address.
+
+**Decided 2026-07-29: no VPN, no tunnel.** Earlier drafts of this step floated WireGuard or
+Tailscale. That was a suggestion in a compose-file comment which four documents then repeated
+as though it were settled; it never was, and it is rejected. It adds a third-party account and
+a daemon on both machines to solve a problem TLS already solves.
+
+**The box is reached the way Asinex is reached today: a public hostname over HTTPS.**
+Production already calls `https://services.asinex.com:8000/docking` across the open internet.
+The box replacing it the same way is a true 1:1, and the rollback is putting the Asinex
+hostname back — the same one setting this whole runbook is built around.
+
+The shape, all of it on the box, none of it on 83:
+
+1. Every service binds `127.0.0.1` (`BIND_ADDR` in `deploy/box/.env`, which already defaults
+   to that). Nothing publishes itself.
+2. Caddy on `:443` with a Let's Encrypt certificate for `<DOMAIN>`, reverse-proxying to those
+   loopback ports. One certificate, one open port.
+3. The host firewall admits **only 83's IP** to `:443`. That is the allowlist, and it is one
+   rule.
+
+So "not reachable from the internet unauthenticated" is satisfied by the firewall, not by a
+tunnel — and the four `ligandServiceConfig` fields see an ordinary public hostname, so
+`assertConfiguredUrlsArePublic` never has an opinion about it.
 
 3.2 **Stripe: nothing to do on arrival day.** ⚠ Corrected 2026-07-29. This step used to say
 "re-register the webhook against the new URL." There is no new URL — `chem_beo` keeps serving
