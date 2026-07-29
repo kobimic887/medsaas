@@ -164,9 +164,76 @@ A: ATOM   2  H  MET A  1   44.679  -3.758   8.342     ← 2026-05-12 run
 B: ATOM   2  H  MET A  1   43.721  -3.902  10.160     ← 2026-06-01 run, same receptor
 ```
 
-So the pipeline is: **deterministic heavy-atom structure from RCSB, then a fresh protonation and
-minimisation on every dock.** Hydrogen placement is stochastic; nothing is reused. That is also
-why the `REMARK` date moves.
+So the pipeline is: **deterministic heavy-atom structure from RCSB, then a fresh protonation on
+every dock.** Hydrogen placement is stochastic; nothing is reused. That is also why the `REMARK`
+date moves.
+
+### ✅ Fully determined 2026-07-29 — and it is **not** minimised
+
+Measured directly: the production `1cx7` receptor against the raw RCSB download of `1CX7.pdb`.
+
+| | |
+|---|---|
+| raw `1CX7.pdb` heavy atoms (chain A, only chain, no altLocs) | **1,289** |
+| prepared receptor heavy atoms | **1,290** |
+| matched by `(atom name, residue, seq)` | **1,289 / 1,290** |
+| **max coordinate deviation** | **0.0000 Å** |
+| the one extra atom | `OXT` on `LYS 162` — a C-terminal oxygen added in preparation |
+| hydrogens added | 1,307 |
+
+**Zero deviation means the heavy atoms are copied from RCSB untouched.** The earlier wording
+here — "a protonated, minimised structure" — was wrong: **nothing is minimised.** A minimisation
+would move heavy atoms, and none moved by even 0.0001 Å. Only hydrogen placement happens, and
+only that is stochastic.
+
+That makes the receptor half of the pipeline **exactly reproducible**:
+
+```
+1. fetch https://files.rcsb.org/download/{PDBID}.pdb
+2. keep ATOM records; drop every HETATM (ligand, waters, ions)
+3. add OXT at the C-terminus
+4. add hydrogens (OpenMM 8.2) — do NOT minimise heavy atoms
+5. write REMARK   1 CREATED WITH OPENMM 8.2, <today>
+```
+
+**Acceptance test, and it is exact rather than approximate:** every heavy atom in the box's
+prepared receptor must match the RCSB file at **0.0000 Å**, with exactly one addition (`OXT`).
+Hydrogens are free to differ — the reference varies them between runs.
+
+## 2b. The search box — centred on the stripped co-crystal ligand
+
+This is not in the payload and it is the thing that decides whether scores are comparable at
+all. Recovered from the pose coordinates:
+
+| | |
+|---|---|
+| pose centroids (5 poses) | spread **1.2 / 2.0 / 2.1 Å** in x/y/z — tightly clustered |
+| protein bounding box | 36.5 × 41.6 × 50.0 Å |
+| ligand centroid → protein centroid | **13.7 Å** — nowhere near the middle |
+| **`HED` centroid in raw `1CX7`** (2-hydroxyethyl disulfide, the co-crystallised ligand) | **1.23 Å from the pose centroid** |
+| `HOH` centroid / `CL` centroid | 14.1 Å / 18.6 Å away — not it |
+
+**This is redocking.** The search is not blind — a 36×42×50 Å blind box would scatter poses
+across the protein, and these sit inside a 2 Å cluster. The box is centred on the ligand that
+step 2 above strips out.
+
+So the box's docking service must, for a given `pdbid`:
+
+1. record the centroid of the co-crystallised `HETATM` ligand **before** stripping it,
+2. centre the AutoDock grid there.
+
+⚠ **`HOH` and ions must be excluded from that choice** — waters outnumber the ligand 114 to 8
+in `1CX7` and their centroid is 14 Å off. Picking "the largest HETATM group" gets it wrong.
+Pick the largest **non-water, non-ion** group.
+
+⚠ **What happens when there is no co-crystal ligand is unknown.** Every stored dock uses a
+receptor that has one. An apo structure has no box centre by this rule, and nothing in the
+sample says what Asinex does about it. **Test an apo `pdbid` against Asinex while it still
+answers**, or decide the box's own fallback and accept that it is new behaviour.
+
+Still unknown, and affecting **scores rather than payload shape**: grid box *dimensions*,
+exhaustiveness, random seed, and scoring-function version. Those are what to tune against the
+four stored reference docks — see §6.
 
 **Implication for the rebuild — this is the part that changed.** The box needs a receptor
 preparation step producing the same *kind* of artifact, but:

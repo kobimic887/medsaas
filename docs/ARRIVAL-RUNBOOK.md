@@ -491,7 +491,20 @@ DiffDock's contract too: `position_confidence`, `ligand_positions`, `protein`, `
 ### 2.2 Build the engines
 
 - **AutoDock-GPU**, compiled for `sm_120`. Replaces `dockingApiUrl`. The engine is AutoDock,
-  confirmed by the Asinex/Pyxis CEO.
+  confirmed by the Asinex/Pyxis CEO and by the mangled `TORSDOF` in the stored output.
+
+**⚠ The engine is the smaller half. Three services sit around it, and none exists yet:**
+
+| Stage | Spec | Status |
+|---|---|---|
+| **Receptor prep** | fetch RCSB, drop HETATM, add `OXT`, add hydrogens, **do not minimise** | **fully determined** — DOCKING-CONTRACT §2. Heavy atoms must match RCSB at 0.0000 A |
+| **Search box** | centre the grid on the centroid of the stripped co-crystal ligand (**not** waters or ions) | **determined** — §2b. Box *dimensions* and exhaustiveness are not |
+| **PDBQT to SDF** | RDKit V2000, tags `MODEL TORSDO SCORE ligand_id original_smiles smiles`, exact `'>  <tag>  (1) '` spacing, one shared `<smiles>` across poses | **determined** — §3, §7 |
+| **HTTP wrapper** | `POST /docking` taking `{pdbID, smiles}`, SMILES arrives URL-encoded | **determined** — §0 |
+
+Write these against the contract before the box lands. Only the CUDA compile genuinely needs
+the cards; everything above can be built and tested on any machine, against the captured
+reference payload, using `scripts/verify-docking-response.mjs`.
 - **OSS DiffDock** (`gcorso/DiffDock`, MIT), torch **cu128**. **Not the NIM container** — that
   requires NVIDIA AI Enterprise, which was refused, and NIM does not support GeForce.
 - **AutoDock Vina** (classic, CPU) across the 32 cores, as the reference path.
