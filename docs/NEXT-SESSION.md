@@ -24,16 +24,66 @@ Dependabot alerts on `main`, and `bun run lockfiles:refresh` currently surfaces 
 findings. Nothing here reads untrusted input from a vulnerable path, so this is a decision about
 appetite, not an incident.
 
-### ⚠ The adversarial review of this work was STOPPED before it finished
+### 🔴 UNVERIFIED review findings — read before touching the box work
 
-A 4-lens review workflow over the ADMET queue, the DiffDock service and the ingress config was
-launched and then **killed mid-run when usage ran out**. It produced no verdict. Do not read
-the absence of findings as a clean bill of health — nothing was reported either way.
+Two review passes were both **killed mid-run when usage ran out**, but their finder stages had
+already reported. The first pass's 6 findings were verified and **fixed in `5d24852`**. The
+second pass produced **9 more that nobody has verified** — the refutation stage never ran, so
+treat every one as a *claim*, not a fact. Verify before acting. Salvaged from
+`subagents/workflows/wf_113b9842-bce/journal.jsonl`.
 
-What *is* verified: `bun run ci` exits 0 (149 assertions incl. 17 new ADMET-queue tests against
-a real in-memory Mongo), 22 Python worker tests, 28 DiffDock tests. What is **not** verified is
-anything needing hardware — no CUDA image has been built, no model has been run, no Caddyfile
-has been loaded by Caddy. Re-running the review is cheap and is the obvious first job.
+Ranked by how cheap they are to check:
+
+| # | Claim | Why it matters |
+|---|---|---|
+| 1 | **`services/gromacs-api/Dockerfile` `COPY templates/` has no such directory** — the MDP files are flat (`templates_em.mdp`, …) | If true the GROMACS image cannot build at all. One `ls` settles it |
+| 2 | **`deploy/box/ingress/Caddyfile` `read_timeout`/`write_timeout` are not valid inside `transport http`** — they exist only in `transport fastcgi` | `caddy validate` would fail on arrival day. `install.sh` validates before reloading, so it fails safe — but it fails |
+| 3 | ~~DiffDock `pyproject.toml` says `requires-python = ">=3.11"` while the Dockerfile is 3.10~~ | ✅ **Fixed** — pip enforces this for local installs, so the build would have failed |
+| 4 | **Root `docker-compose.yml` still wires ADMET to RabbitMQ** — passes `RABBITMQ_URL`/`ADMET_QUEUE_NAME`, none of which the worker reads now | A crash loop rather than a clear startup error |
+| 5 | **`decodeStoredSmiles` may corrupt a raw SMILES using `%NN` ring closures** — `C%10CCCCC%10` allegedly decodes to `CCCCCC` | This is a flaw in the fix from `5d24852`. The round-trip guard does not discriminate digit-pair escapes. **Check this one first of the correctness items** |
+| 6 | **`POST /api/admet/create-task` has no tenant check** — takes `simulationKey` from the body, never looks the simulation up, never applies `buildTenantFilter` | Pre-existing, not introduced here, but the Mongo queue makes it a live cross-tenant write |
+| 7 | **`resetAdmetJob` does not exclude a `running` job**, and the worker's `complete()` has no status guard | A DELETE during a prediction could let the in-flight worker restore the stale result |
+| 8 | **`deploy/box/.env.example` cutover cheat-sheet gives `http://<box>:PORT` URLs** the ingress design makes unreachable | Contradicts the same file's own design; a wrong copy-paste on arrival day |
+| 9 | **`ADMET_CALLBACK_URL` comment shows a full PUT path** but the worker appends `/api/simulation/{key}/admet` to it | Would produce a doubled path |
+
+### ⚠ Both review passes were STOPPED before finishing
+
+Neither reached its verify stage. Do not read the absence of a verdict as a clean bill of
+health — the table above is what they had reported when they were cut off.
+
+What *is* verified: `bun run ci` exits 0 (144 server assertions incl. 27 ADMET-queue tests
+against a real in-memory Mongo), 24 Python worker tests, 28 DiffDock tests. What is **not**
+verified is anything needing hardware — no CUDA image has been built, no model has been run,
+no Caddyfile has been loaded by Caddy.
+
+### 📉 Measured user-facing win, not yet applied: ~393 KB of dead weight on every page load
+
+Measured live against `app.pyxis-discovery.com`, sign-in **and** nine dashboard pages via the
+public demo session — not inferred from the source.
+
+| Asset | Decoded | Evidence it is dead |
+|---|---|---|
+| `bootstrap.min.css` (jsdelivr) | 227 KB | computed styles on the page are **byte-identical** with it disabled; 0 Bootstrap class or `data-bs-*` hits across 10 pages |
+| `all.min.css` — Font Awesome (cdnjs) | 87 KB | **0** elements matching `[class*="fa-"]` across 10 pages |
+| `bootstrap.min.js` (jsdelivr) | 59 KB | 0 `data-bs-*` attributes, no `window.bootstrap` API use in `client/src` |
+| `popper.min.js` (jsdelivr) | 20 KB | only exists to serve Bootstrap JS |
+| `nepcha-analytics.js` | — | loads on every page with `data-site="YOUR_DOMAIN_HERE"`, an unfilled placeholder |
+
+That is **~31% of the 1,262 KB** the sign-in page decodes. It also removes 3 of the 6
+third-party hosts, i.e. 3 fewer DNS+TLS handshakes before anything renders.
+
+Two related things found in the same pass, worth a decision:
+
+- **No Subresource Integrity on any of the 8 external tags.** A compromised jsdelivr or cdnjs
+  executes arbitrary JS inside a logged-in app holding chemistry IP and a Stripe checkout.
+- **3Dmol.js loads from `3dmol.csb.pitt.edu`** — a university web server, unpinned and
+  unversioned. It is genuinely used (`moleculeviewer.jsx:213`), so the molecule viewer breaks
+  entirely whenever that host is down.
+
+⚠ Two false starts on the way to those numbers, both worth repeating as method: a grep for
+Bootstrap classes returned hits that were all *Tailwind* (`xl:row-start-1`, `sm:flex-row`), and
+an eyeballed 4px layout shift between screenshots turned out to be the animated background —
+the computed-style diff was empty. See the amended rule in `GOAL.md`.
 
 ### ✅ The glioblastoma "key" — closed, and it was never what the docs said
 

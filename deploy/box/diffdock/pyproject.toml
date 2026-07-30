@@ -6,7 +6,10 @@ build-backend = "setuptools.build_meta"
 name = "pyxis-diffdock-service"
 version = "2026.7.30"
 description = "DiffDock HTTP service for the Amsterdam box"
-requires-python = ">=3.11"
+# 3.10, matching the Dockerfile everywhere: the wrapper/test stages are python:3.10-slim and
+# the runtime stage installs python3.10 on ubuntu22.04. This said >=3.11, which pip enforces
+# for local directory installs — so `pip install .` would have failed the image build.
+requires-python = ">=3.10"
 
 [tool.setuptools]
 packages = ["diffdock_service", "diffdock_service.engines"]

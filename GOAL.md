@@ -45,11 +45,24 @@ Fix *how* a thing works; keep the thing. Additive and invisible changes are fine
 fix behind an unchanged button, a performance win, a contrast fix. Moving or deleting a
 familiar control is not.
 
-**Test rather than reason.** Clicking through the dashboard against real data found four bugs
-that reading the code did not: a blank white page from a CORS refusal that 500'd every static
-asset, another company's branding in every footer, unreadable dark-on-dark text, and — hidden
-behind that unreadable text — an endpoint handing every colleague's email address to a
-publicly reachable demo account. A build that succeeds is not a page that works.
+**Don't stop at reasoning — go and check.** ⚠ This rule used to read *"Test rather than
+reason."* That was wrong, and the owner called it out on 2026-07-30. Testing does not replace
+reasoning; it constrains it. Reasoning is what tells you *what* to test and what the result
+means, and a measurement read carelessly is just a confident mistake with evidence attached.
+
+Both halves fail on their own:
+
+- **Reasoning alone missed four real bugs.** Clicking through the dashboard against real data
+  found a blank white page from a CORS refusal that 500'd every static asset, another
+  company's branding in every footer, unreadable dark-on-dark text, and — hidden behind that
+  unreadable text — an endpoint handing every colleague's email address to a publicly
+  reachable demo account. A build that succeeds is not a page that works.
+- **Testing alone lies too.** Grepping the client for Bootstrap classes returned hits in two
+  files, which reads as "Bootstrap is in use". Every hit was a *Tailwind* class —
+  `xl:row-start-1`, `sm:flex-row`, `xl:col-start-2` — matched by a sloppy pattern. The command
+  ran fine. Only reading the output properly caught it.
+
+So: form the hypothesis, then measure it, then read the measurement like it might be lying.
 
 **Give a recommendation, not a survey.** The owner is tired of decisions. Ask only when the
 answer changes what gets built; otherwise choose, say what you chose, and move.
