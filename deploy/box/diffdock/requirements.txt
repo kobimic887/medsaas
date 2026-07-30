@@ -1,0 +1,6 @@
+# Wrapper dependencies only — the HTTP service, not the model. Exact-pinned for repeatable
+# Docker builds, matching deploy/box/docking/service/requirements.txt.
+fastapi==0.111.0
+httpx==0.28.1
+pydantic==2.11.0
+uvicorn==0.30.1

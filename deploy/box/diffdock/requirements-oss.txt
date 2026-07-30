@@ -1,0 +1,53 @@
+# Upstream gcorso/DiffDock's own pins, with the smallest possible set of deviations.
+#
+# The strategy is deliberate: DiffDock is a 2022-era codebase whose requirements.txt is a
+# known-working set. Every version below that CAN stay at upstream's pin DOES. Only two
+# things are changed, and both are forced:
+#
+#   1. torch 1.13.1+cu117 -> 2.7.1+cu128.  RTX 5090 is Blackwell, sm_120, which needs
+#      CUDA 12.8 and a torch built against it. torch 2.7.1 is also the LAST release with
+#      cp39/cp310 wheels for this line, which is what fixes the interpreter at 3.10.
+#   2. the four PyG compiled extensions -> their pt27cu128 builds, for the same reason.
+#      These are C++/CUDA extensions compiled against a specific torch; a mismatch is an
+#      import-time crash, not a slow path.
+#
+# torch-geometric itself moves 2.2.0 -> 2.6.1 because 2.2.0 predates torch 2.x and its
+# loader API does not import against it.
+#
+# ── What is deliberately NOT installed ───────────────────────────────────────────────
+# openfold, fair-esm[esmfold], pytorch-lightning and dllogger are all in upstream's
+# requirements and are all omitted. They exist for ONE feature: folding a protein from a
+# raw SEQUENCE with ESMFold when no structure is supplied. `inference.py` imports none of
+# them, and the platform always sends a PDB — server/index.js fetches ATOM records from
+# RCSB before it ever calls this service. Installing openfold means a from-source CUDA
+# extension build pinned to an old setuptools; skipping it removes the single most fragile
+# step in this image.
+#
+# ⚠ NOTE: this has nothing to do with NVIDIA OpenFold3. That is the hosted protein-folding
+# endpoint at health.api.nvidia.com behind /api/openfold3/predict, it is staying on NVIDIA
+# permanently, and it is not affected by anything in this file. Same word, different thing.
+
+--extra-index-url https://download.pytorch.org/whl/cu128
+--find-links https://data.pyg.org/whl/torch-2.7.1+cu128.html
+
+torch==2.7.1+cu128
+
+torch-cluster==1.6.3+pt27cu128
+torch-scatter==2.1.2+pt27cu128
+torch-sparse==0.6.18+pt27cu128
+torch-spline-conv==1.2.2+pt27cu128
+torch-geometric==2.6.1
+
+e3nn==0.5.1
+networkx==2.8.4
+numpy==1.26.4
+pandas==1.5.1
+prody==2.2.0
+pybind11==2.11.1
+pyyaml==6.0.2
+rdkit==2022.3.3
+scikit-learn==1.1.0
+scipy==1.12.0
+spyrmsd==0.5.2
+torchmetrics==0.11.0
+tqdm==4.67.1

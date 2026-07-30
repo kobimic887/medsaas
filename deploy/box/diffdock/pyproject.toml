@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyxis-diffdock-service"
+version = "2026.7.30"
+description = "DiffDock HTTP service for the Amsterdam box"
+requires-python = ">=3.11"
+
+[tool.setuptools]
+packages = ["diffdock_service", "diffdock_service.engines"]
+
+[tool.setuptools.package-data]
+diffdock_service = ["assets/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["gpu: requires a real GPU and DiffDock weights"]
