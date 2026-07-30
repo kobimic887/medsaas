@@ -17,13 +17,30 @@
 # Compiling for sm_120 does NOT require a Blackwell card — nvcc only needs the toolkit.
 # So this image can be built and its arch verified on any x86_64 Docker host before the
 # box lands; only *running* it needs the GPU.
+#
+# ── Where this gets built: ON THE BOX, decided 2026-07-30 ────────────────────
+# It could be built anywhere x86_64, but building it on the target machine is strictly
+# better and costs nothing extra, because GROMACS is Phase 6 — it is not on the critical
+# path to the docking cutover, so a failed compile costs a retry rather than a delay.
+#
+# That decision is why GMX_SIMD defaults to AUTO below rather than a hardcoded target:
+# when the build host IS the run host, CMake's own detection beats any guess written here.
+# The box is a Threadripper PRO 9975WX (Zen 5), where AUTO is expected to select AVX2_256 —
+# GROMACS still favours 256-bit over AVX-512 on AMD. Override only with a measurement:
+#   docker build --build-arg GMX_SIMD=AVX_512 services/gromacs-api
+#
+# ⚠ Only the tarball version has been verified so far (2026.3 fetches 200 from ftp.gromacs.org,
+# checked 2026-07-30). The compile itself has never been run — this Mac is arm64 and the CUDA
+# images are x86_64-only. Expect roughly 30–60 minutes on 32 cores the first time.
 
 ARG CUDA_VERSION=12.8.1
 ARG GROMACS_VERSION=2026.3
+ARG GMX_SIMD=AUTO
 
 # ── build stage ──────────────────────────────────────────────────────────────
 FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04 AS build
 ARG GROMACS_VERSION
+ARG GMX_SIMD
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -49,7 +66,7 @@ RUN cmake "../gromacs-${GROMACS_VERSION}" \
       -DGMX_MPI=OFF \
       -DGMX_OPENMP=ON \
       -DGMX_BUILD_OWN_FFTW=OFF \
-      -DGMX_SIMD=AVX2_256 \
+      -DGMX_SIMD="${GMX_SIMD}" \
       -DCMAKE_INSTALL_PREFIX=/opt/gromacs \
     && ninja -j"$(nproc)" \
     && ninja install
