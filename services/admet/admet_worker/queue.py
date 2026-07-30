@@ -23,6 +23,15 @@ ERROR = "error"
 # Must match server/utils/admetQueue.js. Both sides are asserted against these numbers in
 # their own test suites; if you change one, change the other.
 MAX_ATTEMPTS = 3
+
+# Delay before a failed job may be claimed again, indexed by attempt number. Mirrors
+# ADMET_RETRY_BACKOFF_MS on the Node side.
+#
+# Without it, `fail()` requeues and `run_once` returns True, so the loop skips its poll wait
+# and re-claims the very same job immediately: a 20-second `systemctl restart pyxis-web` on
+# 83 would burn all three attempts — and three complete GPU predictions — inside one restart
+# window, then park the job in `error`.
+RETRY_BACKOFF_SECONDS = [30, 300, 900]
 STALE_AFTER_SECONDS = 15 * 60
 
 
@@ -77,7 +86,13 @@ class JobQueue:
         """
         now = utcnow()
         document = self._jobs.find_one_and_update(
-            {"status": QUEUED},
+            # `availableAt` in the past, or absent entirely — the second clause matters
+            # because rows written before backoff existed have no such field, and a filter
+            # that required one would quietly stop claiming them.
+            {
+                "status": QUEUED,
+                "$or": [{"availableAt": {"$lt": now}}, {"availableAt": None}],
+            },
             {
                 "$set": {
                     "status": RUNNING,
@@ -143,6 +158,9 @@ class JobQueue:
         }
         if exhausted:
             update["finishedAt"] = now
+        else:
+            index = min(max(job.attempts - 1, 0), len(RETRY_BACKOFF_SECONDS) - 1)
+            update["availableAt"] = now + timedelta(seconds=RETRY_BACKOFF_SECONDS[index])
         self._jobs.update_one({"_id": job.id}, {"$set": update})
         return status
 
@@ -178,6 +196,9 @@ class JobQueue:
                 "heartbeatAt": None,
                 "updatedAt": now,
             }
+            if not exhausted:
+                index = min(max(job.attempts - 1, 0), len(RETRY_BACKOFF_SECONDS) - 1)
+                update["availableAt"] = now + timedelta(seconds=RETRY_BACKOFF_SECONDS[index])
             if exhausted:
                 update["error"] = f"abandoned after {job.attempts} attempts — worker stopped responding"
                 update["finishedAt"] = now

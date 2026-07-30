@@ -75,11 +75,24 @@ def test_a_job_is_predicted_delivered_and_marked_done(collection) -> None:
     key, payload = recorder.sent[0]
     assert key == "sim1"
     assert payload["engine"] == "stub"
+    # Flat first — the dashboard reads simulation.admet as a property bag, so a payload
+    # that only had a `compounds` array would render every field as "N/A" with no error.
+    assert payload["molecular_weight"] == 3.0
     assert [c["smiles"] for c in payload["compounds"]] == ["CCO", "CCN"]
 
     stored = collection.by_key("sim1")
     assert stored["status"] == "done"
     assert stored["result"] == payload
+
+
+def test_a_single_compound_result_carries_no_compounds_array(collection) -> None:
+    _queued(collection, smiles=("CCO",))
+    worker, recorder = _worker(collection)
+    worker.run_once()
+
+    _, payload = recorder.sent[0]
+    assert payload["molecular_weight"] == 3.0
+    assert "compounds" not in payload
 
 
 def test_a_prediction_crash_requeues_rather_than_killing_the_loop(collection) -> None:
@@ -119,17 +132,45 @@ def test_a_job_abandoned_by_a_previous_worker_is_picked_up(collection) -> None:
     document.update(status="running", startedAt=utcnow() - timedelta(hours=2), heartbeatAt=None, attempts=1)
 
     worker, recorder = _worker(collection)
+
+    # First tick reaps it back to `queued` with a backoff; it is not claimable yet.
+    assert worker.run_once() is False
+    assert collection.by_key("sim1")["status"] == QUEUED
+
+    document["availableAt"] = utcnow() - timedelta(seconds=1)
     assert worker.run_once() is True
     assert recorder.sent[0][0] == "sim1"
     assert collection.by_key("sim1")["status"] == "done"
 
 
-def test_repeated_failure_eventually_parks(collection) -> None:
+def test_a_failed_job_is_not_re_claimed_immediately(collection) -> None:
+    """A 20-second restart on 83 must not burn all three attempts.
+
+    `fail` requeues and `run_once` returns True, so the loop skips its poll wait and comes
+    straight back round. Without a backoff the same job — and the same full GPU prediction —
+    would be retried three times inside one restart window.
+    """
     _queued(collection)
     worker, _ = _worker(collection, predictor=ExplodingPredictor())
 
+    assert worker.run_once() is True
+    stored = collection.by_key("sim1")
+    assert stored["status"] == QUEUED
+    assert stored["availableAt"] > utcnow()
+
+    # Immediately afterwards there is nothing claimable.
+    assert worker.run_once() is False
+    assert collection.by_key("sim1")["attempts"] == 1
+
+
+def test_repeated_failure_eventually_parks(collection) -> None:
+    document = _queued(collection)
+    worker, _ = _worker(collection, predictor=ExplodingPredictor())
+
     for _ in range(MAX_ATTEMPTS):
-        worker.run_once()
+        assert worker.run_once() is True
+        # Stand in for waiting out the backoff.
+        document["availableAt"] = utcnow() - timedelta(seconds=1)
 
     assert collection.by_key("sim1")["status"] == ERROR
     assert worker.run_once() is False

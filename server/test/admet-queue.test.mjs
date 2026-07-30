@@ -17,12 +17,15 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import {
   ADMET_JOBS_COLLECTION,
   ADMET_MAX_ATTEMPTS,
+  ADMET_MAX_REVIVALS,
   ADMET_STALE_AFTER_MS,
   createAdmetTask,
+  decodeStoredSmiles,
   ensureAdmetQueueIndexes,
   getQueueStatus,
   normalizeSmiles,
   reapStaleAdmetJobs,
+  resetAdmetJob,
 } from '../utils/admetQueue.js';
 
 let passed = 0;
@@ -71,6 +74,49 @@ await test('flattens and de-duplicates', () => {
 
 await test('drops empties rather than queueing a blank molecule', () => {
   assert.deepEqual(normalizeSmiles(['', '  ', '""']), []);
+});
+
+// ── the percent-encoding, which is the one that produces wrong science ───────
+
+await test('decodes the URL-encoded form every production SMILES is stored in', () => {
+  // client sends encodeURIComponent(...) (simulation.jsx:689) and server/index.js:3435
+  // re-encodes anything that arrived raw, so storage is ALWAYS encoded.
+  // Values below are the ones docs/DOCKING-CONTRACT.md §4 recorded from production.
+  assert.deepEqual(normalizeSmiles('C%23Cc1ccc(cc1)C%23C'), ['C#Cc1ccc(cc1)C#C']);
+  assert.deepEqual(normalizeSmiles('c1ccc2c(c1)nc(o2)SCC(%3DO)O'), ['c1ccc2c(c1)nc(o2)SCC(=O)O']);
+  assert.deepEqual(
+    normalizeSmiles('Cc1c(non1)OCCn2c(ncc2%5BN%2B%5D(%3DO)%5BO-%5D)C'),
+    ['Cc1c(non1)OCCn2c(ncc2[N+](=O)[O-])C'],
+  );
+});
+
+await test('C%23C… must not survive as a parseable but WRONG molecule', () => {
+  // RDKit does not reject the encoded form — it misreads `%23` as ring-closure 23, so
+  // para-diethynylbenzene parses cleanly as CC1CCc2ccc1cc2 and ADMET returns a confident
+  // property set for a molecule nobody asked about. Measured with this repo's own RDKit.
+  const [decoded] = normalizeSmiles('C%23Cc1ccc(cc1)C%23C');
+  assert.equal(decoded, 'C#Cc1ccc(cc1)C#C');
+  assert.ok(!decoded.includes('%'), 'no percent escape may reach RDKit');
+});
+
+await test('a raw SMILES is left alone', () => {
+  assert.deepEqual(normalizeSmiles('C#Cc1ccc(cc1)C#C'), ['C#Cc1ccc(cc1)C#C']);
+  assert.deepEqual(normalizeSmiles('CC(=O)Oc1ccccc1C(=O)O'), ['CC(=O)Oc1ccccc1C(=O)O']);
+});
+
+await test('a malformed escape is not mangled', () => {
+  // decodeURIComponent throws on this; the value must pass through untouched rather than
+  // taking down the enqueue.
+  assert.equal(decodeStoredSmiles('C%ZZC'), 'C%ZZC');
+  assert.deepEqual(normalizeSmiles('C%ZZC'), ['C%ZZC']);
+});
+
+await test('splits on the semicolon the client joins multiple ligands with', () => {
+  // simulation.jsx:679 does searchCode.replace(',', ';'), which encodeURIComponent then
+  // turns into %3B. A comma-only split hands the whole multi-ligand string to RDKit as one
+  // molecule.
+  assert.deepEqual(normalizeSmiles('CCO%3BCCN'), ['CCO', 'CCN']);
+  assert.deepEqual(normalizeSmiles('CCO;CCN'), ['CCO', 'CCN']);
 });
 
 // ── enqueueing ──────────────────────────────────────────────────────────────
@@ -132,6 +178,97 @@ await test('a job parked in error is revived with its attempts reset', async () 
   assert.equal(stored.status, 'queued');
   assert.equal(stored.attempts, 0);
   assert.equal(stored.error, null);
+});
+
+await test('reviving an error job is capped, so a broken job stops costing GPU time', async () => {
+  // The GET route calls createAdmetTask on every request with no result, so an unbounded
+  // revive resets `error` away on every page load: the operator sees counts.error 0 while
+  // the same doomed prediction is re-run three more times per click. That is the same
+  // invisibility as the broker nobody watched.
+  await reset();
+  await createAdmetTask(db, { simulationKey: 'sim-rev', smiles: 'CCO' });
+
+  for (let i = 0; i < ADMET_MAX_REVIVALS; i += 1) {
+    await jobs.updateOne(
+      { simulationKey: 'sim-rev' },
+      { $set: { status: 'error', attempts: ADMET_MAX_ATTEMPTS, error: 'callback 401' } },
+    );
+    const result = await createAdmetTask(db, { simulationKey: 'sim-rev', smiles: 'CCO' });
+    assert.equal(result.revived, true, `revival ${i + 1} should be allowed`);
+  }
+
+  await jobs.updateOne(
+    { simulationKey: 'sim-rev' },
+    { $set: { status: 'error', attempts: ADMET_MAX_ATTEMPTS, error: 'callback 401' } },
+  );
+  const exhausted = await createAdmetTask(db, { simulationKey: 'sim-rev', smiles: 'CCO' });
+
+  assert.equal(exhausted.revived, false);
+  assert.equal(exhausted.exhausted, true);
+  assert.equal(exhausted.status, 'error');
+  assert.equal(exhausted.error, 'callback 401', 'the failure text must survive');
+
+  const stored = await jobs.findOne({ simulationKey: 'sim-rev' });
+  assert.equal(stored.status, 'error', 'and it must STAY parked');
+});
+
+await test('a permanently failing job stays visible in the queue counts', async () => {
+  const status = await getQueueStatus(db);
+  assert.equal(status.counts.error, 1);
+});
+
+await test('deleting the result re-queues the job so a recompute actually happens', async () => {
+  // One job per simulation forever (unique index), $setOnInsert never touches an existing
+  // row, and the revive branch only fires for `error` — so without resetAdmetJob a `done`
+  // job stayed done, no worker could claim it, and the GET reported "queued" forever.
+  await reset();
+  await createAdmetTask(db, { simulationKey: 'sim-del', smiles: 'CCO' });
+  await jobs.updateOne(
+    { simulationKey: 'sim-del' },
+    { $set: { status: 'done', result: { engine: 'stub' }, finishedAt: new Date() } },
+  );
+
+  // Re-enqueueing alone does nothing — this is the bug, asserted so it cannot come back.
+  const untouched = await createAdmetTask(db, { simulationKey: 'sim-del', smiles: 'CCO' });
+  assert.equal(untouched.status, 'done');
+
+  const { reset: didReset } = await resetAdmetJob(db, 'sim-del');
+  assert.equal(didReset, true);
+
+  const stored = await jobs.findOne({ simulationKey: 'sim-del' });
+  assert.equal(stored.status, 'queued');
+  assert.equal(stored.attempts, 0);
+  assert.equal(stored.revivals, 0);
+  assert.equal(stored.result, null);
+  assert.ok(stored.availableAt <= new Date(), 'and claimable immediately, not after a backoff');
+});
+
+await test('a new job is claimable at once', async () => {
+  await reset();
+  await createAdmetTask(db, { simulationKey: 'sim-now', smiles: 'CCO' });
+  const stored = await jobs.findOne({ simulationKey: 'sim-now' });
+  assert.ok(stored.availableAt instanceof Date);
+  assert.ok(stored.availableAt <= new Date());
+});
+
+await test('a reaped job serves a backoff instead of being re-claimed instantly', async () => {
+  await reset();
+  await createAdmetTask(db, { simulationKey: 'sim-backoff', smiles: 'CCO' });
+  await jobs.updateOne(
+    { simulationKey: 'sim-backoff' },
+    {
+      $set: {
+        status: 'running',
+        attempts: 1,
+        heartbeatAt: new Date(Date.now() - ADMET_STALE_AFTER_MS - 60_000),
+      },
+    },
+  );
+
+  await reapStaleAdmetJobs(db);
+  const stored = await jobs.findOne({ simulationKey: 'sim-backoff' });
+  assert.equal(stored.status, 'queued');
+  assert.ok(stored.availableAt > new Date(), 'must not be immediately claimable');
 });
 
 await test('a job with no usable SMILES is refused rather than queued', async () => {

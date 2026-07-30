@@ -32,6 +32,7 @@ import {
   ensureAdmetQueueIndexes,
   getQueueStatus,
   reapStaleAdmetJobs,
+  resetAdmetJob,
 } from './utils/admetQueue.js';
 import { normalizeShopSearchResponse } from './utils/asinexCompound.js';
 import {
@@ -6685,13 +6686,19 @@ app.get('/api/simulation/:simulationKey/admet', ensureMongoConnected, authentica
           hasAdmet: false,
           lastUpdated: simulation.lastUpdated,
           processing: {
-            status: 'queued',
-            message: 'ADMET prediction task has been queued for processing',
+            // Report the job's REAL status. This was hardcoded to 'queued' regardless of
+            // what the queue returned, so a job parked in `error` — or one that had run out
+            // of revivals — was reported as in-flight forever, and the UI sat on
+            // "Calculating…" with nothing behind it.
+            status: taskResult.status || 'queued',
+            message: taskResult.message,
+            error: taskResult.error || null,
+            attempts: taskResult.attempts,
             taskId: taskResult.taskId,
             estimatedTime: taskResult.estimatedProcessingTime
           }
         });
-        
+
       } catch (queueError) {
         console.error('Failed to create ADMET task:', queueError);
 
@@ -6776,17 +6783,24 @@ app.delete('/api/simulation/:simulationKey/admet', ensureMongoConnected, authent
     );
     
     if (updateResult.matchedCount === 0) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         error: 'Simulation not found',
-        simulationKey 
+        simulationKey
       });
     }
-    
+
+    // Clearing the result is only half of a recompute. One job exists per simulation for
+    // all time (unique index), and nothing else ever moves a `done` job back to `queued` —
+    // so without this the next GET would find the old `done` row, queue nothing, and report
+    // "queued" forever while no worker could ever claim it.
+    const { reset } = await resetAdmetJob(client.db(), simulationKey);
+
     res.json({
       message: 'ADMET data removed from simulation successfully',
       simulationKey,
       removedAt: new Date().toISOString(),
-      modifiedCount: updateResult.modifiedCount
+      modifiedCount: updateResult.modifiedCount,
+      jobRequeued: reset
     });
     
   } catch (error) {

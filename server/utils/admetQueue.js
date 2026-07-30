@@ -28,12 +28,68 @@ export const ADMET_JOB_STATUS = Object.freeze({
 // Never retry forever silently — that is how the RabbitMQ version hid its own failure.
 export const ADMET_MAX_ATTEMPTS = 3;
 
+// How many times a user re-opening the ADMET view may resurrect a job that has already
+// exhausted its attempts. Bounded for the reason in createAdmetTask: an unbounded revive
+// resets the error away on every page load, so a permanently broken job costs GPU time
+// forever and never shows up in the queue counts.
+export const ADMET_MAX_REVIVALS = 3;
+
+// Backoff before a failed job may be claimed again, indexed by attempt number. Without it
+// `fail()` requeues and the worker's very next poll re-claims the same job, so a 20-second
+// `systemctl restart` on 83 burns all three attempts — and three full GPU predictions —
+// inside one restart window.
+export const ADMET_RETRY_BACKOFF_MS = [30_000, 300_000, 900_000];
+
 // A worker touches `heartbeatAt` while it predicts. If one is killed mid-job the row would
 // otherwise sit in `running` forever, which is the precise failure this rewrite exists to
 // make visible, so it must not be reintroduced in a new costume.
 export const ADMET_STALE_AFTER_MS = 15 * 60 * 1000;
 
 const VALID_PRIORITIES = new Set(['low', 'normal', 'high']);
+
+/**
+ * Percent-decode a stored SMILES, if that is what it is.
+ *
+ * ⚠ `simulation_logs.smiles` is stored URL-ENCODED, always. The client sends
+ * `encodeURIComponent(_searchSmiles)` (client/src/pages/dashboard/simulation.jsx:689) and
+ * the server then *enforces* the encoding on the way in — `server/index.js:3435` re-encodes
+ * anything that arrived raw. docs/DOCKING-CONTRACT.md §4 records the stored values.
+ *
+ * That matters far more than it looks, because RDKit does not reject the encoded form —
+ * it misreads it. Measured against this repo's own @rdkit/rdkit:
+ *
+ *   C%23Cc1ccc(cc1)C%23C                 -> PARSES as CC1CCc2ccc1cc2
+ *   c1ccc2c(c1)nc(o2)SCC(%3DO)O          -> parse failure
+ *   Cc1c(non1)OCCn2c(ncc2%5BN%2B%5D...)C -> parse failure
+ *
+ * The first one is the dangerous case: `%23` is read as ring-closure label 23, so
+ * para-diethynylbenzene silently becomes a methylated bicyclic hydrocarbon. ADMET-AI would
+ * return a complete, confident property set for a molecule the user never asked about, and
+ * the dashboard would display it. No error, no log line, wrong science.
+ *
+ * ── The one ambiguity, and why decoding is still right ──────────────────────────────────
+ * `%NN` is also SMILES' own syntax for ring-closure labels above 9, so `%23` is genuinely
+ * ambiguous in isolation. It is not ambiguous here: every value reaching this function from
+ * a simulation record has been through the re-encode at server/index.js:3435, so a `%23`
+ * in storage IS an encoded `#`. A ring closure numbered 23 would also require 23 rings open
+ * at once, which does not occur in this domain.
+ *
+ * The round-trip check below keeps that judgement narrow: a string is only decoded when
+ * re-encoding the result reproduces the original exactly. A raw SMILES with no escapes is
+ * left alone.
+ */
+export function decodeStoredSmiles(value) {
+  if (typeof value !== 'string' || !value.includes('%')) return value;
+  let decoded;
+  try {
+    decoded = decodeURIComponent(value);
+  } catch {
+    // A malformed escape (`%` not followed by two hex digits) means this was never encoded.
+    return value;
+  }
+  if (decoded === value) return value;
+  return encodeURIComponent(decoded) === value ? decoded : value;
+}
 
 /**
  * Normalise whatever the caller passed into a clean array of SMILES.
@@ -45,13 +101,19 @@ const VALID_PRIORITIES = new Set(['low', 'normal', 'high']);
  * wire. That is why services/admet/admet_sender.py grew a regex for `"],["` — it was
  * decoding a bug rather than a format. Both ends are fixed here; the quotes never existed
  * in the data, only in the serialisation.
+ *
+ * Splitting happens on BOTH `,` and `;`. The client joins multiple ligands with a
+ * semicolon — `searchCode.replace(',', ';')` at simulation.jsx:679 — which then survives
+ * as `%3B` until the decode above turns it back. A comma-only split would hand the whole
+ * multi-ligand string to RDKit as one molecule.
  */
 export function normalizeSmiles(input) {
   const collected = [];
 
   const push = (value) => {
     if (typeof value !== 'string') return;
-    for (const part of value.split(',')) {
+    // Decode BEFORE splitting: the separator itself may be percent-encoded.
+    for (const part of decodeStoredSmiles(value).split(/[,;]/)) {
       const cleaned = part.trim().replace(/^["']+|["']+$/g, '').trim();
       if (cleaned) collected.push(cleaned);
     }
@@ -80,7 +142,14 @@ function jobsCollection(db) {
 export async function ensureAdmetQueueIndexes(db) {
   const jobs = jobsCollection(db);
   await jobs.createIndex({ simulationKey: 1 }, { unique: true, name: 'admet_simulation_key' });
-  await jobs.createIndex({ status: 1, createdAt: 1 }, { name: 'admet_claim' });
+  // Name deliberately versioned: createIndex on an existing NAME with a different key spec
+  // raises IndexOptionsConflict, and this whole block is inside a catch that only logs — so
+  // a rename is what stops a silent "indexes already exist" from leaving the claim path
+  // unindexed. The v1 spec was { status, createdAt }, before availableAt existed.
+  await jobs.createIndex(
+    { status: 1, availableAt: 1, createdAt: 1 },
+    { name: 'admet_claim_v2' },
+  );
   await jobs.createIndex({ status: 1, heartbeatAt: 1 }, { name: 'admet_stale' });
   return jobs;
 }
@@ -120,8 +189,10 @@ export async function createAdmetTask(db, taskData) {
     priority: VALID_PRIORITIES.has(priority) ? priority : 'normal',
     status: ADMET_JOB_STATUS.QUEUED,
     attempts: 0,
+    revivals: 0,
     createdAt: now,
     updatedAt: now,
+    availableAt: now,
     startedAt: null,
     finishedAt: null,
     heartbeatAt: null,
@@ -133,7 +204,19 @@ export async function createAdmetTask(db, taskData) {
 
   // An existing job in `error` is revived, with its attempt count reset — the overwhelming
   // cause of a failed ADMET job in this system's history is "no worker was running".
+  //
+  // ⚠ But NOT without limit. The ADMET GET route calls this on every request for a
+  // simulation with no result, so an unbounded revive means a deterministically failing job
+  // is reset to `queued, attempts: 0, error: null` on every page load: the operator sees
+  // `counts.error: 0` while the GPU re-runs the same doomed prediction three more times per
+  // click, and the failure never appears anywhere. That is precisely the invisibility this
+  // module exists to remove — the same shape as the broker nobody watched, in a new costume.
+  //
+  // After ADMET_MAX_REVIVALS the job stays parked and keeps its error text.
   if (job && job.status === ADMET_JOB_STATUS.ERROR) {
+    if ((job.revivals ?? 0) >= ADMET_MAX_REVIVALS) {
+      return describeJob(job, { created: false, revived: false, exhausted: true });
+    }
     const revived = await jobs.findOneAndUpdate(
       { simulationKey, status: ADMET_JOB_STATUS.ERROR },
       {
@@ -143,11 +226,13 @@ export async function createAdmetTask(db, taskData) {
           attempts: 0,
           error: null,
           updatedAt: now,
+          availableAt: now,
           startedAt: null,
           finishedAt: null,
           heartbeatAt: null,
           workerId: null,
         },
+        $inc: { revivals: 1 },
       },
       { returnDocument: 'after' },
     );
@@ -156,6 +241,40 @@ export async function createAdmetTask(db, taskData) {
   }
 
   return describeJob(job, { created: job?.attempts === 0 && job?.status === ADMET_JOB_STATUS.QUEUED });
+}
+
+/**
+ * Clear a job so the prediction runs again from scratch.
+ *
+ * ⚠ Without this, `DELETE /api/simulation/:key/admet` silently stopped working. The unique
+ * index means one job per simulation forever, `$setOnInsert` never touches an existing row,
+ * and the revive branch above only fires for `error` — so a `done` job stayed `done`, no
+ * worker would ever claim it (claim filters on `queued`), and the GET route reported
+ * `processing.status: "queued"` indefinitely. Deleting the result to force a recompute is
+ * that route's entire purpose, so it had none.
+ */
+export async function resetAdmetJob(db, simulationKey) {
+  if (!simulationKey || typeof simulationKey !== 'string') return { reset: false };
+  const now = new Date();
+  const result = await jobsCollection(db).updateOne(
+    { simulationKey },
+    {
+      $set: {
+        status: ADMET_JOB_STATUS.QUEUED,
+        attempts: 0,
+        revivals: 0,
+        error: null,
+        result: null,
+        updatedAt: now,
+        availableAt: now,
+        startedAt: null,
+        finishedAt: null,
+        heartbeatAt: null,
+        workerId: null,
+      },
+    },
+  );
+  return { reset: (result?.modifiedCount ?? 0) > 0 };
 }
 
 /**
@@ -191,12 +310,16 @@ function describeJob(job, flags = {}) {
     status: job?.status ?? null,
     smiles: job?.smiles ?? [],
     attempts: job?.attempts ?? 0,
+    revivals: job?.revivals ?? 0,
+    error: job?.error ?? null,
     estimatedProcessingTime: '2-5 minutes',
-    message: flags.revived
-      ? 'Previously failed ADMET job re-queued'
-      : flags.created
-        ? 'ADMET processing task created successfully'
-        : 'ADMET processing task already queued',
+    message: flags.exhausted
+      ? 'ADMET prediction failed repeatedly and will not be retried automatically'
+      : flags.revived
+        ? 'Previously failed ADMET job re-queued'
+        : flags.created
+          ? 'ADMET processing task created successfully'
+          : 'ADMET processing task already queued',
     ...flags,
   };
 }
@@ -243,6 +366,12 @@ export async function reapStaleAdmetJobs(db, { staleAfterMs = ADMET_STALE_AFTER_
             workerId: null,
             heartbeatAt: null,
             updatedAt: now,
+            // Same backoff a normal failure gets. A worker that died mid-job will usually
+            // die again immediately; re-claiming instantly just spends the attempts.
+            availableAt: new Date(
+              now.getTime() +
+                (ADMET_RETRY_BACKOFF_MS[Math.min(job.attempts ?? 0, ADMET_RETRY_BACKOFF_MS.length - 1)] ?? 0),
+            ),
           },
         },
       );

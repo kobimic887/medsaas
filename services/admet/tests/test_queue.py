@@ -77,13 +77,16 @@ def test_claims_take_the_oldest_job_first(queue, collection) -> None:
 
 
 def test_failure_requeues_until_the_cap_then_parks(queue, collection) -> None:
-    _queued(collection)
+    document = _queued(collection)
     for attempt in range(1, MAX_ATTEMPTS + 1):
         job = queue.claim()
         assert job is not None, f"job should be claimable on attempt {attempt}"
         status = queue.fail(job, f"boom {attempt}")
         expected = ERROR if attempt >= MAX_ATTEMPTS else QUEUED
         assert status == expected
+        # Stand in for waiting out the retry backoff; without it the next claim is a no-op,
+        # which is the whole point of the backoff and is asserted separately below.
+        document["availableAt"] = utcnow() - timedelta(seconds=1)
 
     stored = collection.by_key("sim1")
     assert stored["status"] == ERROR
@@ -129,6 +132,13 @@ def test_a_job_abandoned_by_a_dead_worker_is_requeued(queue, collection) -> None
     stored = collection.by_key("sim1")
     assert stored["status"] == QUEUED
     assert stored["workerId"] is None
+
+    # A worker that died mid-job usually dies again straight away, so a reaped job serves
+    # its backoff like any other failure rather than being re-claimed on the next poll.
+    assert stored["availableAt"] > utcnow()
+    assert queue.claim() is None
+
+    document["availableAt"] = utcnow() - timedelta(seconds=1)
     assert queue.claim() is not None
 
 
