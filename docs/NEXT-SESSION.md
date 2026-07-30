@@ -1,6 +1,6 @@
 # What to do next
 
-## ⏱ START HERE — session ended 2026-07-30 ~00:30 UTC
+## ⏱ START HERE — session ended 2026-07-30
 
 **Production is live, healthy and unattended-safe.** `app.pyxis-discovery.com` → 200, all four
 services `enabled` under systemd, **0 restarts**, no leftover probe units, nothing half-deployed.
@@ -16,20 +16,47 @@ A reboot is survivable for the first time. Repo is clean and fully pushed.
    untouched since 2026-04-02. Anyone who took it can send mail as the company. After changing
    it, update `EMAIL_PASS` in **both** `/root/chem_beo/.env` and `/root/pyxis/server/.env`.
 
-2. **DiffDock — the only item with no fallback.** `deploy/box/diffdock/` holds the captured
-   contract and nothing else; `compose.yml`'s `build: ./diffdock` points at a directory with no
-   Dockerfile. The route is already established (§4 of the arrival audit): **`torch 2.7.1+cu128`
-   on Python 3.9 is the single viable cell** — cp39 wheels stop after torch 2.7.1 — all four PyG
-   extensions exist for `pt27cu128`/`cp39`, and **openfold is very likely droppable** because
-   `inference.py` imports neither it, nor `esm`, nor `pytorch_lightning`, and the platform always
-   supplies a receptor structure rather than a sequence.
+2. **Rewrite the ADMET worker for Mongo.** `services/admet/amqpadmet.py` still speaks RabbitMQ
+   while `compose.yml` already passes it `MONGODB_URI` and no broker, so the service as wired
+   today cannot start. Owner settled the transport (below); the code has not caught up. This is
+   now the **largest unwritten piece**, and it is fully buildable and testable without the box.
 
-3. **Build the new GROMACS image to prove it compiles.** `services/gromacs-api/Dockerfile` is now
-   a real CUDA source build (`GMX_GPU=CUDA`, `CMAKE_CUDA_ARCHITECTURES=120`, pinned to 2026.3
-   because 2025.x is documented broken on sm_120) and it **self-checks** — the build fails unless
-   `gmx -version` reports CUDA. **It has never been built.** Compiling for sm_120 needs only the
-   toolkit, not a Blackwell card, so it can be proven on any x86_64 Docker host. 83 qualifies, but
-   it serves production — run it niced with limited parallelism, or wait for the box.
+3. **Write the box ingress config.** Approach is settled — Caddy on `:443` with a Let's Encrypt
+   cert for `BOX_DOMAIN`, every service bound to `127.0.0.1`, host firewall admitting only 83's
+   IP. ARRIVAL-RUNBOOK Phase 3 describes it; **no Caddyfile or firewall script exists in the
+   repo.** Small, and it is on arrival day's critical path.
+
+### ✅ DiffDock and GROMACS — done 2026-07-30
+
+**DiffDock is built.** `deploy/box/diffdock/` is now a real service, not a reference directory:
+FastAPI wrapper, `replay`/`oss` engines, Dockerfile, weights fetcher, **28 tests passing with no
+GPU, no network and no weights**. See `deploy/box/diffdock/README.md`. Three things to know:
+
+- It reproduces the contract's counter-intuitive parts on purpose — **failure is HTTP 200** with
+  `status: "failed"`, arrays are **padded to `num_poses`** even when nothing docked, and
+  `position_confidence` is ranked best-first and index-aligned.
+- **The caller's escaping bug is fixed here, not in `chem_beo`.** All three wire forms decode on
+  the way in, so the platform's retry stops firing. The log proves the bug: a literal-`\n` ligand
+  failed at `12:05:03` and the same molecule raw succeeded at `12:05:06`.
+- **openfold is dropped, and that is unrelated to NVIDIA OpenFold3.** DiffDock's pip dependency
+  on `aqlaboratory/openfold` serves only the ESMFold protein-*sequence* path; `inference.py`
+  imports it nowhere and the platform always sends a PDB. Dropping it removes the from-source
+  CUDA extension build. NVIDIA's hosted OpenFold3 endpoint is untouched and stays hosted.
+
+Correction to what this file said before: **Python 3.9 is not forced.** cp39 wheels run through
+torch 2.8.0, and cp310–cp313 exist on every line. The image uses **Python 3.10 + torch
+2.7.1+cu128** because 3.10 is Ubuntu 22.04's system interpreter — no PPA, no conda — and every
+one of DiffDock's own 2022-era pins still has a cp310 wheel, so only torch and the four PyG
+extensions deviate from upstream's known-working set.
+
+**Unverified and cannot be until the box exists:** inference itself, the `requirements-oss.txt`
+resolve on x86_64, and whether DiffDock v1.1.3 runs unmodified under torch 2.7.1. First command
+on arrival is `python -m diffdock_service preflight`.
+
+**GROMACS builds on the box by decision** — `GMX_SIMD` is now a build ARG defaulting to `AUTO`,
+because when the build host is the run host CMake's detection beats a hardcoded target. The
+2026.3 tarball was confirmed to fetch; the compile itself has still never run (this Mac is
+arm64). It is Phase 6, off the docking critical path, so a failed compile costs a retry.
 
 ### Settled by the owner 2026-07-30 — do not re-raise
 
@@ -62,6 +89,11 @@ A reboot is survivable for the first time. Repo is clean and fully pushed.
   unreachable, or no result for that pair.
 - **GPU pinning fixed** — services named a card in the reservation instead of leaving it to
   Docker to guess.
+- **The glioblastoma key was never committed.** `compose.yml` claimed it was in git history and
+  gated the service behind a `glioblastoma-key-rotated` profile. `.gitignore:45` excludes it and
+  no blob exists in any branch. The real problem is the inverse: it is an **untracked local file
+  that `Dockerfile:14` COPYs**, so that build fails on the box until the key is moved there out
+  of band. Profile renamed to `glioblastoma-key-present`.
 
 ### Two mistakes worth not repeating
 
