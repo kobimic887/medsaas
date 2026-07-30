@@ -16,15 +16,45 @@ A reboot is survivable for the first time. Repo is clean and fully pushed.
    untouched since 2026-04-02. Anyone who took it can send mail as the company. After changing
    it, update `EMAIL_PASS` in **both** `/root/chem_beo/.env` and `/root/pyxis/server/.env`.
 
-…and that is the whole list. The glioblastoma key that was item 2 turned out not to be needed
-at all — see below.
+…and that is the whole list of *blockers*. The glioblastoma key that was item 2 turned out not
+to be needed at all — see below.
+
+**One measured, ready-to-do user win is still unapplied:** ~393 KB of dead Bootstrap, Font
+Awesome and a placeholder analytics tracker on every page load, ~31% of the sign-in payload.
+Evidence and caveats in the "Measured user-facing win" section below. It needs a decision
+because it touches `client/index.html`, which every page shares.
 
 **Two supply-chain choices you may want to make** (neither blocks anything): GitHub reports 25
 Dependabot alerts on `main`, and `bun run lockfiles:refresh` currently surfaces npm audit
 findings. Nothing here reads untrusted input from a vulnerable path, so this is a decision about
 appetite, not an incident.
 
-### 🔴 UNVERIFIED review findings — read before touching the box work
+### ✅ All 9 review findings resolved 2026-07-30 — 7 were real
+
+Verified each against the code before acting; none were taken on trust. Fixed in `c65698e`,
+plus the `pyproject` pin in `223b21f`. Highlights worth carrying forward:
+
+- **The SMILES decoder from `5d24852` was itself broken.** Its round-trip guard let `%NN`
+  ring closures through, so `C%20CCCCC%20` (a valid cyclohexane) decoded to `C CCCCC ` and
+  parsed as plain `C` — the original bug wearing the other face. The decode is now also
+  required to be entirely SMILES-legal.
+- **`services/gromacs-api` could never build.** `COPY templates/` referenced a directory that
+  has never existed in any commit; the MDP files were flattened to `templates_em.mdp`. Now
+  `templates/{em,npt,nvt,md}.mdp`, matching the README and `GET /templates/em.mdp`.
+- **`POST /api/admet/create-task` had no tenant check** — any active user could queue work
+  against another company's simulation and cause a write into that record.
+- **`resetAdmetJob` could reset a RUNNING job**, and the worker's `complete()` had no
+  ownership filter, so a DELETE mid-prediction was silently undone. Both ends guard now.
+- Root `docker-compose.yml` still wired ADMET to RabbitMQ; the Caddyfile used
+  `read_timeout`/`write_timeout` in `transport http` (they are fastcgi-only, and unnecessary
+  — `reverse_proxy` has no response timeout by default); `.env.example` contradicted its own
+  ingress design with `http://<box>:PORT` URLs.
+
+The two that were **not** defects: nothing else in the report survived checking.
+
+<details>
+<summary>Original unverified table, kept for provenance</summary>
+
 
 Two review passes were both **killed mid-run when usage ran out**, but their finder stages had
 already reported. The first pass's 6 findings were verified and **fixed in `5d24852`**. The
@@ -45,6 +75,8 @@ Ranked by how cheap they are to check:
 | 7 | **`resetAdmetJob` does not exclude a `running` job**, and the worker's `complete()` has no status guard | A DELETE during a prediction could let the in-flight worker restore the stale result |
 | 8 | **`deploy/box/.env.example` cutover cheat-sheet gives `http://<box>:PORT` URLs** the ingress design makes unreachable | Contradicts the same file's own design; a wrong copy-paste on arrival day |
 | 9 | **`ADMET_CALLBACK_URL` comment shows a full PUT path** but the worker appends `/api/simulation/{key}/admet` to it | Would produce a doubled path |
+
+</details>
 
 ### ⚠ Both review passes were STOPPED before finishing
 
