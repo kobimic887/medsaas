@@ -8,7 +8,7 @@ A reboot is survivable for the first time. Repo is clean and fully pushed.
 
 **Read the box's `DEPLOYED_SHA` before assuming anything about what is running.**
 
-### The three things that matter next, in order
+### Everything buildable before the box is now built. Two jobs left, and neither is code.
 
 1. **Rotate the mail password — only the owner can.** `contact@pyxis-discovery.com` at
    **yourhosting.nl**. It was served publicly on 2026-07-29 and **is still live**: proven by an
@@ -16,15 +16,52 @@ A reboot is survivable for the first time. Repo is clean and fully pushed.
    untouched since 2026-04-02. Anyone who took it can send mail as the company. After changing
    it, update `EMAIL_PASS` in **both** `/root/chem_beo/.env` and `/root/pyxis/server/.env`.
 
-2. **Rewrite the ADMET worker for Mongo.** `services/admet/amqpadmet.py` still speaks RabbitMQ
-   while `compose.yml` already passes it `MONGODB_URI` and no broker, so the service as wired
-   today cannot start. Owner settled the transport (below); the code has not caught up. This is
-   now the **largest unwritten piece**, and it is fully buildable and testable without the box.
+2. **Get the glioblastoma key onto the box, out of band.**
+   `services/glioblastoma-predictor/chemtest_tech_private.key` is untracked (`.gitignore:45`)
+   and `Dockerfile:14` COPYs it, so that build fails on the box until the file is there. It is
+   the only build in `compose.yml` that cannot succeed from a clean clone. Phase 6, not urgent,
+   but it is the one thing a fresh checkout cannot produce.
 
-3. **Write the box ingress config.** Approach is settled — Caddy on `:443` with a Let's Encrypt
-   cert for `BOX_DOMAIN`, every service bound to `127.0.0.1`, host firewall admitting only 83's
-   IP. ARRIVAL-RUNBOOK Phase 3 describes it; **no Caddyfile or firewall script exists in the
-   repo.** Small, and it is on arrival day's critical path.
+**Two supply-chain choices you may want to make** (neither blocks anything): GitHub reports 25
+Dependabot alerts on `main`, and `bun run lockfiles:refresh` currently surfaces npm audit
+findings. Nothing here reads untrusted input from a vulnerable path, so this is a decision about
+appetite, not an incident.
+
+### ✅ ADMET and the box ingress — done 2026-07-30
+
+**ADMET is a Mongo queue now, both ends rewritten.** Producer `server/utils/admetQueue.js`
+(replacing `rabbitMQUtils.js`, deleted), consumer `services/admet/admet_worker/` (replacing
+`amqpadmet.py`/`admet_sender.py`, deleted). 17 server tests against a real in-memory Mongo, 22
+Python tests with no GPU, no network, no model and no Mongo server. `bun run ci` passes.
+
+What it fixes beyond the transport:
+
+- **A stuck job is now visible.** `GET /api/rabbitmq/queue-status` — path kept deliberately —
+  returns counts per state, the oldest queued timestamp, and how many `running` jobs have gone
+  quiet. That question being unanswerable is *why* nobody noticed ADMET was dead for months.
+- **The SMILES quoting bug.** The producer wrapped every SMILES in literal `"` characters and
+  the transport nested it in another array, so the wire carried `[["\"CCO\""]]`; the Python
+  side had a regex decoding a bug rather than a format. Both ends handle plain strings now.
+- **Two config errors that would only have shown up after GPU time was spent:** compose passed
+  `ADMET_CALLBACK_TOKEN` while the server reads `ADMET_CALLBACK_SECRET`, and
+  `services/admet/admet_ai/` shadowed the real `admet_ai` package for anything importing from
+  the service root. Both gone.
+- **The cu128-torch install order is asserted at build time.** Installing `admet-ai` first lets
+  chemprop's pins swap in the CPU wheel; that never raises, it is just permanently slow on two
+  idle 5090s.
+
+**Box ingress exists:** `deploy/box/ingress/` — `Caddyfile`, `install.sh`, `firewall.sh`, and a
+README that answers *why Caddy at all*. Three decisions worth not re-deriving:
+
+- **Caddy runs on the HOST under systemd, never in Docker.** A published container port bypasses
+  ufw: `:443` would be world-reachable while `ufw status` still said `deny`.
+- **Port 80 is open to the world on purpose.** ACME validates from Let's Encrypt's own servers,
+  so with both 80 and 443 closed no certificate is ever issued *or renewed* — the box would work
+  for exactly 90 days and then fail TLS with the cause two months in the past. Only the challenge
+  is served on 80. DNS-01 is the stricter alternative and needs a provider plugin.
+- **`handle` vs `handle_path` is load-bearing.** Tanimoto/GROMACS/glioblastoma strip their prefix
+  (the platform treats them as a base URL); docking/convertSTR/DiffDock do not (those services
+  expect the full path). Getting one wrong is a 404 on arrival day.
 
 ### ✅ DiffDock and GROMACS — done 2026-07-30
 
@@ -64,8 +101,8 @@ arm64). It is Phase 6, off the docking critical path, so a failed compile costs 
 |---|---|
 | `mol_price` import | **Not wanted.** Pricing comes from Asinex. The `/api/mol-price/*` endpoints return nothing and that is fine |
 | Stripe key rotation | **Not wanted.** Test key only; no live key was ever exposed |
-| Box ingress (Caddy + firewall) | **Approach approved.** Config still needs writing |
-| ADMET transport | **Mongo, not RabbitMQ.** CloudAMQP was a successful test but is not the choice. `compose.yml` already assumes Mongo polling; `services/admet/amqpadmet.py` is still RabbitMQ, so the worker needs rewriting |
+| Box ingress (Caddy + firewall) | **Approach approved, and now written** — `deploy/box/ingress/` |
+| ADMET transport | **Mongo, not RabbitMQ.** CloudAMQP was a successful test but is not the choice. **Both ends rewritten 2026-07-30**; `amqplib`, `pika` and CloudAMQP are gone from the repo |
 | `tester123` credits | **Stays at 99,998.** Verbatim: *"tester HAS to stay like that. period."* |
 | Profile page | **Deleted.** Owner: *"plain bloat"* |
 | Pushing | **Always push after committing, without asking.** See CLAUDE.md |
