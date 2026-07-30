@@ -1,4 +1,6 @@
-admet-ai
-pika
-requests
-pandas
+# The worker's own dependencies. The model's live in requirements-model.txt and are
+# installed separately, in a specific order — see the Dockerfile.
+#
+# `pika` is gone: the transport is MongoDB now (docs/BOX-ARCHITECTURE.md §5).
+pymongo==4.10.1
+requests==2.32.3

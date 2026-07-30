@@ -1,0 +1,15 @@
+# ⚠ ORDER MATTERS, and getting it wrong does not raise.
+#
+# torch must be installed FIRST, from the cu128 index, and admet-ai second. Installed the
+# other way round, chemprop's own pins resolve a plain `torch` and pip silently replaces the
+# +cu128 build with the CPU wheel. Nothing errors. The worker starts, predicts, returns
+# correct answers — just permanently on the CPU, on a EUR 24,727 machine with two idle
+# 5090s, and no log line anywhere says so.
+#
+# The Dockerfile installs this file in two passes for exactly that reason, and then asserts
+# the build tag survived.
+
+--extra-index-url https://download.pytorch.org/whl/cu128
+
+torch==2.7.1+cu128
+admet-ai==1.3.1

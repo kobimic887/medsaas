@@ -185,7 +185,8 @@ services:
     environment:
       MONGODB_URI: "${MONGODB_URI}"
       ADMET_CALLBACK_URL: "${ADMET_CALLBACK_URL}"
-      ADMET_CALLBACK_TOKEN: "${ADMET_CALLBACK_TOKEN}"
+      ADMET_CALLBACK_SECRET: "${ADMET_CALLBACK_SECRET}"
+      ADMET_ENGINE: "${ADMET_ENGINE:-admet-ai}"
       NVIDIA_VISIBLE_DEVICES: "1"
     profiles: ["extras"]
 

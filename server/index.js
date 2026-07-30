@@ -26,7 +26,13 @@ import { generatePasswordResetEmailHTML, generateInviteEmailHTML } from './utils
 import { getBrandName, getPlatformName, } from './config/branding.js';
 import { sendTitanEmail, testEmailConfiguration } from './utils/emailService.js';
 import { validateEmailCredentials, getTitanMailHelp } from './utils/emailDebug.js';
-import { createAdmetTask, getQueueStatus, rabbitMQHealthCheck } from './utils/rabbitMQUtils.js';
+import {
+  admetQueueHealthCheck,
+  createAdmetTask,
+  ensureAdmetQueueIndexes,
+  getQueueStatus,
+  reapStaleAdmetJobs,
+} from './utils/admetQueue.js';
 import { normalizeShopSearchResponse } from './utils/asinexCompound.js';
 import {
   DEFAULT_BRAND_PALETTE,
@@ -1056,6 +1062,10 @@ async function initializeDatabase() {
       await auditLogsCollection.createIndex({ actorUsername: 1, timestamp: -1 });
       await billingEventsCollection.createIndex({ stripeSessionId: 1 }, { unique: true, sparse: true });
       await billingEventsCollection.createIndex({ username: 1, createdAt: -1 });
+      // The unique index on simulationKey is what makes enqueueing idempotent — the ADMET
+      // GET route queues on every request for a simulation without results, so without it
+      // a user refreshing the page queues the same work a dozen times.
+      await ensureAdmetQueueIndexes(client.db());
       console.log('✓ Database indexes created/verified');
     } catch (indexErr) {
       console.log('Note: Database indexes already exist or creation failed:', indexErr.message);
@@ -6648,14 +6658,18 @@ app.get('/api/simulation/:simulationKey/admet', ensureMongoConnected, authentica
       });
     }
 
-    // If ADMET data is not present, create a RabbitMQ task for processing
+    // If ADMET data is not present, queue the prediction for the worker to pick up.
     if (!simulation.admet) {
       try {
-        console.log(`No ADMET data found for simulation ${simulationKey}, creating RabbitMQ task...`);
-        
-        const taskResult = await createAdmetTask({
+        console.log(`No ADMET data found for simulation ${simulationKey}, queueing ADMET job...`);
+
+        // ⚠ This used to wrap every SMILES in literal double-quote CHARACTERS
+        // (`.map(s => `"${s.trim()}"`)`), which the transport then nested inside another
+        // array. The worker grew a regex to undo it. The quotes were never in the data —
+        // splitting and trimming is the whole job, and normalizeSmiles does the rest.
+        const taskResult = await createAdmetTask(client.db(), {
           simulationKey: simulation.simulationKey,
-          smiles: simulation.smiles ? simulation.smiles.split(',').map(smile => `"${smile.trim()}"`) : [],
+          smiles: simulation.smiles || [],
           pdbid: simulation.pdbid,
           userId: req.user.username || 'system',
           priority: 'normal'
@@ -6678,10 +6692,10 @@ app.get('/api/simulation/:simulationKey/admet', ensureMongoConnected, authentica
           }
         });
         
-      } catch (rabbitmqError) {
-        console.error('Failed to create ADMET task:', rabbitmqError);
-        
-        // Still return the simulation data even if RabbitMQ task creation fails
+      } catch (queueError) {
+        console.error('Failed to create ADMET task:', queueError);
+
+        // Still return the simulation data even if queueing fails
         return res.json({
           simulationKey: simulation.simulationKey,
           pdbid: simulation.pdbid,
@@ -6692,7 +6706,7 @@ app.get('/api/simulation/:simulationKey/admet', ensureMongoConnected, authentica
           processing: {
             status: 'error',
             message: 'Failed to queue ADMET prediction task',
-            error: rabbitmqError.message
+            error: queueError.message
           }
         });
       }
@@ -6785,22 +6799,26 @@ app.delete('/api/simulation/:simulationKey/admet', ensureMongoConnected, authent
   }
 });
 
+// The two routes below keep their `/api/rabbitmq/*` paths on purpose. The transport under
+// them is now MongoDB, but the paths are what anything already calling them knows; renaming
+// them would break a caller to fix a word. What they report changed; where they live did not.
+
 /**
  * @swagger
  * /api/rabbitmq/health:
  *   get:
- *     summary: Check RabbitMQ connection health
+ *     summary: Check ADMET job queue health (MongoDB-backed; path kept for compatibility)
  *     tags: [Email]
  *     responses:
  *       200:
- *         description: RabbitMQ health status
+ *         description: Queue health status
  *       500:
- *         description: RabbitMQ connection error
+ *         description: Queue backend error
  */
 app.get('/api/rabbitmq/health', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (_req, res) => {
   try {
-    const healthStatus = await rabbitMQHealthCheck();
-    
+    const healthStatus = await admetQueueHealthCheck(client.db());
+
     if (healthStatus.status === 'healthy') {
       res.json(healthStatus);
     } else {
@@ -6820,7 +6838,7 @@ app.get('/api/rabbitmq/health', ensureMongoConnected, authenticateToken, require
  * @swagger
  * /api/rabbitmq/queue-status:
  *   get:
- *     summary: Get ADMET processing queue status
+ *     summary: Get ADMET processing queue status, with counts per state
  *     tags: [Email]
  *     responses:
  *       200:
@@ -6830,8 +6848,11 @@ app.get('/api/rabbitmq/health', ensureMongoConnected, authenticateToken, require
  */
 app.get('/api/rabbitmq/queue-status', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (_req, res) => {
   try {
-    const queueStatus = await getQueueStatus();
-    res.json(queueStatus);
+    // Reaping here is deliberate: the one moment somebody looks at the queue is the moment
+    // a job abandoned by a dead worker should stop being counted as running.
+    const reaped = await reapStaleAdmetJobs(client.db());
+    const queueStatus = await getQueueStatus(client.db());
+    res.json({ ...queueStatus, reaped });
   } catch (error) {
     res.status(500).json({
       error: 'Failed to get queue status',
@@ -6885,7 +6906,7 @@ app.post('/api/admet/create-task', ensureMongoConnected, authenticateToken, requ
       });
     }
     
-    const taskResult = await createAdmetTask({
+    const taskResult = await createAdmetTask(client.db(), {
       simulationKey,
       smiles,
       pdbid,
