@@ -16,16 +16,35 @@ A reboot is survivable for the first time. Repo is clean and fully pushed.
    untouched since 2026-04-02. Anyone who took it can send mail as the company. After changing
    it, update `EMAIL_PASS` in **both** `/root/chem_beo/.env` and `/root/pyxis/server/.env`.
 
-2. **Get the glioblastoma key onto the box, out of band.**
-   `services/glioblastoma-predictor/chemtest_tech_private.key` is untracked (`.gitignore:45`)
-   and `Dockerfile:14` COPYs it, so that build fails on the box until the file is there. It is
-   the only build in `compose.yml` that cannot succeed from a clean clone. Phase 6, not urgent,
-   but it is the one thing a fresh checkout cannot produce.
+…and that is the whole list. The glioblastoma key that was item 2 turned out not to be needed
+at all — see below.
 
 **Two supply-chain choices you may want to make** (neither blocks anything): GitHub reports 25
 Dependabot alerts on `main`, and `bun run lockfiles:refresh` currently surfaces npm audit
 findings. Nothing here reads untrusted input from a vulnerable path, so this is a decision about
 appetite, not an incident.
+
+### ✅ The glioblastoma "key" — closed, and it was never what the docs said
+
+It is a **TLS keypair for `chemtest.tech`**, nothing to do with the science. Left over from when
+that service was deployed standalone at `chemtest.tech` / `152.42.134.22` and terminated HTTPS
+itself (`app.py:362-425`). **The domain has since expired**, so the certificate attests to a
+name nobody controls.
+
+Four documents said it was committed to git and had to be rotated as compromised, and
+`ARRIVAL-RUNBOOK` made it an abort condition. It was never committed — `.gitignore:45` excludes
+it and no blob exists in any branch. The real problem was the inverse: an untracked file that
+`Dockerfile:14` `COPY`'d, making this the only image in `compose.yml` a clean checkout could
+not build.
+
+**Resolved by deleting the requirement, not by moving the key.** Caddy terminates TLS for every
+service on the box, so this one runs plain HTTP on loopback like the rest; `app.py` already
+falls back to HTTP when the files are absent. Nothing to rotate, nothing to transfer, and the
+local copy can be deleted.
+
+Found while checking it: **the compose port mapping was wrong.** It published `8005:8000` while
+the container listens on **5000** — and there is no healthcheck on this service, so a container
+serving nothing would have looked identical to a working one. Now `8005:5000`.
 
 ### ✅ ADMET and the box ingress — done 2026-07-30
 

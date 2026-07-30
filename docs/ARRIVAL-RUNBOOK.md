@@ -282,8 +282,23 @@ captured, the contract has to be reverse-engineered from the client — a much l
 or read it. The single company in Atlas has no such field. Nothing to inventory, and nothing
 stale survives the move. Relevant again only at the Phase 5 release.
 
-**0.4 Rotate `services/glioblastoma-predictor/chemtest_tech_private.key`.** Committed to the
-repo and `COPY`'d into the image. Treat the existing one as compromised — it is in git history.
+**0.4 ~~Rotate `services/glioblastoma-predictor/chemtest_tech_private.key`.~~ ✅ CLOSED
+2026-07-30 — and it was wrong on both counts.**
+
+It was **never committed**: `.gitignore:45` excludes it and no blob for it exists in any
+branch's history. It is a TLS keypair for `chemtest.tech`, left over from when the service was
+deployed standalone at `chemtest.tech` / `152.42.134.22` and terminated HTTPS itself
+(`app.py:362-425`).
+
+**And `chemtest.tech` has since expired** (owner, 2026-07-30), so the key certifies a domain
+nobody controls. There is nothing left to rotate *to*. Delete the local copy whenever
+convenient; do not carry it to the box.
+
+The real problem was the inverse — an untracked local file that `Dockerfile:14` `COPY`'d,
+making this the only image in `compose.yml` that a clean checkout could not build. **The
+Dockerfile no longer copies it.** Caddy terminates TLS for every service on this box
+(`deploy/box/ingress/`), so this one runs plain HTTP on loopback like the rest, and `app.py`
+already falls back to HTTP when the files are absent. Nothing to rotate, nothing to transfer.
 
 **0.5 Look for where ADMET and GROMACS were deployed once — ✅ RESOLVED 2026-07-29.**
 
@@ -1016,10 +1031,11 @@ pins. **That failure never errors — it is just slow forever.**
 
 6.3 GROMACS — needs a `-DGMX_GPU=CUDA` rebuild; the current image is a CPU-only apt build.
 
-6.4 Glioblastoma — **`services/glioblastoma-predictor/chemtest_tech_private.key` is a private
-key committed to the repo and `COPY`'d into the image.** It must be rotated before this
-service is deployed anywhere, and the committed key treated as compromised (it is in git
-history). **If it has not been rotated, do not deploy this service. Stop and report.**
+6.4 Glioblastoma — **no longer gated on anything.** The TLS key this step used to block on was
+never committed and is no longer needed at all; see 0.4. Two things to know instead: the
+container listens on **5000**, not 8000 (the compose mapping said `8005:8000` until
+2026-07-30 and pointed at nothing), and there is no healthcheck, so a broken start looks
+identical to a working one. Curl `/health` through the ingress before believing it.
 
 6.5 Before rebuilding ADMET or GROMACS from scratch: they ran somewhere once, possibly the
 owner's PC, with no surviving record. Ask the operator whether that configuration was found.
@@ -1105,7 +1121,6 @@ machine. Ops notes live in `~/projects/oracle`, not this repo.
   [DOCKING-CONTRACT.md](./DOCKING-CONTRACT.md)** field-for-field. Names and structure must
   match exactly or the frontend breaks silently — scores need not
 - Any port on the box is reachable from off-box that you did not intend (1.4, 3.1)
-- `chemtest_tech_private.key` has not been rotated and you are about to deploy glioblastoma
 - Any instruction anywhere tells you to restore from Oracle's Mongo
 - **Any instruction leads you to migrate the database, replace the API server, or touch
   nginx/TLS/DNS/Stripe on hardware day.** None of those is arrival-day work — Phase 5 ships

@@ -207,15 +207,23 @@ services:
     profiles: ["extras"]
 
   # ── Glioblastoma. Never deployed anywhere. ─────────────────────────────────
-  # ⚠ CORRECTED 2026-07-30. An earlier version of this comment said
-  # services/glioblastoma-predictor/chemtest_tech_private.key was COMMITTED TO GIT and must be
-  # rotated. It is not, and it never was: `.gitignore:45` excludes it and no blob for it exists
-  # in any branch's history. The real problem is the opposite one — the key is an UNTRACKED
-  # local file that `Dockerfile:14` COPYs, so this build FAILS on the box until the key is
-  # transferred there out of band. Do that; do not rotate on the strength of the old comment.
+  # ⚠ RESOLVED 2026-07-30, twice over. This comment previously said
+  # services/glioblastoma-predictor/chemtest_tech_private.key was COMMITTED TO GIT and had to
+  # be rotated before the service could run. It was never committed — `.gitignore:45` excludes
+  # it and no blob exists in any branch. It is a TLS keypair for chemtest.tech, from when this
+  # service was deployed standalone and terminated HTTPS itself — and that domain has since
+  # EXPIRED (owner, 2026-07-30), so the certificate attests to a name nobody controls.
+  #
+  # The Dockerfile no longer wants it. Caddy terminates TLS for everything on this box, so the
+  # service runs plain HTTP on loopback like every other one here, and the build no longer
+  # depends on a file a clean checkout cannot produce. Nothing to transfer, nothing to rotate.
+  # ⚠ The container port is 5000, not 8000. app.py ends in `app.run(..., port=5000)` and
+  # its Dockerfile has always said `EXPOSE 5000`; this mapping said 8005:8000, so the
+  # published port pointed at nothing listening. It would have come up "healthy" — there is
+  # no healthcheck — and 404'd on arrival day.
   glioblastoma:
     <<: *base
     build: ../../services/glioblastoma-predictor
     container_name: box-glioblastoma
-    ports: ["${BIND_ADDR:-127.0.0.1}:8005:8000"]
-    profiles: ["glioblastoma-key-present"]
+    ports: ["${BIND_ADDR:-127.0.0.1}:8005:5000"]
+    profiles: ["extras"]

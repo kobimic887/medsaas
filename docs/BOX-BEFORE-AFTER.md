@@ -324,9 +324,11 @@ ships *before* the box — see [BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md) §2.
 17. CORS, `FRONTEND_URL`/`BASE_URL`, and `VITE_API_BASE_URL` for the 83 build — the dashboard
     is about to start calling a different origin. Mind the 401 auto-logout invariant: a CORS
     preflight failure must not read as "dead session".
-18. First-time deployments: RabbitMQ, ADMET, GROMACS (CUDA rebuild), glioblastoma. **Rotate
-    `chemtest_tech_private.key` before the glioblastoma image goes anywhere** — it is
-    committed to the repo and baked into the image.
+18. First-time deployments: ADMET, GROMACS (CUDA rebuild), glioblastoma. ~~RabbitMQ~~ — the
+    broker is retired; ADMET polls a Mongo collection (2026-07-30). ~~**Rotate
+    `chemtest_tech_private.key`**~~ — ✅ closed 2026-07-30, and it was wrong: the key was never
+    committed, it is a TLS keypair for the now-**expired** `chemtest.tech`, and the Dockerfile
+    no longer wants it. Caddy terminates TLS for every box service. ARRIVAL-RUNBOOK 0.4.
 19. **Decommission this project off Oracle — last, and only once the box is proven.**
 
 ### Oracle cleanup — after the migration, not before
