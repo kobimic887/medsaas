@@ -66,14 +66,19 @@ BOX_DOMAIN {
 
 	# DiffDock. The path is upstream's, unchanged, so the cutover is a hostname swap.
 	# DIFFDOCK_API_URL=https://BOX_DOMAIN/molecular-docking/diffdock/generate
+	# ⚠ No timeout directive here, deliberately. This carried
+	#     transport http { read_timeout 600s; write_timeout 600s }
+	# which a review flagged as invalid — those two subdirectives belong to `transport
+	# fastcgi`, not `transport http` — and it could not be checked here because Caddy is not
+	# installed on the dev machine. It is also unnecessary: Caddy's reverse_proxy applies no
+	# response timeout unless one is configured, so plain `reverse_proxy` already waits as
+	# long as DiffDock takes. A 100-pose dock is slow and the platform itself waits 600 s.
+	#
+	# If a limit is ever wanted, the correct http-transport knob is `response_header_timeout`.
+	# `install.sh` runs `caddy validate` before reloading, so a bad directive fails safe — but
+	# it fails on arrival day, which is the wrong day to find out.
 	handle /molecular-docking/* {
-		reverse_proxy 127.0.0.1:8002 {
-			# A 100-pose dock is not fast and the platform waits up to 600 s for it.
-			transport http {
-				read_timeout 600s
-				write_timeout 600s
-			}
-		}
+		reverse_proxy 127.0.0.1:8002
 	}
 
 	# Tanimoto. The platform treats this as a BASE and appends /health and /v1/... , so the

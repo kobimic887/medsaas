@@ -104,6 +104,25 @@ await test('a raw SMILES is left alone', () => {
   assert.deepEqual(normalizeSmiles('CC(=O)Oc1ccccc1C(=O)O'), ['CC(=O)Oc1ccccc1C(=O)O']);
 });
 
+await test('a raw SMILES using %NN ring closures is NOT decoded', () => {
+  // The first version of this decoder only round-trip-checked, and `%NN` ring closures
+  // round-trip perfectly. Verified against this repo's @rdkit/rdkit: C%10CCCCC%10 is valid
+  // (canonically C1CCCCC1) and decoding turned it into a control character — parse failure —
+  // while C%20CCCCC%20 decoded to "C CCCCC " and parsed as plain "C". That second one is the
+  // original bug wearing the other face: a silently different molecule.
+  for (const raw of ['C%10CCCCC%10', 'C%11CCCCC%11', 'C%20CCCCC%20', 'C%25CCCCC%25', 'C%99CCCCC%99']) {
+    assert.deepEqual(normalizeSmiles(raw), [raw], `${raw} must survive untouched`);
+  }
+});
+
+await test('the decoded result must be entirely SMILES-legal', () => {
+  // The plausibility check, stated directly: a decode that yields a space, a control
+  // character or a surviving bare `%` consumed a ring closure, not an escape.
+  assert.equal(decodeStoredSmiles('C%20C'), 'C%20C');
+  assert.equal(decodeStoredSmiles('C%25C'), 'C%25C');
+  assert.equal(decodeStoredSmiles('C%23C'), 'C#C');
+});
+
 await test('a malformed escape is not mangled', () => {
   // decodeURIComponent throws on this; the value must pass through untouched rather than
   // taking down the enqueue.
@@ -241,6 +260,24 @@ await test('deleting the result re-queues the job so a recompute actually happen
   assert.equal(stored.revivals, 0);
   assert.equal(stored.result, null);
   assert.ok(stored.availableAt <= new Date(), 'and claimable immediately, not after a backoff');
+});
+
+await test('a RUNNING job is never reset out from under its worker', async () => {
+  // Clearing workerId/startedAt mid-prediction lets the worker finish and write its now
+  // stale result over the fresh state — silently undoing the very reset that was requested.
+  await reset();
+  await createAdmetTask(db, { simulationKey: 'sim-run', smiles: 'CCO' });
+  await jobs.updateOne(
+    { simulationKey: 'sim-run' },
+    { $set: { status: 'running', workerId: 'box:1', heartbeatAt: new Date(), attempts: 1 } },
+  );
+
+  const { reset: didReset } = await resetAdmetJob(db, 'sim-run');
+  assert.equal(didReset, false);
+
+  const stored = await jobs.findOne({ simulationKey: 'sim-run' });
+  assert.equal(stored.status, 'running');
+  assert.equal(stored.workerId, 'box:1');
 });
 
 await test('a new job is claimable at once', async () => {

@@ -165,3 +165,32 @@ def test_reaping_never_touches_a_job_that_is_merely_old_and_queued(queue, collec
     document["createdAt"] = utcnow() - timedelta(days=30)
     assert queue.reap_stale() == 0
     assert collection.by_key("sim1")["status"] == QUEUED
+
+
+def test_a_worker_that_lost_its_job_does_not_overwrite_the_reset(queue, collection) -> None:
+    """DELETE mid-prediction must not be silently undone.
+
+    The reaper, or an operator clearing the result, can take a job back while a worker is
+    still predicting. If complete() did not check ownership that worker would write its
+    stale result over the fresh state and mark it done — reversing exactly the reset that
+    was just requested.
+    """
+    document = _queued(collection)
+    job = queue.claim()
+    assert job is not None
+
+    # Somebody resets it while the prediction is still running.
+    document.update(status=QUEUED, workerId=None, attempts=0, result=None)
+
+    assert queue.complete(job, {"engine": "stub"}) == "lost"
+
+    stored = collection.by_key("sim1")
+    assert stored["status"] == QUEUED, "the reset must survive"
+    assert stored.get("result") is None
+
+
+def test_completing_a_job_this_worker_still_owns_succeeds(queue, collection) -> None:
+    _queued(collection)
+    job = queue.claim()
+    assert queue.complete(job, {"engine": "stub"}) == "done"
+    assert collection.by_key("sim1")["status"] == "done"

@@ -6920,14 +6920,35 @@ app.post('/api/admet/create-task', ensureMongoConnected, authenticateToken, requ
       });
     }
     
+    // ⚠ This route took simulationKey straight from the body and never checked the caller
+    // owned it. Any active user could queue work against another company's simulation —
+    // and, because the worker PUTs its result to /api/simulation/:key/admet, could cause a
+    // write into that tenant's record. Pre-dates the Mongo queue; the queue made it live.
+    //
+    // The SMILES now come from the stored simulation rather than the request body for the
+    // same reason: a caller-supplied molecule would be predicted and then written into a
+    // record it does not describe.
+    const simulationLogs = client.db().collection('simulation_logs');
+    const owned = await simulationLogs.findOne(
+      { simulationKey, ...buildTenantFilter(req.user) },
+      { projection: { simulationKey: 1, smiles: 1, pdbid: 1 } }
+    );
+
+    if (!owned) {
+      return res.status(404).json({
+        error: 'Simulation not found',
+        simulationKey
+      });
+    }
+
     const taskResult = await createAdmetTask(client.db(), {
-      simulationKey,
-      smiles,
-      pdbid,
+      simulationKey: owned.simulationKey,
+      smiles: owned.smiles || smiles,
+      pdbid: owned.pdbid ?? pdbid,
       userId: req.user.username,
       priority
     });
-    
+
     res.json({
       message: 'ADMET task created successfully',
       ...taskResult,

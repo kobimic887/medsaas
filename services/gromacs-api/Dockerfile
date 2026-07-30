@@ -100,6 +100,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app.py .
+# ⚠ This line has referenced `templates/` since before the CUDA rewrite, and the directory
+# did not exist in any commit — the four MDP files sat flattened at the top level as
+# `templates_em.mdp` … so the image could never build. Restored 2026-07-30 to
+# templates/{em,npt,nvt,md}.mdp, which is also what README.md documents and what
+# `GET /templates/em.mdp` serves (app.py:35 reads WORK_DIR/.templates).
 COPY templates/ /data/.templates/
 RUN mkdir -p /data
 

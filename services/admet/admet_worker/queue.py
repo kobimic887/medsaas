@@ -125,10 +125,18 @@ class JobQueue:
             {"$set": {"heartbeatAt": now, "updatedAt": now}},
         )
 
-    def complete(self, job: Job, result: dict) -> None:
+    def complete(self, job: Job, result: dict) -> str:
+        """Record a finished prediction — but only if this worker still owns the job.
+
+        ⚠ The filter is not decoration. A job can stop being ours mid-prediction: the reaper
+        can take it back after a missed heartbeat, or an operator can clear it through
+        DELETE /api/simulation/:key/admet. Without `workerId` in the filter this worker would
+        then write its stale result over the fresh state and mark it done — silently undoing
+        exactly the reset that was just requested. Losing the write is the correct outcome.
+        """
         now = utcnow()
-        self._jobs.update_one(
-            {"_id": job.id},
+        outcome = self._jobs.update_one(
+            {"_id": job.id, "status": RUNNING, "workerId": self._worker_id},
             {
                 "$set": {
                     "status": DONE,
@@ -139,6 +147,13 @@ class JobQueue:
                 }
             },
         )
+        if getattr(outcome, "modified_count", 0):
+            return DONE
+        logger.warning(
+            "job %s was taken away mid-prediction; result discarded rather than overwriting",
+            job.simulation_key,
+        )
+        return "lost"
 
     def fail(self, job: Job, message: str) -> str:
         """Requeue for another attempt, or park in `error` when attempts run out.

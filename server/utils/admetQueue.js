@@ -74,10 +74,31 @@ const VALID_PRIORITIES = new Set(['low', 'normal', 'high']);
  * in storage IS an encoded `#`. A ring closure numbered 23 would also require 23 rings open
  * at once, which does not occur in this domain.
  *
- * The round-trip check below keeps that judgement narrow: a string is only decoded when
- * re-encoding the result reproduces the original exactly. A raw SMILES with no escapes is
- * left alone.
+ * ── The guard, and why the obvious one is not enough ───────────────────────────────────
+ * This first shipped with only a round-trip check — decode, then require that re-encoding
+ * reproduces the original. That is NOT sufficient, and a review caught it: `%NN` ring
+ * closures round-trip perfectly, so the guard passed them straight through. Measured with
+ * this repo's own @rdkit/rdkit, on SMILES that are valid *as written*:
+ *
+ *   C%10CCCCC%10  (= C1CCCCC1)  ->  decoded to a control character  ->  parse failure
+ *   C%20CCCCC%20  (= C1CCCCC1)  ->  decoded to "C CCCCC "           ->  parses as "C"
+ *
+ * The second is the original bug wearing the other face: a silently different molecule.
+ *
+ * So the decode must also be checked for PLAUSIBILITY. A percent-decode that was really a
+ * URL escape yields ordinary SMILES characters; one that ate a ring-closure label yields a
+ * control character, a space, or a leftover bare `%`. Requiring the result to be entirely
+ * SMILES-legal rejects every corruption case above while accepting every value actually
+ * observed in production.
+ *
+ * A raw SMILES with no escapes is left alone before any of this runs.
  */
+
+// Everything legal in a SMILES string, plus the two separators this platform joins on.
+// Deliberately excludes `%` — a surviving percent sign means the decode consumed a ring
+// closure rather than an escape — and excludes whitespace and control characters.
+const SMILES_CHARSET = /^[A-Za-z0-9@+\-[\]()=#$:/\\.*,;]+$/;
+
 export function decodeStoredSmiles(value) {
   if (typeof value !== 'string' || !value.includes('%')) return value;
   let decoded;
@@ -88,7 +109,8 @@ export function decodeStoredSmiles(value) {
     return value;
   }
   if (decoded === value) return value;
-  return encodeURIComponent(decoded) === value ? decoded : value;
+  if (encodeURIComponent(decoded) !== value) return value;
+  return SMILES_CHARSET.test(decoded) ? decoded : value;
 }
 
 /**
@@ -257,7 +279,11 @@ export async function resetAdmetJob(db, simulationKey) {
   if (!simulationKey || typeof simulationKey !== 'string') return { reset: false };
   const now = new Date();
   const result = await jobsCollection(db).updateOne(
-    { simulationKey },
+    // ⚠ Never reset a RUNNING job. Doing so clears workerId/startedAt while a worker is
+    // still predicting; that worker then finishes and writes its now-stale result over the
+    // fresh state, so a DELETE issued mid-prediction would silently restore exactly the
+    // data it was meant to remove. A running job is left to finish or to be reaped.
+    { simulationKey, status: { $ne: ADMET_JOB_STATUS.RUNNING } },
     {
       $set: {
         status: ADMET_JOB_STATUS.QUEUED,

@@ -11,32 +11,26 @@ services:
       timeout: 5s
       retries: 5
 
-  rabbitmq:
-    image: rabbitmq:3-management
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-    volumes:
-      - rabbitmq-data:/var/lib/rabbitmq
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
+  # ⚠ RabbitMQ is gone. ADMET jobs live in the `admet_jobs` collection in Mongo — see
+  # server/utils/admetQueue.js and docs/BOX-ARCHITECTURE.md §5. This service still passed
+  # RABBITMQ_URL / ADMET_QUEUE_NAME / API_BASE_URL, none of which the worker reads any more,
+  # and depended on a broker that no longer belongs here. It would not have failed with a
+  # clear configuration error; it would have crash-looped on a missing MONGODB_URI.
   admet-worker:
     profiles: ["workers"]
-    build: ./services/admet
+    build:
+      context: ./services/admet
+      # The default target is the CUDA image, which is x86_64-only and needs a GPU. Local
+      # development gets the wrapper, with the deterministic stub predictor.
+      target: test
     environment:
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
-      ADMET_QUEUE_NAME: ${ADMET_QUEUE_NAME:-admet_processing_queue}
-      API_BASE_URL: ${BASE_URL:-http://host.docker.internal:3000}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017/medsaas}
+      ADMET_CALLBACK_URL: ${BASE_URL:-http://host.docker.internal:3000}
       ADMET_CALLBACK_SECRET: ${ADMET_CALLBACK_SECRET:-}
+      ADMET_ENGINE: ${ADMET_ENGINE:-stub}
+    command: ["python", "-m", "admet_worker"]
     depends_on:
-      rabbitmq:
+      mongo:
         condition: service_healthy
     restart: unless-stopped
 
@@ -81,5 +75,4 @@ services:
 
 volumes:
   mongo-data:
-  rabbitmq-data:
   gromacs-data:
