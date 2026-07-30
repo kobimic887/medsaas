@@ -1,0 +1,107 @@
+# Box ingress. One HTTPS front door for every compute service.
+#
+# Substitute BOX_DOMAIN and ADMIN_EMAIL before installing — see install.sh, which does it.
+#
+# ── Why this exists at all ───────────────────────────────────────────────────
+# The services behind it are UNAUTHENTICATED compute on a EUR 24,727 machine. There is no
+# login on :8000; whoever reaches the port can dock. So something has to (a) stop everyone
+# else reaching them and (b) stop the traffic being readable in transit. The firewall does
+# the first. This does the second.
+#
+# Both are needed, and neither substitutes for the other:
+#   · firewall only, plain HTTP — anyone on the path between Amsterdam and 83 reads every
+#     protein and ligand and can rewrite the docking results coming back. TCP source
+#     addresses are hard to spoof, so the firewall is real access control, but it is not
+#     confidentiality and it is not integrity.
+#   · TLS only, no firewall — the whole internet can dock on your GPUs. chem_beo's open
+#     /api/diffdock/generate is exactly how the NVIDIA quota got drained; this would be the
+#     same mistake with more expensive hardware.
+#
+# It is also a true 1:1 with what it replaces. Today 83 calls
+# `https://services.asinex.com:58000/...` over the open internet, so keeping HTTPS means
+# rollback is putting the Asinex hostname back in one variable — nothing else changes.
+#
+# ── Why Caddy rather than nginx ──────────────────────────────────────────────
+# Automatic Let's Encrypt: issuance, renewal, and OCSP with no certbot timer, no renewal
+# hook, and no cron job that silently stops working. That is the entire reason. nginx would
+# do the proxying just as well and then need a second moving part to keep the cert alive —
+# on a machine that has pick-up warranty and no on-site service, fewer moving parts wins.
+#
+# ── Why it runs on the HOST, not in Docker ───────────────────────────────────
+# ⚠ Docker writes its own iptables rules and a published container port BYPASSES ufw. A
+# Caddy container with `ports: 443:443` would be reachable from the entire internet no
+# matter what ufw says, and `ufw status` would still read "deny". Running Caddy under
+# systemd on the host keeps :443 inside the firewall's jurisdiction, where it belongs.
+# The compute services stay bound to 127.0.0.1 and are never published at all.
+
+{
+	email ADMIN_EMAIL
+	# No admin API. It listens on localhost:2019 by default and can reconfigure the server.
+	admin off
+}
+
+BOX_DOMAIN {
+	encode zstd gzip
+
+	log {
+		output file /var/log/caddy/box.log {
+			roll_size 50MiB
+			roll_keep 5
+		}
+		# Requests carry ~100 KB of protein. Logging bodies is not an option here.
+		format json
+	}
+
+	# Docking — the reason the box exists.
+	# ASINEX_DOCKING_API_URL=https://BOX_DOMAIN/docking
+	handle /docking* {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	# SMILES -> SDF. Down in production since 2026-06-04, which is why DiffDock is broken.
+	# SDF_CONVERTER_URL=https://BOX_DOMAIN/convertSTR
+	handle /convertSTR* {
+		reverse_proxy 127.0.0.1:8001
+	}
+
+	# DiffDock. The path is upstream's, unchanged, so the cutover is a hostname swap.
+	# DIFFDOCK_API_URL=https://BOX_DOMAIN/molecular-docking/diffdock/generate
+	handle /molecular-docking/* {
+		reverse_proxy 127.0.0.1:8002 {
+			# A 100-pose dock is not fast and the platform waits up to 600 s for it.
+			transport http {
+				read_timeout 600s
+				write_timeout 600s
+			}
+		}
+	}
+
+	# Tanimoto. The platform treats this as a BASE and appends /health and /v1/... , so the
+	# prefix is stripped here rather than expected upstream.
+	# TANIMOTO_API_BASE=https://BOX_DOMAIN/tanimoto
+	handle_path /tanimoto/* {
+		reverse_proxy 127.0.0.1:8003
+	}
+
+	# GROMACS. Phase 6.
+	# GROMACS_API_BASE=https://BOX_DOMAIN/gromacs
+	handle_path /gromacs/* {
+		reverse_proxy 127.0.0.1:8006
+	}
+
+	# Glioblastoma. Phase 6, and gated on its key reaching the box.
+	# GLIOBLASTOMA_API_BASE=https://BOX_DOMAIN/glioblastoma
+	handle_path /glioblastoma/* {
+		reverse_proxy 127.0.0.1:8005
+	}
+
+	# Liveness for the operator. Deliberately says nothing about what is behind it.
+	handle /ingress-health {
+		respond "ok" 200
+	}
+
+	# Anything else is not a service. Do not leak which paths exist.
+	handle {
+		respond "not found" 404
+	}
+}
