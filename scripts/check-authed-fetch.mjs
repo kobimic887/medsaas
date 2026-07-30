@@ -26,6 +26,9 @@ const PUBLIC_ROUTES = [
   '/mol-price-stats',
   '/mol-price/search',
   '/signin',
+  // Public registration. `POST /api/signup` has no authenticateToken in front of it — the
+  // caller has no account yet, which is the point. Gated by ALLOW_PUBLIC_SIGNUP (default on).
+  '/signup',
   '/demo-session',
   '/password-reset/request',
   '/password-reset/confirm',

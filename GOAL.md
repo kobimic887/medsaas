@@ -28,6 +28,12 @@ paraphrasing it is how the scope drifted in the first place:
 3. **De-SaaS it back to Pyxis-only,** and point it at the future box URL. One product, one
    company. ✅ Applied — see [`docs/PYXIS-ONLY.md`](docs/PYXIS-ONLY.md).
 
+   ⚠ **"Desaasified" means BRANDING. It does not mean removing sign-up or the ability to
+   buy.** Clarified by the owner on 2026-07-30, after the 2026-07-29 pass read it the other
+   way and deleted the sign-up page, the paid-plans page and open registration. Both pages
+   are **restored**, and public signup is on by default. One company's identity, yes. A
+   product nobody can join or pay for, no.
+
 4. **Best experience for the users.** This is the actual objective. The other three serve it.
 
 ## How to work on this

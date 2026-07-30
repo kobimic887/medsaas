@@ -8,7 +8,8 @@ import {
   CubeTransparentIcon,
   CloudIcon,
   ArrowPathIcon,
-  BuildingOfficeIcon
+  BuildingOfficeIcon,
+  CreditCardIcon
 } from "@heroicons/react/24/solid";
 import { lazy } from "react";
 
@@ -37,6 +38,8 @@ const DeepSimilarity = lazy(() => import("@/pages/dashboard/deep-similarity"));
 
 
 const SignIn = lazy(() => import("@/pages/auth/sign-in"));
+const SignUp = lazy(() => import("@/pages/auth/sign-up"));
+const PaidPlans = lazy(() => import("@/pages/dashboard/paidplans"));
 
 import { EyeIcon } from "@heroicons/react/24/outline";
 
@@ -85,9 +88,6 @@ export const routes = [
         path: "/notifications",
         element: <Notifications />,
       },
-      // No self-serve plans page. Credits are topped up by an admin from Company
-      // Admin (docs/PYXIS-ONLY.md). The Stripe webhook and the whole credit-grant
-      // path are untouched — only the buy-it-yourself surface is gone.
       {
         icon: <BeakerIcon {...icon} />,
         name: "RdKit Visualiser",
@@ -126,6 +126,12 @@ export const routes = [
         element: <GlioblastomaPredict />,
         hideFromMenu: true,
       },
+      {
+        icon: <CreditCardIcon {...icon} />,
+        name: "Plans & Credits",
+        path: "/paid-plans",
+        element: <PaidPlans />,
+      },
     ],
   },
   {
@@ -138,8 +144,13 @@ export const routes = [
         element: <SignIn />,
         hideFromMenu: true,
       },
-      // No sign-up route. Accounts are invite-only (docs/PYXIS-ONLY.md) — an admin
-      // creates them from Company Admin, and POST /api/signup refuses by default.
+      {
+        icon: <ServerStackIcon {...icon} />,
+        name: "sign up",
+        path: "/sign-up",
+        element: <SignUp />,
+        hideFromMenu: true,
+      },
     ],
   },
 ];

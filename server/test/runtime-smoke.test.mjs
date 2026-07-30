@@ -360,13 +360,16 @@ async function main() {
     });
     check('reset confirm with weak password returns 400', weakPass.status === 400, `(got ${weakPass.status})`);
 
-    // --- Test 5b: public signup is closed ---
-    // This install is one product for one company (docs/PYXIS-ONLY.md). An open
-    // /api/signup does not just create a user, it creates a COMPANY and makes the
-    // caller its owner. The smoke env sets no ALLOW_PUBLIC_SIGNUP, which is the
-    // production configuration, so the route must refuse — and refuse with 403,
-    // because the client logs itself out on any same-origin 401.
-    console.log('\nTest 5b — public signup is closed:');
+    // --- Test 5b: public signup is OPEN by default, and closable ---
+    // Inverted 2026-07-30. This block used to assert the opposite, because "de-SaaS" had
+    // shut self-serve registration off by default — which meant a deploy that set no
+    // ALLOW_PUBLIC_SIGNUP silently had no signup at all. The owner's instruction was about
+    // one company's BRANDING, not about removing the ability to register, so the default is
+    // now on and the test guards that a fresh deploy behaves like the product.
+    //
+    // Signing up does not just create a user, it creates a COMPANY and makes the caller its
+    // owner, so the close-it-deliberately path is asserted too.
+    console.log('\nTest 5b — public signup is open by default:');
     const signupRes = await fetch(`${BASE}/api/signup`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -374,27 +377,21 @@ async function main() {
         organization: 'Someone Elses Lab',
       }),
     });
-    const signupBody = await signupRes.json().catch(() => ({}));
-    check('signup returns 403, not 200', signupRes.status === 403, `(got ${signupRes.status})`);
+    check('signup succeeds with no ALLOW_PUBLIC_SIGNUP set', signupRes.status === 200 || signupRes.status === 201, `(got ${signupRes.status})`);
     check(
-      'signup 403 is not the client-logout 401',
+      'signup is never the client-logout 401',
       signupRes.status !== 401,
       `(got ${signupRes.status})`
     );
     check(
-      'signup error points at the invite path',
-      typeof signupBody.error === 'string' && /invitation|administrator/i.test(signupBody.error),
-      `(got ${JSON.stringify(signupBody.error)})`
+      'the account exists',
+      (await users.findOne({ username: 'walkin' })) !== null,
+      '(no walk-in account was created)'
     );
     check(
-      'no user was created',
-      (await users.findOne({ username: 'walkin' })) === null,
-      '(a walk-in account exists)'
-    );
-    check(
-      'no company was created',
-      (await mongo.db().collection('companies').findOne({ name: 'Someone Elses Lab' })) === null,
-      '(a walk-in company exists)'
+      'and it got its own company',
+      (await mongo.db().collection('companies').findOne({ name: 'Someone Elses Lab' })) !== null,
+      '(no walk-in company was created)'
     );
 
     // --- Test 5c: the invite path still creates a usable account ---

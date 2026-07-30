@@ -84,9 +84,17 @@ const MONGODB_URI = process.env.MONGODB_URI;
 const APP_BASE_URL = (process.env.BASE_URL || '').replace(/\/$/, '');
 const FRONTEND_URL = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
 const PUBLIC_APP_URL = FRONTEND_URL || APP_BASE_URL;
-// Public signup is CLOSED unless explicitly opted into. See POST /api/signup for why.
-// Opt in with ALLOW_PUBLIC_SIGNUP=true; anything else, including unset, leaves it shut.
-const PUBLIC_SIGNUP_ENABLED = String(process.env.ALLOW_PUBLIC_SIGNUP || '').trim().toLowerCase() === 'true';
+// Public signup is OPEN by default.
+//
+// ⚠ This default was inverted on 2026-07-29 as part of "de-SaaS", which shut self-serve
+// registration off on a deploy that set no such variable — so it went dark silently, which
+// is not what the owner meant by the word. Corrected 2026-07-30 on their explicit
+// instruction: they meant one company's *branding*, not removing the ability to sign up.
+//
+// Default-on matters more than the flag: a fresh deploy that forgets the variable must
+// behave like the product, not like a locked-down variant nobody chose. Close it
+// deliberately with ALLOW_PUBLIC_SIGNUP=false.
+const PUBLIC_SIGNUP_ENABLED = String(process.env.ALLOW_PUBLIC_SIGNUP ?? 'true').trim().toLowerCase() !== 'false';
 const TANIMOTO_API_BASE = (process.env.TANIMOTO_API_BASE || 'http://151.145.91.17:8000').replace(/\/$/, '');
 const SDF_CONVERTER_URL = process.env.SDF_CONVERTER_URL || 'http://83.229.87.94:8001/convertSTR';
 // Default ligand catalog/docking endpoints. Companies override these per-company
@@ -1995,7 +2003,11 @@ app.post('/create-checkout-session-onetime', checkoutRateLimit, ensureMongoConne
 //
 // Not to be confused with /create-checkout-session-onetime below, which the compound
 // cart still calls for every active user. That is the e-shop, and it stays open.
-app.post('/create-checkout-session', checkoutRateLimit, ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (req, res) => {
+// Any active user may buy a plan for themselves. `requireCompanyAdmin` was added here on
+// 2026-07-29 alongside the removal of the plans page; with that page restored it would mean
+// a member sees "Plans & Credits", picks one, and gets a 403 — so it is back to
+// requireActiveUser, which is what the cart checkout below has always used.
+app.post('/create-checkout-session', checkoutRateLimit, ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const { planName, isYearly } = req.body;
     const plan = getPlan(planName);

@@ -1,16 +1,28 @@
 # Pyxis only — retiring the SaaS surface
 
-**Status: §5 steps 1–5 are APPLIED (2026-07-29).** This is no longer a plan for the code
+> ## ⚠ REVERSED IN PART, 2026-07-30
+>
+> The owner clarified that **"desaasified" meant BRANDING** — one company's identity —
+> **not removing the ability to sign up or to buy credits.** This document's steps 2 and 5
+> read it the other way and went too far.
+>
+> **Restored:** the sign-up page, the paid-plans page, public registration (default **on**),
+> and `/create-checkout-session` back to `requireActiveUser`.
+> **Correctly retired, and staying retired:** the seven marketing pages.
+>
+> Steps 2 and 5 in the table below are struck through. Do not re-apply them.
+
+**Status: §5 steps 1, 3, 4 are APPLIED (2026-07-29); 2 and 5 were REVERSED (2026-07-30).** This is no longer a plan for the code
 half. Step 6 (verify the remaining product end to end) is open, and steps 7–8 belong to the
 box migration and are untouched.
 
 | §5 step | State | Commit |
 |---|---|---|
 | 1. Tag `saas-surface-v1` | **done** — local tag, not pushed | tag |
-| 2. Close public signup | **done** — 403 by default, `ALLOW_PUBLIC_SIGNUP` to reopen | `1241e1a` |
+| ~~2. Close public signup~~ | **REVERSED 2026-07-30** — signup is open by default again | `1241e1a`, reversed |
 | 3. Rebrand to Pyxis Discovery | **done** — incl. inverting the brand guard | `5b57937` |
 | 4. Remove marketing routes, then pages | **done** — routes `1901596`, files `a4c6a37` | |
-| 5. Remove paid-plans, gate checkout | **done** — plan checkout now admin-only | `f6b04f4` |
+| ~~5. Remove paid-plans, gate checkout~~ | **REVERSED 2026-07-30** — page restored, checkout is `requireActiveUser` | `f6b04f4`, reversed |
 | 6. Verify end to end | **open** — see the UX parity pass, below | |
 | 7–8. Deploy to 83, CORS | **untouched** — arrival-day work | |
 

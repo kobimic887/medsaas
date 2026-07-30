@@ -10,3 +10,4 @@ export { default as ProteinFolding } from "@/pages/dashboard/protein-folding";
 export * from "@/pages/dashboard/deep-similarity";
 export { default as GromacsMd } from "@/pages/dashboard/gromacs-md";
 export { default as GlioblastomaPredict } from "@/pages/dashboard/glioblastoma-predict";
+export { default as PaidPlans } from "@/pages/dashboard/paidplans";
