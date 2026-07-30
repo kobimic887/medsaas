@@ -122,6 +122,10 @@ services:
       retries: 3
 
   # ── DiffDock. Asinex-hosted today; dies with them. ─────────────────────────
+  # Built 2026-07-30 from the captured contract in ./diffdock/reference — see
+  # ./diffdock/README.md. Weights are NOT in the image: run ./diffdock/fetch-weights.sh once
+  # to populate /srv/models/diffdock before the first start, or every cold container downloads
+  # 124 MB inside a user's dock.
   diffdock:
     <<: [*base, *gpu1]
     build: ./diffdock
@@ -202,12 +206,15 @@ services:
     profiles: ["extras"]
 
   # ── Glioblastoma. Never deployed anywhere. ─────────────────────────────────
-  # ⚠ services/glioblastoma-predictor/chemtest_tech_private.key is COMMITTED TO GIT and
-  # COPY'd into the image. Treat it as compromised — it is in the history. ROTATE IT
-  # BEFORE THIS SERVICE RUNS ANYWHERE. Left behind a profile so it cannot start by accident.
+  # ⚠ CORRECTED 2026-07-30. An earlier version of this comment said
+  # services/glioblastoma-predictor/chemtest_tech_private.key was COMMITTED TO GIT and must be
+  # rotated. It is not, and it never was: `.gitignore:45` excludes it and no blob for it exists
+  # in any branch's history. The real problem is the opposite one — the key is an UNTRACKED
+  # local file that `Dockerfile:14` COPYs, so this build FAILS on the box until the key is
+  # transferred there out of band. Do that; do not rotate on the strength of the old comment.
   glioblastoma:
     <<: *base
     build: ../../services/glioblastoma-predictor
     container_name: box-glioblastoma
     ports: ["${BIND_ADDR:-127.0.0.1}:8005:8000"]
-    profiles: ["glioblastoma-key-rotated"]
+    profiles: ["glioblastoma-key-present"]
