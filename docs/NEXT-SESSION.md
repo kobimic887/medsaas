@@ -1065,3 +1065,45 @@ fetch and the OpenMM prep, and that is the one latency change a user will actual
 > The box has not arrived. I want to ship Release A — the server swap — before it does.
 > Start with the gates in NEXT-SESSION.md §1 and tell me which are done and which are not.
 > SSH to production is `root@83.229.87.94`; I will give you the password.
+
+---
+
+## 🚧 2026-07-30 — marketing site restored in the repo, deliberately NOT deployed
+
+**Do not deploy HEAD to 83 until the palette is fixed.** `client/src/App.jsx`'s catch-all now
+points at `/main/mainHome`, so shipping as-is makes an unfinished page the product's front door.
+
+**Why it came back:** the owner's rule is *everything from chem_beo (the original Pyxis) stays*.
+Checked directly rather than assumed — `/root/material-tailwind-dashboard-react/src/pages/main/`
+on 83 holds all of them: `mainhome`, `services`, `about-us`, `contact-us`, `insights`,
+`paidplansdescription`, **and `blog`**, which nothing in this repo had counted. So they are
+chem_beo's, not a MedSaaS invention, and removing them was wrong.
+
+Restored from tag `saas-surface-v1`, rebranded (20 × `ChemBench` → Pyxis Discovery,
+`contact@chembench.io` → `contact@pyxis-discovery.com`), plus the `mainpage` layout, the
+marketing navbar, and two modules the pages import that had also been deleted —
+`client/src/context/blog.jsx` and `client/src/data/servicesImages.js`. `bun run ci` passes.
+
+**Two things left before this can ship:**
+
+1. **12 hardcoded old-palette classes** (`text-purple-300`, `bg-purple-500`, `shadow-purple-500`,
+   `from-purple-500`, …) across `client/src/pages/main/`. The brand mark on the landing page
+   renders **violet**, not Pyxis citron. Grep for `(purple|violet|indigo|fuchsia)-[0-9]+` under
+   `client/src/pages/main`, `layouts/mainpage.jsx` and `widgets/layout/main-navbar.jsx`.
+2. **The hero body renders blank** at `/main/mainHome` — only the nav and the "Now in Open Beta"
+   pill paint. Unverified cause; likely scroll/intersection-triggered animation, or content that
+   depends on something else that was deleted. Look before assuming it is the palette.
+
+Until both are done, either fix them or point the catch-all back at `/auth/sign-in`.
+
+### ✅ Deployed and live: `6e7fe9d`
+
+Sign-up and paid plans are back on `app.pyxis-discovery.com`. `/auth/sign-up`,
+`/dashboard/paid-plans`, `/auth/sign-in` and `/health` all 200; `POST /api/signup` returns a
+validation error rather than 403, so public registration is genuinely open. `pyxis-web` active,
+**0 restarts**. Rollback archive at `/root/pyxis-rollback-22f061c.tgz` on the box.
+
+That deploy also carried the ADMET Mongo queue **producer** and the cross-tenant fix for
+`POST /api/admet/create-task`. The queue's consumer needs a GPU and ships with the box; until
+then jobs are recorded in `admet_jobs` and countable via `GET /api/rabbitmq/queue-status`
+instead of vanishing into a broker nobody consumed.

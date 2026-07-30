@@ -37,6 +37,13 @@ const GlioblastomaPredict = lazy(() => import("@/pages/dashboard/glioblastoma-pr
 const DeepSimilarity = lazy(() => import("@/pages/dashboard/deep-similarity"));
 
 
+const MainHome = lazy(() => import("@/pages/main/mainhome"));
+const Services = lazy(() => import("@/pages/main/services"));
+const AboutUs = lazy(() => import("@/pages/main/about-us"));
+const ContactUs = lazy(() => import("@/pages/main/contact-us"));
+const Insights = lazy(() => import("@/pages/main/insights"));
+const PaidPlansDescription = lazy(() => import("@/pages/main/paidplansdescription"));
+const Blog = lazy(() => import("@/pages/main/blog"));
 const SignIn = lazy(() => import("@/pages/auth/sign-in"));
 const SignUp = lazy(() => import("@/pages/auth/sign-up"));
 const PaidPlans = lazy(() => import("@/pages/dashboard/paidplans"));
@@ -48,6 +55,61 @@ const icon = {
 };
 
 export const routes = [
+  {
+    title: "main",
+    layout: "main",
+    pages: [
+      {
+          hideFromMenu: true,
+        icon: <ServerStackIcon {...icon} />,
+        name: "mainHome",
+        path: "/mainHome",
+        element: <MainHome />,
+      },
+      {
+          hideFromMenu: true,
+        icon: <ServerStackIcon {...icon} />,
+        name: "services",
+        path: "/services",
+        element: <Services />,
+      },
+      {
+          hideFromMenu: true,
+        icon: <ServerStackIcon {...icon} />,
+        name: "about-us",
+        path: "/about-us",
+        element: <AboutUs />,
+      },
+      {
+          hideFromMenu: true,
+        icon: <ServerStackIcon {...icon} />,
+        name: "contact-us",
+        path: "/contact-us",
+        element: <ContactUs />,
+      },
+      {
+          hideFromMenu: true,
+        icon: <ServerStackIcon {...icon} />,
+        name: "insights",
+        path: "/insights",
+        element: <Insights />,
+      },
+      {
+          hideFromMenu: true,
+        icon: <ServerStackIcon {...icon} />,
+        name: "paidplansdescription",
+        path: "/paidplansdescription",
+        element: <PaidPlansDescription />,
+      },
+      {
+          hideFromMenu: true,
+        icon: <ServerStackIcon {...icon} />,
+        name: "blog",
+        path: "/blog",
+        element: <Blog />,
+      },
+    ],
+  },
   {
     layout: "dashboard",
     pages: [      {

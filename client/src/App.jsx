@@ -9,6 +9,7 @@ import { hasValidToken } from "@/utils/constants";
 // barrel would re-export both into whichever chunk touched it first.
 const Dashboard = lazy(() => import("@/layouts/dashboard"));
 const Auth = lazy(() => import("@/layouts/auth"));
+const MainPage = lazy(() => import("@/layouts/mainpage"));
 
 function RequireAuth({ children }) {
   // Validate expiry, not just presence — an expired token left in localStorage
@@ -37,10 +38,12 @@ function App() {
           path="/auth/*"
           element={isAuthenticated ? <Navigate to="/dashboard/controlpanel" replace /> : <Auth />}
         />
-        {/* There is no marketing site to land on any more, so the catch-all goes to
-            sign-in. An already-authenticated visitor does not stop there: /auth/*
-            above bounces them straight on to the dashboard. */}
-        <Route path="*" element={<Navigate to="/auth/sign-in" replace />} />
+        <Route path="/main/*" element={<MainPage />} />
+        {/* The marketing site is the landing page again — it came from the original
+            Pyxis app (chem_beo), whose frontend still serves all seven of these pages
+            on 83. An already-authenticated visitor never stops there: /auth/* above
+            bounces them on to the dashboard. */}
+        <Route path="*" element={<Navigate to="/main/mainHome" replace />} />
       </Routes>
     </Suspense>
   );
