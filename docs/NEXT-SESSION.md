@@ -24,6 +24,17 @@ Dependabot alerts on `main`, and `bun run lockfiles:refresh` currently surfaces 
 findings. Nothing here reads untrusted input from a vulnerable path, so this is a decision about
 appetite, not an incident.
 
+### ⚠ The adversarial review of this work was STOPPED before it finished
+
+A 4-lens review workflow over the ADMET queue, the DiffDock service and the ingress config was
+launched and then **killed mid-run when usage ran out**. It produced no verdict. Do not read
+the absence of findings as a clean bill of health — nothing was reported either way.
+
+What *is* verified: `bun run ci` exits 0 (149 assertions incl. 17 new ADMET-queue tests against
+a real in-memory Mongo), 22 Python worker tests, 28 DiffDock tests. What is **not** verified is
+anything needing hardware — no CUDA image has been built, no model has been run, no Caddyfile
+has been loaded by Caddy. Re-running the review is cheap and is the obvious first job.
+
 ### ✅ The glioblastoma "key" — closed, and it was never what the docs said
 
 It is a **TLS keypair for `chemtest.tech`**, nothing to do with the science. Left over from when
