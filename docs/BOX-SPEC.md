@@ -127,15 +127,16 @@ slower — meaningfully so. That cost is real and should not be talked away.
 
 **What the original analysis did not weigh, because it was scoring single-job latency:**
 
-1. **NIM becomes usable.** Two separate blockers in this document — "the NIM container needs
-   NVIDIA AI Enterprise, which was refused, and **NIM is not supported on GeForce anyway**"
-   (§DiffDock), and the unresolved **GeForce driver EULA datacenter clause** (§Open risks) —
-   are both *GeForce* problems. RTX PRO is a professional part and neither applies. If NIM is
-   back on the table, arrival day may not need an OSS DiffDock rebuild at all: Asinex's
-   `:58000` service *is* the DiffDock NIM container, so matching it becomes running the same
-   container rather than reimplementing its behaviour. **Verify the AI Enterprise licensing
-   question independently before relying on this** — "not GeForce" removes one blocker, not
-   necessarily both.
+1. **The GeForce driver EULA datacenter clause stops being a question.** It is listed in
+   §Open risks as an unexamined assumption. RTX PRO is a professional part and the clause does
+   not apply, so that risk closes with no further work.
+
+   ⚠ **This does NOT put NIM back on the table.** Owner decision, 2026-07-31: *"we are not
+   buying nvidia enterprise"*. NIM containers require an NVIDIA AI Enterprise licence
+   regardless of which card is installed — the "not supported on GeForce" note was only ever
+   the *second* of two blockers, and the first one is a purchase the owner has declined.
+   **DiffDock is rebuilt from OSS `gcorso/DiffDock` (MIT). That is the plan.** Do not
+   re-propose NIM, and do not price AI Enterprise.
 2. **Four cards is four concurrent jobs.** Docking is embarrassingly parallel across jobs.
    The original framing — "three sit idle while the one user waits twice as long" — is right
    for a single interactive dock and wrong for a queue. Which one matters depends on whether
@@ -145,8 +146,8 @@ slower — meaningfully so. That cost is real and should not be talked away.
 4. **Redundancy improves.** The two-card decision was explicitly about surviving a dead GPU
    on a pick-up warranty. Four cards degrade to 75 % instead of 50 %.
 
-**Net:** slower per interactive dock, better under load, and it probably removes the single
-largest unknown in the arrival plan (rebuilding DiffDock from source). Power and slot
+**Net:** slower per interactive dock, better under load. It does **not** remove the OSS
+DiffDock rebuild from the arrival plan — that work stands. Power and slot
 budgeting change too — PRO cards take one slot each and draw far less, so the 2200 W PSU and
 the "will Coreto warranty two triple-slot 5090s" question in §Open risks both become moot.
 

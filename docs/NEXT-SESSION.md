@@ -130,14 +130,14 @@ completely dead rather than merely at-risk. That part is fixed — see below.
 
 ### ⚠ Hardware changed 2026-07-31 — GPUs are now probably 4× RTX PRO 4000
 
-Not 2× RTX 5090. Full amendment in `docs/BOX-SPEC.md`. The consequence that matters for
-arrival day: **NIM may now be usable.** Both recorded blockers against it — "NIM is not
-supported on GeForce" and the GeForce driver EULA datacenter clause — are GeForce problems,
-and RTX PRO is not GeForce. Asinex's DiffDock service *is* the NIM container, so if NVIDIA AI
-Enterprise licensing can be settled, arrival day may be "run the same container" instead of
-"rebuild DiffDock from OSS source". **Check the licensing question first — "not GeForce"
-clears one blocker, not automatically both.** Plan for the OSS rebuild; treat NIM as the
-upside case.
+Not 2× RTX 5090. Full amendment in `docs/BOX-SPEC.md`.
+
+**NIM is not an option and is not to be re-proposed.** Owner decision, 2026-07-31: *"we are
+not buying nvidia enterprise"*. NIM containers require an NVIDIA AI Enterprise licence
+whatever card is installed, so moving from GeForce to RTX PRO does not open that door —
+it only removes the GeForce driver EULA datacenter-clause worry. **DiffDock gets rebuilt from
+OSS `gcorso/DiffDock` (MIT). That is the plan, not the fallback.** Do not spend arrival day
+evaluating NIM, and do not price AI Enterprise.
 
 Trade-off to expect: each PRO 4000 is ~40 % of a 5090 on a single job, so one interactive
 dock is slower. Four cards means four concurrent docks, so a queue is faster.
