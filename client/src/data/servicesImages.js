@@ -1,4 +1,4 @@
-// This file contains placeholder image URLs for the ChemBench Services page sections.
+// Image URLs for the Services page sections.
 export const servicesImages = {
   structureBased: "/img/structure-based-selection.jpg", // Use local public image
   queryBased: "/img/query-based-selection.jpeg", // Replace with actual if available
