@@ -30,6 +30,57 @@ Root scripts are the supported way to install, run, build, and check the app.
 Bun is the default package runner for install, dev, build, and start. npm/Node
 fallback aliases are retained for rollback.
 
+## Working on this from another machine
+
+Everything needed is in git — including the vendored 3Dmol build under
+`client/public/3dmol`. A clone plus the steps below is a complete working setup. You do
+**not** need access to production, the GPU box, or the Amsterdam machine to develop.
+
+```bash
+git clone https://github.com/kobimic887/medsaas.git && cd medsaas
+bun run install:all
+cp .env.example .env
+```
+
+Then set the three variables the server refuses to start without —
+`MONGODB_URI`, `JWT_SECRET`, `STRIPE_SECRET_KEY`:
+
+- `MONGODB_URI` — **already correct in `.env.example`** (`mongodb://localhost:27017/medsaas`).
+  Leave it pointing at localhost. Start a database with `npm run services:up` (Docker), or
+  install MongoDB natively, whichever you have.
+- `JWT_SECRET` — must be at least 32 characters. Generate one:
+  ```bash
+  node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+  ```
+- `STRIPE_SECRET_KEY` — any `sk_test_…` key. Startup only checks that it is set; nothing
+  charges a card in development.
+
+> ### ⚠ Do not point a development machine at production
+>
+> `.env` is gitignored, so a fresh clone gets the safe localhost default above — but do not
+> copy a production `.env` onto a laptop to "save time". Production is **MongoDB Atlas**,
+> and this repo's sign-up creates a company and an owner on whatever database it is pointed
+> at. That has already happened once: the `kobokon` owner account and the `kobi inc` company
+> in production were created 332 ms apart by a single sign-up on 2026-05-16, months before
+> this repo served production at all. Development wrote straight into the live database.
+>
+> Atlas also allowlists by IP, so a new machine will fail with a TLS alert 80 rather than a
+> clear error. That is the allowlist, not a broken checkout.
+
+**No Docker and no MongoDB?** You can still run the whole test suite, including the smoke
+test that boots the real server — `server/test/runtime-smoke.test.mjs` starts its own
+in-memory MongoDB:
+
+```bash
+bun run ci
+```
+
+**What works without any upstream credentials:** the frontend, sign-up and sign-in, the
+dashboard, the molecule viewer, and the full test gate. **What needs credentials or an
+upstream host:** docking and the compound catalog (Asinex), molecule generation and protein
+folding (NVIDIA API keys), and Tanimoto search (points at the Oracle host by default).
+Those fail with upstream errors rather than breaking the app.
+
 ## Local Setup
 
 1. Install dependencies:
