@@ -1,6 +1,121 @@
 # What to do next
 
-## ⏱ START HERE — session ended 2026-07-30
+## ⏱⏱ START HERE — session ended 2026-07-31. This section outranks everything below it.
+
+Everything under the older "START HERE — 2026-07-30" heading further down is a **historical
+log**. Where it disagrees with this section, this section wins. Do not act on a claim from
+lower in this file without re-measuring it first — several were true when written and are
+false now, and one of them will break the site (see "Do NOT do these").
+
+### State of production
+
+`app.pyxis-discovery.com` serves **this repo**, under systemd as `pyxis-web` on port 5173,
+running **Bun 1.3.12** (not Node — the box's `node` is v18 and irrelevant to the server),
+against **MongoDB Atlas**. Legacy `chem_beo` still listens on `:3000` and `stripe-server.cjs`
+on `:3001`; both are the rollback path and must stay up.
+
+**Always read `/root/pyxis/DEPLOYED_SHA` before assuming what is running.** It is written by
+hand at the end of a deploy and has been wrong before.
+
+Deploy is three steps, and the second is easy to forget because it is not in git:
+
+```bash
+git archive HEAD | ssh root@83.229.87.94 'tar -x -C /root/pyxis'      # source
+tar -C client -cf - dist | ssh root@83.229.87.94 'tar -x -C /root/pyxis/client'   # built client
+ssh root@83.229.87.94 'cd /root/pyxis/server && bun install; systemctl restart pyxis-web'
+```
+
+Then stamp `DEPLOYED_SHA` and verify with a real request, not with the exit code.
+
+### The one job only the owner can do
+
+**Rotate the mail password** for `contact@pyxis-discovery.com` at **yourhosting.nl**. It was
+served publicly on 2026-07-29 and authenticates today. After changing it, update `EMAIL_PASS`
+in **both** `/root/chem_beo/.env` and `/root/pyxis/server/.env`. An agent must not attempt
+this — it needs the provider login.
+
+The owner indicated on 2026-07-31 that this may already have been done deliberately. Verify
+before re-raising it; do not nag.
+
+### Do NOT do these — each looks correct and is not
+
+1. **Do NOT remove `bootstrap.min.css` from `client/index.html`.** A 2026-07-30 audit measured
+   Bootstrap as completely dead and it genuinely was. **The marketing pages were restored
+   after that measurement.** `about-us`, `contact-us`, `services` and `paidplansdescription`
+   are Bootstrap markup (`btn`, `card border-*`, `badge bg-*`, `col-md-*`), and `tailwind.css`
+   carries overrides targeting those same classes. Removing it breaks four live pages. The
+   genuinely-dead parts of that finding (Font Awesome, Bootstrap's JS, popper, the placeholder
+   analytics tag) were removed on 2026-07-31 — ~166 KB and two fewer third-party hosts.
+2. **Do NOT bump `react-router` to fix its two Dependabot alerts.** The fix is only in v7 and
+   the app is on 6.30.4. That is a framework migration, not a patch.
+3. **Do NOT remove sign-up, the paid-plans page, or billing.** "De-SaaS" meant *branding*. A
+   2026-07-29 pass read it as feature removal and deleted them; that was reverted. Keep the
+   thing, fix how it works.
+4. **Do NOT `pkill -f "bun index.js"` on the box.** It matches production's own process. Kill
+   rigs by PID. (Learned the hard way on 2026-07-31; production survived on luck.)
+5. **Do NOT modify nginx, TLS, DNS or the firewall on 83.** Shared host, not ours.
+6. **Do NOT delete `/root/material-tailwind-dashboard-react`.** It is the rollback, and it is a
+   different codebase from `client/`, not an older copy. Its start command is
+   `npm run dev-vite-only` — **never `npm run dev`**, which also starts `stripe-server.cjs`
+   and dies on `EADDRINUSE` against the one already holding `:3001`.
+7. **Do not trust `grep -c` to prove a deploy landed.** It counts *lines*, and it has produced
+   a false "shipped" reading twice in this repo. Verify by fetching the live URL and matching
+   a string that survives minification (property names do; local variable names do not).
+
+### Closed on 2026-07-31 — do not re-report
+
+- **Tanimoto "just stops" on a bad SMILES.** Not a bug in our stack. `cco` is invalid SMILES
+  (lowercase means aromatic); upstream correctly returns
+  `400 {"detail":"Invalid SMILES: 'cco' could not be parsed by RDKit"}`. The server forwards
+  it and `deep-similarity.jsx` renders it in a red Alert. Fixed in `6a6afa1`, live and
+  verified. `CCO` uppercase is ethanol and searches fine.
+- **The docked pose missing from Simulation Results** — the "small coloured thing inside the
+  PDB". It had never auto-loaded in either codebase; it needed a table-row click. Now loads
+  automatically, additively (`c3d9e27`).
+- **Viewer reporting several copies of one protein.** Two call sites both started a load; the
+  eager one only checked `contentWindow`, which an unnavigated iframe still exposes pointing
+  at `about:blank`. One-shot flag plus a `contentDocument.readyState` gate.
+- **Production never compressed a single response.** `compression()` added in-process (nginx
+  is not ours to touch). Measured live: React vendor chunk 332,546 → 102,432 bytes,
+  stylesheet 157,008 → 21,946.
+- **Every asset shipped `cache-control: max-age=0`.** Hashed `/assets/*` now get a year +
+  `immutable`; unhashed an hour; `index.html` `no-cache` on all **three** handlers that serve
+  it — `express.static`, the SPA fallback, and an explicit `app.get('/')` registered ~6,400
+  lines earlier that was missed on the first pass.
+- **The brand guard was decorative.** `bun run test:brand` existed, CLAUDE.md claimed CI ran
+  it, CI did not. A ChemBench string had already reached `main`. Now in `ci` and `ci:node`,
+  proven by planting a regression.
+- **Dependabot 32 → 19, all 10 highs cleared.** The one that mattered: `sharp` → 0.35.3
+  (libvips 8.18.3), because `companyBranding.js` runs it over user-uploaded logos.
+- **Dark mode is NOT broken.** An older note says every `dark:*-slate-*` compiles to nothing
+  under `withMT()`. That was true; `slate` is now declared in `client/tailwind.config.cjs` and
+  the built sheet carries 147 slate rules and 155 `.dark` rules.
+
+### What is actually left, in priority order
+
+| # | Work | Needs the box? | Notes |
+|---|---|---|---|
+| 1 | **Arrival day: stand up docking on the box** | yes | Build the ligand services *on* the box — owner's call, x86_64 native is far faster than cross-building. `docs/ARRIVAL-RUNBOOK.md` §2.2 has the sequence and the Caddy path table. |
+| 2 | **Repoint docking at the box** | yes | Settings change, no restart, no redeploy: `PATCH /api/company/ligand-service-config` (owner/admin). Four URLs. `GET` on the same path is readable by any member, so anyone can confirm. Roll back by putting the Asinex hostnames back. |
+| 3 | **`chem_beo` hardening patch** | no | `deploy/chem_beo/01-fixes-and-config.patch`. Written, applies cleanly, rehearsed against real Atlas on an isolated port. **Unapplied.** ~60 unauthenticated routes stay open until it is. Only matters while `:3000` is reachable as rollback. |
+| 4 | **Stripe webhook registration** | no | The old blocker (no HTTPS) is gone. Register `https://app.pyxis-discovery.com/stripe/webhook`, put the signing secret in `STRIPE_WEBHOOK_SECRET` at `/root/pyxis/server/.env`. Check `stripe webhook_endpoints list` first — do not create a duplicate. |
+| 5 | **Subresource Integrity on external tags** | no | Four external hosts remain: jsdelivr (Bootstrap CSS), Google Fonts, unpkg/jsdelivr (RDKit, lazy), and `3dmol.csb.pitt.edu`. None carry SRI. The 3Dmol one is a university web server, unpinned and unversioned, and `moleculeviewer.jsx` genuinely needs it — the viewer breaks whenever that host is down. Vendoring it locally is the real fix. |
+| 6 | **Bundle code-splitting** | no | `vendor-charts` is 515 KB and the build warns. Now gzipped, so it is ~135 KB on the wire; lower priority than it looks. |
+
+### Method notes that saved real time
+
+- **Measure, do not reason.** Two "findings" in this repo were screenshot artefacts (a fade
+  mid-animation read as a blank hero) and one was a grep matching an *older* symbol whose name
+  contained the new one.
+- **The server cannot boot from a dev machine** — Atlas rejects non-allowlisted IPs with TLS
+  alert 80. To measure real headers or behaviour, run a rig on a spare port **on the box** and
+  kill it by PID afterwards.
+- **`bun run ci` locally is weaker than CI** — the runtime smoke test sees the repo `.env`.
+  Set anything a test depends on in `childEnvFinal`, not `.env`.
+
+---
+
+## 🗄 HISTORICAL LOG BELOW — session ended 2026-07-30
 
 **Production is live, healthy and unattended-safe.** `app.pyxis-discovery.com` → 200, all four
 services `enabled` under systemd, **0 restarts**, no leftover probe units, nothing half-deployed.

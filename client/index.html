@@ -9,11 +9,27 @@
       href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap"
       rel="stylesheet"
     />
-<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
- 
-    <script defer data-site="YOUR_DOMAIN_HERE" src="https://api.nepcha.com/js/nepcha-analytics.js"></script>
+    <!--
+      Removed here, and each one was checked against the current tree rather than
+      an older measurement:
+
+        popper.min.js + bootstrap.min.js  (79 KB) — 0 `data-bs-*` attributes and no
+          use of the `window.bootstrap` API anywhere in client/src. Bootstrap's CSS
+          is a separate file and IS used (see below); its JavaScript never was.
+        font-awesome all.min.css          (87 KB) — 0 elements matching `fa-`.
+        nepcha-analytics.js               — shipped with data-site="YOUR_DOMAIN_HERE",
+          an unfilled placeholder, so it reported to nobody.
+
+      That is ~166 KB decoded off every page load and two fewer third-party hosts
+      to DNS-resolve and TLS-handshake before anything renders.
+
+      ⚠ Bootstrap's *stylesheet* stays, deliberately. An earlier audit measured it as
+      dead and it was, at the time. The marketing pages were restored afterwards, and
+      about-us / contact-us / services / paidplansdescription are Bootstrap markup
+      (`btn`, `card border-*`, `badge bg-*`, `col-md-*`), with overrides in
+      tailwind.css that target those same classes. Removing it breaks those four
+      pages. Re-measure before believing any older note that says otherwise.
+    -->
 
     <!-- 3Dmol.js for 3D visualization -->
     <script src="https://3dmol.csb.pitt.edu/build/3Dmol-min.js"></script>
