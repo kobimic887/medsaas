@@ -534,10 +534,19 @@ export function Molstar3D() {
       }, 700);
     };
 
+    // The iframe's structures get loaded from two places below, and both could
+    // fire for a single page view: the immediate call sees a contentWindow (an
+    // as-yet-unloaded iframe still has one, pointing at about:blank) and starts
+    // a load, then the real 'load' event arrives and starts a second. That is
+    // why the viewer reported several copies of one protein.
+    let structuresLoaded = false;
+
     const handleIframeLoad = () => {
       // Wait a bit more for Molstar to fully initialize
       setTimeout(() => {
         if (!molstarRef.current) return;
+        if (structuresLoaded) return;
+        structuresLoaded = true;
         if (diffdockProteinUrl || diffdockLigandPositionUrl) {
           loadDiffDockStructures();
         } else if (pdbUrl && sdfUrl && simulationKey) {
@@ -550,8 +559,18 @@ export function Molstar3D() {
       molstarRef.current.addEventListener('load', handleIframeLoad);
     }
 
-    // If iframe is already loaded, try to load structures immediately
-    if (molstarRef.current && molstarRef.current.contentWindow && (diffdockProteinUrl || diffdockLigandPositionUrl || (pdbUrl && sdfUrl && simulationKey))) {
+    // If iframe is already loaded, try to load structures immediately.
+    // Check the document, not just contentWindow: an iframe that has not
+    // navigated yet still exposes a window, so contentWindow alone was true
+    // on a cold mount and raced the 'load' event.
+    const alreadyLoaded = (() => {
+      try {
+        return molstarRef.current?.contentDocument?.readyState === 'complete';
+      } catch {
+        return false;
+      }
+    })();
+    if (alreadyLoaded && (diffdockProteinUrl || diffdockLigandPositionUrl || (pdbUrl && sdfUrl && simulationKey))) {
       handleIframeLoad();
     }
 
