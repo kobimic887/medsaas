@@ -516,6 +516,23 @@ function upstreamProxyStatus(error) {
   return status;
 }
 
+// Tanimoto rejects a malformed query with a 400 and a genuinely useful body —
+// {"detail":"Invalid SMILES: 'xyz123' could not be parsed by RDKit"}. Every one of
+// these routes used to answer `{ error: error.message }`, and for an axios failure
+// that message is "Request failed with status code 400", so the one thing the user
+// needed to see was the one thing that never reached them. Pass the upstream detail
+// through on 4xx; keep our own generic text for 5xx, which is not the caller's
+// business and may leak internals.
+function respondTanimotoFailure(res, error) {
+  const status = upstreamProxyStatus(error);
+  const upstreamStatus = error?.response?.status;
+  const detail = error?.response?.data?.detail;
+  if (typeof detail === 'string' && upstreamStatus >= 400 && upstreamStatus < 500) {
+    return res.status(status).json({ error: detail });
+  }
+  return res.status(status).json({ error: error.message });
+}
+
 // Translate any error from a NVIDIA proxy route into a response, refunding the
 // credit the request already paid, since no simulation was produced.
 async function respondNvidiaFailure(req, res, service, error) {
@@ -689,7 +706,7 @@ app.get('/tanimoto/health', ensureMongoConnected, authenticateToken, requireActi
     const response = await axios.get(`${TANIMOTO_API_BASE}/health`);
     res.json(response.data);
   } catch (error) {
-    res.status(upstreamProxyStatus(error)).json({ error: error.message });
+    respondTanimotoFailure(res, error);
   }
 });
 
@@ -717,7 +734,7 @@ app.post('/tanimoto/v1/upload', ensureMongoConnected, authenticateToken, require
     });
     res.json(response.data);
   } catch (error) {
-    res.status(upstreamProxyStatus(error)).json({ error: error.message });
+    respondTanimotoFailure(res, error);
   }
 });
 
@@ -743,7 +760,7 @@ app.get('/tanimoto/v1/search/exact', ensureMongoConnected, authenticateToken, re
     const response = await axios.get(`${TANIMOTO_API_BASE}/v1/search/exact`, { params: req.query });
     res.json(response.data);
   } catch (error) {
-    res.status(upstreamProxyStatus(error)).json({ error: error.message });
+    respondTanimotoFailure(res, error);
   }
 });
 
@@ -786,7 +803,7 @@ app.get('/tanimoto/v1/search/similarity', ensureMongoConnected, authenticateToke
     const response = await axios.get(`${TANIMOTO_API_BASE}/v1/search/similarity`, { params: req.query });
     res.json(response.data);
   } catch (error) {
-    res.status(upstreamProxyStatus(error)).json({ error: error.message });
+    respondTanimotoFailure(res, error);
   }
 });
 
@@ -812,7 +829,7 @@ app.get('/tanimoto/v1/search/substructure', ensureMongoConnected, authenticateTo
     const response = await axios.get(`${TANIMOTO_API_BASE}/v1/search/substructure`, { params: req.query });
     res.json(response.data);
   } catch (error) {
-    res.status(upstreamProxyStatus(error)).json({ error: error.message });
+    respondTanimotoFailure(res, error);
   }
 });
 
@@ -856,7 +873,7 @@ app.post('/tanimoto/v1/search/batch', ensureMongoConnected, authenticateToken, r
     });
     res.json(response.data);
   } catch (error) {
-    res.status(upstreamProxyStatus(error)).json({ error: error.message });
+    respondTanimotoFailure(res, error);
   }
 });
 
@@ -876,7 +893,7 @@ app.get('/tanimoto/v1/datasets', ensureMongoConnected, authenticateToken, requir
     const response = await axios.get(`${TANIMOTO_API_BASE}/v1/datasets`, { params: req.query });
     res.json(response.data);
   } catch (error) {
-    res.status(upstreamProxyStatus(error)).json({ error: error.message });
+    respondTanimotoFailure(res, error);
   }
 });
 
@@ -903,7 +920,7 @@ app.get('/tanimoto/v1/datasets/:dataset_id', ensureMongoConnected, authenticateT
     const response = await axios.get(`${TANIMOTO_API_BASE}/v1/datasets/${req.params.dataset_id}`);
     res.json(response.data);
   } catch (error) {
-    res.status(upstreamProxyStatus(error)).json({ error: error.message });
+    respondTanimotoFailure(res, error);
   }
 });
 
@@ -930,7 +947,7 @@ app.delete('/tanimoto/v1/datasets/:dataset_id', ensureMongoConnected, authentica
     const response = await axios.delete(`${TANIMOTO_API_BASE}/v1/datasets/${req.params.dataset_id}`);
     res.json(response.data);
   } catch (error) {
-    res.status(upstreamProxyStatus(error)).json({ error: error.message });
+    respondTanimotoFailure(res, error);
   }
 });
 

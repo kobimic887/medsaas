@@ -9,7 +9,12 @@ import {
   Spinner,
   Alert,
 } from "@material-tailwind/react";
-import { API_CONFIG } from "@/utils/constants";
+// getAuthToken reads access_token first and falls back to auth_token. Reading
+// auth_token directly worked only because sign-in happens to write both keys —
+// and a miss here does not fail softly: /tanimoto/* is authenticated, so a
+// request with no bearer token gets a same-origin 401, which the global
+// interceptor treats as a dead session and signs the user out.
+import { API_CONFIG, getAuthToken } from "@/utils/constants";
 
 export function DeepSimilarity() {
   const [searchType, setSearchType] = useState("exact");
@@ -20,15 +25,23 @@ export function DeepSimilarity() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Outcome of the last search. Without this, a search that legitimately matched
+  // nothing was indistinguishable from one that never ran: the spinner stopped,
+  // no error appeared, and the results grid — which only renders when
+  // results.length > 0 — simply stayed empty. "It just stops."
+  const [searchStatus, setSearchStatus] = useState("idle"); // idle | ok | empty | error
+  const [searchedFor, setSearchedFor] = useState("");
 
   const handleSearch = async () => {
     setLoading(true);
     setError("");
     setResults([]);
-    
+    setSearchStatus("idle");
+    setSearchedFor(searchQuery.trim());
+
     try {
       let url = "";
-      const token = localStorage.getItem("auth_token");
+      const token = getAuthToken();
       const smiles = encodeURIComponent(searchQuery);
       
       if (searchType === "exact") {
@@ -46,11 +59,19 @@ export function DeepSimilarity() {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
-      if (!res.ok) throw new Error("API error");
-      const data = await res.json();
-      setResults(data.results || []);
+      // Tanimoto explains a bad query precisely — "Invalid SMILES: 'cco' could not
+      // be parsed by RDKit" — and the server now forwards that text. Show it instead
+      // of discarding it behind a generic "API error".
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.error || `Search failed (HTTP ${res.status})`);
+      }
+      const rows = data?.results || [];
+      setResults(rows);
+      setSearchStatus(rows.length > 0 ? "ok" : "empty");
     } catch (err) {
-      setError("Search failed: " + err.message);
+      setError(err.message);
+      setSearchStatus("error");
     } finally {
       setLoading(false);
     }
@@ -135,10 +156,17 @@ export function DeepSimilarity() {
         )}
 
         {error && <Alert color="red">{error}</Alert>}
-        {results.length > 0 && (
+        {searchStatus === "ok" && (
           <Typography variant="small" className="mb-4 text-blue-gray-600">
             Found {results.length} result{results.length !== 1 ? 's' : ''}
           </Typography>
+        )}
+        {searchStatus === "empty" && (
+          <Alert color="amber" className="mb-4">
+            No matches for <span className="font-mono font-semibold">{searchedFor}</span> in the
+            compound database. The query parsed fine — nothing in the catalogue met this search.
+            {searchType === "similarity" && " Try lowering the similarity threshold."}
+          </Alert>
         )}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
           {results.map((item, idx) => (
