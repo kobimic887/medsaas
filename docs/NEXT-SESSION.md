@@ -102,6 +102,37 @@ before re-raising it; do not nag.
 | 5 | **Subresource Integrity on external tags** | no | Four external hosts remain: jsdelivr (Bootstrap CSS), Google Fonts, unpkg/jsdelivr (RDKit, lazy), and `3dmol.csb.pitt.edu`. None carry SRI. The 3Dmol one is a university web server, unpinned and unversioned, and `moleculeviewer.jsx` genuinely needs it — the viewer breaks whenever that host is down. Vendoring it locally is the real fix. |
 | 6 | **Bundle code-splitting** | no | `vendor-charts` is 515 KB and the build warns. Now gzipped, so it is ~135 KB on the wire; lower priority than it looks. |
 
+### The prompt to paste on arrival day
+
+Copy this verbatim into a fresh session once the box is powered, on the network and
+reachable by SSH:
+
+> The Amsterdam GPU box has arrived and I can SSH to it. Read
+> `docs/NEXT-SESSION.md` — the "START HERE — session ended 2026-07-31" section
+> outranks the rest of that file — then `docs/ARRIVAL-RUNBOOK.md` and
+> `docs/BOX-ARCHITECTURE.md`.
+>
+> Goal for today: get docking running on the box and repoint production at it, and
+> nothing else. Compute only. Do not touch the database (Atlas stays), the frontend,
+> nginx, TLS, DNS or Stripe.
+>
+> Build the ligand services natively on the box — do not cross-build. Bring up
+> AutoDock and OSS DiffDock plus convertSTR, put Caddy on :443 with a Let's Encrypt
+> cert for the box hostname, bind every service to 127.0.0.1, and let the host
+> firewall admit only 83.229.87.94. No VPN and no tunnel — that was considered and
+> rejected.
+>
+> Cut over one endpoint at a time via `PATCH /api/company/ligand-service-config`
+> (owner/admin), verifying a real dock between each. That is a settings change: no
+> restart, no redeploy. If anything misbehaves, put the Asinex hostnames back — that
+> is the whole rollback.
+>
+> Verify by measurement, not by reasoning, and tell me plainly if something does not
+> work. Do not spawn workflows or subagent fleets.
+
+Tanimoto, GROMACS, ADMET and glioblastoma move **after** docking is proven, not
+alongside it.
+
 ### Method notes that saved real time
 
 - **Measure, do not reason.** Two "findings" in this repo were screenshot artefacts (a fade
