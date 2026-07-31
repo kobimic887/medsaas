@@ -478,6 +478,38 @@ export function Molstar3D() {
       }, 700);
     };
 
+    // The docked pose, drawn inside the protein alongside it.
+    //
+    // This page has only ever auto-loaded the receptor. The pose — the small
+    // ball-and-stick molecule in the binding site, which is the actual result of
+    // the run — appeared only after the user clicked a table row or "Load SDF".
+    // So arriving at Simulation Results showed a bare protein and no answer.
+    //
+    // Deliberately additive: the row click and the Load SDF button still work
+    // exactly as before, this only stops the first view from being empty.
+    const loadPoseIntoViewer = async () => {
+      if (!molstarRef.current || !simulationKey) return;
+      const target = molstarRef.current.contentWindow;
+      try {
+        // Fetch here rather than handing the iframe a URL: /api/sanitized* needs a
+        // bearer token, the iframe is a separate document and cannot attach one, and
+        // a same-origin 401 would sign the user out rather than fail quietly.
+        const response = await authedFetch(
+          API_CONFIG.buildApiUrl(`/sanitizedminimalsdf/${simulationKey}`)
+        );
+        if (!response.ok) {
+          // A run with no stored pose is a normal outcome, not an error worth a banner.
+          console.log('No pose to overlay for this simulation:', response.status);
+          return;
+        }
+        const sdfText = await response.text();
+        if (!sdfText.trim()) return;
+        target.postMessage({ type: 'loadStructureFromData', text: sdfText, format: 'sdf' }, '*');
+      } catch (error) {
+        console.error('Could not overlay the docked pose:', error);
+      }
+    };
+
     const loadDefaultStructures = () => {
       if (!molstarRef.current || !pdbUrl) return;
       const target = molstarRef.current.contentWindow;
@@ -487,6 +519,9 @@ export function Molstar3D() {
         url: pdbUrl,
         format: 'pdb'
       }, '*');
+      // Let the receptor land first so the camera frames both together rather than
+      // fitting to the ligand alone and then jumping when the protein arrives.
+      setTimeout(loadPoseIntoViewer, 600);
       setTimeout(() => {
         if (molstarRef.current && molstarRef.current.contentWindow) {
           molstarRef.current.contentWindow.eval(`
