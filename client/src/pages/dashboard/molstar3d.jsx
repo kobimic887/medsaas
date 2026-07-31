@@ -394,10 +394,21 @@ export function Molstar3D() {
 
     console.log('localStorage URLs:', { pdbUrl, sdfUrl, simulationKey, pdbCode });
 
-    // If we have a PDB code, always use RCSB URL
-    if (pdbCode) {
+    // Only fall back to RCSB when this view has no PDB of its own.
+    //
+    // This used to read "if we have a PDB code, ALWAYS use RCSB", and that one word
+    // was the bug. `molstar_pdb_code` is written only by the share-link path
+    // (`?pdb=…`), and localStorage keeps it forever. Running a simulation writes a
+    // fresh `molstar_pdb_url` but never clears the old code, so every later run was
+    // silently re-pointed at whatever protein was last opened by link — in practice
+    // 1cx7 — no matter which protein was actually docked.
+    //
+    // It also hid the ligand. A run's pose is in its own protein's coordinate frame,
+    // so drawing it against an unrelated structure puts it far outside the box and
+    // out of view. Same protein, and it lands in the binding site as it should.
+    if (pdbCode && !pdbUrl) {
       const newPdbUrl = `https://files.rcsb.org/download/${pdbCode}.pdb`;
-      console.log('Rebuilding PDB URL from RCSB:', pdbCode, '->', newPdbUrl);
+      console.log('No PDB for this view; falling back to RCSB:', pdbCode, '->', newPdbUrl);
       localStorage.setItem('molstar_pdb_url', newPdbUrl);
       pdbUrl = newPdbUrl;
     }
@@ -510,15 +521,40 @@ export function Molstar3D() {
       }
     };
 
-    const loadDefaultStructures = () => {
+    const loadDefaultStructures = async () => {
       if (!molstarRef.current || !pdbUrl) return;
       const target = molstarRef.current.contentWindow;
       console.log('Loading PDB structure:', pdbUrl);
-      target.postMessage({
-        type: 'loadStructureFromUrl',
-        url: pdbUrl,
-        format: 'pdb'
-      }, '*');
+
+      // A simulation's own protein lives behind /api/sanitizedpdb/:key, which needs a
+      // bearer token. The iframe is a separate document and cannot attach one, so
+      // handing it this URL fetched unauthenticated and got a 401 — and a same-origin
+      // 401 is what signs the user out, so it was worse than a blank viewer. Fetch it
+      // here with the token and post the text, exactly as the pose is handled.
+      // RCSB URLs are public, so those still go straight to the iframe.
+      const needsAuth = pdbUrl.includes('/api/sanitized');
+      if (needsAuth) {
+        try {
+          const response = await authedFetch(pdbUrl);
+          if (!response.ok) {
+            console.error('Could not fetch this run\'s protein:', response.status);
+            return;
+          }
+          const pdbText = await response.text();
+          if (!pdbText.trim()) return;
+          target.postMessage({ type: 'loadStructureFromData', text: pdbText, format: 'pdb' }, '*');
+        } catch (error) {
+          console.error('Could not fetch this run\'s protein:', error);
+          return;
+        }
+      } else {
+        target.postMessage({
+          type: 'loadStructureFromUrl',
+          url: pdbUrl,
+          format: 'pdb'
+        }, '*');
+      }
+
       // Let the receptor land first so the camera frames both together rather than
       // fitting to the ligand alone and then jumping when the protein arrives.
       setTimeout(loadPoseIntoViewer, 600);

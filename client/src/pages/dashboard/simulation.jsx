@@ -791,6 +791,12 @@ export function Simulation() {
         localStorage.setItem('molstar_pdb_url', pdbUrl);
         localStorage.setItem('molstar_sdf_url', sdfUrl);
         localStorage.setItem('molstar_simulation_key', simResult.simulationKey);
+        // Drop any protein left over from opening a share link (`?pdb=…`). That key
+        // outlives the view that set it, and the viewer used to prefer it over this
+        // run's own protein — so every simulation after one such link rendered the
+        // wrong structure, and the pose vanished because it belongs to a different
+        // coordinate frame.
+        localStorage.removeItem('molstar_pdb_code');
         
         // Get existing simulation pairs dictionary or create new one
         let simulationPairs = {};
