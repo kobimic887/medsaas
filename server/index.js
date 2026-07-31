@@ -3,6 +3,7 @@ import fs from 'fs';
 import axios from 'axios';
 import { execFile } from 'child_process';
 import express from 'express';
+import compression from 'compression';
 import cors from 'cors';
 import fetch from 'node-fetch';
 import { MongoClient, ObjectId } from 'mongodb';
@@ -184,6 +185,13 @@ app.use(cors({
   },
   credentials: true
 }));
+// Nothing this server sends has ever been compressed. nginx on 83 proxies to us
+// without compressing, and we did not either, so production shipped the React
+// vendor chunk as 332 kB of raw JavaScript and the stylesheet as 157 kB — both
+// roughly a third of that over the wire once gzipped. This is the whole fix, and
+// it stays inside our own process: the host's nginx config is not ours to touch.
+app.use(compression());
+
 app.use('/blobs', express.static(path.join(__dirname, 'blobs')));
 
 app.use((_req, res, next) => {
@@ -7057,13 +7065,37 @@ function logToFile(logStr) {
 }
 
 // Serve built frontend files before the SPA route fallback.
-app.use(express.static(FRONTEND_DIST_PATH, { index: false }));
+//
+// Everything here went out as `cache-control: public, max-age=0`, so every reload
+// re-fetched the whole ~2 MB of assets. Vite already puts a content hash in the
+// filename of anything under /assets/, which means those URLs can never go stale —
+// a change produces a new filename — so they are safe to cache for a year.
+// Un-hashed files (ketcher, molstar, images, pdbs) get a short TTL instead, because
+// their URLs *do* stay the same across deploys.
+const HASHED_ASSET = /-[A-Za-z0-9_-]{8,}\.[a-z0-9]+$/;
+app.use(express.static(FRONTEND_DIST_PATH, {
+  index: false,
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('index.html')) {
+      // The one file that must never be cached: it is what names the hashed
+      // bundles, so a stale copy pins the browser to the previous deploy.
+      res.setHeader('Cache-Control', 'no-cache');
+    } else if (filePath.includes(`${path.sep}assets${path.sep}`) && HASHED_ASSET.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+    }
+  }
+}));
 
 // SPA fallback for non-API routes when frontend build is present
 app.get(/^(?!\/(?:api|api-docs|health|tanimoto|blobs)(?:\/|$)).*/, (_req, res, next) => {
   if (!hasFrontendBuild()) {
     return next();
   }
+  // Same reasoning as index.html above — this is the same file, served for every
+  // client-side route, and caching it would strand users on an old bundle.
+  res.setHeader('Cache-Control', 'no-cache');
   return res.sendFile(FRONTEND_INDEX_PATH);
 });
 
