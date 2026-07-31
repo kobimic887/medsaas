@@ -384,6 +384,24 @@
                     URL.revokeObjectURL(blobUrl);
                     showLoading(false);
                 }
+            } else if (event.data && event.data.type === 'resetCamera') {
+                // Frame whatever is currently loaded.
+                //
+                // Molstar does not move the camera to fit a structure that arrives
+                // after the first one, and a docked pose sits at the receptor's
+                // coordinates — around (128, 116, 131) for a typical run, nowhere near
+                // the origin. Load a pose on its own, or hide the protein, and the
+                // camera is left pointing at empty space with the molecule off-screen.
+                // That looked exactly like "the ligand did not load".
+                if (!viewer) {
+                    console.error('Molstar viewer not initialized');
+                    return;
+                }
+                try {
+                    viewer.plugin.managers.camera.reset();
+                } catch (error) {
+                    console.error('Failed to reset the camera:', error);
+                }
             } else if (event.data && event.data.type === 'loadSmilesStructure') {
                 if (!viewer) {
                     console.error('Molstar viewer not initialized');

@@ -20,6 +20,8 @@ const authedFetch = (url, init = {}) => {
 
 export function Molstar3D() {
   const molstarRef = useRef(null);
+  // Which run's pose is already drawn, so it is not stacked again on re-entry.
+  const overlaidPoseKeyRef = useRef(null);
   const navigate = useNavigate();
   const [sdfData, setSdfData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -92,6 +94,11 @@ export function Molstar3D() {
     if (!molstarRef.current || !simulationKey) return;
     const target = molstarRef.current.contentWindow;
     if (!target) return;
+    // Both entry paths can fire for one page view, and each mount used to add
+    // another copy — the state tree filled up with identical 16-element models
+    // stacked on each other. Draw a given run's pose once.
+    if (overlaidPoseKeyRef.current === simulationKey) return;
+    overlaidPoseKeyRef.current = simulationKey;
     try {
       const response = await authedFetch(
         API_CONFIG.buildApiUrl(`/sanitizedminimalsdf/${simulationKey}`)
@@ -104,8 +111,21 @@ export function Molstar3D() {
       const sdfText = await response.text();
       if (!sdfText.trim()) return;
       target.postMessage({ type: 'loadStructureFromData', text: sdfText, format: 'sdf' }, '*');
+      // Frame it once it has parsed. Molstar does not move the camera for a
+      // structure that arrives after the first, and the pose is at the receptor's
+      // coordinates rather than the origin — so without this it can be loaded,
+      // visible in the state tree, and still off-screen.
+      setTimeout(() => {
+        try {
+          target.postMessage({ type: 'resetCamera' }, '*');
+        } catch (error) {
+          console.error('Could not frame the pose:', error);
+        }
+      }, 500);
     } catch (error) {
       console.error('Could not overlay the docked pose:', error);
+      // Let a retry happen — the pose was never drawn.
+      overlaidPoseKeyRef.current = null;
     }
   };
 
