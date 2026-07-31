@@ -103,7 +103,7 @@ export function ControlPanel() {
   };
 
   // Which compute endpoints answered this company's docking. Readable by every
-  // member, editable only by owner/admin in Company Admin — so on the day docking
+  // member, editable only by owner/admin in the Admin Panel — so on the day docking
   // moves to the box, anyone can confirm it moved without needing admin rights.
   const fetchComputeEndpoints = async () => {
     try {
@@ -329,7 +329,7 @@ export function ControlPanel() {
       ) : activityData ? (
         <div className="space-y-8">
           {/* Which compute services answered this company's docking. Read-only for
-              everyone; owner/admin change it in Company Admin. Four URLs, no
+              everyone; owner/admin change it in the Admin Panel. Four URLs, no
               credentials, so there is nothing here a member should not see. */}
           {computeConfig?.ligandServiceConfig && (
             <Card className="border border-blue-gray-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
@@ -346,7 +346,7 @@ export function ControlPanel() {
                   <Typography variant="small" className="mt-1 font-normal text-blue-gray-600 dark:text-slate-400">
                     Where docking, catalog and stock requests are sent.
                     {computeConfig.editable
-                      ? " Change these in Company Admin."
+                      ? " Change these in the Admin Panel."
                       : " Read-only — an owner or admin can change them."}
                   </Typography>
                 </div>

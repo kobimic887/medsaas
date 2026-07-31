@@ -139,7 +139,7 @@ export const routes = [
       },
       {
         icon: <BuildingOfficeIcon {...icon} />,
-        name: "company admin",
+        name: "admin panel",
         path: "/company-admin",
         element: <CompanyAdmin />,
         adminOnly: true,

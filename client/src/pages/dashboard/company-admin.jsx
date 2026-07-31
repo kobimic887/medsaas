@@ -32,7 +32,6 @@ import {
   isValidBrandHex,
   normalizeBrandHex,
 } from "@/utils/companyBranding";
-import { buildLigandUploadPayload, MAX_LIGAND_FILE_SIZE_BYTES } from "@/utils/ligandUpload";
 
 const initialInviteForm = {
   username: "",
@@ -141,8 +140,6 @@ export function CompanyAdmin() {
   const [message, setMessage] = React.useState(null);
   const [inviteForm, setInviteForm] = React.useState(initialInviteForm);
   const [temporaryPassword, setTemporaryPassword] = React.useState("");
-  const [ligandFile, setLigandFile] = React.useState(null);
-  const [ligandInputKey, setLigandInputKey] = React.useState(0);
   const [ligandServiceForm, setLigandServiceForm] = React.useState({
     catalogApiBase: "",
     stockApiUrl: "",
@@ -504,34 +501,6 @@ export function CompanyAdmin() {
     }
   };
 
-  const handleLigandUpload = async (event) => {
-    event.preventDefault();
-    if (!ligandFile) {
-      showMessage("red", "Choose a ligand file to upload");
-      return;
-    }
-    if (ligandFile.size > MAX_LIGAND_FILE_SIZE_BYTES) {
-      showMessage("red", "Ligand file must be 2MB or smaller");
-      return;
-    }
-    setSaving("ligand-upload");
-    try {
-      const ligandUpload = await buildLigandUploadPayload(ligandFile);
-      const result = await companyRequest("/company/ligand-upload", {
-        method: "PATCH",
-        body: JSON.stringify({ ligandUpload }),
-      });
-      showMessage("green", result.message || "Ligand file uploaded");
-      setLigandFile(null);
-      setLigandInputKey((value) => value + 1);
-      await Promise.all([loadUsage(), loadAudit()]);
-    } catch (error) {
-      showMessage("red", error.message);
-    } finally {
-      setSaving("");
-    }
-  };
-
   const handleLigandServiceConfigSave = async (event) => {
     event.preventDefault();
     setSaving("ligand-service-config");
@@ -590,7 +559,7 @@ export function CompanyAdmin() {
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <Typography variant="h3" color="blue-gray">
-            Company Admin
+            Admin Panel
           </Typography>
           <Typography variant="small" className="mt-1 font-normal text-blue-gray-600">
             {company?.name || "Company workspace"}
@@ -841,59 +810,6 @@ export function CompanyAdmin() {
                 </CardBody>
               </Card>
 
-              <Card className="border border-blue-gray-100 shadow-sm">
-                <CardHeader floated={false} shadow={false} className="rounded-none">
-                  <Typography variant="h5" color="blue-gray">
-                    Company Ligand Upload
-                  </Typography>
-                </CardHeader>
-                <CardBody>
-                  <div className="mb-4 rounded-md border border-blue-gray-100 bg-blue-gray-50/40 p-3">
-                    <Typography variant="small" color="blue-gray" className="font-medium">
-                      Current ligand file
-                    </Typography>
-                    <Typography variant="small" color="gray" className="mt-1">
-                      {company?.ligandUpload?.fileName || "No ligand file uploaded"}
-                    </Typography>
-                    {company?.ligandUpload?.uploadedAt && (
-                      <Typography variant="small" color="gray" className="mt-1">
-                        Uploaded: {formatDate(company.ligandUpload.uploadedAt)}
-                      </Typography>
-                    )}
-                    {company?.ligandUpload?.sizeBytes !== undefined && (
-                      <Typography variant="small" color="gray" className="mt-1">
-                        Size: {formatNumber(company.ligandUpload.sizeBytes)} bytes
-                      </Typography>
-                    )}
-                  </div>
-
-                  <form className="space-y-4" onSubmit={handleLigandUpload}>
-                    <label htmlFor="ligand-upload-input" className="sr-only">
-                      Ligand file
-                    </label>
-                    <input
-                      id="ligand-upload-input"
-                      key={ligandInputKey}
-                      type="file"
-                      accept=".sdf,.mol,.mol2,.csv,.txt,.json"
-                      className="w-full rounded-md border border-blue-gray-200 px-3 py-2 text-sm text-blue-gray-700"
-                      onChange={(event) => setLigandFile(event.target.files?.[0] || null)}
-                      required
-                    />
-                    <Typography variant="small" color="gray">
-                      Accepted formats: SDF, MOL, MOL2, CSV, TXT, JSON (max 2MB)
-                    </Typography>
-                    <Button
-                      type="submit"
-                      className="flex items-center justify-center gap-2"
-                      disabled={saving === "ligand-upload"}
-                    >
-                      {saving === "ligand-upload" ? <Spinner className="h-4 w-4" /> : <ArrowPathIcon className="h-4 w-4" />}
-                      Upload Ligand
-                    </Button>
-                  </form>
-                </CardBody>
-              </Card>
             </div>
           )}
 
