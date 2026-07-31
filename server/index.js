@@ -272,6 +272,12 @@ function createRateLimiter({ windowMs, max, name }) {
 const authRateLimit = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 30, name: 'auth' });
 const publicEmailRateLimit = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 5, name: 'public-email' });
 const checkoutRateLimit = createRateLimiter({ windowMs: 5 * 60 * 1000, max: 20, name: 'checkout' });
+// NCBI asks for no more than 3 requests/second without an API key, and each search here
+// costs two upstream calls (esearch then esummary). 40 per 5 minutes per caller keeps us
+// well inside that while still feeling unlimited to a person reading papers.
+const pubmedRateLimit = createRateLimiter({ windowMs: 5 * 60 * 1000, max: 40, name: 'pubmed' });
+const PUBMED_API_BASE = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils';
+const PUBMED_TIMEOUT_MS = 15000;
 
 // Outbound calls to external services had no default timeout, so a hung
 // upstream could hold a connection (and file descriptor) open indefinitely —
@@ -6113,6 +6119,98 @@ app.post('/api/projects', ensureMongoConnected, authenticateToken, requireActive
  *       200:
  *         description: Latest activity
  */
+/**
+ * @swagger
+ * /api/pubmed/search:
+ *   get:
+ *     summary: Search PubMed for literature on a target, compound or disease
+ *     tags: [Literature]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         required: true
+ *         schema: { type: string }
+ *         description: Free-text query, e.g. "glioblastoma temozolomide"
+ *       - in: query
+ *         name: retmax
+ *         schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+ *     responses:
+ *       200:
+ *         description: Matching articles, newest-relevance first
+ *       400:
+ *         description: Missing or unusable query
+ *       502:
+ *         description: PubMed did not answer
+ */
+app.get('/api/pubmed/search', pubmedRateLimit, ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+  const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  if (!query) {
+    return res.status(400).json({ error: 'A search query is required' });
+  }
+  if (query.length > 300) {
+    return res.status(400).json({ error: 'Search query must be 300 characters or fewer' });
+  }
+
+  const requested = Number.parseInt(req.query.retmax, 10);
+  const retmax = Number.isFinite(requested) ? Math.min(Math.max(requested, 1), 50) : 20;
+
+  // Deliberately NOT metered. This costs us nothing per call — no GPU, no upstream
+  // licence, no credits — so charging a simulation token for a literature search
+  // would be inventing a cost that does not exist. The rate limiter above is there
+  // to respect NCBI's published 3-requests-per-second ceiling, not to ration users.
+  try {
+    const search = await axios.get(`${PUBMED_API_BASE}/esearch.fcgi`, {
+      params: { db: 'pubmed', term: query, retmax, retmode: 'json', sort: 'relevance' },
+      timeout: PUBMED_TIMEOUT_MS
+    });
+
+    const result = search.data?.esearchresult || {};
+    const ids = Array.isArray(result.idlist) ? result.idlist.filter(Boolean) : [];
+    const total = Number.parseInt(result.count, 10) || 0;
+
+    if (ids.length === 0) {
+      return res.json({ query, total: 0, articles: [] });
+    }
+
+    // esearch returns ids only; esummary turns them into something displayable.
+    const summary = await axios.get(`${PUBMED_API_BASE}/esummary.fcgi`, {
+      params: { db: 'pubmed', id: ids.join(','), retmode: 'json' },
+      timeout: PUBMED_TIMEOUT_MS
+    });
+
+    const records = summary.data?.result || {};
+    const articles = ids
+      .map((id) => records[id])
+      .filter(Boolean)
+      .map((record) => {
+        // elocationid is usually "doi: 10.xxxx/yyy"; articleids is the reliable source.
+        const doi = Array.isArray(record.articleids)
+          ? (record.articleids.find((entry) => entry?.idtype === 'doi')?.value || null)
+          : null;
+        return {
+          pmid: record.uid,
+          title: record.title || '(no title)',
+          journal: record.fulljournalname || record.source || '',
+          pubdate: record.pubdate || '',
+          authors: Array.isArray(record.authors)
+            ? record.authors.filter((a) => a?.authtype === 'Author').map((a) => a.name)
+            : [],
+          doi,
+          url: `https://pubmed.ncbi.nlm.nih.gov/${record.uid}/`
+        };
+      });
+
+    res.json({ query, total, articles });
+  } catch (error) {
+    // Never relay an upstream status verbatim: a 401 from anywhere same-origin logs the
+    // user out, and NCBI's throttling 429 is not the caller's fault either.
+    console.error('[pubmed] search failed:', error.message);
+    res.status(502).json({ error: 'PubMed is not answering right now. Try again shortly.' });
+  }
+});
+
 app.get('/api/activity', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const db = client.db();

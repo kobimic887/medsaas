@@ -9,7 +9,8 @@ import {
   CloudIcon,
   ArrowPathIcon,
   BuildingOfficeIcon,
-  CreditCardIcon
+  CreditCardIcon,
+  BookOpenIcon
 } from "@heroicons/react/24/solid";
 import { lazy } from "react";
 
@@ -30,6 +31,7 @@ const CompanyAdmin = lazy(() => import("@/pages/dashboard/company-admin"));
 const Simulation = lazy(() => import("@/pages/dashboard/simulation"));
 const MoleculeViewer = lazy(() => import("@/pages/dashboard/moleculeviewer"));
 const Molstar3D = lazy(() => import("@/pages/dashboard/molstar3d"));
+const Literature = lazy(() => import("@/pages/dashboard/literature"));
 const GenerateMolecules = lazy(() => import("@/pages/dashboard/generate-molecules"));
 const ProteinFolding = lazy(() => import("@/pages/dashboard/protein-folding"));
 const GromacsMd = lazy(() => import("@/pages/dashboard/gromacs-md"));
@@ -187,6 +189,12 @@ export const routes = [
         path: "/glioblastoma-predict",
         element: <GlioblastomaPredict />,
         hideFromMenu: true,
+      },
+      {
+        icon: <BookOpenIcon {...icon} />,
+        name: "literature",
+        path: "/literature",
+        element: <Literature />,
       },
       {
         icon: <CreditCardIcon {...icon} />,
