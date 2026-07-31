@@ -74,6 +74,41 @@ export function Molstar3D() {
   };
 
   // Function to load SDF data from URL
+  /**
+   * Draw a run's docked pose into the Molstar iframe.
+   *
+   * There are two ways into this page and they load structures independently: the
+   * localStorage path, and the `?pdb=…&simulation=…` link the results page actually
+   * navigates with. Only the first ever rendered the pose. The second fetched the
+   * same SDF but handed it to `loadSdfData`, which fills the results *table* and
+   * posts nothing to the viewer — so the protein appeared, the table listed poses,
+   * and the 3D view had no ligand in it. Both paths call this now.
+   *
+   * Fetched here rather than passing the iframe a URL: /api/sanitized* needs a
+   * bearer token, the iframe is a separate document and cannot attach one, and a
+   * same-origin 401 signs the user out rather than failing quietly.
+   */
+  const overlayPoseInViewer = async (simulationKey) => {
+    if (!molstarRef.current || !simulationKey) return;
+    const target = molstarRef.current.contentWindow;
+    if (!target) return;
+    try {
+      const response = await authedFetch(
+        API_CONFIG.buildApiUrl(`/sanitizedminimalsdf/${simulationKey}`)
+      );
+      if (!response.ok) {
+        // A run with no stored pose is a normal outcome, not an error worth a banner.
+        console.log('No pose to overlay for this simulation:', response.status);
+        return;
+      }
+      const sdfText = await response.text();
+      if (!sdfText.trim()) return;
+      target.postMessage({ type: 'loadStructureFromData', text: sdfText, format: 'sdf' }, '*');
+    } catch (error) {
+      console.error('Could not overlay the docked pose:', error);
+    }
+  };
+
   const loadSdfData = async (url) => {
     try {
       console.log('Loading SDF data from URL:', url);
@@ -325,7 +360,13 @@ export function Molstar3D() {
               url: pdbUrl,
               format: 'pdb'
             }, '*');
-            
+
+            // Draw the docked pose on top. Let the receptor land first so the camera
+            // frames both together rather than fitting to the ligand and then jumping.
+            if (simulationParam) {
+              setTimeout(() => overlayPoseInViewer(simulationParam), 600);
+            }
+
             // Collapse Molstar main menu
             setTimeout(() => {
               if (molstarRef.current && molstarRef.current.contentWindow) {
@@ -489,37 +530,8 @@ export function Molstar3D() {
       }, 700);
     };
 
-    // The docked pose, drawn inside the protein alongside it.
-    //
-    // This page has only ever auto-loaded the receptor. The pose — the small
-    // ball-and-stick molecule in the binding site, which is the actual result of
-    // the run — appeared only after the user clicked a table row or "Load SDF".
-    // So arriving at Simulation Results showed a bare protein and no answer.
-    //
-    // Deliberately additive: the row click and the Load SDF button still work
-    // exactly as before, this only stops the first view from being empty.
-    const loadPoseIntoViewer = async () => {
-      if (!molstarRef.current || !simulationKey) return;
-      const target = molstarRef.current.contentWindow;
-      try {
-        // Fetch here rather than handing the iframe a URL: /api/sanitized* needs a
-        // bearer token, the iframe is a separate document and cannot attach one, and
-        // a same-origin 401 would sign the user out rather than fail quietly.
-        const response = await authedFetch(
-          API_CONFIG.buildApiUrl(`/sanitizedminimalsdf/${simulationKey}`)
-        );
-        if (!response.ok) {
-          // A run with no stored pose is a normal outcome, not an error worth a banner.
-          console.log('No pose to overlay for this simulation:', response.status);
-          return;
-        }
-        const sdfText = await response.text();
-        if (!sdfText.trim()) return;
-        target.postMessage({ type: 'loadStructureFromData', text: sdfText, format: 'sdf' }, '*');
-      } catch (error) {
-        console.error('Could not overlay the docked pose:', error);
-      }
-    };
+    // Both entry paths share one implementation now — see overlayPoseInViewer.
+    const loadPoseIntoViewer = () => overlayPoseInViewer(simulationKey);
 
     const loadDefaultStructures = async () => {
       if (!molstarRef.current || !pdbUrl) return;
