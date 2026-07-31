@@ -122,7 +122,7 @@ export function PaidPlansDescription() {
         'Folding Simulation Not Included'
       ],
       buttonText: 'Purchase',
-      buttonColor: 'indigo'
+      buttonColor: 'brand'
     },
     {
       name: 'Professional',
@@ -147,7 +147,7 @@ export function PaidPlansDescription() {
         'Folding Simulation Not Included'
       ],
       buttonText: 'Purchase',
-      buttonColor: 'purple'
+      buttonColor: 'brand'
     },
     {
       name: 'Enterprise',

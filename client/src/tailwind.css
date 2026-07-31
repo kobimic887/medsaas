@@ -921,3 +921,88 @@
   .cb-auth-container { padding: 1.5rem 1rem; }
   .cb-auth-card { padding: 1.5rem; }
 }
+
+/* ═════════════════════ PRICING PAGE (/main/paidplansdescription) ═══════════
+   This page is written in Bootstrap 5 markup — `card`, `btn btn-primary`,
+   `text-dark`, `row g-4 col-lg-4` — and Bootstrap 5.3.3 really is loaded, from
+   the CDN link in client/index.html. That is not the Tailwind false positive
+   GOAL.md warns about; it was measured in the browser.
+
+   It rendered unreadable here for two reasons that only appear together:
+
+   1. Its wrapper asks for `bg-gray-50`, but `withMT()` replaces Tailwind's
+      palette and drops `gray`, so that class compiles to nothing. The page
+      therefore inherits the dark landing background instead of the light one
+      it was written for — while its cards stay Bootstrap white.
+   2. On top of that, `.text-dark` lost to the inherited landing colour, so
+      headings painted #dde8e6 on white (contrast 1.25) and every purchase
+      button painted white on white (contrast 1.00 — completely invisible).
+
+   A contrast probe found 79 failing nodes on this page and zero on the other
+   six marketing pages, so the fix is scoped to this wrapper rather than global.
+   The page keeps its markup and its content; only the surface moves onto the
+   dark shell it now lives in. */
+.about-us-page .card {
+  background-color: var(--cb-surface);
+  border: 1px solid var(--cb-border);
+  color: #dde8e6;
+}
+.about-us-page .card .text-dark,
+.about-us-page .card .card-body,
+.about-us-page .card h1,
+.about-us-page .card h2,
+.about-us-page .card h3,
+.about-us-page .card h4,
+.about-us-page .card h5 {
+  color: #f2f7f6 !important;
+}
+.about-us-page .card .text-secondary,
+.about-us-page .card .text-muted,
+.about-us-page .card small {
+  color: #9db3af !important;
+}
+.about-us-page .card .text-success {
+  color: var(--cb-emerald) !important;
+}
+
+/* Tailwind's preflight resets `button { background-color: transparent }`, which
+   is what left `.btn-secondary` and friends with no fill at all. Restore a
+   visible button, in the brand palette rather than Bootstrap's blue/purple. */
+.about-us-page .btn {
+  background-color: var(--cb-purple);
+  border: 1px solid var(--cb-purple);
+  color: #0b1f1b;
+  font-weight: 700;
+}
+.about-us-page .btn:hover:not(:disabled) {
+  background-color: var(--cb-blue);
+  border-color: var(--cb-blue);
+  color: #0b1f1b;
+}
+.about-us-page .btn:disabled {
+  opacity: 0.55;
+}
+/* The non-featured plans read as secondary: outlined, not filled. */
+.about-us-page .btn-secondary,
+.about-us-page .btn-blue-gray {
+  background-color: transparent;
+  color: var(--cb-purple);
+}
+.about-us-page .btn-secondary:hover:not(:disabled),
+.about-us-page .btn-blue-gray:hover:not(:disabled) {
+  background-color: var(--cb-purple);
+  color: #0b1f1b;
+}
+/* Bootstrap's border utilities carry !important, so matching it is required
+   rather than stylistic — without it the featured plan keeps a blue outline. */
+.about-us-page .card.border-primary {
+  border-color: var(--cb-purple) !important;
+}
+.about-us-page .badge.bg-primary {
+  background-color: var(--cb-purple) !important;
+  color: #0b1f1b;
+}
+/* `.text-primary` is Bootstrap's blue on the billing toggle. */
+.about-us-page .text-primary {
+  color: var(--cb-purple) !important;
+}

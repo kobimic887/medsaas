@@ -1068,10 +1068,10 @@ fetch and the OpenMM prep, and that is the one latency change a user will actual
 
 ---
 
-## 🚧 2026-07-30 — marketing site restored in the repo, deliberately NOT deployed
+## ✅ 2026-07-31 — marketing site restored, fixed and shipped
 
-**Do not deploy HEAD to 83 until the palette is fixed.** `client/src/App.jsx`'s catch-all now
-points at `/main/mainHome`, so shipping as-is makes an unfinished page the product's front door.
+*(Was "🚧 deliberately NOT deployed" on 2026-07-30. Both blockers below are now closed; the
+findings are kept because one of them was wrong and the reason it was wrong is worth keeping.)*
 
 **Why it came back:** the owner's rule is *everything from chem_beo (the original Pyxis) stays*.
 Checked directly rather than assumed — `/root/material-tailwind-dashboard-react/src/pages/main/`
@@ -1084,17 +1084,40 @@ Restored from tag `saas-surface-v1`, rebranded (20 × `ChemBench` → Pyxis Disc
 marketing navbar, and two modules the pages import that had also been deleted —
 `client/src/context/blog.jsx` and `client/src/data/servicesImages.js`. `bun run ci` passes.
 
-**Two things left before this can ship:**
+**The two blockers recorded on 2026-07-30, and what they turned out to be:**
 
-1. **12 hardcoded old-palette classes** (`text-purple-300`, `bg-purple-500`, `shadow-purple-500`,
-   `from-purple-500`, …) across `client/src/pages/main/`. The brand mark on the landing page
-   renders **violet**, not Pyxis citron. Grep for `(purple|violet|indigo|fuchsia)-[0-9]+` under
-   `client/src/pages/main`, `layouts/mainpage.jsx` and `widgets/layout/main-navbar.jsx`.
-2. **The hero body renders blank** at `/main/mainHome` — only the nav and the "Now in Open Beta"
-   pill paint. Unverified cause; likely scroll/intersection-triggered animation, or content that
-   depends on something else that was deleted. Look before assuming it is the palette.
+1. **Old-palette colours — real, fixed.** Not 12 classes across `pages/main/` but 9 places, and
+   the ones that actually mattered were in `widgets/layout/main-navbar.jsx`, which the original
+   grep never covered: the brand mark's `linear-gradient(#a855f7, #3b82f6)`, the BETA chip, the
+   Sign In pill and the mobile Sign In link. Plus the hero's "Now in Open Beta" badge and two
+   `buttonColor: 'indigo' | 'purple'` strings. All now use `brand-*`, which is driven by the
+   per-company CSS variables, so the marketing site follows company branding like the dashboard.
 
-Until both are done, either fix them or point the catch-all back at `/auth/sign-in`.
+2. **"The hero body renders blank" — NOT a bug. This finding was wrong.** The hero is wrapped in
+   `<Reveal>`, whose `.cb-reveal` starts at `opacity: 0` and transitions over **0.7 s with delays
+   up to 400 ms**. The screenshot behind that claim was taken immediately after navigation, so it
+   photographed the fade-in. Measuring instead of looking settled it: every `.cb-reveal` had
+   `cb-visible` and computed `opacity: 1`, laid out inside the viewport, and a second screenshot
+   showed the full hero. Nothing was ever broken. **If a page looks blank in a screenshot, check
+   `getComputedStyle` before writing it down as a defect** — see the GOAL.md rule about reading a
+   measurement like it might be lying, which cuts both ways.
+
+**A third defect the original note missed entirely — `/main/paidplansdescription`:**
+
+79 nodes below 2.5:1 contrast, including every purchase button at **1.00** (white on white —
+literally invisible). Two causes stacked:
+
+- The page is genuine **Bootstrap 5** markup and Bootstrap 5.3.3 really is loaded, from the CDN
+  link in `client/index.html`. (This is *not* the Tailwind-matched-as-Bootstrap false positive
+  GOAL.md describes — a probe element confirmed it in the live page.)
+- Its wrapper asks for `bg-gray-50`, but `withMT()` replaces Tailwind's palette and drops `gray`,
+  so the class compiles to **nothing** — same trap as the missing `slate` family. The page fell
+  through to the dark landing background while its cards stayed Bootstrap white, and Tailwind's
+  preflight `button { background-color: transparent }` erased the button fills.
+
+Fixed with one scoped block in `client/src/tailwind.css` (`.about-us-page …`) — content and markup
+untouched, only the surface moves onto the dark shell. Re-measured: **0 failing nodes**, and the
+other six marketing pages measured 0 both before and after.
 
 ### ✅ Deployed and live: `6e7fe9d`
 

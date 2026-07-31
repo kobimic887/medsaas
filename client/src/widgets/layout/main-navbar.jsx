@@ -45,11 +45,14 @@ export function MainNavbar() {
             className="text-2xl font-extrabold tracking-tight"
             style={{
               fontFamily: "'Outfit', sans-serif",
+              // Pyxis citron into the brand's teal. These were the retired product's
+              // violet/blue and violet/cyan pairs, which is why the brand mark on the
+              // marketing site still rendered purple after the rebrand.
               background: isLandingPage
-                ? "linear-gradient(135deg, #a855f7, #3b82f6)"
+                ? "linear-gradient(135deg, #b4b239, #4d8b80)"
                 : isDark
-                  ? "linear-gradient(135deg, #c4b5fd, #67e8f9)"
-                  : "#1e293b",
+                  ? "linear-gradient(135deg, #d4d26a, #6fae9f)"
+                  : "#072824",
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
               backgroundClip: "text",
@@ -60,8 +63,8 @@ export function MainNavbar() {
           <span
             className={`text-xs font-medium px-2 py-0.5 rounded-full ${
               isLandingPage
-                ? "bg-purple-500/15 text-purple-300 border border-purple-500/20"
-                : "bg-blue-50 text-blue-600 dark:border dark:border-blue-500/30 dark:bg-blue-950/50 dark:text-blue-200"
+                ? "bg-brand-500/15 text-brand-300 border border-brand-500/20"
+                : "bg-brand-50 text-brand-700 dark:border dark:border-brand-500/30 dark:bg-brand-900/50 dark:text-brand-200"
             }`}
           >
             BETA
@@ -124,7 +127,7 @@ export function MainNavbar() {
                 type="button"
                 className={`hidden xl:flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all ${
                   isLandingPage
-                    ? "bg-gradient-to-r from-purple-500 to-blue-500 text-white shadow-lg shadow-purple-500/25 hover:shadow-purple-500/40"
+                    ? "bg-gradient-to-r from-brand-500 to-brand-700 text-white shadow-lg shadow-brand-500/25 hover:shadow-brand-500/40"
                     : "bg-blue-600 text-white hover:bg-blue-700 dark:bg-brand-500 dark:hover:bg-brand-400"
                 }`}
               >
@@ -174,7 +177,7 @@ export function MainNavbar() {
           {!isLoggedIn() && (
             <Link to="/auth/sign-in" onClick={() => setMobileOpen(false)}>
               <div className={`block px-3 py-2 rounded-lg text-sm font-semibold ${
-                isLandingPage ? "text-purple-300" : "text-blue-600 dark:text-brand-300"
+                isLandingPage ? "text-brand-300" : "text-blue-600 dark:text-brand-300"
               }`}>
                 Sign In
               </div>
