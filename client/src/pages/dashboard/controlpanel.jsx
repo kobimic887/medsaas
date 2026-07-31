@@ -21,7 +21,7 @@ import {
   CheckIcon,
 } from "@heroicons/react/24/outline";
 import { ClockIcon, ShoppingCartIcon } from "@heroicons/react/24/solid";
-import { API_CONFIG } from "@/utils/constants";
+import { API_CONFIG, getAuthToken } from "@/utils/constants";
 
 export function ControlPanel() {
   const navigate = useNavigate();
@@ -46,6 +46,9 @@ export function ControlPanel() {
   const [admetData, setAdmetData] = React.useState(null);
   const [admetLoading, setAdmetLoading] = React.useState(false);
   const [currentSimulationId, setCurrentSimulationId] = React.useState('');
+
+  // Compute endpoints panel (read-only for members)
+  const [computeConfig, setComputeConfig] = React.useState(null);
 
   // Function to fetch activities from API
   const fetchActivities = async () => {
@@ -99,10 +102,30 @@ export function ControlPanel() {
     }
   };
 
+  // Which compute endpoints answered this company's docking. Readable by every
+  // member, editable only by owner/admin in Company Admin — so on the day docking
+  // moves to the box, anyone can confirm it moved without needing admin rights.
+  const fetchComputeEndpoints = async () => {
+    try {
+      const token = getAuthToken();
+      const response = await fetch(API_CONFIG.buildApiUrl('/company/ligand-service-config'), {
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      });
+      if (!response.ok) return; // Informational panel; a failure here hides it, nothing more.
+      setComputeConfig(await response.json());
+    } catch (err) {
+      console.error('Error fetching compute endpoints:', err);
+    }
+  };
+
   // Fetch activities and simulation logs on component mount
   React.useEffect(() => {
     fetchActivities();
     fetchUserSimulationLogs();
+    fetchComputeEndpoints();
     loadCartFromStorage();
   }, []);
 
@@ -305,6 +328,65 @@ export function ControlPanel() {
         </div>
       ) : activityData ? (
         <div className="space-y-8">
+          {/* Which compute services answered this company's docking. Read-only for
+              everyone; owner/admin change it in Company Admin. Four URLs, no
+              credentials, so there is nothing here a member should not see. */}
+          {computeConfig?.ligandServiceConfig && (
+            <Card className="border border-blue-gray-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
+              <CardHeader
+                floated={false}
+                shadow={false}
+                color="transparent"
+                className="m-0 flex items-center justify-between p-6"
+              >
+                <div>
+                  <Typography variant="h6" color="blue-gray" className="dark:text-slate-100">
+                    Compute services
+                  </Typography>
+                  <Typography variant="small" className="mt-1 font-normal text-blue-gray-600 dark:text-slate-400">
+                    Where docking, catalog and stock requests are sent.
+                    {computeConfig.editable
+                      ? " Change these in Company Admin."
+                      : " Read-only — an owner or admin can change them."}
+                  </Typography>
+                </div>
+              </CardHeader>
+              <CardBody className="px-6 pt-0 pb-6">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {[
+                    ["Docking", "dockingApiUrl"],
+                    ["DiffDock", "diffdockApiUrl"],
+                    ["Compound catalog", "catalogApiBase"],
+                    ["Stock", "stockApiUrl"],
+                  ].map(([label, key]) => (
+                    <div
+                      key={key}
+                      className="rounded-lg border border-blue-gray-100 p-3 dark:border-slate-800"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <Typography variant="small" className="font-semibold text-blue-gray-700 dark:text-slate-200">
+                          {label}
+                        </Typography>
+                        <Chip
+                          size="sm"
+                          variant="ghost"
+                          color={computeConfig.usingDefaults?.[key] ? "blue-gray" : "green"}
+                          value={computeConfig.usingDefaults?.[key] ? "Default" : "Custom"}
+                        />
+                      </div>
+                      <Typography
+                        variant="small"
+                        className="mt-1 break-all font-mono text-xs text-blue-gray-600 dark:text-slate-400"
+                      >
+                        {computeConfig.ligandServiceConfig[key]}
+                      </Typography>
+                    </div>
+                  ))}
+                </div>
+              </CardBody>
+            </Card>
+          )}
+
           {/* User Simulation Logs Table */}
           <Card className="border border-blue-gray-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
             <CardHeader

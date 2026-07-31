@@ -69,7 +69,13 @@ export function Dashboard() {
 function DashboardShell() {
   const [controller] = useMaterialTailwindController();
   const { openSidenav } = controller;
-  const { brandName, logo } = useBranding();
+  // The sidebar header names the product, not the tenant. This used to render
+  // useBranding()'s brandName, which is the company name when one is set — so the
+  // owner of "kobi inc" saw "kobi inc" in the top-left while the demo account,
+  // which carries no company name, correctly saw "Pyxis Discovery". One product,
+  // one name, same for everyone. The per-company logo and palette still apply;
+  // it is only the wordmark that stops varying.
+  const { platformName, logo } = useBranding();
 
   return (
     <div id="dashboard-layout" className="flex min-h-screen bg-blue-gray-50/50 text-blue-gray-900 dark:bg-slate-950 dark:text-slate-100">
@@ -78,7 +84,7 @@ function DashboardShell() {
         <Sidenav
           routes={routes}
           brandImg={logo?.dataUrl || null}
-          brandName={brandName}
+          brandName={platformName}
         />
       </div>
 

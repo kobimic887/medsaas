@@ -4053,6 +4053,44 @@ app.patch('/api/company/ligand-upload', ensureMongoConnected, authenticateToken,
   }
 });
 
+/**
+ * @swagger
+ * /api/company/ligand-service-config:
+ *   get:
+ *     summary: Read the compute endpoints this company's docking and catalog run against
+ *     description: >
+ *       Readable by any signed-in member. Writing stays owner/admin — see the PATCH
+ *       on this path. The config holds four URLs and no credentials, so exposing it
+ *       tells a member which engine answered their dock without handing them the
+ *       ability to repoint it for all fifty accounts.
+ *     tags: [Company]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Current endpoints, plus whether they are still the built-in defaults }
+ */
+app.get('/api/company/ligand-service-config', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+  try {
+    const company = await getCompanyRecord(req.user.companyId);
+    const config = normalizeLigandServiceConfig(company?.ligandServiceConfig || {});
+    // Which endpoints are still the shipped defaults. On arrival day this is the
+    // single question everyone will want answered — "are we on the box yet?" — and
+    // it should not require being an admin to see.
+    const usingDefaults = Object.fromEntries(
+      Object.keys(DEFAULT_LIGAND_SERVICE_CONFIG).map((key) => [
+        key,
+        config[key] === DEFAULT_LIGAND_SERVICE_CONFIG[key]
+      ])
+    );
+    res.json({
+      ligandServiceConfig: config,
+      usingDefaults,
+      editable: req.user.role === 'owner' || req.user.role === 'admin'
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.patch('/api/company/ligand-service-config', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (req, res) => {
   try {
     const company = await getCompanyRecord(req.user.companyId);
