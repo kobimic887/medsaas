@@ -31,8 +31,14 @@
       pages. Re-measure before believing any older note that says otherwise.
     -->
 
-    <!-- 3Dmol.js for 3D visualization -->
-    <script src="https://3dmol.csb.pitt.edu/build/3Dmol-min.js"></script>
+    <!--
+      3Dmol.js is no longer loaded here. It was 524 KB fetched on every page —
+      sign-in included — from https://3dmol.csb.pitt.edu, an unversioned university
+      web server, while exactly one component in the app uses window.$3Dmol.
+      It is now vendored under client/public/3dmol and loaded on demand by
+      pages/dashboard/moleculeviewer.jsx, so the viewer no longer breaks when that
+      host is down and no other page pays for it.
+    -->
     
     <!-- RDKit.js loader.
          The previous version of this block never worked. It injected

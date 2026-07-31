@@ -1,4 +1,41 @@
 import { useState, useRef, useEffect } from "react";
+
+/**
+ * Load 3Dmol.js on demand, from our own origin.
+ *
+ * It used to be a plain <script> in index.html pointing at
+ * `https://3dmol.csb.pitt.edu/build/3Dmol-min.js`. Two problems with that. It is
+ * 524 KB downloaded on *every* page — sign-in included — while this component is
+ * the only thing in the app that touches `window.$3Dmol`. And it is a university
+ * web server with no version in the URL: when that host is slow or down, the
+ * molecule viewer is simply broken, and the version can change underneath us
+ * without warning.
+ *
+ * Now vendored at client/public/3dmol (v2.5.2, license text alongside it) and
+ * fetched only when the viewer actually mounts. Served from our own origin it
+ * gets the same gzip and long-lived caching as everything else.
+ */
+let threeDmolPromise = null;
+function load3Dmol() {
+  if (window.$3Dmol) return Promise.resolve(window.$3Dmol);
+  if (threeDmolPromise) return threeDmolPromise;
+  threeDmolPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = '/3dmol/3Dmol-min.js';
+    script.async = true;
+    script.onload = () => {
+      if (window.$3Dmol) resolve(window.$3Dmol);
+      else reject(new Error('3Dmol loaded but did not define window.$3Dmol'));
+    };
+    script.onerror = () => reject(new Error('Failed to load /3dmol/3Dmol-min.js'));
+    document.head.appendChild(script);
+  }).catch((error) => {
+    // Clear the cache so a later mount can retry rather than reusing the rejection.
+    threeDmolPromise = null;
+    throw error;
+  });
+  return threeDmolPromise;
+}
 import {
   Card,
   CardHeader,
@@ -214,7 +251,14 @@ export function MoleculeViewer() {
     setTimeout(checkDiffDockResult, 2000);
   }, []);
 
-  const initializeViewer = () => {
+  const initializeViewer = async () => {
+    if (!viewerRef.current) return;
+    try {
+      await load3Dmol();
+    } catch (error) {
+      console.error('3D viewer unavailable:', error);
+      return;
+    }
     if (viewerRef.current && window.$3Dmol) {
       viewer3dRef.current = window.$3Dmol.createViewer(viewerRef.current, {
         backgroundColor: backgroundColor,
