@@ -34,8 +34,15 @@ served publicly on 2026-07-29 and authenticates today. After changing it, update
 in **both** `/root/chem_beo/.env` and `/root/pyxis/server/.env`. An agent must not attempt
 this — it needs the provider login.
 
-The owner indicated on 2026-07-31 that this may already have been done deliberately. Verify
-before re-raising it; do not nag.
+**Checked 2026-07-31: it has NOT been rotated.** The credential in
+`/root/pyxis/server/.env` still authenticates against `server028.yourhosting.nl:587`
+(`verify()` returns OK). Whether that is the same string that was exposed on 2026-07-29
+cannot be determined from the box alone — the exposed value was never recorded — so treat it
+as still exposed until the owner says otherwise. It is the owner's call and their login; an
+agent must not attempt it and must not nag about it.
+
+Note the separate thing found while checking: the file was *malformed*, which is why mail was
+completely dead rather than merely at-risk. That part is fixed — see below.
 
 ### Do NOT do these — each looks correct and is not
 
@@ -87,6 +94,25 @@ before re-raising it; do not nag.
   proven by planting a regression.
 - **Dependabot 32 → 19, all 10 highs cleared.** The one that mattered: `sharp` → 0.35.3
   (libvips 8.18.3), because `companyBranding.js` runs it over user-uploaded logos.
+- **Production could not send mail at all**, and it was not the password. Five settings in
+  `/root/pyxis/server/.env` were written with a leading space and an *opening* double quote
+  and no closing one (`EMAIL_HOST= "server028.yourhosting.nl`). dotenv only strips quotes when
+  they match, so every send died on `getaddrinfo ENOTFOUND`, and `EMAIL_USER`/`EMAIL_PASS`
+  were mangled the same way. Fixed on the box (backup at `.env.bak.mailquotes.*`) and
+  verified — `verify()` now returns OK straight from the environment. `normalizeMailEnv()` in
+  `server/utils/emailService.js` strips and **warns** so it cannot silently recur.
+  **The credential itself is valid and was never rotated** — see the owner-only item above.
+- **`/root/material-tailwind-dashboard-react/.env` has empty `EMAIL_*` and no password.**
+  That is `stripe-server.cjs`, the marketing contact form on `:3001`. It only serves the
+  **rollback** path now — the live contact form goes through `pyxis-web` — and empty is the
+  safer state, so it was left alone deliberately. If you ever roll back to the legacy
+  frontend, the contact form will be dead until those are filled in.
+- **~690 KB off every page load.** 3Dmol was a global `<script>` pulling 524 KB from
+  `3dmol.csb.pitt.edu` — an unversioned university web server — on *every* page including
+  sign-in, while only `moleculeviewer.jsx` uses `window.$3Dmol`. Vendored to
+  `client/public/3dmol` (v2.5.2) and lazy-loaded on mount. Plus the 166 KB of dead Font
+  Awesome / Bootstrap JS / popper / placeholder analytics. Remaining third-party origins:
+  Bootstrap's stylesheet, Google Fonts, and the RDKit wasm loader (already lazy).
 - **Dark mode is NOT broken.** An older note says every `dark:*-slate-*` compiles to nothing
   under `withMT()`. That was true; `slate` is now declared in `client/tailwind.config.cjs` and
   the built sheet carries 147 slate rules and 155 `.dark` rules.
