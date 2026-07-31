@@ -114,7 +114,46 @@ One M.2 slot of four remains free.
 
 ## 3. Why each choice, including the ones that look wrong
 
-### GPU — 2× RTX 5090, not RTX PRO, not four cards
+### ⚠ AMENDED 2026-07-31 — the GPU choice has changed to ~4× RTX PRO 4000
+
+The owner reports the build is now **probably 4× RTX PRO 4000** rather than 2× RTX 5090.
+The section below is the original reasoning and is kept because its numbers are still the
+best comparison on record — but its conclusion no longer describes what is being bought.
+
+**What the original analysis got right and still stands:** 4× PRO 4000 is **280 SM against
+2× 5090's 340**, for roughly the same money (€8,616 vs €8,834), and a single PRO 4000 is
+about **40 % of a 5090 on one job**. So for *one user waiting on one ligand*, this is
+slower — meaningfully so. That cost is real and should not be talked away.
+
+**What the original analysis did not weigh, because it was scoring single-job latency:**
+
+1. **NIM becomes usable.** Two separate blockers in this document — "the NIM container needs
+   NVIDIA AI Enterprise, which was refused, and **NIM is not supported on GeForce anyway**"
+   (§DiffDock), and the unresolved **GeForce driver EULA datacenter clause** (§Open risks) —
+   are both *GeForce* problems. RTX PRO is a professional part and neither applies. If NIM is
+   back on the table, arrival day may not need an OSS DiffDock rebuild at all: Asinex's
+   `:58000` service *is* the DiffDock NIM container, so matching it becomes running the same
+   container rather than reimplementing its behaviour. **Verify the AI Enterprise licensing
+   question independently before relying on this** — "not GeForce" removes one blocker, not
+   necessarily both.
+2. **Four cards is four concurrent jobs.** Docking is embarrassingly parallel across jobs.
+   The original framing — "three sit idle while the one user waits twice as long" — is right
+   for a single interactive dock and wrong for a queue. Which one matters depends on whether
+   the box serves one chemist at a time or a batch.
+3. **More total VRAM** (4× 24 GB = 96 GB vs 2× 32 GB = 64 GB), and **ECC**. The docking
+   working set is ~2 GB, so this buys headroom rather than capability.
+4. **Redundancy improves.** The two-card decision was explicitly about surviving a dead GPU
+   on a pick-up warranty. Four cards degrade to 75 % instead of 50 %.
+
+**Net:** slower per interactive dock, better under load, and it probably removes the single
+largest unknown in the arrival plan (rebuilding DiffDock from source). Power and slot
+budgeting change too — PRO cards take one slot each and draw far less, so the 2200 W PSU and
+the "will Coreto warranty two triple-slot 5090s" question in §Open risks both become moot.
+
+Nothing in this repo's code depends on which card is installed. The CUDA matrix in
+`docs/COMPUTE-BOX-MIGRATION.md` still applies — both are Blackwell, same driver generation.
+
+### GPU — 2× RTX 5090, not RTX PRO, not four cards *(superseded, see amendment above)*
 
 **There is no bigger card.** The RTX 5090 and the RTX PRO 6000 Blackwell are the **same
 GB202 die** — full chip is 192 SM, the PRO gets 188 enabled, the 5090 gets 170. Same 512-bit

@@ -102,6 +102,20 @@ before re-raising it; do not nag.
 | 5 | **Subresource Integrity on external tags** | no | Four external hosts remain: jsdelivr (Bootstrap CSS), Google Fonts, unpkg/jsdelivr (RDKit, lazy), and `3dmol.csb.pitt.edu`. None carry SRI. The 3Dmol one is a university web server, unpinned and unversioned, and `moleculeviewer.jsx` genuinely needs it — the viewer breaks whenever that host is down. Vendoring it locally is the real fix. |
 | 6 | **Bundle code-splitting** | no | `vendor-charts` is 515 KB and the build warns. Now gzipped, so it is ~135 KB on the wire; lower priority than it looks. |
 
+### ⚠ Hardware changed 2026-07-31 — GPUs are now probably 4× RTX PRO 4000
+
+Not 2× RTX 5090. Full amendment in `docs/BOX-SPEC.md`. The consequence that matters for
+arrival day: **NIM may now be usable.** Both recorded blockers against it — "NIM is not
+supported on GeForce" and the GeForce driver EULA datacenter clause — are GeForce problems,
+and RTX PRO is not GeForce. Asinex's DiffDock service *is* the NIM container, so if NVIDIA AI
+Enterprise licensing can be settled, arrival day may be "run the same container" instead of
+"rebuild DiffDock from OSS source". **Check the licensing question first — "not GeForce"
+clears one blocker, not automatically both.** Plan for the OSS rebuild; treat NIM as the
+upside case.
+
+Trade-off to expect: each PRO 4000 is ~40 % of a 5090 on a single job, so one interactive
+dock is slower. Four cards means four concurrent docks, so a queue is faster.
+
 ### The prompt to paste on arrival day
 
 Copy this verbatim into a fresh session once the box is powered, on the network and

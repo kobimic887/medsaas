@@ -48,6 +48,33 @@ function tlsOptions(extra = {}) {
 }
 
 /**
+ * Strip stray surrounding quotes from the mail settings, once, at import.
+ *
+ * Production spent time with `EMAIL_HOST= "server028.yourhosting.nl` in its .env —
+ * a leading space and an opening double quote, no closing one. dotenv only strips
+ * quotes when they *match*, so the value survived as `"server028.yourhosting.nl`
+ * and every send died on `getaddrinfo ENOTFOUND`. EMAIL_USER and EMAIL_PASS were
+ * quoted the same way, so even a corrected host would have failed authentication.
+ *
+ * The failure mode is silent and total: no mail at all, and nothing in the logs
+ * that names the cause. Trimming here is cheap; the warning is the real point, so
+ * a malformed .env announces itself instead of looking like a dead mail server.
+ */
+function normalizeMailEnv() {
+  for (const key of ['EMAIL_HOST', 'EMAIL_PORT', 'EMAIL_USER', 'EMAIL_PASS', 'EMAIL_FROM', 'CONTACT_RECIPIENT']) {
+    const raw = process.env[key];
+    if (typeof raw !== 'string') continue;
+    const cleaned = raw.trim().replace(/^["']+/, '').replace(/["']+$/, '');
+    if (cleaned !== raw) {
+      // Never log the value — one of these is the mailbox password.
+      console.warn(`[email] ${key} had surrounding whitespace or quotes in the environment; using the stripped value. Fix it in .env.`);
+      process.env[key] = cleaned;
+    }
+  }
+}
+normalizeMailEnv();
+
+/**
  * Transports to try, best first.
  *
  * The configured one is first and is normally the only one used. The rest exist so a
