@@ -9,10 +9,25 @@ symbol/route, not by number._
 
 ---
 
-## ✅ Already fixed (in the working tree)
+## ✅ Already fixed — and now actually live
 
-These were applied directly to the code. They still need to be **committed,
-built, and deployed** to the box to take effect in production.
+These were applied directly to the code. When this was written they were
+working-tree-only and awaiting a deploy; **that deploy happened.** Release A cut over
+on 2026-07-29 and `app.pyxis-discovery.com` now serves this repo, so everything in
+this table is in effect in production.
+
+Two caveats that are not in the table:
+
+- **The legacy `chem_beo` API is still listening on `:3000`** as the rollback path, and
+  it has **none** of these fixes. Its `'secret'` JWT hole is closed (verified by
+  forging a token and getting `403`), but roughly 60 unauthenticated routes are still
+  open. The fix is written and rehearsed at `deploy/chem_beo/01-fixes-and-config.patch`
+  and is **not applied**. Anything that rolls back to `:3000` inherits that exposure.
+- **`assertConfiguredUrlsArePublic` has exactly one call site** (`server/index.js`, the
+  admin-UI `ligandServiceConfig` PATCH). The env vars that carry the box cutover —
+  `TANIMOTO_API_BASE`, `SDF_CONVERTER_URL`, `ASINEX_DOCKING_API_URL`, `DIFFDOCK_API_URL`
+  — are read straight from `process.env` and are **never validated**. That is by design
+  (they are operator-set, not user-set), but do not mistake the guard for global.
 
 | Finding | Severity | Fix applied |
 |---|---|---|

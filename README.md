@@ -1,6 +1,21 @@
-# MedSaaS (unified platform)
+# Pyxis Discovery (unified platform)
 
-Combined monorepo for molecular research SaaS: web app, chemistry API, ADMET worker, GROMACS MD, and glioblastoma prediction. See [REPOS.md](./REPOS.md) for upstream GitHub mapping.
+Combined monorepo for the Pyxis Discovery molecular research platform: web app,
+chemistry API, ADMET worker, GROMACS MD, and glioblastoma prediction. See
+[REPOS.md](./REPOS.md) for upstream GitHub mapping.
+
+> **"medsaas" is the repository name, not the product.** The product is Pyxis
+> Discovery, and it serves one company. The old *MedSaaS* and *ChemBench* names are
+> retired in all user-facing surfaces — `bun run test:brand` fails the build if either
+> reappears in `client/src`, `client/index.html`, `client/public` or `server`.
+> Package identities, the published MCP server name and this repo's own name are
+> deliberately exempt.
+
+**Where this actually runs:** the app is live at `app.pyxis-discovery.com`, served
+from the shared VPS `83.229.87.94` under systemd (`pyxis-web`), against MongoDB
+Atlas. It is **not** deployed by CI, and not by Docker — see
+[docs/PRODUCTION-83-INVENTORY.md](./docs/PRODUCTION-83-INVENTORY.md) before touching
+anything there, and never modify that host's nginx, TLS, DNS or firewall.
 
 | Path | Purpose |
 |------|---------|
@@ -146,7 +161,13 @@ graphs do not drift.
 Use `.github/workflows/ci.yml` as the PR and `main` quality gate. It runs both
 the Bun default path and the Node fallback path. Use `.github/workflows/deploy.yml`
 only after `main` is green; it is a manual non-prod deploy that reuses the CI gate,
-ships a source archive to the box, and builds the Docker image there.
+ships a source archive to the Oracle VPS, and builds the Docker image there.
+
+**`deploy.yml` does not reach production.** It is `workflow_dispatch`-only and points
+at the Oracle VPS, which is not production. Production on `83.229.87.94` ships by
+`git archive HEAD | ssh … tar -x -C /root/pyxis` plus `systemctl restart pyxis-web`.
+So pushing runs CI and deploys nothing, and reaching production does not require
+pushing.
 
 The current deploy does not use GitHub Packages/GHCR. See
 [docs/CI-CD.md](./docs/CI-CD.md) for the workflow order and deploy model.
@@ -156,7 +177,10 @@ The current deploy does not use GitHub Packages/GHCR. See
 - MongoDB, configured with `MONGODB_URI`
 - Stripe, configured with `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`
 - JWT signing secret, configured with `JWT_SECRET`
-- Titan SMTP, configured with `EMAIL_USER` and `EMAIL_PASS`
+- SMTP, configured with `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USER` and `EMAIL_PASS`.
+  The live provider is `server028.yourhosting.nl:587`, **not Titan** — Titan rejects
+  these credentials with `535` on both 465 and 587. Host and port used to be
+  hardcoded, which is why the marketing contact form had never sent a message.
 
 Optional feature dependencies:
 

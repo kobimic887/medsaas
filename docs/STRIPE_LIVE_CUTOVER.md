@@ -6,11 +6,30 @@
 commands on the production box. This document is self-contained — you do not
 need prior conversation context.
 
-> **TL;DR of the problem:** Checkout *creation* already works (the live key is
-> valid and charges-enabled). Payments fail to grant credits because **no Stripe
-> webhook is registered**, the production box has **no HTTPS** (Stripe refuses
-> plain HTTP for live webhooks), and the box's `STRIPE_WEBHOOK_SECRET` is the
-> placeholder. Fix those three things and live billing works.
+> ## ⚠ Two of this document's three blockers are gone. Re-check before working it.
+>
+> **2026-07-31.** This was written 2026-06-04, when production was the Oracle VPS on
+> plain HTTP. **It is not any more.** Production is `app.pyxis-discovery.com` on
+> `83.229.87.94`, behind nginx with a real TLS certificate, running this repo under
+> systemd as `pyxis-web` against MongoDB Atlas.
+>
+> So **Step 1 (give the box a public HTTPS URL) is already done** — Cloudflare Tunnel,
+> ngrok and the DNS options below are all moot. Read Step 1 for background only.
+>
+> The webhook path is `POST https://app.pyxis-discovery.com/stripe/webhook`. What is
+> still genuinely open is registering the endpoint in the Stripe dashboard and putting
+> the resulting signing secret into `STRIPE_SECRET`'s neighbour `STRIPE_WEBHOOK_SECRET`
+> at `/root/pyxis/server/.env` — **not** `~/medsaas/.env`, which is the Oracle path.
+> Steps 2 onward still apply; substitute those two facts throughout.
+>
+> **Verify before assuming:** `stripe webhook_endpoints list` will say whether an
+> endpoint already exists. Do not re-register a duplicate.
+
+> **TL;DR of the original problem:** Checkout *creation* already works (the live key is
+> valid and charges-enabled). Payments failed to grant credits because **no Stripe
+> webhook is registered**, the production box had **no HTTPS** (Stripe refuses
+> plain HTTP for live webhooks), and the box's `STRIPE_WEBHOOK_SECRET` was the
+> placeholder. Only the first and third are still true.
 
 ---
 

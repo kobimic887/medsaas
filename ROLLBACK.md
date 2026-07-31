@@ -1,5 +1,26 @@
 # Rollback Guide (OPS-04)
 
+> ## ⚠ This is the *Bun→Node* rollback. It is not the production rollback.
+>
+> **Production does not run Docker.** `app.pyxis-discovery.com` on `83.229.87.94` runs
+> this repo under systemd as `pyxis-web`, deployed by `git archive` + `tar -x`. Nothing
+> below applies to it. If the live site is broken, you want the **Release A rollback**:
+>
+> 1. `systemctl stop pyxis-web` — it `Conflicts=` the legacy unit, so both can never
+>    hold port 5173.
+> 2. Start the legacy frontend from `/root/material-tailwind-dashboard-react` with
+>    **`npm run dev-vite-only`**. **Never `npm run dev`** — that also starts
+>    `stripe-server.cjs`, which already holds `:3001`, and the loser dies on
+>    `EADDRINUSE`.
+> 3. The legacy `chem_beo` API on `:3000` is still running and is what that frontend
+>    talks to, so no API step is needed.
+>
+> **Never delete `/root/material-tailwind-dashboard-react`.** It is the rollback, and it
+> is a different codebase from this repo's `client/` — not an older copy of it.
+>
+> ⚠ Rolling back to `:3000` re-exposes ~60 unauthenticated `chem_beo` routes. Treat it as
+> an emergency measure, not a resting state. See [docs/SECURITY-FINDINGS.md](./docs/SECURITY-FINDINGS.md).
+
 This document describes how to revert to Node if a dependency misbehaves under Bun
 in production. Both paths are non-destructive and reversible.
 

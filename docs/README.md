@@ -6,20 +6,31 @@ docs that would bloat it.
 
 > ## If you read one thing, read this box
 >
-> **The state, 2026-07-29.** Order below is the real order. Ignore phase numbers in
+> **The state, 2026-07-31.** Order below is the real order. Ignore phase numbers in
 > ARRIVAL-RUNBOOK — they are historical, not a sequence.
 >
 > | # | What | State |
 > |---|---|---|
-> | 1 | **De-SaaS + Pyxis rebrand** — marketing site and sign-up deleted, signup 403 by default, accounts invite-only, plan checkout admin-only | **APPLIED** ([PYXIS-ONLY.md](./PYXIS-ONLY.md) status table) |
-> | 2 | **Re-verify Release A** — parity + rollback, against the *rebranded* frontend | **OPEN, and now on the critical path** |
-> | 3 | **Release A cutover** — this repo takes port 5173 from the Vite dev server. No box, no nginx change, no new hardware | ready once 2 passes |
-> | 4 | **Release B, arrival day** — docking/DiffDock/Tanimoto repoint at the box, one env var at a time | needs the box |
+> | 1 | **Pyxis rebrand** — ChemBench/MedSaaS gone from every user-facing surface, guarded by `bun run test:brand` | **APPLIED** ([PYXIS-ONLY.md](./PYXIS-ONLY.md) status table) |
+> | 2 | **Re-verify Release A** — parity + rollback, against the *rebranded* frontend | **DONE 2026-07-31** — 17 routes, 7 differences, none a regression |
+> | 3 | **Release A cutover** — this repo takes port 5173 from the Vite dev server | **LIVE since 2026-07-29 21:51 UTC.** `app.pyxis-discovery.com` is this repo |
+> | 4 | **Release B, arrival day** — docking/DiffDock/Tanimoto repoint at the box | needs the box |
 >
-> **Why 2 exists:** the owner chose rebrand-**before**-cutover. The parity and rollback
-> evidence gathered on 2026-07-29 was measured against the pre-rebrand frontend, so it no
-> longer describes what would ship. Re-running it needs the rehearsal rig stood back up —
-> it was deleted after the last run.
+> **⚠ "De-SaaS" meant BRANDING, not deleting features.** A 2026-07-29 pass read it the
+> other way and removed sign-up and the plans page. **That was wrong and is reverted:**
+> `/auth/sign-up`, `/dashboard/paid-plans` and public signup are all back, and
+> `ALLOW_PUBLIC_SIGNUP` now defaults **on**. What stayed deleted, correctly, is the seven
+> marketing pages (recover from tag `saas-surface-v1`). Do not add new tenant-facing or
+> billing surface — but do not remove the existing surface either.
+>
+> **Re-verification needs no rig.** `scripts/verify-server-swap-parity.mjs` takes
+> `RIG_URL` and `RIG_ENV_PATH`, and `chem_beo` still listens on `:3000`, so the live
+> server is its own right-hand side. Copy the script under `server/` first — ESM resolves
+> `jsonwebtoken`/`mongodb` from the file's own directory upward.
+>
+> **Still open:** the `chem_beo` hardening patch (`deploy/chem_beo/01-fixes-and-config.patch`,
+> written and rehearsed, unapplied) and its ~60 unauthenticated routes. Its `'secret'` JWT
+> hole is **closed** — verified by forging a token and getting `403`.
 >
 > **Three decisions that override anything older you read:**
 > - **The box is reached by a public hostname over HTTPS.** No VPN, no tunnel. Caddy on

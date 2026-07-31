@@ -4,7 +4,7 @@ This monorepo unifies the following GitHub projects into one runnable platform.
 
 | Path | Upstream | Role |
 |------|----------|------|
-| `client/` + `server/` | [kobimic887/medsaas](https://github.com/kobimic887/medsaas) | Main ChemBench web app and API |
+| `client/` + `server/` | [kobimic887/medsaas](https://github.com/kobimic887/medsaas) | Main Pyxis Discovery web app and API |
 | `services/admet/` | [kobimic887/admet](https://github.com/kobimic887/admet) | RabbitMQ worker: ADMET-AI predictions → API callback |
 | `services/gromacs-api/` | [kobimic887/gromacs-api](https://github.com/kobimic887/gromacs-api) | GROMACS + REST API (MD workflows) |
 | `services/glioblastoma-predictor/` | [kobimic887/glioblastoma-predictor](https://github.com/kobimic887/glioblastoma-predictor) | Glioblastoma drug sensitivity API |
@@ -21,13 +21,13 @@ This monorepo unifies the following GitHub projects into one runnable platform.
 
 | Service | Port |
 |---------|------|
-| MedSaaS API / unified app | 3000 |
+| Pyxis Discovery API / unified app | 3000 |
 | Vite dev client | 5173 |
 | MongoDB | 27017 |
 | RabbitMQ | 5672 (AMQP), 15672 (UI) |
 | GROMACS API | 8001 → container 8000 |
 | Glioblastoma predictor | 5000 |
-| ChemBench MCP server | 8080 |
+| MCP server (published as chembench-mcp) | 8080 |
 
 ## Syncing upstream changes
 
