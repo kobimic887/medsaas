@@ -18,112 +18,80 @@
     <!-- 3Dmol.js for 3D visualization -->
     <script src="https://3dmol.csb.pitt.edu/build/3Dmol-min.js"></script>
     
-    <!-- RDKit.js initialization with proper error handling -->
+    <!-- RDKit.js loader.
+         The previous version of this block never worked. It injected
+         RDKit_minimal.js and then polled for `window.RDKit` — a global that
+         bundle does not define. It defines `initRDKitModule`. So the poll ran
+         its full 50 x 200 ms and every page load ended in
+         "RDKit failed to load within timeout", ten seconds late, with
+         window.rdkitLoaded still false. Measured on production 2026-07-31: the
+         script fetched fine (RDKit 2025.03.4 renders and computes descriptors
+         through the real API), only the readiness check was wrong.
+
+         Worse, the old wrapper was itself called `window.initRDKitModule`, the
+         exact name the bundle assigns. Whichever landed second won, so callers
+         got the wrapper or the real module depending on network timing. The
+         wrapper is now `window.loadRDKit` and the bundle's global is left alone. -->
     <script>
-        // Global variables to track RDKit state
         window.rdkitModule = null;
         window.rdkitLoaded = false;
         window.rdkitError = null;
-        
-        // Function to initialize RDKit module
-        window.initRDKitModule = function() {
-            return new Promise((resolve, reject) => {
-                // Return cached module if already loaded
-                if (window.rdkitModule) {
-                    resolve(window.rdkitModule);
-                    return;
-                }
-                
-                // Return cached error if previously failed
-                if (window.rdkitError) {
-                    reject(window.rdkitError);
-                    return;
-                }
-                
-                // Try to load RDKit script dynamically
-                const loadRDKitScript = () => {
-                    const script = document.createElement('script');
-                    script.src = 'https://unpkg.com/@rdkit/rdkit/dist/RDKit_minimal.js';
-                    
-                    script.onload = () => {
-                        console.log('RDKit script loaded successfully');
-                        initializeRDKit();
-                    };
-                    
-                    script.onerror = () => {
-                        console.warn('Failed to load RDKit from unpkg, trying alternative...');
-                        // Try alternative CDN
-                        const altScript = document.createElement('script');
-                        altScript.src = 'https://cdn.jsdelivr.net/npm/@rdkit/rdkit/dist/RDKit_minimal.js';
-                        
-                        altScript.onload = () => {
-                            console.log('RDKit script loaded from alternative CDN');
-                            initializeRDKit();
-                        };
-                        
-                        altScript.onerror = () => {
-                            const error = new Error('Failed to load RDKit from all sources');
-                            window.rdkitError = error;
-                            reject(error);
-                        };
-                        
-                        document.head.appendChild(altScript);
-                    };
-                    
+
+        // Resolves with the RDKit module. Safe to call any number of times and
+        // from anywhere — the work happens once and every caller awaits the same
+        // promise, so two components mounting together do not fetch it twice.
+        window.loadRDKit = (function () {
+            var pending = null;
+
+            function injectScript(src) {
+                return new Promise(function (resolve, reject) {
+                    var script = document.createElement('script');
+                    script.src = src;
+                    script.onload = resolve;
+                    script.onerror = function () { reject(new Error('Failed to load ' + src)); };
                     document.head.appendChild(script);
-                };
-                
-                // Function to initialize RDKit once script is loaded
-                const initializeRDKit = () => {
-                    let attempts = 0;
-                    const maxAttempts = 50; // 10 seconds timeout
-                    
-                    const checkAndInit = () => {
-                        attempts++;
-                        
-                        if (window.RDKit && typeof window.RDKit === 'function') {
-                            console.log('RDKit function available, initializing...');
-                            
-                            window.RDKit().then(rdkit => {
-                                console.log('RDKit initialized successfully');
-                                window.rdkitModule = rdkit;
-                                window.rdkitLoaded = true;
-                                resolve(rdkit);
-                            }).catch(error => {
-                                console.error('RDKit initialization failed:', error);
-                                window.rdkitError = error;
-                                reject(error);
-                            });
-                        } else if (attempts < maxAttempts) {
-                            setTimeout(checkAndInit, 200);
-                        } else {
-                            const error = new Error('RDKit failed to load within timeout');
-                            window.rdkitError = error;
-                            reject(error);
+                });
+            }
+
+            return function loadRDKit() {
+                if (window.rdkitModule) return Promise.resolve(window.rdkitModule);
+                if (pending) return pending;
+
+                pending = (async function () {
+                    if (typeof window.initRDKitModule !== 'function') {
+                        try {
+                            await injectScript('https://unpkg.com/@rdkit/rdkit/dist/RDKit_minimal.js');
+                        } catch (unpkgError) {
+                            console.warn('RDKit: unpkg unavailable, trying jsDelivr —', unpkgError.message);
+                            await injectScript('https://cdn.jsdelivr.net/npm/@rdkit/rdkit/dist/RDKit_minimal.js');
                         }
-                    };
-                    
-                    checkAndInit();
-                };
-                
-                // Check if RDKit is already available
-                if (window.RDKit && typeof window.RDKit === 'function') {
-                    initializeRDKit();
-                } else {
-                    // Load RDKit script if not already present
-                    loadRDKitScript();
-                }
-            });
-        };
-        
-        // Pre-load RDKit when DOM is ready
-        document.addEventListener('DOMContentLoaded', () => {
-            console.log('DOM ready, pre-loading RDKit...');
-            window.initRDKitModule().then(() => {
-                console.log('RDKit pre-loaded successfully');
-            }).catch(error => {
-                console.log('RDKit pre-loading failed:', error.message);
-                console.log('Components can still use fallback methods');
+                    }
+                    if (typeof window.initRDKitModule !== 'function') {
+                        throw new Error('RDKit script loaded but initRDKitModule is not defined');
+                    }
+                    // This is the bundle's own entry point, and the thing the old
+                    // loader never called. It returns a promise for the module.
+                    var rdkit = await window.initRDKitModule();
+                    window.rdkitModule = rdkit;
+                    window.rdkitLoaded = true;
+                    return rdkit;
+                })();
+
+                pending = pending.catch(function (error) {
+                    window.rdkitError = error;
+                    pending = null;   // let a later caller retry rather than caching the failure
+                    throw error;
+                });
+
+                return pending;
+            };
+        })();
+
+        document.addEventListener('DOMContentLoaded', function () {
+            window.loadRDKit().then(function (rdkit) {
+                console.log('RDKit ready:', typeof rdkit.version === 'function' ? rdkit.version() : 'loaded');
+            }).catch(function (error) {
+                console.warn('RDKit unavailable, components fall back to PubChem:', error.message);
             });
         });
     </script>

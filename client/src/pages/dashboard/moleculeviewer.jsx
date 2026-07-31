@@ -80,8 +80,13 @@ export function MoleculeViewer() {
         setRdkitStatus('loading');
         console.log('Attempting to initialize RDKit...');
         
-        if (window.initRDKitModule) {
-          const rdkit = await window.initRDKitModule();
+        // window.loadRDKit is the loader in client/index.html. It used to be called
+        // window.initRDKitModule — the same name RDKit_minimal.js assigns — so this
+        // call resolved against the wrapper or the bundle depending on which script
+        // landed second. Renaming removed the collision.
+        const load = window.loadRDKit || window.initRDKitModule;
+        if (typeof load === 'function') {
+          const rdkit = await load();
           rdkitRef.current = rdkit;
           setRdkitReady(true);
           setRdkitStatus('ready');
