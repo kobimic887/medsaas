@@ -53,7 +53,11 @@ const RIG_ENV = Object.fromEntries(
 );
 
 const LEGACY = 'https://127.0.0.1:3000';
-const RIG = 'http://127.0.0.1:5199';
+// Was hardcoded to the rehearsal rig's port. After the Release A cutover there is no rig —
+// this repo's server IS what serves 5173 — but chem_beo is still listening on 3000, so both
+// sides of the comparison are still live and the script still has something to say. Point it
+// at the live server with RIG_URL=http://127.0.0.1:5173 and no rig needs standing up.
+const RIG = process.env.RIG_URL || 'http://127.0.0.1:5199';
 
 // chem_beo:1049 is `jwt.sign({username}, process.env.JWT_SECRET || 'secret', {expiresIn:'1d'})`
 // and its .env sets no JWT_SECRET — so production tokens are signed with the literal string
