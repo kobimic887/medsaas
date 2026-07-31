@@ -520,7 +520,56 @@ DiffDock's contract too: `position_confidence`, `ligand_positions`, `protein`, `
 - **AutoDock-GPU**, compiled for `sm_120`. Replaces `dockingApiUrl`. The engine is AutoDock,
   confirmed by the Asinex/Pyxis CEO and by the mangled `TORSDOF` in the stored output.
 
-**⚠ The engine is the smaller half. Three services sit around it, and none exists yet:**
+**✅ UPDATED 2026-07-31 — the three services below are now WRITTEN. Build them on the box.**
+
+They live in `deploy/box/docking/service/`, `deploy/box/diffdock/` and `deploy/box/convertstr/`,
+each with a Dockerfile carrying separate `test` and `runtime` targets and a pytest suite
+(12 test files for docking alone, 28 tests for DiffDock). What they have **never had is an
+execution host**: every image pins `--platform linux/amd64`, and the only Docker hosts reachable
+before arrival are 83 (2 cores, **1 GB RAM**, and it is production — an OOM there takes the live
+site down) and the Oracle VPS (arm64, no `binfmt` amd64 emulation registered). Emulating amd64 on
+two arm64 cores to pre-verify a Vina binary and an RDKit wheel costs an hour and buys insurance
+against exactly what §2.4 catches on the box in ten minutes. **Owner's call, 2026-07-31: build
+them on the box.** Do not install `binfmt` on Oracle — that is a privileged container on the host
+holding the only copy of production Tanimoto Postgres.
+
+**Build and verify, in this order** (each is self-contained and needs no GPU except where noted):
+
+```bash
+# 1. convertSTR — CPU only, no network, smallest and highest immediate value:
+#    it is DOWN in production today, which is why DiffDock is broken.
+docker build --platform linux/amd64 --target test -t pyxis-convertstr:test deploy/box/convertstr
+docker run --rm --network none pyxis-convertstr:test python -m pytest -q
+
+# 2. Docking — builds both targets, runs the offline replay suite, then stands the real
+#    service up on an internal-only network and checks it against the immutable oracle
+#    (scripts/verify-docking-response.mjs) using the captured 1cx7 baseline.
+deploy/box/docking/service/test.sh
+
+#    Once the cards are up, the CPU-Vina path too (downloads the real RCSB receptor):
+RUN_VINA=1 deploy/box/docking/service/test.sh
+
+# 3. DiffDock — the wrapper's 28 tests run without a GPU; inference does not.
+docker build --platform linux/amd64 --target test -t pyxis-diffdock:test deploy/box/diffdock
+docker run --rm pyxis-diffdock:test python -m pytest -q
+deploy/box/diffdock/fetch-weights.sh    # 124 MB into /srv/models/diffdock, ONCE, before first start
+```
+
+Only then `docker compose -f deploy/box/compose.yml up -d <service>`, one at a time, per §2.5.
+
+**Verified free on 2026-07-31 — the paths already line up, so cutover is hostname-only:**
+
+| Today | Box service | Caddy route |
+|---|---|---|
+| `services.asinex.com:8000/docking` | `POST /docking` on `:8000` | `handle /docking*` (prefix kept) |
+| `services.asinex.com:58000/molecular-docking/diffdock/generate` | same path on `:8002` | `handle /molecular-docking/*` |
+| `83.229.87.94:8001/convertSTR` | `POST /convertSTR` on `:8001` | `handle /convertSTR*` |
+| `151.145.91.17:8000` + `/v1/…` | tanimoto on `:8003` | `handle_path /tanimoto/*` (prefix stripped) |
+
+`handle` vs `handle_path` is deliberate and load-bearing: the first three services expect their
+prefix, Tanimoto does not. Swapping one for the other 404s the lot.
+
+**What each stage owes the contract:**
 
 | Stage | Spec | Status |
 |---|---|---|
@@ -529,9 +578,9 @@ DiffDock's contract too: `position_confidence`, `ligand_positions`, `protein`, `
 | **PDBQT to SDF** | RDKit V2000, tags `MODEL TORSDO SCORE ligand_id original_smiles smiles`, exact `'>  <tag>  (1) '` spacing, one shared `<smiles>` across poses | **determined** — §3, §7 |
 | **HTTP wrapper** | `POST /docking` taking `{pdbID, smiles}`, SMILES arrives URL-encoded | **determined** — §0 |
 
-Write these against the contract before the box lands. Only the CUDA compile genuinely needs
-the cards; everything above can be built and tested on any machine, against the captured
-reference payload, using `scripts/verify-docking-response.mjs`.
+These are written. Only the CUDA compile and live inference genuinely need the cards; every row
+above is already covered by the replay suite and `scripts/verify-docking-response.mjs`, which
+runs on the box in the sequence given above.
 - **OSS DiffDock** (`gcorso/DiffDock`, MIT), torch **cu128**. **Not the NIM container** — that
   requires NVIDIA AI Enterprise, which was refused, and NIM does not support GeForce.
 - **AutoDock Vina** (classic, CPU) across the 32 cores, as the reference path.
