@@ -691,6 +691,10 @@ app.get('/health/db', async (_req, res) => {
 // Root route serves frontend if available; falls back to API docs
 app.get('/', (_req, res) => {
   if (hasFrontendBuild()) {
+    // The landing route serves index.html too, and it is registered well before
+    // the SPA fallback, so it needs the same no-cache treatment. Without this the
+    // most-visited URL on the site was the one page still pinned to a stale bundle.
+    res.setHeader('Cache-Control', 'no-cache');
     return res.sendFile(FRONTEND_INDEX_PATH);
   }
   res.redirect('/api-docs');
