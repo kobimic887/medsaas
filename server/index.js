@@ -52,6 +52,13 @@ const __dirname = path.dirname(__filename);
 configDotenv({ path: path.resolve(__dirname, '../.env') });
 configDotenv();
 
+// Which interface to listen on. Defaults to every interface, which is what the public
+// site needs behind nginx. Set BIND_HOST=127.0.0.1 for an instance that should only be
+// reachable through an SSH tunnel — a staging copy running beside the live one has no
+// business answering the open internet on a plain-HTTP port, especially when it shares
+// the production database.
+const BIND_HOST = process.env.BIND_HOST || '0.0.0.0';
+
 const REQUIRED_ENV = ['MONGODB_URI', 'JWT_SECRET', 'STRIPE_SECRET_KEY'];
 const missingRequiredEnv = REQUIRED_ENV.filter((key) => !process.env[key]);
 
@@ -5626,13 +5633,13 @@ async function startServer() {
       key: fs.readFileSync(sslKeyPath),
       cert: fs.readFileSync(sslCertPath)
     };
-    https.createServer(httpsOptions, app).listen(PORT, '0.0.0.0', () => {
+    https.createServer(httpsOptions, app).listen(PORT, BIND_HOST, () => {
       console.log(`✅ HTTPS Server running on port ${PORT}`);
       console.log(`📚 API Documentation: https://localhost:${PORT}/api-docs`);
     });
   } catch (_error) {
     console.log('SSL certificates not found, starting HTTP server for development...');
-    app.listen(PORT, '0.0.0.0', () => {
+    app.listen(PORT, BIND_HOST, () => {
       console.log(`✅ HTTP Server running on port ${PORT}`);
       console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
       console.log(`🔍 Health Check: http://localhost:${PORT}/health`);

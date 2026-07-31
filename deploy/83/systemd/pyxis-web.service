@@ -1,6 +1,13 @@
-# Release A: this repo's server takes port 5173 and serves client/dist from the same
-# origin. NOT ENABLED until the cutover — installing it is safe, enabling it is the
-# release.
+# This repo's server, serving client/dist from the same origin.
+#
+# ⚠ PORT 5174, NOT 5173 — deliberately. nginx proxies the public site to 5173, and as of
+# 2026-07-31 the owner put the ORIGINAL Pyxis (pyxis-vite-legacy) back on 5173 as the
+# live product until the GPU box arrives. This service keeps running alongside it on
+# 5174 so the new version stays exercisable without being the public site.
+#
+# Switching back on box-arrival day is a PORT SWAP, not an enable/disable: give this
+# unit PORT=5173 and move pyxis-vite-legacy to 5174, then restart both. Nothing else
+# changes — see docs/NEXT-SESSION.md.
 #
 # Bun, not Node: 83 runs Node v18.19.1 and this repo is Bun-first. Bun 1.3.12 is already
 # at /usr/local/bin/bun and the rehearsal ran on it against real Atlas.
@@ -12,17 +19,24 @@
 # NOT chem_beo's — see docs/NEXT-SESSION.md §0), STRIPE_SECRET_KEY, PLATFORM_NAME,
 # FRONTEND_URL, BASE_URL, EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS, EMAIL_FROM.
 [Unit]
-Description=Pyxis web (this repo's server + client/dist, port 5173)
+Description=Pyxis web (this repo's server + client/dist, port 5174 — see header)
 After=network-online.target
 Wants=network-online.target
-# Never both on 5173 at once.
-Conflicts=pyxis-vite-legacy.service
+# No Conflicts= any more: the two run side by side on different ports. Restore it if
+# they are ever both pointed at 5173 again.
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=/root/pyxis/server
-Environment=PORT=5173
+Environment=PORT=5174
+# Loopback only while this is the standby copy. It shares the PRODUCTION Atlas database
+# and 5174 is not behind nginx, so binding every interface would publish a second live
+# copy of the app on plain HTTP — sign in there and the credentials cross the internet in
+# clear text. Reach it with: ssh -N -L 5174:127.0.0.1:5174 root@83.229.87.94
+# On box-arrival day, when this becomes the public site on 5173 behind nginx, DELETE this
+# line as part of the port swap.
+Environment=BIND_HOST=127.0.0.1
 Environment=FRONTEND_DIST=/root/pyxis/client/dist
 ExecStart=/usr/local/bin/bun index.js
 Restart=always

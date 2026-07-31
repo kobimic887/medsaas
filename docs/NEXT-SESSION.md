@@ -7,6 +7,52 @@ log**. Where it disagrees with this section, this section wins. Do not act on a 
 lower in this file without re-measuring it first — several were true when written and are
 false now, and one of them will break the site (see "Do NOT do these").
 
+### ⚠ 2026-07-31 — production is deliberately back on the ORIGINAL Pyxis. Box day is a PORT SWAP.
+
+Owner's decision: run the original Pyxis as the live product until the GPU box arrives, with
+this repo's version kept running alongside rather than switched off.
+
+| Port | What | Reachable |
+|---|---|---|
+| **5173** | `pyxis-vite-legacy` — the original Pyxis (`/root/material-tailwind-dashboard-react`, Vite dev), talking to `chem_beo` on `:3000` | **the public site**, via nginx |
+| **5174** | `pyxis-web` — this repo (`/root/pyxis`, Bun + `client/dist`) | **loopback only** |
+
+Both units are `enabled`, so both survive a reboot. `Conflicts=` was removed from
+`pyxis-web` — they are on different ports now and must be able to run together. Restore it
+if they are ever both pointed at 5173.
+
+**On arrival day, swap the ports back. Do not enable/disable anything:**
+
+1. `pyxis-web`: set `Environment=PORT=5173` and **delete the `Environment=BIND_HOST=127.0.0.1`
+   line** — it must bind every interface again to be served by nginx.
+2. `pyxis-vite-legacy`: move it to 5174 (`--port 5174`), so the rollback is still one swap away.
+3. `systemctl daemon-reload && systemctl restart pyxis-web pyxis-vite-legacy`, then confirm
+   `ss -ltnp | grep -E ':5173|:5174'` shows **bun on 5173** and **node on 5174**.
+
+The tracked unit is `deploy/83/systemd/pyxis-web.service` and its header says the same thing.
+nginx, TLS, DNS and Stripe are not touched by any of this.
+
+**Why `BIND_HOST=127.0.0.1` is on the standby:** 5174 is not behind nginx, and the standby
+shares the **production Atlas** database. Bound to `0.0.0.0` it answered
+`http://83.229.87.94:5174/health` from the open internet over plain HTTP — a second live copy
+of the app where any sign-in crosses the network in clear text. Reach it deliberately instead:
+
+```bash
+ssh -N -L 5174:127.0.0.1:5174 root@83.229.87.94
+```
+
+**What the live product does NOT have while on legacy** — expected, not bugs to re-investigate:
+mail of any kind (invites, password resets, contact form: `chem_beo/.env` and
+`stripe-server.cjs` both have empty `EMAIL_*`), response compression, asset caching, the
+PubMed literature page, the docked-pose overlay, the wrong-protein fix, and the RDKit loader
+fix. All of those live in the 5174 version only.
+
+**Unchanged and still open:** the ~60 unauthenticated `chem_beo` routes. `/api/sanitizedminimalsdf/<key>`
+returns real customer results with no token from the public internet, and
+`/api/generate-molecules` still reaches the NVIDIA key. The owner chose on 2026-07-31 to roll
+back without applying `deploy/chem_beo/01-fixes-and-config.patch`. It is written and rehearsed
+whenever that changes.
+
 ### State of production
 
 `app.pyxis-discovery.com` serves **this repo**, under systemd as `pyxis-web` on port 5173,
