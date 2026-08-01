@@ -4,25 +4,31 @@ Audit of the MedSaaS server (`server/index.js` and friends). Items are grouped b
 status: **what's already fixed in code**, then **open items** with severity and
 concrete fix guidance.
 
-_Last updated: 2026-06-10. Line numbers drift as the file changes — search by
+_Last updated: 2026-08-01. Line numbers drift as the file changes — search by
 symbol/route, not by number._
 
 ---
 
-## ✅ Already fixed — and now actually live
+## ✅ Already fixed — but ⚠ NOT currently live
 
-These were applied directly to the code. When this was written they were
-working-tree-only and awaiting a deploy; **that deploy happened.** Release A cut over
-on 2026-07-29 and `app.pyxis-discovery.com` now serves this repo, so everything in
-this table is in effect in production.
+These were applied to **this repo's** `server/index.js`. They were live on
+`app.pyxis-discovery.com` from 2026-07-29 to 2026-07-31.
+
+⚠ **Corrected 2026-08-01: they are not in effect right now.** The owner deliberately rolled
+production back to the **original Pyxis** on 2026-07-31, which is served by `chem_beo` on
+`:3000`. This repo's server runs alongside on `:5174`, loopback only. So every fix in the
+table below is *written and deployed but not in the request path* until the port swap on box
+day ([ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §8).
 
 Two caveats that are not in the table:
 
-- **The legacy `chem_beo` API is still listening on `:3000`** as the rollback path, and
-  it has **none** of these fixes. Its `'secret'` JWT hole is closed (verified by
-  forging a token and getting `403`), but roughly 60 unauthenticated routes are still
-  open. The fix is written and rehearsed at `deploy/chem_beo/01-fixes-and-config.patch`
-  and is **not applied**. Anything that rolls back to `:3000` inherits that exposure.
+- **`chem_beo` is serving the public site and has none of these fixes.** Its `'secret'` JWT
+  hole is closed (verified by forging a token and getting `403`), but roughly **60
+  unauthenticated routes are open right now** — `/api/sanitizedminimalsdf/<key>` returns real
+  customer results with no token from the public internet, and `/api/generate-molecules`
+  reaches the NVIDIA key. The fix is written and rehearsed at
+  `deploy/chem_beo/01-fixes-and-config.patch` and is **not applied**. This is the single
+  largest live exposure in the project.
 - **`assertConfiguredUrlsArePublic` has exactly one call site** (`server/index.js`, the
   admin-UI `ligandServiceConfig` PATCH). The env vars that carry the box cutover —
   `TANIMOTO_API_BASE`, `SDF_CONVERTER_URL`, `ASINEX_DOCKING_API_URL`, `DIFFDOCK_API_URL`
@@ -53,6 +59,79 @@ item below for the durable fix.
 ---
 
 ## 🔴 Open — architectural / higher-effort
+
+### A1. ADMET callback writes to any simulation, unscoped *(added 2026-08-01, verified)*
+
+`PUT /api/simulation/:simulationKey/admet` (`server/index.js:6608`) authenticates with a
+shared secret (`requireAdmetCallbackAuth`, `:1719` — a plain string compare on the
+`x-admet-secret` header) and then reads and writes **by `simulationKey` alone**:
+
+```js
+const existingSimulation = await simulationLogs.findOne({ simulationKey });        // :6638
+const updateResult = await simulationLogs.updateOne({ simulationKey }, { ... });   // :6654
+```
+
+No `companyId`, no `username`, no tenant filter — the only route in this file that touches
+`simulation_logs` without one. Every read path beside it (`/api/sanitizedpdb/:key` at `:3521`,
+`/api/sanitizedminimalsdf/:key`) correctly does `{ simulationKey, ...tenantFilter }`.
+
+**Severity: medium, not critical.** Exploiting it needs `ADMET_CALLBACK_SECRET` *and* a
+12-character `simulationKey`. Anyone holding the secret can overwrite the `admet` field of any
+simulation in the database, for any company, poisoning results silently — the field is
+displayed without provenance. It is a defence-in-depth gap rather than an open door, and the
+platform is single-tenant today, so the cross-company aspect is currently theoretical.
+
+**Fix:** the callback has no `req.user`, so it cannot use `buildTenantFilter`. Either persist
+`companyId` on the simulation and require the worker to echo it, or issue the worker a
+short-lived per-job token at enqueue time and scope the update to that job. Also use
+`crypto.timingSafeEqual` for the secret compare.
+
+### A2. `email` is globally unique, which is a multi-tenancy limit and a small info leak *(added 2026-08-01, verified)*
+
+`server/index.js:1108` creates `{ email: 1 }` as a **globally unique** index, and the invite
+path checks for collisions across every tenant:
+
+```js
+const existing = await usersCollection.findOne({ $or: [{ username }, { email }] });   // :4098
+if (existing) return res.status(409).json({ error: 'User with this username or email already exists' });
+```
+
+Two consequences. One person cannot hold accounts at two companies. And a company admin
+inviting `alice@example.com` gets a `409` that tells them the address exists *somewhere* on
+the platform — a cross-tenant existence oracle, cheap to enumerate through an authenticated
+admin session.
+
+**Severity: low today, blocking later.** The product is deliberately single-tenant
+([PYXIS-ONLY.md](./PYXIS-ONLY.md)), so neither consequence bites right now. It becomes a real
+constraint the moment a second company is onboarded, and the fix is a migration, so it is
+worth knowing about before that day rather than during it.
+
+**Fix:** replace the global unique index with a compound `{ companyId: 1, email: 1 }` unique
+index and scope the duplicate check to `req.user.companyId`. Note `/api/verify-email`
+(`:2279`) does `updateOne({ email }, ...)` unscoped, which is safe *only because* email is
+globally unique — it must be fixed in the same change or it will verify the wrong user.
+
+### A3. `/api/simulation-logs` is unbounded and unindexed *(added 2026-08-01, verified)*
+
+```js
+const logs = await simulationLogs.find(tenantFilter).sort({ timestamp: -1 }).toArray();  // :3514
+```
+
+No `.limit()`, no pagination, and the whole result is serialised into one response. Worse,
+the index block at `:1106-1118` creates indexes for `users`, `companies`, `audit_logs` and
+`billing_events` but **nothing on `simulation_logs`** except the unique `simulationKey` index
+from `ensureAdmetQueueIndexes`. So this is a collection scan followed by an in-memory sort,
+and each document carries a full docking result — receptor PDB plus poses, tens to hundreds of
+KB each.
+
+**Severity: low now, degrades badly.** Production holds single-digit simulation logs today, so
+nothing is visibly slow. At a few thousand rows this becomes a multi-hundred-MB response that
+a page refresh can repeat.
+
+**Fix:** add `simulationLogs.createIndex({ companyId: 1, timestamp: -1 })` and
+`{ username: 1, timestamp: -1 }` to the startup block, add `.limit()` with cursor pagination,
+and project away `result` — the list view does not render pose data.
+
 
 ### 1. Anyone can self-register as `owner` (the privilege model behind the SSRF)
 **Where:** `/api/signup` (`server/index.js`, `existingCompanyUsers === 0 ? 'owner'`).

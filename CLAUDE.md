@@ -35,40 +35,123 @@ preserved in git history at the tag **`planning-archive`** — recover any file 
 `git checkout planning-archive -- .planning`. Do not write new `.planning/` files or
 reference `/gsd:*` commands; that workflow is retired.
 
-- **Milestone history (reference):** v1 ChemBench Cleanup · v2 Bun Migration — incl. **Phase 7 (Docker, CI/CD, Scripts), shipped 2026-06-05** · v3 Company Brand Colour (per-company logo-driven palette across dashboard + emails), complete.
-- **CI now gates deploys:** `.github/workflows/ci.yml` runs Bun and Node fallback checks on push/PR, and `deploy.yml` won't ship unless the reusable CI gate passes (`needs: test`).
-- **Always `git push` after committing. Don't ask.** Owner's standing instruction, 2026-07-30 — *"push it all, always."* A push is safe: `deploy.yml` is **manual-only** (its `push:` trigger is commented out, only `workflow_dispatch` remains) **and it points at the wrong place anyway** — the Oracle VPS, which is not production. So a push runs `ci.yml` and deploys nothing. **Production on 83 is not deployed by CI at all:** it ships by `git archive HEAD | ssh … tar -x -C /root/pyxis` plus `systemctl restart pyxis-web`. Pushing does not reach production, and reaching production does not require pushing.
-- **⚠ `bun run ci` locally is weaker than CI.** The runtime smoke test spawns the server with the repo's `.env` visible, so a dev machine supplies `FRONTEND_URL`/`BASE_URL` that CI does not have — and an **empty CORS allowlist outside production deliberately reflects any origin**. Test 5e therefore passed locally and failed on GitHub. The test now sets both vars itself so it always exercises the shipping path; if you add a test that depends on configuration, set it in `childEnvFinal` rather than relying on `.env`.
-- **CI/CD source of truth:** repo-owned workflows are only `.github/workflows/ci.yml` and `.github/workflows/deploy.yml`. Dynamic GitHub Actions entries such as CodeQL, Dependency Graph, Copilot, Claude, and Codex come from GitHub settings/integrations. Current deploy builds on the box from `docker-compose.box.yml`; GHCR/GitHub Packages is legacy and unused. See `docs/CI-CD.md`.
-- **Production was inventoried 2026-07-28** — `docs/PRODUCTION-83-INVENTORY.md`. It is not what the older docs assumed: Mongo is **Atlas** (not on 83), the frontend is a **Vite dev server**, the API is a second HTTPS server on `:3000` bypassing nginx, everything is hand-started in shells, and **49 of 50 users lack `companyId`** — a cutover blocker needing a data migration. The docking output contract is captured in `docs/DOCKING-CONTRACT.md`. Read both before planning any deploy.
-- **Planned: COMPUTE moves to a dedicated GPU box** (Amsterdam, x86_64) — **not the backend, and not the database.** `docs/COMPUTE-BOX-MIGRATION.md` is the full trace of every machine, API, and compute dependency, plus the CUDA matrix and storage layout — **but its plan and sequencing are superseded** by `docs/BOX-ARCHITECTURE.md`; it predates the production inventory and assumes the whole backend and database move. Read it for the dependency trace, not the plan. Nothing is applied yet.
-- **Why the box exists: Asinex's servers are in Moscow and go down because of the war.** Not performance, not cost, not self-reliance. Both docking engines are answered from there today, so when it's down the product can't dock. `docs/BOX-SPEC.md` records the machine and the reasoning: **RECT WS-3229C, 2× RTX 5090, Threadripper PRO 9975WX 32C, 128 GB, RAID 1 boot pair, €24,727 net.** It supersedes the hardware spec and science-stack scope in the migration doc — the "2× RTX PRO 5000 / 9980X 64C" config is dead.
-- **Docking goes on the box FIRST and ALONE — but the box is a real upgrade for the rest too.** Folding (`/api/openfold3/predict`) and molecule generation (`/api/generate-molecules`) **stay on NVIDIA's hosted NIM permanently** — the only two endpoints calling `health.api.nvidia.com`. No MSA pipeline, no ColabFold databases, no OSS OpenFold3, no MolMIM replacement. Everything else **does** move and **does** get materially better: Tanimoto leaves an **arm64 Ampere VPS** for 32 x86_64 cores; GROMACS leaves a **CPU-only apt build** for a CUDA one; ADMET and glioblastoma have **never been deployed at all** (every ADMET job ever queued is still `status: "queued"`). The purchase rule "nothing that only benefits incidentally gets a euro" (`docs/BOX-SPEC.md`) governed **component selection, which is closed** — it does not mean those workloads get ignored. It forbids exactly one thing: spending more money, or delaying the docking cutover, for their sake. Docking = Phase 2; the rest = Phase 6, after.
-- **DiffDock is Asinex's, not NVIDIA's.** `diffdockApiUrl` points at `services.asinex.com:58000` — Asinex running NVIDIA's DiffDock NIM container on their own Moscow hardware. It dies with Asinex and must be rebuilt from OSS DiffDock (NVAIE was refused; NIM isn't supported on GeForce). The 1-click `/api/simulation` engine is **AutoDock**, confirmed by the Asinex/Pyxis CEO. **Catalog and stock stay on Asinex** — the catalog needs their compound file (licensing), and live stock can't be self-hosted at any price.
-- **83 runs `chem_beo`** (verified 2026-07-28) — the legacy backend, not this repo. **"The box" always means the new Amsterdam machine, never 83.** **RESOLVED 2026-07-29: the box runs compute only** — docking engines, convertSTR, Tanimoto+Postgres, GROMACS, ADMET, glioblastoma. **No API server, no Mongo.** The API stays on 83 because the box has pick-up warranty (no on-site service in NL, so a fault = 1–3 weeks gone): box dies, docking stops, product survives.
-- **SETTLED 2026-07-29 — two releases, and they must not be one day.** `docs/BOX-ARCHITECTURE.md` §2–§3.
-  - **Release A, the server swap — ship it BEFORE the box.** This repo's `server/index.js` + `client/dist` take over **port 5173** from the Vite dev server; `chem_beo` on `:3000` stays as rollback. **It has no dependency on the box** (just this repo + Atlas + Asinex) and **needs no nginx change** — nginx already does `proxy_pass → localhost:5173`, and `server/index.js` reads `PORT` (`:5368`) and serves `client/dist` via `express.static` (`:6699`). Cutover = which process owns 5173; rollback = `npm run dev` in `/root/material-tailwind-dashboard-react` (**never delete that dir — it is the rollback, and a different codebase, not an older `client/`**). Runbook Phase 5.
-  - **Release B, arrival day — compute only.** Docking/DiffDock/Tanimoto repoint at the box, one setting at a time. Database (Atlas), frontend, nginx, TLS, DNS, Stripe **not touched**. Runbook Phases **1·2·3·4.3·6·7**. **Three databases, three answers — never collapse them:** production Mongo is **Atlas and stays** (4.1/4.2 dead permanently); Oracle's **Postgres is production Tanimoto, only copy, and IS copied to the box** (4.3, `pg_dump` it now — an unauthenticated `DELETE` reaches it); Oracle's **Mongo is discarded, never restored from** (hard rule 4).
-  - Which knob cuts docking over depends on which server is live: `ligandServiceConfig` (this repo) or `DOCKING_API_URL` etc. (patched `chem_beo`). Check `ss -ltnp | grep 5173` first.
-- **DECIDED 2026-07-29 — 83 reaches the box by public hostname over HTTPS. No VPN, no tunnel.** Services bind `127.0.0.1`; **Caddy on `:443`** holds a Let's Encrypt cert for `BOX_DOMAIN`; the **host firewall admits only 83's IP**. That is a true 1:1 with how Asinex is reached today (`services.asinex.com` over the open internet), so rollback is putting the Asinex hostname back. "WireGuard/Tailscale" was **one comment in `deploy/box/compose.yml` that four docs then cited as settled** — it never was, and it is rejected. ARRIVAL-RUNBOOK Phase 3.1.
-- **RETRACTED — `assertConfiguredUrlsArePublic` does NOT make the box cutover harder.** An earlier audit claimed shipping Release A would block the box because the guard rejects private/CGNAT ranges. Wrong twice over: the guard has **one call site** (`server/index.js:1325`, the admin-UI `ligandServiceConfig` path), and the env vars that actually carry the cutover — `TANIMOTO_API_BASE`, `SDF_CONVERTER_URL`, `ASINEX_DOCKING_API_URL`, `DIFFDOCK_API_URL` (`server/index.js:80-88`) — are read straight from `process.env` and **never validated**. With a public hostname it is moot regardless.
-- **Release A gates — measured 2026-07-29, most are now DONE.** `docs/NEXT-SESSION.md` §1 has the table. Applied to production: **both migrations** (`migrate-legacy-users.mjs` → 0 users without `companyId`; the new `migrate-legacy-simulation-logs.mjs` → 5 logs backfilled additively, `user.username` left intact so `chem_beo` still reads them). Verified: **route-by-route parity** via `scripts/verify-server-swap-parity.mjs` (17 routes, 4 benign differences), the **rehearsal rig** (bun + `client/dist` on a spare port against real Atlas), and the **rollback** (a second Vite booted from `/root/material-tailwind-dashboard-react`). Rig deleted afterwards; all production ports re-verified. **Still open: rotate `JWT_SECRET`** and apply the `chem_beo` patch.
-- **✅ CLOSED 2026-07-31 — `chem_beo` no longer signs JWTs with the literal string `secret`.** Verified by measurement, not by asking: `/root/chem_beo/.env` now sets a **65-character** `JWT_SECRET`, and a token forged with `'secret'` is rejected `403 {"error":"Invalid token"}` on every authed route. Found incidentally — a parity run against `:3000` came back 403 on all seven authed comparisons, which is what a changed secret looks like. The historical description is kept below because the *shape* of the risk still matters for anything that rolls back to `:3000`. ⚠ **The ~60 unauthenticated `chem_beo` routes are a separate hole and are still open** — closing them is `deploy/chem_beo/01-fixes-and-config.patch`, still unapplied.
-  - *Historical:* **`chem_beo` signed production JWTs with the literal string `secret`.** `chem_beo:1049` is `jwt.sign({username}, process.env.JWT_SECRET || 'secret')` and its `.env` sets no `JWT_SECRET` — confirmed by forging a working token. **Anyone can impersonate any of the 50 accounts** on an internet-facing API. Release A fixes it by construction (this repo refuses to start without a real ≥32-char secret). `buildTenantFilter` (`server/index.js:1064`) also reads `companyId` from the **JWT payload, not the DB**, so a reused secret keeps legacy tokens (no `companyId`) valid → results invisible + cache miss + double charge. `docs/NEXT-SESSION.md` §0.
-- **83 is under systemd now (`deploy/83/systemd/`).** Units for all four services; the three legacy ones enabled-but-not-started so nothing moved, `pyxis-web` (Release A) installed but disabled — **enabling it is the cutover**, and it `Conflicts=` the legacy Vite unit so both can never hold 5173. **A reboot no longer ends production.** ⚠ The rollback command is **`npm run dev-vite-only`**, never `npm run dev` — the latter also starts `stripe-server.cjs`, which already holds `:3001`, and the loser dies on `EADDRINUSE`.
-- **A third production process existed and was in no doc: `stripe-server.cjs` on `:3001`.** The legacy Vite server proxies `/api` to it, so it is the marketing site's contact-form backend *and* part of the rollback path — **do not kill it.** It was an open mail relay (unauthenticated `POST /api/send-email` with a caller-chosen recipient, through the company mailbox, reachable over public HTTPS). Hardened 2026-07-29 — `deploy/83/0{1,2,3}-*.py`, all idempotent.
-- **Outbound mail: the provider is `server028.yourhosting.nl:587`, NOT Titan.** Titan rejects these credentials with `535` on 465 and 587 alike. `stripe-server.cjs` hardcoded Titan, so **the contact form had never sent a single message**; `server/utils/emailService.js` hardcoded it too and only worked by accident (the real host appeared once in its fallback list). Both now read `EMAIL_HOST`/`EMAIL_PORT`. That rewrite also removed `debug/logger: true`, which was printing the `AUTH PLAIN` line — the mailbox credentials — into the log on every send, and `rejectUnauthorized: false`, which offered them to any MITM.
-- **The arrival-day prerequisite exists: `deploy/chem_beo/01-fixes-and-config.patch`.** Written, applies cleanly against `index.js` as deployed, and **verified by running it** against real Atlas on an isolated port (failed dock → 502, balance `99999 → 99999`). It lifts all five Asinex URLs + eight Tanimoto call sites into env vars **defaulting to today's values**, makes the credit charge atomic and refundable, closes the five money/data routes (incl. the open `/api/generate-molecules` that *is* the NVIDIA rate-limit cause, and the credit-minting hole at `chem_beo:3343`), and makes signup produce a usable account. **Not yet applied.** It deliberately leaves ~60 other unauthenticated routes open — see `deploy/chem_beo/README.md`.
-- **✅ CORRECTED 2026-07-31 — `ligandServiceConfig` IS live in production, and it is the box cutover.** The old note here said it "ships only with the later release"; that was true before Release A and is not any more. `getRequestLigandServiceConfig()` resolves the company's four URLs on **every** docking request (and runs `assertConfiguredUrlsArePublic` on each), so repointing docking at the box is a settings change with no restart and no redeploy. `PATCH /api/company/ligand-service-config` is owner/admin. **`GET` on the same path is readable by any signed-in member** (four URLs, no credentials) and the Control Panel shows them read-only with a Default/Custom chip per endpoint — so on arrival day anyone can confirm the box is live without admin rights. The `chem_beo` patch's env vars remain the fallback only if production is ever rolled back to `:3000`.
-- **Still only in this repo, reaching nobody until the later release:** the NVIDIA key pool / 429 rotation / circuit breaker, `upstreamProxyStatus()` (401→502), tenant isolation, audit logging, rate limiting.
-- **DONE 2026-07-29: this is no longer a SaaS.** One product for one company, Pyxis Discovery. **Applied, not planned** — `docs/PYXIS-ONLY.md` has the status table. ⚠ **CORRECTED 2026-07-30 — "de-SaaS" meant BRANDING, not removing signup and billing.** The 2026-07-29 pass read it the other way. **Restored:** the sign-up page (`/auth/sign-up`), the paid-plans page (`/dashboard/paid-plans`), public registration (`ALLOW_PUBLIC_SIGNUP` now defaults **on** — close it deliberately with `=false`), and `/create-checkout-session` back to `requireActiveUser` so a member who sees "Plans & Credits" is not 403'd by it. **Still deleted, and that part was right:** the seven marketing pages (2,440 lines; recover from tag **`saas-surface-v1`**, the only copy of the macrocycle copy). Invites via `POST /api/company/members` still work — they are now an addition to signup, not a replacement. **Unchanged on purpose:** the Stripe webhook, `PLAN_CATALOG`, `consumeSimulationToken`, credits, companies, roles, audit logging, `/api/send-email`, and `/create-checkout-session-onetime` (the compound cart — a live feature, not billing surface). Do not add new tenant-facing or billing features — but do not remove the existing ones either; that is what went wrong here.
-  - **The brand guard flipped.** `scripts/check-brand.mjs` (`bun run test:brand`) used to ban "pyxis" — v1 renamed Pyxis→ChemBench. It now bans **ChemBench and MedSaaS**, scans only user-facing source (`client/src`, `client/index.html`, `client/public`, `server`), and exempts `services/mcp-server` (published name), package identities, and `THEME_STORAGE_KEY` (renaming it resets every user's dark-mode preference). Docs are out of scope — naming the old brands is their job.
-  - **⚠ This ordering has a cost that is not yet paid.** The owner chose rebrand-**before**-cutover. The Release A evidence measured on 2026-07-29 — route parity, rollback rehearsal — was gathered against the *pre-rebrand* frontend, so **it no longer describes what would ship.** Re-run it before flipping 5173. ✅ **RESOLVED 2026-07-31 — re-run, and it needs no rig.** The claim that `verify-server-swap-parity.mjs` reads the deleted `/root/pyxis-release-a/.env` was already stale (`RIG_ENV_PATH` is an env var defaulting to `/root/pyxis/server/.env`), and the remaining blocker — a hardcoded rig port — is now `RIG_URL`. **chem_beo is still listening on `:3000`**, so both sides of the comparison are still live and the live server is its own right-hand side:
-  ```bash
-  cd /root/pyxis/server && RIG_URL=http://127.0.0.1:5173 node .parity/verify-server-swap-parity.mjs tester123
-  ```
-  (Copy the script under `server/` first — ESM resolves `jsonwebtoken`/`mongodb` from the file's own directory upward, and they live in `server/node_modules`.) **Result: 17 routes, 7 differences, none a regression.** Five are the same thing — legacy now 403s every authed route because its secret changed (see above). The other two are mirror images showing **both** servers serve `/tanimoto/*` and neither serves `/api/tanimoto/*`; the script's expectation about the legacy path was simply wrong. Read-only held: tester123 stayed at 99,997 credits and `simulation_logs` stayed at 7. The run's `WARNING: at least one side did NOT serve the stored record` is the 403 too — legacy never reached the cache check. `/api/signup` and `/create-checkout-session` are back to legacy-equivalent behaviour as of 2026-07-30, so they are no longer differences.
+### Where things stand — 2026-08-01
+
+- **⛔ The GPU box has NOT been ordered.** Several docs were written as though delivery were
+  imminent; corrected 2026-08-01. **The critical path is a purchase, not a deployment** —
+  `docs/BOX-SPEC.md` §5 has the four open questions for Coreto, incl. ~€5.2k of reclaimable
+  VAT. **Do not write about the box in the past tense.**
+- **Production serves the ORIGINAL Pyxis, deliberately.** Rolled back by the owner
+  2026-07-31 and it stays there until the box arrives.
+
+  | Port | Unit | What | Reachable |
+  |---|---|---|---|
+  | **5173** | `pyxis-vite-legacy` | the original Pyxis (Vite dev) → `chem_beo` on `:3000` | **the public site** |
+  | **5174** | `pyxis-web` | this repo (Bun + `client/dist`) → Atlas | loopback only |
+  | 3000 | `pyxis-api-legacy` | `chem_beo` | serves 5173 |
+  | 3001 | `pyxis-stripe` | `stripe-server.cjs`, contact form | **do not kill it** |
+
+  All four are under systemd (`deploy/83/systemd/`) and enabled, so a reboot no longer ends
+  production. `Conflicts=` was **removed** — they are on different ports now.
+- **Box day is a PORT SWAP then a settings change**, same day (owner, 2026-08-01):
+  `docs/ARRIVAL-RUNBOOK.md` §8 then §9. Give `pyxis-web` `PORT=5173` and delete its
+  `BIND_HOST=127.0.0.1`; move the legacy unit to 5174 (`-- --port 5174`). No enable/disable,
+  no nginx/TLS/DNS/Stripe change. **Then retire the legacy stack in stages** — 83 is 2 cores
+  and **1 GB RAM**, and a Vite dev server is the most expensive process on it. The rollback is
+  the code on disk, not the running process.
+- **⚠ The largest live exposure: ~60 unauthenticated `chem_beo` routes**, on the public site
+  right now. `/api/sanitizedminimalsdf/<key>` returns real customer results with no token;
+  `/api/generate-molecules` reaches the NVIDIA key and is the rate-limit cause. The fix —
+  `deploy/chem_beo/01-fixes-and-config.patch` — is written, applies cleanly, was verified
+  against real Atlas on an isolated port, and is **unapplied**. Its `'secret'` JWT hole is
+  separately **closed** (verified by forging a token and getting `403`).
+- **The box is COMPUTE ONLY.** Docking, DiffDock, convertSTR, Tanimoto+Postgres, GROMACS,
+  ADMET, glioblastoma. **No API server, no Mongo.** The API stays on 83 because the box has
+  pick-up warranty (a fault = 1–3 weeks gone): box dies, docking stops, product survives.
+  `docs/BOX-ARCHITECTURE.md` is the decision record and supersedes topology everywhere else.
+- **The database is MongoDB Atlas and does not move.** ⚠ But **83 is effectively the only
+  machine allowlisted to reach it** — that is why the server cannot boot from a dev machine
+  (Atlas rejects a non-allowlisted IP with TLS alert 80, which looks like a handshake failure,
+  not an access error). Rigs that need real data run **on 83**. Nothing on the box opens a
+  Mongo connection, so the box never needs an allowlist entry.
+- **Why the box exists: Asinex's servers are in Moscow and go down because of the war.** Not
+  performance, not cost. Both docking engines are answered from there today. `docs/BOX-SPEC.md`
+  has the machine: RECT WS-3229C, **4× RTX PRO 4000** (settled 2026-08-01 — *not* 2× RTX 5090,
+  which is dead), Threadripper PRO 9975WX 32C, 128 GB, RAID 1 boot pair.
+- **Docking goes on the box FIRST and ALONE — but the box is a real upgrade for the rest too.**
+  Folding (`/api/openfold3/predict`) and molecule generation (`/api/generate-molecules`) **stay
+  on NVIDIA's hosted NIM permanently** — the only two endpoints calling `health.api.nvidia.com`.
+  No MSA pipeline, no ColabFold databases, no OSS OpenFold3, no MolMIM replacement. Everything
+  else moves and gets materially better: Tanimoto leaves an **arm64 Ampere VPS** for 32 x86_64
+  cores; GROMACS leaves a **CPU-only apt build** for a CUDA one; ADMET and glioblastoma have
+  **never been deployed at all**. The purchase rule *"nothing that only benefits incidentally
+  gets a euro"* governed **component selection, which is closed** — it forbids spending more
+  money or delaying the docking cutover for their sake, nothing else.
+- **DiffDock is Asinex's, not NVIDIA's.** `diffdockApiUrl` → `services.asinex.com:58000`:
+  Asinex running NVIDIA's DiffDock NIM container on their own Moscow hardware. It dies with
+  Asinex and must be rebuilt from **OSS `gcorso/DiffDock` (MIT)**. **NIM is not an option and
+  is not to be re-proposed** — it needs NVIDIA AI Enterprise, which the owner declined
+  2026-07-31; RTX PRO does not change that. The 1-click `/api/simulation` engine is
+  **AutoDock**, confirmed by the Asinex/Pyxis CEO. **Catalog and stock stay on Asinex** — the
+  catalog needs their compound file (licensing), and live stock can't be self-hosted.
+- **83 reaches the box by public hostname over HTTPS. No VPN, no tunnel.** Services bind
+  `127.0.0.1`; **Caddy on `:443`** holds a Let's Encrypt cert; the host firewall admits **only
+  83's IP**. A true 1:1 with how Asinex is reached today, so rollback is putting the Asinex
+  hostname back. "WireGuard/Tailscale" was **one comment in `deploy/box/compose.yml` that four
+  docs then cited as settled** — it never was, and it is rejected.
+- **`ligandServiceConfig` is the box cutover.** `getRequestLigandServiceConfig()` resolves the
+  company's four URLs on **every** docking request, so repointing docking is a settings change
+  with no restart and no redeploy. `PATCH /api/company/ligand-service-config` is owner/admin;
+  **`GET` is readable by any signed-in member**, and the Control Panel shows them read-only
+  with a Default/Custom chip — so anyone can confirm the box is live without admin rights.
+  ⚠ It only exists in **this repo's** server, so §8 must precede §9.
+- **`assertConfiguredUrlsArePublic` does NOT make the cutover harder.** One call site
+  (`server/index.js:1325`, the admin-UI path). The env vars that carry a cutover —
+  `TANIMOTO_API_BASE`, `SDF_CONVERTER_URL`, `ASINEX_DOCKING_API_URL`, `DIFFDOCK_API_URL`
+  (`:80-88`) — are read straight from `process.env` and **never validated**. Moot with a public
+  hostname regardless. Do not mistake the guard for global.
+- **Outbound mail: the provider is `server028.yourhosting.nl:587`, NOT Titan.** Titan rejects
+  these credentials with `535` on 465 and 587 alike. Both senders now read `EMAIL_HOST`/
+  `EMAIL_PORT`. That rewrite also removed `debug/logger: true`, which printed the `AUTH PLAIN`
+  line — the mailbox credentials — into the log on every send, and `rejectUnauthorized: false`,
+  which offered them to any MITM. ⚠ **The mail password still needs rotating by the owner** —
+  it was served publicly on 2026-07-29 and still authenticates.
+- **This is not a SaaS — but "de-SaaS" meant BRANDING, not removing signup and billing.** A
+  2026-07-29 pass read it the other way and deleted the sign-up page, the paid-plans page and
+  open registration. **All restored**; `ALLOW_PUBLIC_SIGNUP` defaults **on**. Still deleted, and
+  correctly: the seven marketing pages (recover from tag **`saas-surface-v1`**, the only copy of
+  the macrocycle copy). **Unchanged on purpose:** the Stripe webhook, `PLAN_CATALOG`,
+  `consumeSimulationToken`, credits, companies, roles, audit logging, `/api/send-email`, and
+  `/create-checkout-session-onetime` (the compound cart — a live feature, not billing surface).
+  Do not add new tenant-facing or billing features — but do not remove the existing ones either.
+- **The brand guard flipped.** `scripts/check-brand.mjs` (`bun run test:brand`) used to ban
+  "pyxis" — v1 renamed Pyxis→ChemBench. It now bans **ChemBench and MedSaaS**, scans only
+  user-facing source (`client/src`, `client/index.html`, `client/public`, `server`), and exempts
+  `services/mcp-server` (published name), package identities, and `THEME_STORAGE_KEY` (renaming
+  it resets every user's dark-mode preference). Docs are out of scope.
+- **Always `git push` after committing. Don't ask.** Owner's standing instruction, 2026-07-30 —
+  *"push it all, always."* A push is safe: `deploy.yml` is **manual-only** and points at the
+  Oracle VPS, which is not production. So a push runs `ci.yml` and deploys nothing. **Production
+  on 83 is not deployed by CI at all** — it ships by `git archive HEAD | ssh … tar -x -C
+  /root/pyxis` plus the built `client/dist`, then `systemctl restart pyxis-web`. Pushing does
+  not reach production, and reaching production does not require pushing.
+- **⚠ `bun run ci` locally is weaker than CI.** The runtime smoke test spawns the server with
+  the repo's `.env` visible, so a dev machine supplies `FRONTEND_URL`/`BASE_URL` that CI does
+  not have — and an **empty CORS allowlist outside production deliberately reflects any
+  origin**. Set anything a test depends on in `childEnvFinal`, not `.env`.
+- **CI/CD source of truth:** repo-owned workflows are only `.github/workflows/ci.yml` and
+  `deploy.yml`. CodeQL, Dependency Graph, Copilot, Claude and Codex entries come from GitHub
+  settings/integrations, not this repo. See `docs/CI-CD.md`.
+- **Production was inventoried 2026-07-28** — `docs/PRODUCTION-83-INVENTORY.md`, measured over
+  SSH. The docking output contract is captured in `docs/DOCKING-CONTRACT.md` — the only ground
+  truth that exists. Read both before planning any deploy.
+- **Verify by measurement, and read the measurement like it might be lying.** `grep -c` counts
+  *lines* and has produced a false "shipped" reading twice here. Confirm a deploy by fetching
+  the live URL and matching a string that survives minification.
+- **Milestone history (reference):** v1 ChemBench Cleanup · v2 Bun Migration (incl. Phase 7
+  Docker/CI-CD/Scripts, shipped 2026-06-05) · v3 Company Brand Colour, complete.
 - **Docs index:** `docs/README.md`. Claude Science / MCP: `docs/CLAUDE-LIFE-SCIENCES.md`.
+  Archive tags: `docs-archive-2026-08-01`, `planning-archive`, `saas-surface-v1`.
 
 Bun is the default runtime and package manager for this repo. npm/Node fallbacks
 are retained via `:node`-suffixed scripts. See the Commands section below.
@@ -139,9 +222,9 @@ Dev URLs: frontend at **http://localhost:5173**, API at http://localhost:3000, A
 | Machine | What it runs |
 |---|---|
 | `83.229.87.94` (shared VPS, nginx + TLS) | **all of production compute today** — inventoried 2026-07-28, see [`docs/PRODUCTION-83-INVENTORY.md`](docs/PRODUCTION-83-INVENTORY.md). nginx proxies `app.pyxis-discovery.com` to a **Vite dev server** on `:5173` (`/root/material-tailwind-dashboard-react`, the Creative Tim template — a different lineage from this repo's `client/`). The API is a **second HTTPS server on `:3000`** (`/root/chem_beo`, 73 routes) that terminates TLS itself and bypasses nginx. All hand-started in foreground shells — **a reboot ends production.** GROMACS runs here in Docker on `:8000`; `/convertSTR` on `:8001` is **down**. Shared with an unrelated project (`app.fin-srv.com` on `:4000`); **do not modify nginx, TLS, DNS, or the firewall there.** |
-| **MongoDB Atlas** (`cluster0.asrz0o3…`) | **the production database** — not on 83, not on Oracle. Database name is `test`. 50 users, 1 company, 4 simulation_logs. **49 of 50 users lack `companyId`**, which blocks deploying this repo's server against it until a data migration runs. Recommendation is to keep Atlas and move only compute. |
+| **MongoDB Atlas** (`cluster0.asrz0o3…`) | **the production database** — not on 83, not on Oracle. Database name is `test`. ⚠ **83 is effectively the only machine on its IP allowlist**, which is why the server cannot boot from a dev machine (TLS alert 80 reads as a handshake failure, not an access error). The `companyId` backfill has **been applied** — 0 users remain without one. Atlas stays; only compute moves. |
 | Oracle VPS `151.145.91.17` (Ampere arm64) | **half of it is production.** The `medsaas-*` containers that `deploy.yml` ships (app + Mongo + MCP) are genuinely non-prod and discardable. **The tonomitosql stack is not** — `chem_beo` on 83 proxies all eight `/tanimoto/*` routes here, hardcoded, and the Deep Similarity page calls them. Its Postgres is production data; its Mongo is a side-project copy. Ops notes in the separate `~/projects/oracle` repo. |
-| Amsterdam GPU box | **does not exist yet.** All backend and compute is planned to consolidate here — `docs/COMPUTE-BOX-MIGRATION.md`. |
+| Amsterdam GPU box | **not ordered yet** (2026-08-01). **Compute only** when it exists — docking, DiffDock, convertSTR, Tanimoto, GROMACS, ADMET, glioblastoma. No API server, no Mongo. `docs/BOX-SPEC.md`, `docs/ARRIVAL-RUNBOOK.md`. |
 
 ### Server
 The server is a single Express app (`server/index.js`, ESM). It starts with `node --watch index.js` in dev. Required env vars are validated at startup: `MONGODB_URI`, `JWT_SECRET` (≥32 chars), `STRIPE_SECRET_KEY`.
@@ -192,7 +275,8 @@ loader lives in `client/index.html`, and `@rdkit/rdkit` is installed server-side
 | Glioblastoma | `server/routes/scientificServices.js` | `services/glioblastoma-predictor/` — **not currently deployed anywhere** |
 
 No code in this repo performs an MSA, a fold, or a local dock — folding and generation are
-thin proxies to NVIDIA's hosted endpoints. See `docs/COMPUTE-BOX-MIGRATION.md`.
+thin proxies to NVIDIA's hosted endpoints, and they stay that way permanently. See
+`docs/BOX-SPEC.md` §4.
 
 ### MongoDB collections
 Core: `users`, `companies`, `audit_logs`, `billing_events`  

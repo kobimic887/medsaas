@@ -72,7 +72,7 @@ Select an implementation with `DOCKING_ENGINE`:
 |---|---|---|
 | `replay` | Replays the committed production poses while exercising request normalization, receptor preparation/cache, and serialization | Default for offline tests; accepts only the committed 1CX7 request |
 | `vina` | CPU AutoDock Vina reference backend | Testable with `RUN_VINA=1`; requires RCSB network access on a cold receptor |
-| `autodock-gpu` | Future RTX 5090 production backend | Deliberately returns 503 until hardware qualification; no unverified GPU binary is shipped |
+| `autodock-gpu` | Future RTX PRO 4000 production backend | Deliberately returns 503 until hardware qualification; no unverified GPU binary is shipped |
 
 AutoDock-GPU still requires an on-box decision. The old `nvcr.io/hpc/autodock:2020.06` image predates Blackwell `sm_120` and must not be assumed compatible. Qualification must start with the actual driver/GPU and a trivial dock; building upstream AutoDock-GPU for `TARGETS=120` is the expected path if the old image cannot run correctly.
 
@@ -182,6 +182,6 @@ The measured production payload cannot establish all scientific settings. These 
 - production exhaustiveness, random seed, map spacing, and exact scoring-function build;
 - production behavior for apo receptors (the loud blind-box fallback is new behavior);
 - the exact third-party error body/status mapping (this service uses readable JSON and preserves the required non-2xx invariant);
-- AutoDock-GPU behavior and performance on RTX 5090/Blackwell hardware.
+- AutoDock-GPU behavior and performance on RTX PRO 4000 / Blackwell hardware.
 
 Do not tune these by weakening the response verifier or the heavy-coordinate gate. The committed fixture and `scripts/verify-docking-response.mjs` are acceptance evidence, not implementation details to rewrite.

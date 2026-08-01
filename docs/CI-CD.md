@@ -58,9 +58,9 @@ The backend is planned to move to a dedicated Threadripper GPU machine in Amster
 the current model: build-on-box exists partly to avoid cross-architecture/QEMU issues on
 arm64, and on an amd64 target a runner-side build or a registry becomes viable again.
 
-Do not pre-emptively change these workflows. The architecture switch, the CORS/frontend
-split, and the ingress decision are all still open — see
-[COMPUTE-BOX-MIGRATION.md](./COMPUTE-BOX-MIGRATION.md). Update this document in the same
+Do not pre-emptively change these workflows. The architecture switch and the CORS/frontend
+split are still open; the ingress decision is settled — see
+[ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §6. Update this document in the same
 change that actually switches the target, not before, so it never describes a deploy path
 that does not exist.
 

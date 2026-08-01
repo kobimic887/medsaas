@@ -1,1364 +1,181 @@
 # What to do next
 
-## ⏱⏱ START HERE — session ended 2026-07-31. This section outranks everything below it.
+**Current as of 2026-08-01.** Everything older is recoverable from the git tag
+`docs-archive-2026-08-01` — a ~1,130-line historical log used to live at the bottom of this
+file and was deleted, not lost. Recover it with:
 
-Everything under the older "START HERE — 2026-07-30" heading further down is a **historical
-log**. Where it disagrees with this section, this section wins. Do not act on a claim from
-lower in this file without re-measuring it first — several were true when written and are
-false now, and one of them will break the site (see "Do NOT do these").
+```bash
+git show docs-archive-2026-08-01:docs/NEXT-SESSION.md
+```
 
-### ⚠ 2026-07-31 — production is deliberately back on the ORIGINAL Pyxis. Box day is a PORT SWAP.
+---
 
-Owner's decision: run the original Pyxis as the live product until the GPU box arrives, with
-this repo's version kept running alongside rather than switched off.
+## The single most important fact
 
-| Port | What | Reachable |
-|---|---|---|
-| **5173** | `pyxis-vite-legacy` — the original Pyxis (`/root/material-tailwind-dashboard-react`, Vite dev), talking to `chem_beo` on `:3000` | **the public site**, via nginx |
-| **5174** | `pyxis-web` — this repo (`/root/pyxis`, Bun + `client/dist`) | **loopback only** |
+**The GPU box has not been ordered.** Confirmed by the owner, 2026-08-01. Several documents
+were written as though delivery were imminent; they have been corrected. Nothing about the box
+is in the past tense, and nothing on it has been executed.
 
-Both units are `enabled`, so both survive a reboot. `Conflicts=` was removed from
-`pyxis-web` — they are on different ports now and must be able to run together. Restore it
-if they are ever both pointed at 5173.
+**So the critical path is a purchase, not a deployment:** [BOX-SPEC.md](./BOX-SPEC.md) §5 has
+the four things to settle with Coreto, including ~€5.2k of reclaimable VAT that is not applied
+automatically. The GPU question is closed — **4× RTX PRO 4000**, settled 2026-08-01.
 
-**On arrival day, swap the ports back. Do not enable/disable anything:**
+---
 
-1. `pyxis-web`: set `Environment=PORT=5173` and **delete the `Environment=BIND_HOST=127.0.0.1`
-   line** — it must bind every interface again to be served by nginx.
-2. `pyxis-vite-legacy`: move it to 5174 (`--port 5174`), so the rollback is still one swap away.
-3. `systemctl daemon-reload && systemctl restart pyxis-web pyxis-vite-legacy`, then confirm
-   `ss -ltnp | grep -E ':5173|:5174'` shows **bun on 5173** and **node on 5174**.
+## State of production
 
-The tracked unit is `deploy/83/systemd/pyxis-web.service` and its header says the same thing.
-nginx, TLS, DNS and Stripe are not touched by any of this.
+`app.pyxis-discovery.com` serves the **original Pyxis**, deliberately. The owner rolled back to
+it on 2026-07-31 and it stays there until the box arrives.
 
-**Why `BIND_HOST=127.0.0.1` is on the standby:** 5174 is not behind nginx, and the standby
-shares the **production Atlas** database. Bound to `0.0.0.0` it answered
-`http://83.229.87.94:5174/health` from the open internet over plain HTTP — a second live copy
-of the app where any sign-in crosses the network in clear text. Reach it deliberately instead:
+| Port | Unit | What | Reachable |
+|---|---|---|---|
+| **5173** | `pyxis-vite-legacy` | the original Pyxis (`/root/material-tailwind-dashboard-react`, Vite dev) → `chem_beo` on `:3000` | **the public site**, via nginx |
+| **5174** | `pyxis-web` | this repo (`/root/pyxis`, Bun 1.3.12 + `client/dist`) → **MongoDB Atlas** | loopback only |
+| 3000 | `pyxis-api-legacy` | `chem_beo`, the legacy API | serves 5173; also its own HTTPS listener |
+| 3001 | `pyxis-stripe` | `stripe-server.cjs`, the marketing contact form | part of the rollback path — **do not kill it** |
+
+All four are under systemd (`deploy/83/systemd/`) and `enabled`, so a reboot no longer ends
+production. Both frontends run together; `Conflicts=` was removed from `pyxis-web` because they
+are on different ports now.
+
+**Box day swaps the ports back** — [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §8. Owner's call,
+2026-08-01: same day as the docking cutover, but only after the box services pass §7.
+
+**Why `BIND_HOST=127.0.0.1` is on the standby:** 5174 is not behind nginx and shares the
+**production Atlas** database. Bound to `0.0.0.0` it answered `http://83.229.87.94:5174/health`
+from the open internet over plain HTTP — a second live copy of the app where any sign-in
+crosses the network in clear text. Reach it deliberately instead:
 
 ```bash
 ssh -N -L 5174:127.0.0.1:5174 root@83.229.87.94
 ```
 
-**What the live product does NOT have while on legacy** — expected, not bugs to re-investigate:
-mail of any kind (invites, password resets, contact form: `chem_beo/.env` and
-`stripe-server.cjs` both have empty `EMAIL_*`), response compression, asset caching, the
-PubMed literature page, the docked-pose overlay, the wrong-protein fix, and the RDKit loader
-fix. All of those live in the 5174 version only.
+**What the live product does not have while on legacy** — expected, not bugs to
+re-investigate: mail of any kind (invites, password resets, contact form — `chem_beo/.env` and
+`stripe-server.cjs` both have empty `EMAIL_*`), response compression, asset caching, the PubMed
+literature page, the docked-pose overlay, the wrong-protein fix, and the RDKit loader fix. All
+of those exist only in the 5174 version.
 
-**Unchanged and still open:** the ~60 unauthenticated `chem_beo` routes. `/api/sanitizedminimalsdf/<key>`
-returns real customer results with no token from the public internet, and
-`/api/generate-molecules` still reaches the NVIDIA key. The owner chose on 2026-07-31 to roll
-back without applying `deploy/chem_beo/01-fixes-and-config.patch`. It is written and rehearsed
-whenever that changes.
+### Deploying the 5174 version
 
-### State of production
-
-`app.pyxis-discovery.com` serves **this repo**, under systemd as `pyxis-web` on port 5173,
-running **Bun 1.3.12** (not Node — the box's `node` is v18 and irrelevant to the server),
-against **MongoDB Atlas**. Legacy `chem_beo` still listens on `:3000` and `stripe-server.cjs`
-on `:3001`; both are the rollback path and must stay up.
-
-**Always read `/root/pyxis/DEPLOYED_SHA` before assuming what is running.** It is written by
-hand at the end of a deploy and has been wrong before.
-
-Deploy is three steps, and the second is easy to forget because it is not in git:
+Three steps, and the second is easy to forget because it is not in git:
 
 ```bash
-git archive HEAD | ssh root@83.229.87.94 'tar -x -C /root/pyxis'      # source
-tar -C client -cf - dist | ssh root@83.229.87.94 'tar -x -C /root/pyxis/client'   # built client
+git archive HEAD | ssh root@83.229.87.94 'tar -x -C /root/pyxis'                   # source
+tar -C client -cf - dist | ssh root@83.229.87.94 'tar -x -C /root/pyxis/client'    # built client
 ssh root@83.229.87.94 'cd /root/pyxis/server && bun install; systemctl restart pyxis-web'
 ```
 
-Then stamp `DEPLOYED_SHA` and verify with a real request, not with the exit code.
+Then stamp `/root/pyxis/DEPLOYED_SHA` and verify with a real request, not with an exit code.
+**Always read `DEPLOYED_SHA` before assuming what is running** — it is written by hand and has
+been wrong before.
 
-### The one job only the owner can do
+---
+
+## The one job only the owner can do
 
 **Rotate the mail password** for `contact@pyxis-discovery.com` at **yourhosting.nl**. It was
-served publicly on 2026-07-29 and authenticates today. After changing it, update `EMAIL_PASS`
-in **both** `/root/chem_beo/.env` and `/root/pyxis/server/.env`. An agent must not attempt
-this — it needs the provider login.
+served publicly on 2026-07-29 and still authenticates. After changing it, update `EMAIL_PASS`
+in **both** `/root/chem_beo/.env` and `/root/pyxis/server/.env`.
 
-**Checked 2026-07-31: it has NOT been rotated.** The credential in
-`/root/pyxis/server/.env` still authenticates against `server028.yourhosting.nl:587`
-(`verify()` returns OK). Whether that is the same string that was exposed on 2026-07-29
-cannot be determined from the box alone — the exposed value was never recorded — so treat it
-as still exposed until the owner says otherwise. It is the owner's call and their login; an
-agent must not attempt it and must not nag about it.
+Checked 2026-07-31: **not yet rotated.** Whether the current string is the same one that was
+exposed cannot be determined from the box — the exposed value was never recorded — so treat it
+as still exposed. It needs the provider login; an agent must not attempt it, and must not nag
+about it.
 
-Note the separate thing found while checking: the file was *malformed*, which is why mail was
-completely dead rather than merely at-risk. That part is fixed — see below.
+---
 
-### Do NOT do these — each looks correct and is not
+## Do NOT do these — each looks correct and is not
 
 1. **Do NOT remove `bootstrap.min.css` from `client/index.html`.** A 2026-07-30 audit measured
-   Bootstrap as completely dead and it genuinely was. **The marketing pages were restored
-   after that measurement.** `about-us`, `contact-us`, `services` and `paidplansdescription`
-   are Bootstrap markup (`btn`, `card border-*`, `badge bg-*`, `col-md-*`), and `tailwind.css`
-   carries overrides targeting those same classes. Removing it breaks four live pages. The
-   genuinely-dead parts of that finding (Font Awesome, Bootstrap's JS, popper, the placeholder
-   analytics tag) were removed on 2026-07-31 — ~166 KB and two fewer third-party hosts.
+   Bootstrap as completely dead and it genuinely was — **then the marketing pages were
+   restored.** `about-us`, `contact-us`, `services` and `paidplansdescription` are Bootstrap
+   markup, and `tailwind.css` carries overrides targeting those same classes. Removing it
+   breaks four live pages. The genuinely dead parts (Font Awesome, Bootstrap's JS, popper, a
+   placeholder analytics tag) were already removed on 2026-07-31.
 2. **Do NOT bump `react-router` to fix its two Dependabot alerts.** The fix is only in v7 and
    the app is on 6.30.4. That is a framework migration, not a patch.
 3. **Do NOT remove sign-up, the paid-plans page, or billing.** "De-SaaS" meant *branding*. A
    2026-07-29 pass read it as feature removal and deleted them; that was reverted. Keep the
    thing, fix how it works.
-4. **Do NOT `pkill -f "bun index.js"` on the box.** It matches production's own process. Kill
-   rigs by PID. (Learned the hard way on 2026-07-31; production survived on luck.)
+4. **Do NOT `pkill -f "bun index.js"` on 83.** It matches production's own process. Kill rigs
+   by PID.
 5. **Do NOT modify nginx, TLS, DNS or the firewall on 83.** Shared host, not ours.
-6. **Do NOT delete `/root/material-tailwind-dashboard-react`.** It is the rollback, and it is a
+6. **Do NOT delete `/root/material-tailwind-dashboard-react`.** It is the rollback and a
    different codebase from `client/`, not an older copy. Its start command is
-   `npm run dev-vite-only` — **never `npm run dev`**, which also starts `stripe-server.cjs`
-   and dies on `EADDRINUSE` against the one already holding `:3001`.
-7. **Do not trust `grep -c` to prove a deploy landed.** It counts *lines*, and it has produced
-   a false "shipped" reading twice in this repo. Verify by fetching the live URL and matching
-   a string that survives minification (property names do; local variable names do not).
+   **`npm run dev-vite-only`** — never `npm run dev`, which also starts `stripe-server.cjs`,
+   already holding `:3001`, and the loser dies on `EADDRINUSE`.
+7. **Do not trust `grep -c` to prove a deploy landed.** It counts *lines*, and has produced a
+   false "shipped" reading twice in this repo. Verify by fetching the live URL and matching a
+   string that survives minification (property names do; local variable names do not).
+8. **Do NOT re-propose NVIDIA NIM or price AI Enterprise.** Owner decision, 2026-07-31.
+   DiffDock is rebuilt from OSS `gcorso/DiffDock` (MIT).
 
-### Closed on 2026-07-31 — do not re-report
+---
 
-- **Tanimoto "just stops" on a bad SMILES.** Not a bug in our stack. `cco` is invalid SMILES
-  (lowercase means aromatic); upstream correctly returns
-  `400 {"detail":"Invalid SMILES: 'cco' could not be parsed by RDKit"}`. The server forwards
-  it and `deep-similarity.jsx` renders it in a red Alert. Fixed in `6a6afa1`, live and
-  verified. `CCO` uppercase is ethanol and searches fine.
-- **The docked pose missing from Simulation Results** — the "small coloured thing inside the
-  PDB". It had never auto-loaded in either codebase; it needed a table-row click. Now loads
-  automatically, additively (`c3d9e27`).
-- **Viewer reporting several copies of one protein.** Two call sites both started a load; the
-  eager one only checked `contentWindow`, which an unnavigated iframe still exposes pointing
-  at `about:blank`. One-shot flag plus a `contentDocument.readyState` gate.
-- **Production never compressed a single response.** `compression()` added in-process (nginx
-  is not ours to touch). Measured live: React vendor chunk 332,546 → 102,432 bytes,
-  stylesheet 157,008 → 21,946.
-- **Every asset shipped `cache-control: max-age=0`.** Hashed `/assets/*` now get a year +
-  `immutable`; unhashed an hour; `index.html` `no-cache` on all **three** handlers that serve
-  it — `express.static`, the SPA fallback, and an explicit `app.get('/')` registered ~6,400
-  lines earlier that was missed on the first pass.
-- **The brand guard was decorative.** `bun run test:brand` existed, CLAUDE.md claimed CI ran
-  it, CI did not. A ChemBench string had already reached `main`. Now in `ci` and `ci:node`,
-  proven by planting a regression.
-- **Dependabot 32 → 19, all 10 highs cleared.** The one that mattered: `sharp` → 0.35.3
-  (libvips 8.18.3), because `companyBranding.js` runs it over user-uploaded logos.
-- **Production could not send mail at all**, and it was not the password. Five settings in
-  `/root/pyxis/server/.env` were written with a leading space and an *opening* double quote
-  and no closing one (`EMAIL_HOST= "server028.yourhosting.nl`). dotenv only strips quotes when
-  they match, so every send died on `getaddrinfo ENOTFOUND`, and `EMAIL_USER`/`EMAIL_PASS`
-  were mangled the same way. Fixed on the box (backup at `.env.bak.mailquotes.*`) and
-  verified — `verify()` now returns OK straight from the environment. `normalizeMailEnv()` in
-  `server/utils/emailService.js` strips and **warns** so it cannot silently recur.
-  **The credential itself is valid and was never rotated** — see the owner-only item above.
-- **`/root/material-tailwind-dashboard-react/.env` has empty `EMAIL_*` and no password.**
-  That is `stripe-server.cjs`, the marketing contact form on `:3001`. It only serves the
-  **rollback** path now — the live contact form goes through `pyxis-web` — and empty is the
-  safer state, so it was left alone deliberately. If you ever roll back to the legacy
-  frontend, the contact form will be dead until those are filled in.
-- **~690 KB off every page load.** 3Dmol was a global `<script>` pulling 524 KB from
-  `3dmol.csb.pitt.edu` — an unversioned university web server — on *every* page including
-  sign-in, while only `moleculeviewer.jsx` uses `window.$3Dmol`. Vendored to
-  `client/public/3dmol` (v2.5.2) and lazy-loaded on mount. Plus the 166 KB of dead Font
-  Awesome / Bootstrap JS / popper / placeholder analytics. Remaining third-party origins:
-  Bootstrap's stylesheet, Google Fonts, and the RDKit wasm loader (already lazy).
-- **Dark mode is NOT broken.** An older note says every `dark:*-slate-*` compiles to nothing
-  under `withMT()`. That was true; `slate` is now declared in `client/tailwind.config.cjs` and
-  the built sheet carries 147 slate rules and 155 `.dark` rules.
-
-### What is actually left, in priority order
+## What is actually left, in priority order
 
 | # | Work | Needs the box? | Notes |
 |---|---|---|---|
-| 1 | **Arrival day: stand up docking on the box** | yes | Build the ligand services *on* the box — owner's call, x86_64 native is far faster than cross-building. `docs/ARRIVAL-RUNBOOK.md` §2.2 has the sequence and the Caddy path table. |
-| 2 | **Repoint docking at the box** | yes | Settings change, no restart, no redeploy: `PATCH /api/company/ligand-service-config` (owner/admin). Four URLs. `GET` on the same path is readable by any member, so anyone can confirm. Roll back by putting the Asinex hostnames back. |
-| 3 | **`chem_beo` hardening patch** | no | `deploy/chem_beo/01-fixes-and-config.patch`. Written, applies cleanly, rehearsed against real Atlas on an isolated port. **Unapplied.** ~60 unauthenticated routes stay open until it is. Only matters while `:3000` is reachable as rollback. |
-| 4 | **Stripe webhook registration** | no | The old blocker (no HTTPS) is gone. Register `https://app.pyxis-discovery.com/stripe/webhook`, put the signing secret in `STRIPE_WEBHOOK_SECRET` at `/root/pyxis/server/.env`. Check `stripe webhook_endpoints list` first — do not create a duplicate. |
-| 5 | **Subresource Integrity on external tags** | no | Four external hosts remain: jsdelivr (Bootstrap CSS), Google Fonts, unpkg/jsdelivr (RDKit, lazy), and `3dmol.csb.pitt.edu`. None carry SRI. The 3Dmol one is a university web server, unpinned and unversioned, and `moleculeviewer.jsx` genuinely needs it — the viewer breaks whenever that host is down. Vendoring it locally is the real fix. |
-| 6 | **Bundle code-splitting** | no | `vendor-charts` is 515 KB and the build warns. Now gzipped, so it is ~135 KB on the wire; lower priority than it looks. |
+| 1 | **Order the machine** | — | The critical path. [BOX-SPEC.md](./BOX-SPEC.md) §5 |
+| 2 | **Two critical tenant-isolation bugs** | no | Found 2026-08-01, unfixed. [SECURITY-FINDINGS.md](./SECURITY-FINDINGS.md) §A1, §A2 |
+| 3 | **Prove the Tanimoto dump restores** | no | `scripts/verify-tanimoto-restore.sh`. Needs any x86_64 Docker host. Asserts 2,951,975 rows |
+| 4 | **Stripe webhook registration** | no | Register `https://app.pyxis-discovery.com/stripe/webhook`, put the signing secret in `STRIPE_WEBHOOK_SECRET`. Run `stripe webhook_endpoints list` first — do not create a duplicate. Until then real purchases grant no credits |
+| 5 | **`chem_beo` hardening patch** | no | `deploy/chem_beo/01-fixes-and-config.patch`. Written, applies cleanly, rehearsed against real Atlas. **Unapplied** — and `chem_beo` is serving the public site right now, so its ~60 unauthenticated routes are live |
+| 6 | **Subresource Integrity on external tags** | no | Three external hosts left: jsdelivr (Bootstrap CSS), Google Fonts, unpkg/jsdelivr (RDKit, lazy). None carry SRI |
+| 7 | **Bundle code-splitting** | no | `vendor-charts` is 515 KB and the build warns. Gzipped it is ~135 KB on the wire, so lower priority than it looks |
+| 8 | **Arrival day** | yes | [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) |
 
-### ⚠ Hardware changed 2026-07-31 — GPUs are now probably 4× RTX PRO 4000
+⚠ **Item 5 got more urgent when production rolled back.** The patch closes five money/data
+routes including a credit-minting hole and the open `/api/generate-molecules` that is the
+NVIDIA rate-limit cause. Those routes are reachable on the live site today.
 
-Not 2× RTX 5090. Full amendment in `docs/BOX-SPEC.md`.
+---
 
-**NIM is not an option and is not to be re-proposed.** Owner decision, 2026-07-31: *"we are
-not buying nvidia enterprise"*. NIM containers require an NVIDIA AI Enterprise licence
-whatever card is installed, so moving from GeForce to RTX PRO does not open that door —
-it only removes the GeForce driver EULA datacenter-clause worry. **DiffDock gets rebuilt from
-OSS `gcorso/DiffDock` (MIT). That is the plan, not the fallback.** Do not spend arrival day
-evaluating NIM, and do not price AI Enterprise.
+## The prompt to paste on arrival day
 
-Trade-off to expect: each PRO 4000 is ~40 % of a 5090 on a single job, so one interactive
-dock is slower. Four cards means four concurrent docks, so a queue is faster.
+Copy this verbatim into a fresh session once the box is powered, on the network and reachable
+by SSH:
 
-### The prompt to paste on arrival day
-
-Copy this verbatim into a fresh session once the box is powered, on the network and
-reachable by SSH:
-
-> The Amsterdam GPU box has arrived and I can SSH to it. Read
-> `docs/NEXT-SESSION.md` — the "START HERE — session ended 2026-07-31" section
-> outranks the rest of that file — then `docs/ARRIVAL-RUNBOOK.md` and
+> The Amsterdam GPU box has arrived and I can SSH to it. Read `docs/ARRIVAL-RUNBOOK.md`, then
 > `docs/BOX-ARCHITECTURE.md`.
 >
-> Goal for today: get docking running on the box and repoint production at it, and
-> nothing else. Compute only. Do not touch the database (Atlas stays), the frontend,
-> nginx, TLS, DNS or Stripe.
+> Goal for today: get docking running on the box and repoint production at it, and nothing
+> else. Compute only. Do not touch the database (Atlas stays), nginx, TLS, DNS or Stripe.
 >
-> Build the ligand services natively on the box — do not cross-build. Bring up
-> AutoDock and OSS DiffDock plus convertSTR, put Caddy on :443 with a Let's Encrypt
-> cert for the box hostname, bind every service to 127.0.0.1, and let the host
-> firewall admit only 83.229.87.94. No VPN and no tunnel — that was considered and
-> rejected.
+> Build the ligand services natively on the box — do not cross-build. Bring up AutoDock and
+> OSS DiffDock plus convertSTR, put Caddy on :443 with a Let's Encrypt cert for the box
+> hostname, bind every service to 127.0.0.1, and let the host firewall admit only
+> 83.229.87.94. No VPN and no tunnel — that was considered and rejected.
 >
-> Cut over one endpoint at a time via `PATCH /api/company/ligand-service-config`
-> (owner/admin), verifying a real dock between each. That is a settings change: no
-> restart, no redeploy. If anything misbehaves, put the Asinex hostnames back — that
-> is the whole rollback.
+> Validate against `scripts/verify-docking-response.mjs` before touching the live site. Then do
+> the port swap in §8, then cut over one URL at a time via
+> `PATCH /api/company/ligand-service-config`, verifying a real dock between each. If anything
+> misbehaves, put the Asinex hostnames back — that is the whole rollback.
 >
-> Verify by measurement, not by reasoning, and tell me plainly if something does not
-> work. Do not spawn workflows or subagent fleets.
+> Verify by measurement, not by reasoning, and tell me plainly if something does not work. Do
+> not spawn workflows or subagent fleets.
 
-Tanimoto, GROMACS, ADMET and glioblastoma move **after** docking is proven, not
-alongside it.
-
-### Method notes that saved real time
-
-- **Measure, do not reason.** Two "findings" in this repo were screenshot artefacts (a fade
-  mid-animation read as a blank hero) and one was a grep matching an *older* symbol whose name
-  contained the new one.
-- **The server cannot boot from a dev machine** — Atlas rejects non-allowlisted IPs with TLS
-  alert 80. To measure real headers or behaviour, run a rig on a spare port **on the box** and
-  kill it by PID afterwards.
-- **`bun run ci` locally is weaker than CI** — the runtime smoke test sees the repo `.env`.
-  Set anything a test depends on in `childEnvFinal`, not `.env`.
+Tanimoto, GROMACS, ADMET and glioblastoma move **after** docking is proven, not alongside it.
 
 ---
 
-## 🗄 HISTORICAL LOG BELOW — session ended 2026-07-30
-
-**Production is live, healthy and unattended-safe.** `app.pyxis-discovery.com` → 200, all four
-services `enabled` under systemd, **0 restarts**, no leftover probe units, nothing half-deployed.
-A reboot is survivable for the first time. Repo is clean and fully pushed.
-
-**Read the box's `DEPLOYED_SHA` before assuming anything about what is running.**
-
-### Everything buildable before the box is now built. Two jobs left, and neither is code.
-
-1. **Rotate the mail password — only the owner can.** `contact@pyxis-discovery.com` at
-   **yourhosting.nl**. It was served publicly on 2026-07-29 and **is still live**: proven by an
-   SMTP `verify()` that authenticated with the credential still in `/root/chem_beo/.env`, a file
-   untouched since 2026-04-02. Anyone who took it can send mail as the company. After changing
-   it, update `EMAIL_PASS` in **both** `/root/chem_beo/.env` and `/root/pyxis/server/.env`.
-
-…and that is the whole list of *blockers*. The glioblastoma key that was item 2 turned out not
-to be needed at all — see below.
-
-**One measured, ready-to-do user win is still unapplied:** ~393 KB of dead Bootstrap, Font
-Awesome and a placeholder analytics tracker on every page load, ~31% of the sign-in payload.
-Evidence and caveats in the "Measured user-facing win" section below. It needs a decision
-because it touches `client/index.html`, which every page shares.
-
-**Two supply-chain choices you may want to make** (neither blocks anything): GitHub reports 25
-Dependabot alerts on `main`, and `bun run lockfiles:refresh` currently surfaces npm audit
-findings. Nothing here reads untrusted input from a vulnerable path, so this is a decision about
-appetite, not an incident.
-
-### ✅ All 9 review findings resolved 2026-07-30 — 7 were real
-
-Verified each against the code before acting; none were taken on trust. Fixed in `c65698e`,
-plus the `pyproject` pin in `223b21f`. Highlights worth carrying forward:
-
-- **The SMILES decoder from `5d24852` was itself broken.** Its round-trip guard let `%NN`
-  ring closures through, so `C%20CCCCC%20` (a valid cyclohexane) decoded to `C CCCCC ` and
-  parsed as plain `C` — the original bug wearing the other face. The decode is now also
-  required to be entirely SMILES-legal.
-- **`services/gromacs-api` could never build.** `COPY templates/` referenced a directory that
-  has never existed in any commit; the MDP files were flattened to `templates_em.mdp`. Now
-  `templates/{em,npt,nvt,md}.mdp`, matching the README and `GET /templates/em.mdp`.
-- **`POST /api/admet/create-task` had no tenant check** — any active user could queue work
-  against another company's simulation and cause a write into that record.
-- **`resetAdmetJob` could reset a RUNNING job**, and the worker's `complete()` had no
-  ownership filter, so a DELETE mid-prediction was silently undone. Both ends guard now.
-- Root `docker-compose.yml` still wired ADMET to RabbitMQ; the Caddyfile used
-  `read_timeout`/`write_timeout` in `transport http` (they are fastcgi-only, and unnecessary
-  — `reverse_proxy` has no response timeout by default); `.env.example` contradicted its own
-  ingress design with `http://<box>:PORT` URLs.
-
-The two that were **not** defects: nothing else in the report survived checking.
-
-<details>
-<summary>Original unverified table, kept for provenance</summary>
-
-
-Two review passes were both **killed mid-run when usage ran out**, but their finder stages had
-already reported. The first pass's 6 findings were verified and **fixed in `5d24852`**. The
-second pass produced **9 more that nobody has verified** — the refutation stage never ran, so
-treat every one as a *claim*, not a fact. Verify before acting. Salvaged from
-`subagents/workflows/wf_113b9842-bce/journal.jsonl`.
-
-Ranked by how cheap they are to check:
-
-| # | Claim | Why it matters |
-|---|---|---|
-| 1 | **`services/gromacs-api/Dockerfile` `COPY templates/` has no such directory** — the MDP files are flat (`templates_em.mdp`, …) | If true the GROMACS image cannot build at all. One `ls` settles it |
-| 2 | **`deploy/box/ingress/Caddyfile` `read_timeout`/`write_timeout` are not valid inside `transport http`** — they exist only in `transport fastcgi` | `caddy validate` would fail on arrival day. `install.sh` validates before reloading, so it fails safe — but it fails |
-| 3 | ~~DiffDock `pyproject.toml` says `requires-python = ">=3.11"` while the Dockerfile is 3.10~~ | ✅ **Fixed** — pip enforces this for local installs, so the build would have failed |
-| 4 | **Root `docker-compose.yml` still wires ADMET to RabbitMQ** — passes `RABBITMQ_URL`/`ADMET_QUEUE_NAME`, none of which the worker reads now | A crash loop rather than a clear startup error |
-| 5 | **`decodeStoredSmiles` may corrupt a raw SMILES using `%NN` ring closures** — `C%10CCCCC%10` allegedly decodes to `CCCCCC` | This is a flaw in the fix from `5d24852`. The round-trip guard does not discriminate digit-pair escapes. **Check this one first of the correctness items** |
-| 6 | **`POST /api/admet/create-task` has no tenant check** — takes `simulationKey` from the body, never looks the simulation up, never applies `buildTenantFilter` | Pre-existing, not introduced here, but the Mongo queue makes it a live cross-tenant write |
-| 7 | **`resetAdmetJob` does not exclude a `running` job**, and the worker's `complete()` has no status guard | A DELETE during a prediction could let the in-flight worker restore the stale result |
-| 8 | **`deploy/box/.env.example` cutover cheat-sheet gives `http://<box>:PORT` URLs** the ingress design makes unreachable | Contradicts the same file's own design; a wrong copy-paste on arrival day |
-| 9 | **`ADMET_CALLBACK_URL` comment shows a full PUT path** but the worker appends `/api/simulation/{key}/admet` to it | Would produce a doubled path |
-
-</details>
-
-### ⚠ Both review passes were STOPPED before finishing
-
-Neither reached its verify stage. Do not read the absence of a verdict as a clean bill of
-health — the table above is what they had reported when they were cut off.
-
-What *is* verified: `bun run ci` exits 0 (144 server assertions incl. 27 ADMET-queue tests
-against a real in-memory Mongo), 24 Python worker tests, 28 DiffDock tests. What is **not**
-verified is anything needing hardware — no CUDA image has been built, no model has been run,
-no Caddyfile has been loaded by Caddy.
-
-### 📉 Measured user-facing win, not yet applied: ~393 KB of dead weight on every page load
-
-Measured live against `app.pyxis-discovery.com`, sign-in **and** nine dashboard pages via the
-public demo session — not inferred from the source.
-
-| Asset | Decoded | Evidence it is dead |
-|---|---|---|
-| `bootstrap.min.css` (jsdelivr) | 227 KB | computed styles on the page are **byte-identical** with it disabled; 0 Bootstrap class or `data-bs-*` hits across 10 pages |
-| `all.min.css` — Font Awesome (cdnjs) | 87 KB | **0** elements matching `[class*="fa-"]` across 10 pages |
-| `bootstrap.min.js` (jsdelivr) | 59 KB | 0 `data-bs-*` attributes, no `window.bootstrap` API use in `client/src` |
-| `popper.min.js` (jsdelivr) | 20 KB | only exists to serve Bootstrap JS |
-| `nepcha-analytics.js` | — | loads on every page with `data-site="YOUR_DOMAIN_HERE"`, an unfilled placeholder |
-
-That is **~31% of the 1,262 KB** the sign-in page decodes. It also removes 3 of the 6
-third-party hosts, i.e. 3 fewer DNS+TLS handshakes before anything renders.
-
-Two related things found in the same pass, worth a decision:
-
-- **No Subresource Integrity on any of the 8 external tags.** A compromised jsdelivr or cdnjs
-  executes arbitrary JS inside a logged-in app holding chemistry IP and a Stripe checkout.
-- **3Dmol.js loads from `3dmol.csb.pitt.edu`** — a university web server, unpinned and
-  unversioned. It is genuinely used (`moleculeviewer.jsx:213`), so the molecule viewer breaks
-  entirely whenever that host is down.
-
-⚠ Two false starts on the way to those numbers, both worth repeating as method: a grep for
-Bootstrap classes returned hits that were all *Tailwind* (`xl:row-start-1`, `sm:flex-row`), and
-an eyeballed 4px layout shift between screenshots turned out to be the animated background —
-the computed-style diff was empty. See the amended rule in `GOAL.md`.
-
-### ✅ The glioblastoma "key" — closed, and it was never what the docs said
-
-It is a **TLS keypair for `chemtest.tech`**, nothing to do with the science. Left over from when
-that service was deployed standalone at `chemtest.tech` / `152.42.134.22` and terminated HTTPS
-itself (`app.py:362-425`). **The domain has since expired**, so the certificate attests to a
-name nobody controls.
-
-Four documents said it was committed to git and had to be rotated as compromised, and
-`ARRIVAL-RUNBOOK` made it an abort condition. It was never committed — `.gitignore:45` excludes
-it and no blob exists in any branch. The real problem was the inverse: an untracked file that
-`Dockerfile:14` `COPY`'d, making this the only image in `compose.yml` a clean checkout could
-not build.
-
-**Resolved by deleting the requirement, not by moving the key.** Caddy terminates TLS for every
-service on the box, so this one runs plain HTTP on loopback like the rest; `app.py` already
-falls back to HTTP when the files are absent. Nothing to rotate, nothing to transfer, and the
-local copy can be deleted.
-
-Found while checking it: **the compose port mapping was wrong.** It published `8005:8000` while
-the container listens on **5000** — and there is no healthcheck on this service, so a container
-serving nothing would have looked identical to a working one. Now `8005:5000`.
-
-### ✅ ADMET and the box ingress — done 2026-07-30
-
-**ADMET is a Mongo queue now, both ends rewritten.** Producer `server/utils/admetQueue.js`
-(replacing `rabbitMQUtils.js`, deleted), consumer `services/admet/admet_worker/` (replacing
-`amqpadmet.py`/`admet_sender.py`, deleted). 17 server tests against a real in-memory Mongo, 22
-Python tests with no GPU, no network, no model and no Mongo server. `bun run ci` passes.
-
-What it fixes beyond the transport:
-
-- **A stuck job is now visible.** `GET /api/rabbitmq/queue-status` — path kept deliberately —
-  returns counts per state, the oldest queued timestamp, and how many `running` jobs have gone
-  quiet. That question being unanswerable is *why* nobody noticed ADMET was dead for months.
-- **The SMILES quoting bug.** The producer wrapped every SMILES in literal `"` characters and
-  the transport nested it in another array, so the wire carried `[["\"CCO\""]]`; the Python
-  side had a regex decoding a bug rather than a format. Both ends handle plain strings now.
-- **Two config errors that would only have shown up after GPU time was spent:** compose passed
-  `ADMET_CALLBACK_TOKEN` while the server reads `ADMET_CALLBACK_SECRET`, and
-  `services/admet/admet_ai/` shadowed the real `admet_ai` package for anything importing from
-  the service root. Both gone.
-- **The cu128-torch install order is asserted at build time.** Installing `admet-ai` first lets
-  chemprop's pins swap in the CPU wheel; that never raises, it is just permanently slow on two
-  idle 5090s.
-
-**Box ingress exists:** `deploy/box/ingress/` — `Caddyfile`, `install.sh`, `firewall.sh`, and a
-README that answers *why Caddy at all*. Three decisions worth not re-deriving:
-
-- **Caddy runs on the HOST under systemd, never in Docker.** A published container port bypasses
-  ufw: `:443` would be world-reachable while `ufw status` still said `deny`.
-- **Port 80 is open to the world on purpose.** ACME validates from Let's Encrypt's own servers,
-  so with both 80 and 443 closed no certificate is ever issued *or renewed* — the box would work
-  for exactly 90 days and then fail TLS with the cause two months in the past. Only the challenge
-  is served on 80. DNS-01 is the stricter alternative and needs a provider plugin.
-- **`handle` vs `handle_path` is load-bearing.** Tanimoto/GROMACS/glioblastoma strip their prefix
-  (the platform treats them as a base URL); docking/convertSTR/DiffDock do not (those services
-  expect the full path). Getting one wrong is a 404 on arrival day.
-
-### ✅ DiffDock and GROMACS — done 2026-07-30
-
-**DiffDock is built.** `deploy/box/diffdock/` is now a real service, not a reference directory:
-FastAPI wrapper, `replay`/`oss` engines, Dockerfile, weights fetcher, **28 tests passing with no
-GPU, no network and no weights**. See `deploy/box/diffdock/README.md`. Three things to know:
-
-- It reproduces the contract's counter-intuitive parts on purpose — **failure is HTTP 200** with
-  `status: "failed"`, arrays are **padded to `num_poses`** even when nothing docked, and
-  `position_confidence` is ranked best-first and index-aligned.
-- **The caller's escaping bug is fixed here, not in `chem_beo`.** All three wire forms decode on
-  the way in, so the platform's retry stops firing. The log proves the bug: a literal-`\n` ligand
-  failed at `12:05:03` and the same molecule raw succeeded at `12:05:06`.
-- **openfold is dropped, and that is unrelated to NVIDIA OpenFold3.** DiffDock's pip dependency
-  on `aqlaboratory/openfold` serves only the ESMFold protein-*sequence* path; `inference.py`
-  imports it nowhere and the platform always sends a PDB. Dropping it removes the from-source
-  CUDA extension build. NVIDIA's hosted OpenFold3 endpoint is untouched and stays hosted.
-
-Correction to what this file said before: **Python 3.9 is not forced.** cp39 wheels run through
-torch 2.8.0, and cp310–cp313 exist on every line. The image uses **Python 3.10 + torch
-2.7.1+cu128** because 3.10 is Ubuntu 22.04's system interpreter — no PPA, no conda — and every
-one of DiffDock's own 2022-era pins still has a cp310 wheel, so only torch and the four PyG
-extensions deviate from upstream's known-working set.
-
-**Unverified and cannot be until the box exists:** inference itself, the `requirements-oss.txt`
-resolve on x86_64, and whether DiffDock v1.1.3 runs unmodified under torch 2.7.1. First command
-on arrival is `python -m diffdock_service preflight`.
-
-**GROMACS builds on the box by decision** — `GMX_SIMD` is now a build ARG defaulting to `AUTO`,
-because when the build host is the run host CMake's detection beats a hardcoded target. The
-2026.3 tarball was confirmed to fetch; the compile itself has still never run (this Mac is
-arm64). It is Phase 6, off the docking critical path, so a failed compile costs a retry.
-
-### Settled by the owner 2026-07-30 — do not re-raise
-
-| | |
-|---|---|
-| `mol_price` import | **Not wanted.** Pricing comes from Asinex. The `/api/mol-price/*` endpoints return nothing and that is fine |
-| Stripe key rotation | **Not wanted.** Test key only; no live key was ever exposed |
-| Box ingress (Caddy + firewall) | **Approach approved, and now written** — `deploy/box/ingress/` |
-| ADMET transport | **Mongo, not RabbitMQ.** CloudAMQP was a successful test but is not the choice. **Both ends rewritten 2026-07-30**; `amqplib`, `pika` and CloudAMQP are gone from the repo |
-| `tester123` credits | **Stays at 99,998.** Verbatim: *"tester HAS to stay like that. period."* |
-| Profile page | **Deleted.** Owner: *"plain bloat"* |
-| Pushing | **Always push after committing, without asking.** See CLAUDE.md |
-
-### Closed 2026-07-29/30 — verified, not assumed
-
-- **Release A cut over** at 21:51 UTC. Sign-in no longer serves its own source, `/api/activity`
-  leaks no emails, `POST /api/signup` → 403.
-- **The `'secret'` forgery hole is closed on both servers.** A forged owner token gets 401 from
-  the app and **403** from the legacy API; `chem_beo` now has a real `JWT_SECRET` and runs under
-  `pyxis-api-legacy` instead of a 27-day-old `screen`.
-- **Opening Simulation Results no longer signs you out**, nor does the compound-cart enquiry.
-  Guarded by `scripts/check-authed-fetch.mjs` in `bun run ci`.
-- **NVIDIA keys recovered.** They were hardcoded in `chem_beo/index.js:80` and `:127` — two
-  *different* keys, in no `.env`, so the cutover silently broke MolMIM and Protein Folding. Both
-  now in `/root/pyxis/server/.env`.
-- **The app is on the real Pyxis palette** and dark mode actually applies — `withMT` drops
-  Tailwind's `slate`, so every `dark:*-slate-*` class had been compiling to nothing.
-- **47 users granted 15 credits.** Reversible snapshot at `/root/pyxis-migrate/credit-grant-*/`.
-- **Docking errors name their cause** — bad PDB id (checked *before* charging), provider
-  unreachable, or no result for that pair.
-- **GPU pinning fixed** — services named a card in the reservation instead of leaving it to
-  Docker to guess.
-- **The glioblastoma key was never committed.** `compose.yml` claimed it was in git history and
-  gated the service behind a `glioblastoma-key-rotated` profile. `.gitignore:45` excludes it and
-  no blob exists in any branch. The real problem is the inverse: it is an **untracked local file
-  that `Dockerfile:14` COPYs**, so that build fails on the box until the key is moved there out
-  of band. Profile renamed to `glioblastoma-key-present`.
-
-### Two mistakes worth not repeating
-
-1. **`bun run ci` locally is weaker than GitHub's.** The smoke test inherits the repo `.env`, so a
-   dev machine supplies config CI does not — Test 5e passed locally and failed on CI. Set what a
-   test needs in `childEnvFinal`, never rely on `.env`.
-2. **Appending to a `.env` without a leading newline** concatenated a secret onto `BASE_URL` and
-   corrupted it. And **`/proc/<pid>/environ` does not show dotenv-loaded variables** — it reported
-   the secret missing when it was present. Verify with `dotenv.parse()` and by testing behaviour.
-
----
-
-## ✅ RELEASE A IS LIVE — cut over 2026-07-29 21:51 UTC
-
-**`app.pyxis-discovery.com` is now this repo.** `pyxis-web` (bun, pid 2198082) owns 5173 and is
-`enabled`, so it survives a reboot. `pyxis-vite-legacy` is `disabled`/`inactive`. It came up in
-**2 seconds** and the log holds zero errors.
-
-Verified on the live site, through nginx, not on a spare port:
-
-| | |
-|---|---|
-| `/` | 200, *Pyxis Discovery* |
-| `/health/db` | `database: connected, dbName: test, collections: 5` |
-| `/auth/sign-in` | 200 — the WordPress site's web-shop link still lands |
-| assets, plain and with a foreign `Origin` | 200 — the blank-white-page bug does not reproduce |
-| `POST /api/signup` | 403 |
-| `POST /api/demo-session` | 200, working session, **no credential in the payload** |
-| `GET /api/activity` as the demo member | 200, **zero email fields** — the leak is closed in production |
-| **`/src/pages/auth/sign-in.jsx`** | **no longer serves source.** `Tester!23` returns 0 matches anywhere on the site |
-| **forged JWT signed with the literal `'secret'`, as the owner account** | **401.** The forgery hole is closed |
-
-`/.env` and `/src/*` answer **200 with `index.html`** — that is the SPA catch-all, not a leak
-(0 bytes of secrets, `<!DOCTYPE html>`). Cosmetic: unmatched non-route paths would be better as
-404s. Not worth a change that risks routing.
-
-**Rollback is intact and one command.** The legacy codebase is untouched at
-`/root/material-tailwind-dashboard-react`, its unit is installed-but-off, `chem_beo` still
-answers on 3000, `stripe-server` on 3001, and `server/.env` is backed up at
-`/root/pyxis-secrets/pyxis-web.env.bak`:
-
-```bash
-systemctl disable --now pyxis-web && systemctl enable --now pyxis-vite-legacy
-```
-
-### Found by using it after the cutover — all fixed, all live
-
-Clicking through as the demo member found things no amount of reading had. This is the
-`GOAL.md` rule paying out again.
-
-| Found | Cause | Status |
-|---|---|---|
-| **Opening Simulation Results signed you out.** Also on the redirect after a simulation | The page fetched `/api/sanitized*` with a bare `fetch()`. Those routes are deliberately behind `authenticateToken` here where legacy served them open, so they 401'd — and `authInterceptor` reads any same-origin 401 as a dead session | fixed, `bdda736` |
-| **The compound-cart enquiry signed the customer out** instead of sending | Same shape: `POST /api/send-email` with no token | fixed, `bdda736` |
-| **The Molstar iframe could never load our SDFs** | It was handed `/api/...` URLs to fetch, but it is a separate document and cannot carry the token. It now receives the SDF *text* via a new `loadStructureFromData` message | fixed, `bdda736` |
-| **Every `dark:*-slate-*` class in the app compiled to nothing** | `withMT` **replaces** Tailwind's palette and has no `slate`. Measured live: **0** slate rules, **15** `dark:` rules in a 1,534-rule sheet. This is why the top bar stayed white in dark mode while carrying `dark:bg-slate-950/90` | fixed, `49c955b` |
-| Dark mode read as **blue**; accent was **Material green** `#4CAF50` | Slate is blue-tinted, the `--cb-*` gradient was purple/blue/cyan, and `--brand-*` mirrored `withMT`'s green | fixed, `49c955b` + `56d5bfd` |
-
-**The palette is now taken from `pyxis-discovery.com` itself, not invented:** `--sk-color-one`
-**`#b4b239`** (citron) at `brand-500`, `--sk-color-one-dark` **`#97951f`** at 600,
-`--sk-color-two` **`#072824`** (deep teal) as the dark surface, `--sk-color-six` **`#f7f7f7`**
-as the light background. Status green keeps its meaning but moves to ~95° hue so it sits with
-the citron instead of clashing.
-
-`scripts/check-authed-fetch.mjs` is now in `bun run ci` — it scans client source for `fetch()`
-to our own API with no `Authorization` header and no entry in an explicit public-route
-allowlist. Verified it fails on the reintroduced bug and passes once fixed.
-
-**Known and left alone:** Material Tailwind's `Chip` renders white on a green gradient, which
-measures **2.43:1** — below AA. It was **2.36:1** before, so this is marginally better and is
-MT's own component styling, not a regression introduced here.
-
-### Second pass, found by the owner using it — 2026-07-30
-
-| Reported | What it actually was | Status |
-|---|---|---|
-| **MolMIM: "Molecule generation is not configured"** | **Cutover regression.** `chem_beo` **hardcodes two `nvapi-` keys in its source** (`index.js:80` MolMIM, `:127` OpenFold3) — they are in no `.env`, so they were never carried over. **Two distinct keys**, so position matters | fixed — both now in `/root/pyxis/server/.env` as `NVIDIA_MOLMIM_API_KEY` / `NVIDIA_OPENFOLD_API_KEY`. Verified: generate-molecules 200 with real output |
-| `/api/simulation` **502** | pdbid **`22rx`** — **not a real RCSB entry**. Failed 4×, then `1cxy` with the same SMILES wrote a *new* `simulation_logs` row and succeeded, so the service was fine and the input was wrong | fixed, `43c2bf6` + `3bb6647` |
-| **Show Price** flaky | Calls `/api/asinex/exact` — the **same Asinex instability**. Separately, `mol_price` **is not even a collection in Atlas**, so `/api/mol-price/*` can only ever return `total: 0` | diagnosed; see below |
-| **"Current molecule:" white in dark mode** | `bg-brand-50` — a `-50` tint is near-white, and `brand-50` is `#fbfbef`. A consequence of the palette change | fixed, `c5e1859` |
-| **Profile page** | Owner: *"just remove profiles, it's plain bloat."* Fake colleagues, dead reply buttons, social toggles, invented bio, and demo projects mixed into real ones | removed, `10d7f96` |
-| ADMET not working | **Correct and expected** — the worker has never been deployed anywhere. Phase 6 | not a bug |
-| Deep Similarity | **Working** — `substructure` returns 100 real hits from Oracle's Postgres | confirmed |
-| Stripe | Working | confirmed |
-
-**Docking errors now name the cause** instead of always saying the service is down: a malformed
-id, an id RCSB does not have (checked **before** the credit is charged), the provider answering
-with an HTML proxy page (the Moscow-outage signature), and the provider returning 404 for a pair
-it has no result for. Refunds were already correct and stay correct — four failures plus one
-success moved the balance by exactly one.
-
-⚠ **`mol_price` has never been imported into Atlas.** The collection does not exist. Show Price
-in the *Control Panel* reads Asinex, not this, so it is unaffected — but anything reading
-`/api/mol-price/*` returns nothing and always will until someone runs:
-`npm --prefix server run import:mol-price -- /path/to/mol_price.xlsx`. That needs the owner's
-spreadsheet.
-
-⚠ **Asinex is flapping right now** — 500 with an HTML proxy page, 500 empty, and 404 JSON for the
-same request within minutes. Cached docks still serve from `simulation_logs`. This is exactly
-what the box is for.
-
-### ✅ The `'secret'` forgery hole is closed — 2026-07-29 23:2x UTC
-
-`chem_beo` on :3000 signed every JWT with the literal string `secret` and is internet-facing.
-A forged owner token returned **200** there all night. It now returns **403**; an unauthenticated
-request returns 401; the API still answers on :3000, so the rollback path is intact.
-
-A real `JWT_SECRET` (64 hex, generated on the box) is in `/root/chem_beo/.env`, and the process
-moved from a 27-day-old hand-started `screen` to **`pyxis-api-legacy`**, so all four services now
-survive a reboot. No users were affected — nothing was connected to :3000.
-
-⚠ **Two traps, both hit on the way:**
-1. **The file had no trailing newline**, so `printf 'JWT_SECRET=…' >>` concatenated onto the last
-   line and produced `BASE_URL=https://app.pyxis-discovery.comJWT_SECRET=…` — which set no
-   secret *and* corrupted `BASE_URL`. Always `printf '\n%s\n'`, and verify with
-   `dotenv.parse()`, never with `grep`.
-2. **`/proc/<pid>/environ` does not show dotenv-loaded variables.** It holds the process's
-   *initial* environment; `dotenv/config` writes into `process.env` at runtime. Checking it will
-   tell you the secret is missing when it is present. Test behaviour — forge a token and see what
-   the API says — not the environment.
-
-The firewall stays off-limits (shared VPS), so closing the port was never an option; fixing the
-signing key was.
-
----
-
-**How it was staged**, kept because the next re-stage must follow the same shape:
-
-⚠ **It was stale when this note was first written.** The staged `server/index.js` hashed to
-exactly **`5bc88ed`**, so it was missing `dcd0814` — meaning `/api/activity` there still
-projected `email: 1` and *enabling it would have shipped the colleague-email leak*, plus the
-dark-on-dark notifications. `client/dist` was worse than stale: built from an uncommitted
-working tree at 18:02, so it matched no commit at all. **Both replaced.** All **346** tracked
-files under `/root/pyxis` are now byte-identical to `f9a2547`, and `/root/pyxis/DEPLOYED_SHA`
-records it so this never needs hand-investigating again.
-
-Verify a re-stage took with one line — it must print `86fbfdf67080915b`:
-
-```bash
-ssh root@83.229.87.94 'sha256sum /root/pyxis/server/index.js | cut -c1-16'
-```
-
-### The command that shipped it, for the record
-
-```bash
-systemctl disable --now pyxis-vite-legacy && systemctl enable --now pyxis-web
-```
-
-Its only user-visible effect was that everyone signs in once more, because `JWT_SECRET`
-legitimately changed.
-
-⚠ **Never `rm -rf /root/pyxis` to re-stage.** `server/.env` (the box-generated `JWT_SECRET`,
-which exists nowhere else) and `server/node_modules` are untracked, so a wipe destroys them and
-the one command above stops working. Stage **over the top** — `git archive HEAD | ssh … tar -x
--C /root/pyxis` touches neither — and replace `client/dist` wholesale. Build the dist with
-`COPYFILE_DISABLE=1` when tarring from a Mac; the previous copy left 53 AppleDouble `._*` files
-being served as static assets.
-
-⚠ **A failed boot takes the site down and keeps it down.** `pyxis-web` has
-`Conflicts=pyxis-vite-legacy` **and** `Restart=always`, so if it cannot start, 5173 is left
-unowned and retried every 5s with nginx proxying to nothing. That is why the 5199 rehearsal is
-the gate, not the cutover.
-
-### Owner decisions, 2026-07-29 — do not re-litigate these
-
-1. **`tester123` keeps its 99,998 credits. Decided by the owner, verbatim: "tester HAS to stay
-   like that. period."** Do not cap it, do not propose capping it again. This is the same shape
-   as the Proceed-to-Demo button in §0c — a thing the owner wants left alone. The exposure it
-   was flagged for closes on its own the moment Release A owns 5173, because the credential only
-   leaks through the *legacy* frontend's unminified source.
-2. **Everyone else got 15 credits. Applied 2026-07-29 21:48 UTC.** 47 users were at
-   `simulationTokens: 0`; all 47 now hold 15. `anton1` (1000), `kobokon` (50) and `tester123`
-   (99,998) were excluded by the filter and verified unchanged afterwards. Every balance was
-   snapshotted first — full rollback at
-   `/root/pyxis-migrate/credit-grant-<stamp>/restore.mjs`, which writes each user's previous
-   value back by `_id`.
-3. **The `chem_beo` patch will not be applied.** See §2 below for the reasoning.
-
-### So the only thing left before the box is the cutover itself
-
-The re-stage is done, the unit environment is proven, and the gates below are closed or
-consciously waived.
-
-### What the dashboard test found — all fixed, all committed
-
-| Found | Status |
-|---|---|
-| Built frontend served a **blank white page** through a tunnel — CORS refusal threw, so every `/assets/*.js` 500'd | fixed, `5bc88ed` |
-| Every page footer credited **"Outwize inc"** with four links to their site | fixed, `5bc88ed` |
-| Notifications text was **dark-on-dark, unreadable** | fixed, `dcd0814` |
-| Activity feed leaked **every colleague's email address** to any member, including the public demo account | fixed, `dcd0814` |
-
-**Verified working against real Atlas:** sign-in, demo session, Control Panel (5 real records),
-Simulation (Ketcher loads), Simulation Results (Molstar initialises), RDKit Visualiser
-(renders ethanol), Deep Similarity (`/tanimoto/v1/search/exact` → 200 via Oracle), Protein
-Folding, Generate Molecules, Dashboard (real counts, charts render), Profile, GROMACS,
-Notifications. **No console errors on any page.**
-
-`gromacs-md` and `glioblastoma-predict` are deliberately `hideFromMenu` — they are not
-deployed yet and light up when the box arrives.
-
-### Known cosmetic, not fixed, not blocking
-
-- **Profile page** carries Creative Tim filler: fake contacts (Sophie B., Alexander, Ivanna)
-  with stock photos and dead REPLY buttons, plus social-network toggles ("Email me when
-  someone follows me"). Non-functional decoration on a chemistry product.
-- **Dashboard** chart captions are template text — "Last Campaign Performance Graph2",
-  "campaign sent 2 days ago".
-
-Both are removals of dead content rather than layout changes, but they were left alone
-because the standing instruction is not to move things users recognise. Worth a decision.
-
-### Still open for the box, unchanged
-
-DiffDock has no implementation (only a captured contract) — biggest gap. ADMET and
-glioblastoma have never run. GROMACS is still a CPU-only apt build. Tanimoto restore proof
-written (`scripts/verify-tanimoto-restore.sh`) but needs Docker, so run it on the box. Caddy
-config not written. sm_120/cu128 wheel check not done.
-
----
-
-Written 2026-07-29. Delete this file once the box has arrived and Release B is done —
-it is a handoff note, not a document.
-
-Read this first, then [`ARRIVAL-RUNBOOK.md`](./ARRIVAL-RUNBOOK.md).
-
----
-
-## The plan, in one table
-
-Everything ships as **v2, announced on box arrival day**. One item *deploys* earlier than it
-is *announced*, and that is the only deviation from "deploy everything on arrival day".
-
-| # | Item | Deploy when | Needs the box? |
-|---|---|---|---|
-| **A** | **Server swap** — this repo's `server/index.js` + `client/dist` take over port 5173 | **Before the box.** Any day. | **No** |
-| B1 | Docking to the box | Arrival day | Yes |
-| B2 | convertSTR to the box | Arrival day | Yes |
-| B3 | Tanimoto to the box | Arrival day | Yes |
-| B4 | GROMACS, CUDA build | Arrival day | Yes |
-| B5 | ADMET worker, first ever deploy | Arrival day | Yes |
-| B6 | Glioblastoma, first ever deploy | Arrival day | Yes |
-| — | Announce **v2** | Arrival day | — |
-
-### Why A moves earlier, and it is only this one reason
-
-A has **no dependency on the box**. It is this repo, Atlas, and Asinex — all of which exist
-today. It could have shipped a month ago.
-
-If A ships on the same day as B1, and docking then looks broken, there are two suspects
-producing one symptom: the new server, or the new docking service. Rollback becomes two
-rollbacks in an order nobody established in advance.
-
-Concretely: the "**The docking run returned no readable poses**" message added in `c9ce8d5`
-lives in **this repo's** `client/`. Production currently serves a different codebase
-(`/root/material-tailwind-dashboard-react`). That message therefore does not exist in
-production until A ships. It is the clearest early warning that a box cutover produced a
-malformed SDF — so shipping A and B1 together removes the warning light on the one day it is
-most needed.
-
-Nobody outside sees when A landed. The v2 announcement is still arrival day.
-
----
-
-## What is left. Start here.
-
-Everything below this section is context. These are the open items, in order.
-
-> **Changed 2026-07-29 — the de-SaaS work is done, and it moved a gate.** The owner chose to
-> rebrand **before** the cutover, and steps 1–5 of `PYXIS-ONLY.md` §5 are applied: marketing
-> site and sign-up page deleted, signup 403 by default, accounts invite-only, plan checkout
-> admin-only, product renamed to Pyxis Discovery. Ten commits, `387cbcd`..`01dd134`.
->
-> **The consequence, and it is the item people will forget:** the route-parity and rollback
-> evidence measured earlier on 2026-07-29 was gathered against the **pre-rebrand** frontend.
-> It no longer describes what would ship. **It has to be gathered again before the cutover**,
-> and `scripts/verify-server-swap-parity.mjs:45` reads `/root/pyxis-release-a/.env` — that rig
-> was deleted after the last run, so this means standing it back up, not re-running a script.
-> Two of the new differences are intended and predicted: `/api/signup` now answers 403 where
-> `chem_beo` answers 200/400, and `/create-checkout-session` is admin-only.
->
-> Also settled: the box is reached by **public hostname over HTTPS, no VPN** (ARRIVAL-RUNBOOK
-> Phase 3.1), and the earlier claim that `assertConfiguredUrlsArePublic` blocks the cutover is
-> **retracted** — one call site, admin-UI only. The Tanimoto cartridge image is pinned to a
-> verified Postgres 17 tag, and `scripts/verify-tanimoto-restore.sh` proves the restore in one
-> command (needs Docker; run it on the box).
-
-0. ✅ **Re-staged and re-rehearsed 2026-07-29 21:40 UTC. Release A is ready to enable.**
-
-   `/root/pyxis` holds the source at `f9a2547` (all 346 tracked files byte-identical),
-   a `client/dist` rebuilt from that same clean tree, installed server deps, and
-   `server/.env` — Atlas URI, Stripe and mail carried over from `chem_beo`,
-   `JWT_SECRET` **freshly generated there and never transmitted** (64 chars),
-   `DEMO_USERNAME=tester123`.
-
-   Booted on spare port **5199** against real Atlas and checked:
-
-   | Check | Result |
-   |---|---|
-   | `GET /health` | 200 `{"status":"OK"}`. **Note:** plain `/health` is static — `/health/db` is the one that reports Atlas. An earlier draft claimed `/health` returns `dbName: test`; it does not |
-   | `GET /` | 200, built frontend titled *Pyxis Discovery* |
-   | `POST /api/signup` | **403** — de-SaaS gate holds |
-   | `GET /api/demo-session` | 200 `{"available":true}` — proves `DEMO_USERNAME` resolves at *runtime*, not just that the key is in the file |
-   | `POST /api/demo-session` | 200, working token, keys `message,token,user`; no password and no hash (`mustChangePassword: false` is the only string matching `/password/`) |
-   | `GET /api/activity` as the demo **member** | 200, 9,488 bytes, keys `users,projects,simulations`, **zero `"email"` fields and zero email-shaped strings** — the `dcd0814` fix, tested through the exact path that leaked |
-
-   No errors in the boot log. Rehearsal torn down, 5199 released, 5173 still owned by
-   pid 2166445 (legacy Vite), `pyxis-web` still `inactive`.
-
-   **The unit's own environment was proven separately, and this is the distinction that
-   matters.** The run above was an interactive shell with `PORT`/`FRONTEND_DIST` passed on the
-   command line, which proves the *app* works, not the *unit*. `pyxis-web.service` has **no
-   `EnvironmentFile`**, so its boot depends entirely on `server/index.js` finding `server/.env`
-   via `WorkingDirectory`, under `NoNewPrivileges=true` and a stripped systemd environment.
-   Re-run as a transient unit with the same properties, only the port changed:
-
-   ```bash
-   systemd-run --unit=pyxis-probe --collect \
-     -p WorkingDirectory=/root/pyxis/server -p NoNewPrivileges=true -p Type=simple \
-     -p Environment=PORT=5199 -p Environment=FRONTEND_DIST=/root/pyxis/client/dist \
-     /usr/local/bin/bun index.js
-   ```
-
-   Result: bound 5199, `/health` 200, **`/health/db` 200 `{"database":"connected",
-   "dbName":"test","collections":5}`**, `/` titled *Pyxis Discovery*, `/api/signup` 403,
-   `/api/demo-session` `{"available":true}`. Probe stopped, 5199 released, `app.pyxis-discovery.com`
-   still 200. **`Conflicts=` + `Restart=always` means a failed boot leaves 5173 unowned and
-   retrying — so run this probe again after any re-stage, before enabling.**
-
-   Atlas state at the same moment, read-only: 50 users, **0 without `companyId`**, 1 company,
-   `simulation_logs` 5/5 carrying `companyId` **and** both nested and top-level `username` —
-   so both migrations are genuinely applied and a rollback to `chem_beo` can still read them.
-
-   Parity: **17 routes, 4 differences — the same four as the first run**, so the de-SaaS work
-   added none. The check that actually matters passed: legacy and the new server derive the
-   **identical docking cache key** and both returned the stored record, so no dock ran and no
-   credit was spent. That is the double-charge / invisible-results failure mode, and it is clean.
-   The two expected deltas sit outside those 17 and were checked directly — `/api/signup`
-   200→403, `/create-checkout-session` 500→401.
-
-   Rehearsal torn down. **`pyxis-web` is still `disabled`, the legacy Vite still owns 5173, and
-   `https://app.pyxis-discovery.com` still answers 200.** Nothing user-facing has changed.
-
-   **⚠ Two things found while doing this.**
-   - The legacy `/api/signup` check returned **200 and created a real account** in production
-     Atlas. It was deleted (back to 50 users, 1 company). Anyone can do this right now; it stays
-     true until this ships.
-   - **`tester123` holds 99,998 simulation credits**, and its password has been readable in the
-     legacy page source for as long as that frontend has been up. Cap the balance and rotate
-     the password. The new server never reads that password, so rotating it breaks nothing.
-
-   **The cutover is now one command**, and its only user-visible effect is that everyone is
-   signed out once, because `JWT_SECRET` legitimately changes:
-   ```
-   systemctl disable --now pyxis-vite-legacy && systemctl enable --now pyxis-web
-   ```
-   Rollback is the same command inverted; `deploy/83/systemd/README.md` has it.
-
-   **Sign-in was compared against live production on 2026-07-29** — the one page every user
-   sees, and the only part of the UX pass that does not need a login. Findings:
-
-   | | Legacy (live) | This repo | Verdict |
-   |---|---|---|---|
-   | Pyxis wordmark | real inline-SVG logo | was gradient **text** | **fixed** — logo recovered, `29dd2c7` |
-   | Forgot password | `href="#"` — **dead link** | working reset flow, covered by tests | **better** |
-   | Create account | links to `/auth/sign-up` | removed | intended (invite-only) |
-   | Proceed to Demo | public credentials, see §0c | **present**, server-side auth | **kept, and fixed** |
-   | Newsletter checkbox | present | absent | accepted loss; nothing consumes it |
-   | Theme | light | dark | different, not worse |
-
-   **What was NOT checked: everything behind the login.** The thirteen dashboard pages, the
-   compound cart, and the docking result view have not been compared. That needs an account
-   and is the rest of this item.
-
-   **Two things this comparison settled that were open questions.** There *is* a real public
-   marketing site — `www.pyxis-discovery.com`, a separate WordPress with Discover Macrocycles
-   / Services / About us / Insights / Pricing / Contact. So deleting this repo's marketing
-   pages removed a **duplicate** of a better site, not the only copy, and PYXIS-ONLY.md §6's
-   "will there be a public marketing site at all?" is answered: yes, and it already exists.
-   Second, that site enters the app through its **web-shop** link, which points at
-   `https://app.pyxis-discovery.com/auth/sign-in` — the exact route this repo kept, so the
-   external entry point survives the cutover unchanged.
-1. **Rotate `JWT_SECRET` on `chem_beo`.** Still signing with the literal string `secret` — §0.
-   One `.env` line plus `systemctl restart pyxis-api-legacy`. It logs every user out, which is
-   why it was not done unannounced.
-2. **Rotate the mail password.** `EMAIL_PASS` was readable at
-   `https://app.pyxis-discovery.com/.env` for roughly twenty minutes on 2026-07-29 (§0b).
-   Also rotate `STRIPE_SECRET_KEY` in `/root/pyxis-secrets/stripe-server.env` — that one was a
-   **test** key and was exposed far longer, since before this session.
-3. **Grant credits.** 47 of 50 users now hold `simulationTokens: 0`. They had no such field
-   before, so nothing changed for them — but they cannot run anything, and the new server says
-   "No simulation tokens left" rather than explaining why.
-4. **Apply `deploy/chem_beo/01-fixes-and-config.patch`.** Unchanged from before.
-5. **Then cut over** — `systemctl disable --now pyxis-vite-legacy && systemctl enable --now
-   pyxis-web`, after copying this repo and a locally-built `client/dist` to `/root/pyxis`.
-   `deploy/83/systemd/README.md` has the exact commands and the rollback.
-6. Hand `chem_beo` to systemd too (`systemctl start pyxis-api-legacy`) — it is the last process
-   still hand-started in a `screen`, so a reboot still stops the API. Left alone here because it
-   means restarting the live API.
-
-Not started, and not blocking: DiffDock (`deploy/box/diffdock/` has only the captured contract),
-ADMET, glioblastoma, Claude Science OAuth, and the marketing-copy half of the ChemBench→Pyxis
-rename.
-
-### What is still missing for arrival day — audited 2026-07-29
-
-Everything here is doable **without the box** and every one of them is on arrival day's critical
-path if it is not done first.
-
-1. **How 83 reaches the box is undecided.** `compose.yml` binds `${BIND_ADDR:-127.0.0.1}` and
-   no ingress exists. **Every cutover URL in `deploy/box/.env.example` depends on this.**
-
-   **DECIDED 2026-07-29: no VPN, no tunnel.** Earlier comments floated "WireGuard/Tailscale";
-   that was a suggestion in a code comment, never a decision, and it is rejected — it adds a
-   third-party account and a daemon on both machines to solve a problem TLS already solves.
-
-   **The box is reached exactly the way Asinex is reached today: a public hostname over
-   HTTPS.** Production already calls `https://services.asinex.com:8000/docking` across the
-   public internet; the box replacing it the same way is a true 1:1, and rollback is putting
-   the Asinex hostname back.
-
-   Shape: every service binds `127.0.0.1`, one Caddy/nginx on `:443` with a Let's Encrypt cert
-   for a box hostname, and a host firewall allowing **only 83's IP** to reach `:443`. One open
-   port, one certificate, one allowlist entry. The "⚠ NONE of these may be exposed to the
-   internet" warning in `compose.yml` is satisfied by the firewall, not by a tunnel.
-2. ~~`assertConfiguredUrlsArePublic` makes Release A the harder path.~~ **WRONG — retracted
-   2026-07-29.** The guard at `server/index.js:1413` is called from **one** place (line 1325),
-   on `company.ligandServiceConfig` — the admin-UI path. The environment variables that
-   actually carry the cutover (`TANIMOTO_API_BASE`, `SDF_CONVERTER_URL`,
-   `ASINEX_DOCKING_API_URL`, `DIFFDOCK_API_URL`, `server/index.js:80-88`) are read straight
-   from `process.env` and never validated. Env-var cutover works identically on both servers.
-   With the public-hostname decision in item 1 the question is moot regardless: a public
-   address passes the guard anyway, so even the admin-UI path stays open.
-3. **The Tanimoto dump is PostgreSQL 17.5, archive format 1.16.** Read straight out of the
-   header of `~/backups/tanimoto/tonomitosql-20260729.dump`: `17.5 (Debian 17.5-1)`. Its
-   `CREATE EXTENSION rdkit` needs the cartridge too. `informaticsmatters/rdkit-cartridge-debian`
-   has historically shipped **older** majors, and an older `pg_restore` refuses a 1.16 archive
-   outright — `unsupported version (1.16) in file header`. A verified sha256 is not a verified
-   restore. Either pin a PG 17 cartridge image or re-dump `--format=plain`. Runbook §4.3 says
-   "prove it restores"; that has not happened.
-4. **sm_120 — ✅ checked 2026-07-29. There is a build, and here is the exact cell.**
-
-   RTX 5090 is Blackwell, sm_120, CUDA 12.8+. AutoDock-GPU is a compile flag, tractable.
-   OSS DiffDock was the open question, because it pins **`torch==1.13.1+cu117`** and four
-   *compiled* PyG extensions built against that exact pair
-   (`torch-scatter==2.1.0+pt113cu117`, `torch-sparse==0.6.16+pt113cu117`,
-   `torch-cluster==1.6.0+pt113cu117`, `torch-spline-conv==1.2.1+pt113cu117`). CUDA 11.7
-   predates Blackwell entirely, so **nothing in DiffDock's pinned graph runs on a 5090** and
-   the prebuilt `rbgcsail/diffdock` image does not either.
-
-   **All four extensions do exist for `pt27cu128`** on `data.pyg.org`, at patch-level bumps —
-   `torch_scatter 2.1.2`, `torch_sparse 0.6.18`, `torch_cluster 1.6.3`,
-   `torch_spline_conv 1.2.2` — for `linux_x86_64` and for **`cp39`**, the Python DiffDock pins.
-
-   **The one narrow constraint, and it is worth writing down:** `torch` ships `cp39` wheels for
-   **2.7.0 and 2.7.1 only**. From 2.8.0 the minimum is Python 3.10. So
-   **`torch==2.7.1+cu128` on Python 3.9 is the single cell** that keeps DiffDock's pinned
-   interpreter. Go newer on torch and the Python bump comes with it.
-
-   **And the hardest dependency is probably not needed at all.** `openfold` (pinned to a git
-   commit, with custom CUDA kernels — by far the worst thing to build against CUDA 12.8) comes
-   in through `fair-esm[esmfold]`, and ESMFold is only used for the `--protein_sequence` path.
-   `inference.py` imports **neither `openfold`, nor `esm`, nor `pytorch_lightning`**. The
-   platform always supplies a receptor *structure* (the RCSB fetch in `DOCKING-CONTRACT.md`),
-   never a bare sequence, so an inference-only service can very likely drop both openfold and
-   Lightning.
-
-   ⚠ **What this does and does not prove.** It proves the wheels exist and the import surface
-   is smaller than the requirements file implies. It does **not** prove DiffDock's model code
-   is free of torch-1.13 APIs removed by 2.7, and it is not a successful build. The build is
-   still real work — but it is now ordinary porting work, not a dead end, which is what this
-   check existed to find out.
-5. **ADMET needs a decision, not a flag.** `services/admet/` is `amqpadmet.py` — RabbitMQ.
-   `compose.yml` asserts it polls a Mongo job collection (BOX-ARCHITECTURE §5). One of the two
-   has to change. Keeping CloudAMQP for the first deploy is legitimate: nothing regresses either
-   way, because the worker has never run at all.
-6. **`compose.yml`'s `x-gpu` anchor reserves no `device_ids`** — just `driver: nvidia,
-   capabilities: [gpu]`, with `NVIDIA_VISIBLE_DEVICES` set per service. That combination is
-   version-dependent; docking and diffdock can both end up seeing both cards. Use
-   `device_ids: ['0']` / `['1']` in the reservation. Note `admet` is pinned to device 1 next to
-   diffdock.
-7. **GROMACS is still `apt-get install gromacs` on `ubuntu:22.04`** — CPU-only. Moving that image
-   to the box buys nothing; it needs a `-DGMX_GPU=CUDA` source build to be worth the move.
-8. ~~**`services/glioblastoma-predictor/chemtest_tech_private.key` is committed to git.**~~
-   **Corrected 2026-07-29 — it is not, and never was.** `.gitignore:45` ignores
-   `services/glioblastoma-predictor/*.key`, `git log --all` on the exact path is empty, and
-   `git rev-list --all --objects` finds no `.key` blob on any branch or tag. So there is nothing
-   leaked and nothing to rotate for that reason.
-
-   **The real problem is the opposite one:** the key exists only as an untracked local file on
-   the dev Mac, and `Dockerfile:14` does `COPY chemtest_tech_private.key /app/`. A build on the
-   box therefore **fails outright** unless that key is transferred out of band first. That is a
-   missing-artifact item on B6, not a security item. It still sits behind the
-   `glioblastoma-key-rotated` profile so it cannot start by accident.
-
-**Two of the six B-items have no 1:1 to hold, and that is fine.** DiffDock is *already broken in
-production* (`SDF_CONVERTER_URL` → `83:8001`, nothing listening), so the box's convertstr is a
-fix, not parity. ADMET and glioblastoma have **never run** — first deploy, not migration.
-
-**The rungs that make arrival day short already exist.** `DOCKING_ENGINE=replay` returns the
-committed reference payload with no GPU, and `vina` is real chemistry on CPU — both work today on
-any x86_64 host. So the day is: bring the service up on `replay`, verify 83 → box → client end to
-end through the real UI, flip to `vina`, then to `autodock-gpu`. `AutoDockGpuEngine` raising
-`DockingUnavailable` until qualification is deliberate, and `/health` fails while it is selected,
-so a half-built engine cannot silently take traffic.
-
----
-
-## 0. Live vulnerabilities, found 2026-07-29. Read before anything else.
-
-### 0c. "Proceed to Demo" hands anyone a working production session
-
-The production sign-in page has a prominent **Proceed to Demo** button. Its handler signs in
-with credentials hard-coded in the component:
-
-```
-const handleDemoLogin = async () => {
-  setEmail("tester123");
-  setPassword("Tester!23");
-```
-
-Production serves that frontend from a **Vite dev server**, so the file is fetchable
-unminified at `https://app.pyxis-discovery.com/src/pages/auth/sign-in.jsx` — no button click
-or bundle archaeology needed. The account is a real one on the real database, so anyone who
-loads the page gets an authenticated session and whatever credits `tester123` holds.
-
-It also fetches `https://api.ipify.org` on that path, which tells a third party the IP of
-everyone who signs in this way.
-
-**The button stays. It is a wanted feature — owner, 2026-07-29 — and removing it is exactly
-the kind of change that makes returning users stop recognising the product.** An earlier draft
-of this section recommended deleting it; that was wrong and is retracted.
-
-**Fixed by moving the credential, not the button** (`server/index.js`, `POST /api/demo-session`).
-The server looks the demo account up from `DEMO_USERNAME` and issues an ordinary session; the
-browser never receives a password, and the demo account's password can now be rotated to
-something nobody knows without touching the frontend. The `api.ipify.org` call is gone with it.
-`GET /api/demo-session` reports whether a demo is configured, so the button hides itself rather
-than erroring on a deploy that has no demo account.
-
-Same label, same action, and it sits under the sign-in form instead of above the title — the
-one placement change, so it stops competing with the sign-in that returning users came for.
-
-**Two things still to do on production, neither of them code:**
-1. **Set `DEMO_USERNAME`** in the new server's env, or the button will not appear after cutover.
-2. **Rotate `tester123`'s password.** It has been readable in page source for as long as the
-   legacy frontend has been up, so treat it as public. The new endpoint never reads it, so
-   rotating it breaks nothing.
-
-Until Release A ships, the legacy page still leaks it — that is an argument for shipping, not
-for editing the legacy frontend.
-
-### 0a. The two original ones
-
-**Production JWTs are signed with the literal string `secret`.** `chem_beo:1049` is
-`jwt.sign({username}, process.env.JWT_SECRET || 'secret', {expiresIn: '1d'})`, and `chem_beo`'s
-`.env` sets no `JWT_SECRET`, so the fallback is what is live. Verified by minting a token with
-`'secret'` and using it against the production API — it authenticated. **Anyone can forge a valid
-token for any of the 50 accounts**, on an API that is internet-facing on `:3000`.
-
-This reframes the "rotate `JWT_SECRET`" gate below. It is not cutover hygiene; it is the fix. And
-Release A fixes it as a by-product, because this repo's server refuses to start without a real
-one ≥32 characters.
-
-### 0b. `https://app.pyxis-discovery.com/.env` served the file publicly — ✅ closed 2026-07-29
-
-`/root/material-tailwind-dashboard-react/vite.config.js` set `server.fs.deny: ['.git',
-'.git/**']`. **`fs.deny` replaces Vite's defaults rather than extending them**, and the defaults
-are what block `.env` — so overriding it with only the `.git` patterns handed the file to anyone
-who asked for it, through the public HTTPS site.
-
-It held `STRIPE_SECRET_KEY` (a **test** key, exposed since long before this session) and, for
-about twenty minutes, `EMAIL_PASS` — added while fixing the contact form, before this was known.
-**Rotate the mail password**, and the Stripe test key.
-
-Fixed three ways: every non-`VITE_` value moved to `/root/pyxis-secrets/stripe-server.env`
-(mode 600, outside the webroot) and loaded via the unit's `EnvironmentFile`; `fs.deny` restored
-to `['.env', '.env.*', '*.{crt,pem,key}', 'custom.secret', '.git', '.git/**']`; and backups of
-the old file moved to `/root/pyxis-backups/`. Verified: all `.env` paths now return **403**.
-
-Note Vite had the old contents cached in memory — its own `server.watch.ignored` covers
-`**/.env*`, so editing the file on disk changed nothing until the process restarted. That
-restart is what put `:5173` under systemd.
-
-**`:3001` was an open mail relay — ✅ fixed 2026-07-29.** `stripe-server.cjs`, in *no* document
-until now, running from `/root/material-tailwind-dashboard-react` since 2026-07-02 and reachable
-from the public internet. Its unauthenticated `POST /api/send-email` took an arbitrary
-`recipientEmail` and sent through the company mailbox. The three patches in `deploy/83/` pin the
-destination server-side, rate-limit both mail routes per client IP plus globally, and make
-`/api/test-email` answer only to localhost.
-
-⚠ **Do not kill the process.** The live Vite dev server proxies `/api` → `127.0.0.1:3001`
-(`vite.config.js`), so it is the contact form's backend *and* part of the rollback path. It now
-runs under `systemd` as `pyxis-stripe`. Release A retires it properly: every route it serves
-exists in this repo's server behind authentication and rate limiting, and
-`/api/issueSimulationTokens` there requires a company admin.
-
-Two things still open on it, neither reachable from the app (the deployed frontend calls
-`chem_beo` on `:3000` for both): unauthenticated `POST /api/issueSimulationTokens`, which returns
-success without touching the database, and Stripe session creation with a **client-supplied
-`price`**. Both die with the process at Release A.
-
-**And it had never worked.** The transport was hardcoded to `smtp.titan.email`. This account is
-not on Titan — `EMAIL_HOST` is `server028.yourhosting.nl:587`, and Titan answers
-`535 5.7.8 authentication failed` on 465 and 587 alike. **Every contact-form submission since the
-page shipped failed**, and the visitor saw a generic error. Fixed and verified by sending a real
-message. `server/utils/emailService.js` had the same hardcoding and only worked because the real
-host appeared once, by accident, in its fallback list — also fixed, along with the `debug/logger:
-true` that was writing the `AUTH PLAIN` line (the mailbox credentials) into the log on every send.
-
----
-
-## Do these now — no box required
-
-### 1. Ship Release A
-
-Full steps: **`ARRIVAL-RUNBOOK.md` Phase 5**. Gate status as of **2026-07-29**, measured on
-production, not assumed:
-
-| Gate | State |
-|---|---|
-| Response shapes verified route by route, both servers live | ⚠️ **closed differently than planned — read this.** The 17-route `scripts/verify-server-swap-parity.mjs` was **not** re-run against the post-rebrand frontend, because its rig at `/root/pyxis-release-a` was deleted and line 45 still hardcodes it. What ran instead was **targeted verification on the live site after cutover** (below). That is stronger evidence for the routes that were actually changing and thinner for the ones nobody touched. The script still needs its hardcoded path fixed before it is useful again |
-| Post-cutover route sweep, live through nginx | ✅ **done 2026-07-29 22:0x UTC**, covering what the targeted checks missed: `/tanimoto/v1/search/exact?smiles=CCO` **200** with valid JSON (the one path *rename* in the diff, `/api/tanimoto/*` → `/tanimoto/*`, and it reaches Oracle); `/api/asinex/exact/CCO` **500** — the *same* pre-existing empty-body failure as before the cutover, not a new one (wording differs only because Bun's JSON parser says `Unexpected EOF` where Node said `Unexpected end of JSON input`); `/api/activity`, `/api/simulation-logs`, `/api/company/branding`, `/api/mol-price-stats`, `/api/mol-price/search` all **200** as the demo member, and `/api/activity` + `/api/simulation-logs` **401** unauthenticated; `POST /api/validate-token` **200 `valid:true`** with a real token and **`valid:false`** for garbage, an absent token, and a token forged with `'secret'` |
-| `/create-checkout-session-onetime` (live Stripe, compound cart) | ✅ **verified without creating a Stripe object** — unauthenticated **401**, authenticated with a bad body **400** `"Invalid request body"`. Routing, auth and validation are wired; no session was created against the live key |
-| Rollback proven to start | ✅ **done** — a second Vite booted on `:5199` from `/root/material-tailwind-dashboard-react`, served 200, production untouched |
-| Rehearsal on a spare port against real Atlas | ✅ **done** — `/root/pyxis-release-a`, port 5199, `bun index.js` + `client/dist` |
-| `scripts/migrate-legacy-users.mjs` | ✅ **applied.** 49 documents written; verify says 0 users without `companyId`, 0 with unusable tokens |
-| `scripts/migrate-legacy-simulation-logs.mjs` | ✅ **applied.** 5 documents; `user.username` left in place on all 5, and `chem_beo` re-verified afterwards — history, activity and the cache hit all still work |
-| Staged deploy matches HEAD | ✅ **done 2026-07-29 21:39 UTC** — 346/346 tracked files byte-identical to `f9a2547`, `client/dist` rebuilt from the same tree, `DEPLOYED_SHA` recorded |
-| Rotate `JWT_SECRET` on `chem_beo` | ⛔ **won't do separately — the cutover is the fix.** Re-verified that the hole is real: `/root/chem_beo/.env` has no `JWT_SECRET` key at all, and `chem_beo/index.js:1049` still reads `process.env.JWT_SECRET \|\| 'secret'`. But patching a secret into a server we are retiring costs a full logout of all 50 users **now**, and the cutover costs a second one **later**. Release A already refuses to boot without a real ≥32-char secret, and its `.env` has one. One logout, not two |
-| Rotate `EMAIL_PASS` | ⏳ **not done, and now proven rather than inferred.** The ambiguity is resolved: an SMTP `verify()` against `server028.yourhosting.nl:587` with the credential still in `/root/chem_beo/.env` **authenticated successfully** on 2026-07-29 21:50 UTC. So the password exposed publicly that day was never rotated at the provider and is live. Anyone who fetched it during the window can send mail as `contact@pyxis-discovery.com` — phishing from the company's own domain. **Only the owner can fix this**, in the yourhosting.nl control panel; then update `EMAIL_PASS` in `/root/chem_beo/.env` and `/root/pyxis/server/.env` |
-| Rotate the Stripe key | ⏳ **low urgency, and the earlier framing was wrong.** Corrected: `/root/chem_beo/.env` runs **`sk_live`** (its `sk_test` line is commented out — that comment is what an earlier grep misread). The key that was publicly exposed is the **`sk_test`** one, and it lives only in `/root/pyxis-secrets/stripe-server.env`, the `:3001` contact-form server. **No live key was ever exposed.** Rotate the test key at leisure |
-| Stripe behaviour across the cutover | ✅ **no change.** `/root/pyxis/server/.env` carries the **same `sk_live`** as `chem_beo`, so the compound cart charges exactly as it does today. Verified by prefix, 2026-07-29 |
-| Cap `tester123` credits | ⛔ **won't do — owner decision.** Stays at 99,998 |
-| Grant credits to the other users | ✅ **done 2026-07-29 21:48 UTC** — 47 users 0 → **15**, reversible snapshot kept |
-| `chem_beo` patch applied | ⛔ **won't do — see §2.** Confirmed not applied: `/root/chem_beo/index.js` mtime **2026-03-26**, 0 occurrences of `ASINEX_DOCKING_API_URL` / `DOCKING_API_URL` |
-| Cutover | ⏳ **not done.** `pyxis-web` `disabled`/`inactive`; `pyxis-vite-legacy` active on 5173; `https://app.pyxis-discovery.com/src/pages/auth/sign-in.jsx` still returns **200** with the demo credential in plain source |
-
-**Both migrations ran on 2026-07-29**, users first, in one window, after a logical snapshot of
-`users`, `companies` and `simulation_logs` — kept on 83 at `/root/pyxis-migrate/backup-<stamp>/`
-with a `restore.mjs` beside it that replaces documents by `_id` rather than emptying the
-collection. **47 of the 50 users now hold `simulationTokens: 0`**, which is deliberate: the
-migration does not invent credits. They had no such field before, and `chargeSimulationToken`
-filters `{$gt: 0}`, so nothing changed for them — but grant credits before telling anyone the new
-server is live.
-
-If they ever need re-running: **`node`, not `bun`** — `mongodb`'s bson calls
-`node:v8 isBuildingSnapshot`, unimplemented in Bun 1.3.12, and the script dies on import. They
-also need `mongodb` resolvable, which a bare checkout does not have; on 83 that was
-`ln -s /root/chem_beo/node_modules node_modules`.
-
-**Why the second migration exists.** `migrate-legacy-users.mjs` opens a gap it does not close.
-The moment every user has a `companyId`, `buildTenantFilter` stops taking its legacy branch and
-filters on `{companyId}` — but every `simulation_logs` document was written by `chem_beo`, which
-nests `user.username` and writes no `companyId`. Verified on Atlas: 5 documents, 5 nested, 0 with
-either field. So dock history vanishes and `/api/simulation`'s cache lookup
-(`server/index.js:3165`) misses, **charging a credit again for a dock already paid for**. The new
-script backfills both fields additively and leaves `user` in place, so `chem_beo` can still read
-the documents after a rollback.
-
-**The four parity differences, all benign:**
-
-1. A garbage token gets **403 from `chem_beo`, 401 from this server**. 401 is the correct one —
-   the client treats a same-origin 401 as a dead session and logs out, which is what a malformed
-   token should cause.
-2. `/api/activity` omits `createdAt` on users. Nothing in this repo's client reads it.
-3. `/api/tanimoto/v1/*` (legacy) vs `/tanimoto/v1/*` (this repo). Each frontend calls its own
-   server's path, and the halves ship together, so they cannot disagree.
-4. `/api/asinex/exact/CCO` returns **500 on both** — `"Unexpected end of JSON input"`, Asinex
-   answering with an empty body. Pre-existing, identical before and after, not a cutover risk.
-
-The `/api/simulation` cache hit returned the **stored** `simulationKey` on both servers: no dock
-ran and no credit was spent.
-
-⚠ **The rollback command in the runbook is wrong.** `npm run dev` in
-`/root/material-tailwind-dashboard-react` runs `concurrently "node stripe-server.cjs" "vite"` —
-and `stripe-server.cjs` is *already running* on `:3001` from a different shell, so that half dies
-on `EADDRINUSE`. There are two half-dead `concurrently` stacks on the box right now for exactly
-this reason. **The rollback is `npm run dev-vite-only`.** Never delete that directory — it is a
-different codebase from this repo's `client/`, not an older version.
-
-Cutover is which process owns **port 5173**. nginx already proxies there; nothing in nginx,
-TLS, DNS, or Stripe is touched. Check what holds it first: `ss -ltnp | grep 5173`.
-
-### 2. The `chem_beo` patch — decided 2026-07-29: do not apply it
-
-**Keep it; do not run it.** The owner left the call open ("just do what you see best"), and the
-answer follows from Release A being staged, proven and one command away.
-
-Every fix in the patch is already in Release A **by construction** — the real `JWT_SECRET`, the
-closed money routes, the atomic refundable charge, the env-var indirection for the box URLs.
-Applying it means restarting the **live** API to improve a codebase that is being retired, and
-buying a second production restart for nothing.
-
-**It stays exactly where it is, and it stays valuable**, for one scenario: Release A slips past
-box-arrival day. In that world the patch's env vars are the *only* way to repoint docking on the
-legacy server, and it becomes a prerequisite again. Re-read this decision if the cutover has not
-happened by the time the box lands.
-
-`deploy/chem_beo/01-fixes-and-config.patch`. Written, applies cleanly, and verified by
-running it against real Atlas on an isolated port. **Deliberately not applied.**
-
-It lifts the five Asinex URLs and eight Tanimoto call sites into env vars **defaulting to
-today's values**, makes the credit charge atomic and refundable, and closes five money/data
-routes — including the open `/api/generate-molecules` that is causing the NVIDIA rate limit,
-and the credit-minting hole at `chem_beo:3343`.
-
-It is also what makes arrival day possible if Release A has not shipped: those env vars are
-the only way to repoint docking on the legacy server. See `deploy/chem_beo/README.md` for the
-~60 routes it deliberately leaves open.
-
-### 3. Capture from Asinex while Moscow still answers
-
-- [x] ~~**A DiffDock response.**~~ ✅ **Done 2026-07-29, and no call to Moscow was needed.**
-      This item said the schema was "completely uncaptured". It was wrong: `chem_beo` has been
-      logging every request and response to `/root/chem_beo/diffdock_api.log` since February —
-      7.9 MB, 24 pairs, 8 successful. `deploy/box/diffdock/reference/` is the extracted contract,
-      with a README covering the three things a reimplementation must get right: failure arrives
-      as **HTTP 200** with `status: "failed"`, arrays are **padded to `num_poses`** with empty
-      strings so length is not a pose count, and `position_confidence` is **ranked best-first and
-      index-aligned** with `ligand_positions`.
-- [x] ~~**A failed dock.**~~ ✅ **Done** — both distinct failure strings are in the same
-      directory, along with the HTML error page DiffDock sometimes returns instead of JSON.
-      Also `/root/chem_beo/output.json`, `output4.json` and `/root/output2.json` are three
-      stored failed responses.
-- [ ] **An apo-structure dock.** Still open. Every stored dock has a co-crystal ligand, which is
-      where the search box centre comes from. A receptor without one has no centre by that rule,
-      and nobody knows what Asinex does.
-- [ ] **A failed `/api/simulation` dock** (AutoDock, not DiffDock). Still open — the platform
-      only writes `simulation_logs` on success, so that engine's error shape is still unknown.
-
-The same log settled `/convertSTR` too: `{"smiles": "..."}` → `{"sdf": "..."}`, and its last
-line is a request at **2026-06-04T12:15:34Z with no response** — the exact moment `:8001` died,
-carrying a leading space in the SMILES. `deploy/box/convertstr/` now trims and has a test for it.
-
-### 4. `pg_dump` Oracle's Tanimoto Postgres — ✅ done 2026-07-29
-
-2,951,975 molecules (and 2,951,975 fingerprints), confirmed by count. 14 GB on disk,
-**1.21 GB** as `pg_dump -Fc -Z6`, with a `sha256` beside it.
-
-| Copy | Where |
-|---|---|
-| on Oracle | `~ubuntu/tanimoto-backup/tonomitosql-20260729.dump` |
-| off Oracle | `~/backups/tanimoto/` on the dev Mac |
-
-Postgres 17 with the **`rdkit` 4.6.1** cartridge — the restore target needs that extension or
-the schema will not load. This is a backup, not a migration: Tanimoto compute still moves to the
-box (B3). The point is that until now the data existed in exactly one place, with an
-unauthenticated `DELETE` route pointing at it, so there was nothing to migrate *from* if it went.
-
-### 5. Rotate the glioblastoma key
-
-`services/glioblastoma-predictor/chemtest_tech_private.key` is committed and `COPY`'d into the
-image. It is in git history — treat as compromised. Blocks B6.
-
----
-
-## In flight
-
-Codex is building two things, in parallel, in disjoint directories:
-
-| Brief | Building into | State on 2026-07-29 (re-checked 21:45 UTC) |
-|---|---|---|
-| `deploy/box/docking/BRIEF.md` | `deploy/box/docking/service/` | **41 files, tracked and committed** — no longer untracked or mid-build |
-| `deploy/box/BRIEF-SERVICES.md` | `deploy/box/convertstr/`, `deploy/box/diffdock/`, `services/admet/` | `convertstr/` 7 files, `diffdock/` 7 files, both **tracked** |
-
-Its docking plan was reviewed. Two corrections were pushed in `f426de2`, and **both are
-honoured in the committed implementation** — verified, not assumed:
-
-1. **SCORE sorts ascending** (`-4.547 → -4.345`, most negative first). ✅
-   `serializer.py:22` sorts on `pose.score` ascending, and `:127` re-asserts it, raising
-   `"docking serializer did not sort scores ascending"` if it ever drifts.
-2. **Do not hard-fail on a pose count other than 5.** ✅ `service.py:94` compares against
-   `EXPECTED_POSE_COUNT` (default 5, `settings.py:60`) and only `logger.warning`s plus a
-   `pose_count_<n>` metric. The one hard failure is `serializer.py:20`,
-   `"docking produced zero poses"` — exactly the intended policy.
-
-Also from that review:
-
-- **Apo receptors are handled now** — `receptor.py:316` logs `APO_RECEPTOR_FALLBACK` with a
-  reason, so a receptor with no co-crystal ligand has a defined path. What is *still* open is
-  the separate §3 item: nobody has captured what **Asinex** does with one, so there is no 1:1
-  to compare the fallback against.
-- **mmCIF is still unhandled.** `grep -i cif receptor.py` is empty, so an entry too large for
-  PDB format still fetches `files.rcsb.org/download/{ID}.pdb`, gets a **404**, and reports it
-  generically. Needs a message that names the cause. Not blocking.
-- The plan rejects `;` in SMILES with 422. Defensible, but the frontend does
-  `replace(',', ';')` with **no `/g` flag**, so it only rewrites the first comma — multi-SMILES
-  input arrives as `A;B,C`. Whatever it does, log and count it.
-
-**Scope note.** The docking service's `fcntl.flock` cross-process locking, multiprocess
-cold-cache race tests, and versioned cache invalidation are sized for concurrency that does
-not exist — production has done **four docks in three months**. Correct, ~120 LOC, harmless;
-just past the load. The **cache itself is worth every line** — a warm receptor skips the RCSB
-fetch and the OpenMM prep, and that is the one latency change a user will actually feel.
-
----
-
-## Do not
-
-- Do not deploy Release A and the docking repoint on the same day. See above.
-- Do not touch **nginx, TLS, DNS, the firewall, or Stripe** on arrival day. Stripe works; the
-  runbook needs no Stripe access.
-- Do not move the **database**. Production Mongo is **Atlas** and stays. Runbook 4.1 and 4.2
-  are dead permanently.
-- Do not restore **Oracle's Mongo**. Discarded, never restored from. This is *Mongo only* —
-  Oracle's **Postgres is production Tanimoto data and IS copied** (4.3).
-- Do not put an API server or Mongo on the box. It runs **compute only**. The box has pick-up
-  warranty and no on-site service in the Netherlands, so a fault costs 1–3 weeks: box dies,
-  docking stops, product survives.
-- Do not add tenant-facing or billing features. See `PYXIS-ONLY.md`.
-- Do not edit `scripts/verify-docking-response.mjs`. It encodes the platform's real parsers
-  verbatim, brittleness included. Loosening it to make a candidate pass defeats its purpose.
-
----
-
-## Prompt for a fresh session
-
-> Read `docs/NEXT-SESSION.md` and `CLAUDE.md`, then `docs/ARRIVAL-RUNBOOK.md` Phase 5.
-> The box has not arrived. I want to ship Release A — the server swap — before it does.
-> Start with the gates in NEXT-SESSION.md §1 and tell me which are done and which are not.
-> SSH to production is `root@83.229.87.94`; I will give you the password.
-
----
-
-## ✅ 2026-07-31 — marketing site restored, fixed and shipped
-
-*(Was "🚧 deliberately NOT deployed" on 2026-07-30. Both blockers below are now closed; the
-findings are kept because one of them was wrong and the reason it was wrong is worth keeping.)*
-
-**Why it came back:** the owner's rule is *everything from chem_beo (the original Pyxis) stays*.
-Checked directly rather than assumed — `/root/material-tailwind-dashboard-react/src/pages/main/`
-on 83 holds all of them: `mainhome`, `services`, `about-us`, `contact-us`, `insights`,
-`paidplansdescription`, **and `blog`**, which nothing in this repo had counted. So they are
-chem_beo's, not a MedSaaS invention, and removing them was wrong.
-
-Restored from tag `saas-surface-v1`, rebranded (20 × `ChemBench` → Pyxis Discovery,
-`contact@chembench.io` → `contact@pyxis-discovery.com`), plus the `mainpage` layout, the
-marketing navbar, and two modules the pages import that had also been deleted —
-`client/src/context/blog.jsx` and `client/src/data/servicesImages.js`. `bun run ci` passes.
-
-**The two blockers recorded on 2026-07-30, and what they turned out to be:**
-
-1. **Old-palette colours — real, fixed.** Not 12 classes across `pages/main/` but 9 places, and
-   the ones that actually mattered were in `widgets/layout/main-navbar.jsx`, which the original
-   grep never covered: the brand mark's `linear-gradient(#a855f7, #3b82f6)`, the BETA chip, the
-   Sign In pill and the mobile Sign In link. Plus the hero's "Now in Open Beta" badge and two
-   `buttonColor: 'indigo' | 'purple'` strings. All now use `brand-*`, which is driven by the
-   per-company CSS variables, so the marketing site follows company branding like the dashboard.
-
-2. **"The hero body renders blank" — NOT a bug. This finding was wrong.** The hero is wrapped in
-   `<Reveal>`, whose `.cb-reveal` starts at `opacity: 0` and transitions over **0.7 s with delays
-   up to 400 ms**. The screenshot behind that claim was taken immediately after navigation, so it
-   photographed the fade-in. Measuring instead of looking settled it: every `.cb-reveal` had
-   `cb-visible` and computed `opacity: 1`, laid out inside the viewport, and a second screenshot
-   showed the full hero. Nothing was ever broken. **If a page looks blank in a screenshot, check
-   `getComputedStyle` before writing it down as a defect** — see the GOAL.md rule about reading a
-   measurement like it might be lying, which cuts both ways.
-
-**A third defect the original note missed entirely — `/main/paidplansdescription`:**
-
-79 nodes below 2.5:1 contrast, including every purchase button at **1.00** (white on white —
-literally invisible). Two causes stacked:
-
-- The page is genuine **Bootstrap 5** markup and Bootstrap 5.3.3 really is loaded, from the CDN
-  link in `client/index.html`. (This is *not* the Tailwind-matched-as-Bootstrap false positive
-  GOAL.md describes — a probe element confirmed it in the live page.)
-- Its wrapper asks for `bg-gray-50`, but `withMT()` replaces Tailwind's palette and drops `gray`,
-  so the class compiles to **nothing** — same trap as the missing `slate` family. The page fell
-  through to the dark landing background while its cards stayed Bootstrap white, and Tailwind's
-  preflight `button { background-color: transparent }` erased the button fills.
-
-Fixed with one scoped block in `client/src/tailwind.css` (`.about-us-page …`) — content and markup
-untouched, only the surface moves onto the dark shell. Re-measured: **0 failing nodes**, and the
-other six marketing pages measured 0 both before and after.
-
-### ✅ Deployed and live: `6e7fe9d`
-
-Sign-up and paid plans are back on `app.pyxis-discovery.com`. `/auth/sign-up`,
-`/dashboard/paid-plans`, `/auth/sign-in` and `/health` all 200; `POST /api/signup` returns a
-validation error rather than 403, so public registration is genuinely open. `pyxis-web` active,
-**0 restarts**. Rollback archive at `/root/pyxis-rollback-22f061c.tgz` on the box.
-
-That deploy also carried the ADMET Mongo queue **producer** and the cross-tenant fix for
-`POST /api/admet/create-task`. The queue's consumer needs a GPU and ships with the box; until
-then jobs are recorded in `admet_jobs` and countable via `GET /api/rabbitmq/queue-status`
-instead of vanishing into a broker nobody consumed.
+## Method notes that saved real time
+
+- **Measure, do not reason — then read the measurement like it might be lying.** Two "findings"
+  in this repo were screenshot artefacts, and one was a grep matching an *older* symbol whose
+  name contained the new one.
+- **The server cannot boot from a dev machine.** Atlas enforces an IP allowlist and 83 is on
+  it; a non-allowlisted IP is rejected with TLS alert 80, which reads as a confusing handshake
+  failure rather than an access error. To measure real headers or behaviour, run a rig on a
+  spare port **on 83** and kill it by PID afterwards.
+- **`bun run ci` locally is weaker than CI.** The runtime smoke test sees the repo `.env`, so a
+  dev machine supplies `FRONTEND_URL`/`BASE_URL` that CI does not have. Set anything a test
+  depends on in `childEnvFinal`, not `.env`.
+- **Parity between the two servers needs no rig.** `chem_beo` still listens on `:3000`, so the
+  live server is its own right-hand side:
+  ```bash
+  cd /root/pyxis/server && RIG_URL=http://127.0.0.1:5174 node .parity/verify-server-swap-parity.mjs tester123
+  ```
+  Copy the script under `server/` first — ESM resolves `jsonwebtoken`/`mongodb` from the file's
+  own directory upward, and they live in `server/node_modules`.

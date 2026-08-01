@@ -3,23 +3,33 @@
 > ## ⚠ This is the *Bun→Node* rollback. It is not the production rollback.
 >
 > **Production does not run Docker.** `app.pyxis-discovery.com` on `83.229.87.94` runs
-> this repo under systemd as `pyxis-web`, deployed by `git archive` + `tar -x`. Nothing
-> below applies to it. If the live site is broken, you want the **Release A rollback**:
+> under systemd, deployed by `git archive` + `tar -x`. Nothing below applies to it.
 >
-> 1. `systemctl stop pyxis-web` — it `Conflicts=` the legacy unit, so both can never
->    hold port 5173.
-> 2. Start the legacy frontend from `/root/material-tailwind-dashboard-react` with
->    **`npm run dev-vite-only`**. **Never `npm run dev`** — that also starts
->    `stripe-server.cjs`, which already holds `:3001`, and the loser dies on
->    `EADDRINUSE`.
-> 3. The legacy `chem_beo` API on `:3000` is still running and is what that frontend
->    talks to, so no API step is needed.
+> **Corrected 2026-08-01 — this box used to describe the opposite topology and would have
+> caused an outage if followed.** It said `pyxis-web` holds port 5173 and `Conflicts=` the
+> legacy unit. Both were true until 2026-07-31 and are false now.
 >
-> **Never delete `/root/material-tailwind-dashboard-react`.** It is the rollback, and it
-> is a different codebase from this repo's `client/` — not an older copy of it.
+> **What is actually live:** the owner deliberately rolled production back to the **original
+> Pyxis** on 2026-07-31. `pyxis-vite-legacy` holds **5173** and is the public site;
+> `pyxis-web` (this repo) is the standby on **5174**, loopback only. `Conflicts=` was
+> **removed** so the two can run together. Both units are `enabled`.
 >
-> ⚠ Rolling back to `:3000` re-exposes ~60 unauthenticated `chem_beo` routes. Treat it as
-> an emergency measure, not a resting state. See [docs/SECURITY-FINDINGS.md](./docs/SECURITY-FINDINGS.md).
+> **So there is nothing to roll back to — you are already on the fallback.** If the live site
+> is broken, it is the legacy stack that is broken, and the fix is forward, not back:
+>
+> 1. `systemctl status pyxis-vite-legacy pyxis-api-legacy pyxis-stripe` — all three serve the
+>    live site. `chem_beo` on `:3000` is the API; `stripe-server.cjs` on `:3001` is the
+>    contact form. **Do not kill either.**
+> 2. If the legacy frontend is unrecoverable, promote the standby: give `pyxis-web`
+>    `PORT=5173`, delete its `BIND_HOST=127.0.0.1` line, move the legacy unit to 5174, then
+>    `daemon-reload` and restart both. That is the same port swap as
+>    [docs/ARRIVAL-RUNBOOK.md](./docs/ARRIVAL-RUNBOOK.md) §8.
+>
+> **Never delete `/root/material-tailwind-dashboard-react`.** It is the live site's code and
+> a different codebase from this repo's `client/` — not an older copy of it.
+>
+> ⚠ Running on `:3000` means ~60 unauthenticated `chem_beo` routes are exposed **right now**,
+> not hypothetically. See [docs/SECURITY-FINDINGS.md](./docs/SECURITY-FINDINGS.md).
 
 This document describes how to revert to Node if a dependency misbehaves under Bun
 in production. Both paths are non-destructive and reversible.

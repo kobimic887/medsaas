@@ -12,9 +12,13 @@
 >
 > Steps 2 and 5 in the table below are struck through. Do not re-apply them.
 
-**Status: §5 steps 1, 3, 4 are APPLIED (2026-07-29); 2 and 5 were REVERSED (2026-07-30).** This is no longer a plan for the code
-half. Step 6 (verify the remaining product end to end) is open, and steps 7–8 belong to the
-box migration and are untouched.
+**Status: §5 steps 1, 3, 4 are APPLIED (2026-07-29); 2 and 5 were REVERSED (2026-07-30); step 6
+is DONE (2026-07-31).** This is no longer a plan for the code half. Steps 7–8 belong to the box
+migration and are untouched.
+
+⚠ **Everything here is deployed but not live.** Production was deliberately rolled back to the
+original Pyxis on 2026-07-31; this rebranded version runs on `:5174`, loopback only, until the
+port swap on box day.
 
 | §5 step | State | Commit |
 |---|---|---|
@@ -23,7 +27,7 @@ box migration and are untouched.
 | 3. Rebrand to Pyxis Discovery | **done** — incl. inverting the brand guard | `5b57937` |
 | 4. Remove marketing routes, then pages | **done** — routes `1901596`, files `a4c6a37` | |
 | ~~5. Remove paid-plans, gate checkout~~ | **REVERSED 2026-07-30** — page restored, checkout is `requireActiveUser` | `f6b04f4`, reversed |
-| 6. Verify end to end | **open** — see the UX parity pass, below | |
+| 6. Verify end to end | **done 2026-07-31** — 17 routes, 7 differences, none a regression | |
 | 7–8. Deploy to 83, CORS | **untouched** — arrival-day work | |
 
 **The order was the owner's call, and it differs from what §5 recommended.** §5 assumed the
@@ -31,8 +35,21 @@ de-SaaS work could land any time; the recommendation at the time of doing it was
 server swap first and rebrand after, so the parity and rollback evidence gathered on
 2026-07-29 stayed valid. The owner chose rebrand-first, so **that evidence must be gathered
 again** before the cutover — the frontend being deployed is no longer the one that was
-verified. That re-verification is the real remaining cost of this ordering, and it is
-step 6.
+verified.
+
+> ✅ **Step 6 re-verification: done 2026-07-31.** Route-by-route parity was re-run against the
+> rebranded frontend — 17 routes, 7 differences, **none a regression**. Five of the seven are
+> the same thing: legacy now `403`s every authed route because its JWT secret changed. The
+> other two are mirror images showing both servers serve `/tanimoto/*` and neither serves
+> `/api/tanimoto/*` — the script's expectation about the legacy path was simply wrong.
+> Read-only held throughout: `tester123` stayed at 99,997 credits and `simulation_logs` stayed
+> at 7.
+>
+> ⚠ **But the thing it was verifying is no longer live.** The owner rolled production **back**
+> to the original Pyxis on 2026-07-31. This repo's rebranded frontend runs on `:5174`,
+> loopback only, and becomes the public site again at the port swap on box day
+> ([ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §8). Everything in this document describes code
+> that is deployed but **not currently in the request path.**
 
 **What did NOT change, and must not be assumed to have:** the Stripe webhook, `PLAN_CATALOG`,
 `consumeSimulationToken`, `simulationTokens`, `billing_events`, the companies collection,
@@ -253,7 +270,7 @@ This work and the box migration touch the same files, so ordering matters.
 5. Remove the paid-plans page and gate the checkout endpoints.
 6. Verify the remaining product end to end on Oracle: sign in → every science page loads.
 
-**Then, as part of the migration** ([COMPUTE-BOX-MIGRATION.md §7](./COMPUTE-BOX-MIGRATION.md#7-migration-sequence)):
+**Then, as part of the migration** ([ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md)):
 
 7. Build `client/` with `VITE_API_BASE_URL` pointing at the box's API and deploy it to 83,
    replacing the legacy bundle at `app.pyxis-discovery.com`. **Keep the old bundle on disk**
@@ -273,7 +290,8 @@ one change, not two.
 - **Who gets `admin`** — operational, decide before inviting people. Not a code change.
 - **What is answering the production API on 83 today?** Still unknown, still an inventory task
   on that box, and now more pressing: step 7 replaces the frontend that talks to it, so we need
-  to know what we are cutting over *from*. See COMPUTE-BOX-MIGRATION.md §3.
+  to know what we are cutting over *from*. ✅ **ANSWERED 2026-07-28** — it is `chem_beo`, a
+  second HTTPS server on `:3000` bypassing nginx. See PRODUCTION-83-INVENTORY.md.
 - ~~**Will there be a public marketing site at all** (`pyxis-discovery.com` as opposed to
   `app.`)?~~ **ANSWERED 2026-07-29: there already is one, and it is live.**
   `www.pyxis-discovery.com` is a separate WordPress site — Discover Macrocycles, Services,

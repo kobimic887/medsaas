@@ -105,7 +105,7 @@ Dockerfile runs those as two separate passes.
 ⚠ The other order does not fail — it succeeds *wrongly*. `admet-ai` pulls chemprop, whose
 pins resolve a plain `torch`, and pip silently replaces the `+cu128` build with the CPU
 wheel. The worker then starts, predicts, and returns correct answers, permanently on the
-CPU, on a machine with two idle 5090s, with nothing in any log saying so.
+CPU, on a machine with four idle GPUs, with nothing in any log saying so.
 
 Two checks guard it, because neither is sufficient alone:
 

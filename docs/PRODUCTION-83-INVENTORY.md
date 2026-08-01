@@ -251,7 +251,7 @@ depends on.
 ### Either way, these follow from `chem_beo` being what serves users
 
 **1. 🛑 "Cutover is config, not a deploy" is false.** This is the single most load-bearing claim
-in the whole migration, repeated in `CLAUDE.md`, `BOX-SPEC.md`, `COMPUTE-BOX-MIGRATION.md` and
+in the whole migration, repeated in `CLAUDE.md`, `BOX-SPEC.md` and
 the runbook. It is a property of **this repo's** `ligandServiceConfig`, which `chem_beo` does
 not have — `grep -c ligandServiceConfig index.js` returns **0**. All five service URLs are
 string literals:

@@ -341,7 +341,7 @@ Also required:
 The owner suggested this image. **Evaluate it; do not assume it works.** Unverified here — the
 target GPUs do not exist yet. What to actually check, on the box, once it arrives:
 
-- **Architecture support is the live question.** The target is **2× RTX 5090 — Blackwell,
+- **Architecture support is the live question.** The target is **4× RTX PRO 4000 — Blackwell,
   `sm_120`, requiring CUDA ≥ 12.8 and driver ≥ 570.** A `2020.06` image is CUDA 11.x era and was
   built years before `sm_120` existed. It will only run at all if its binaries embed forward-
   compatible PTX that the driver can JIT, and a CUDA 11 → `sm_120` JIT is a long jump. **Assume

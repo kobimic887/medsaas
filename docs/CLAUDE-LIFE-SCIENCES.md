@@ -139,8 +139,9 @@ No dangling tool. No missing route.
    JWT.
 3. The server is stateless, so no session setup is needed.
 
-**Prerequisite that does not exist yet:** a public HTTPS hostname for the box. Options and the
-recommendation are in COMPUTE-BOX-MIGRATION.md §3-B. Do not expose `:8080` directly — put it
+**Prerequisite that does not exist yet:** a public HTTPS hostname for the box. Settled
+2026-07-29 — Caddy on `:443` with a Let's Encrypt cert, services on loopback, firewall admits
+only 83. No VPN, no tunnel. See ARRIVAL-RUNBOOK.md §6. Do not expose `:8080` directly — put it
 behind the same TLS terminator as the API, and bind the Docker publish to `127.0.0.1` so it is
 not reachable by IP (on Oracle, published ports `3000` and `8080` bypassed UFW and were
 verified reachable from the internet).

@@ -1,13 +1,28 @@
-# The legacy frontend: the Vite dev server that serves app.pyxis-discovery.com today.
+# The legacy frontend: the Vite dev server that serves app.pyxis-discovery.com.
 #
-# nginx proxies / -> localhost:5173, so this unit owns the public site until Release A
-# takes that port. `dev-vite-only`, NOT `npm run dev`: the full dev script also starts
-# stripe-server.cjs, which pyxis-stripe.service already owns, and the loser of that race
-# dies on EADDRINUSE. That is exactly how two half-dead `concurrently` stacks ended up on
-# this box.
+# ⚠ THIS IS THE PUBLIC SITE. Corrected 2026-08-01 — the header below used to say "disable
+# this and enable pyxis-web.service to cut over", which was true for two days in July and is
+# wrong now. The owner deliberately rolled production BACK to this unit on 2026-07-31, and it
+# stays the live product until the GPU box arrives.
 #
-# Disable this and enable pyxis-web.service to cut over. Leave the unit installed — it is
-# the rollback.
+# nginx proxies / -> localhost:5173, so this unit owns the public site. pyxis-web.service
+# (this repo) runs alongside on 5174 as the standby. Both are enabled; neither Conflicts=
+# the other, because they are on different ports.
+#
+# Box-arrival day is a PORT SWAP, not an enable/disable: this unit moves to 5174 and
+# pyxis-web takes 5173. Moving it needs an explicit flag, because ExecStart passes no port:
+#     ExecStart=/usr/bin/npm run dev-vite-only -- --port 5174
+# See docs/ARRIVAL-RUNBOOK.md section 8.
+#
+# `dev-vite-only`, NOT `npm run dev`: the full dev script also starts stripe-server.cjs,
+# which pyxis-stripe.service already owns, and the loser of that race dies on EADDRINUSE.
+# That is exactly how two half-dead `concurrently` stacks ended up on this box.
+#
+# ⚠ AFTER the swap, do not leave this running indefinitely. 83 is 2 cores / 1 GB RAM and a
+# Vite dev server is the most expensive process on it. The rollback is the code on disk at
+# /root/material-tailwind-dashboard-react, NOT this running process, so `systemctl stop`
+# costs only cold-start time. Staged retirement table: docs/ARRIVAL-RUNBOOK.md section 8.
+# Never delete that directory at any stage.
 [Unit]
 Description=Pyxis legacy frontend (Vite dev server, port 5173)
 After=network-online.target

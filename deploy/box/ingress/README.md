@@ -13,7 +13,7 @@ From anywhere else: it must fail.
 ## Why any of this is needed
 
 The services behind it are **unauthenticated compute**. There is no login on `:8000` — whoever
-reaches the port can dock, on two RTX 5090s. And 83 is in one datacentre while the box is in
+reaches the port can dock, on four RTX PRO 4000s. And 83 is in one datacentre while the box is in
 another, so the traffic crosses the open internet either way.
 
 That leaves two separate problems, and they need two separate answers:
