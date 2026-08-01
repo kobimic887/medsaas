@@ -28,7 +28,7 @@ jobs:
     timeout-minutes: 20
     environment: non-prod
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Build natively on the box (Oracle Ampere / arm64) — no registry, no
       # QEMU. Ship a clean source archive (tracked files only) over native
