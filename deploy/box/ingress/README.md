@@ -86,8 +86,13 @@ platform treats those as a base URL and appends its own paths. Docking, convertS
 use `handle`, which does **not** strip, because those upstream services expect the full path —
 that is what makes the DiffDock cutover a hostname swap and nothing else.
 
-DiffDock's route gets 600-second proxy timeouts: a 100-pose dock is not fast, and the platform
-itself waits that long before giving up.
+⚠ **DiffDock's route carries NO timeout directive, deliberately** — an earlier draft of this
+README said it "gets 600-second proxy timeouts", and the Caddyfile does not. It once carried
+`transport http { read_timeout 600s; write_timeout 600s }`, which is **invalid**: those
+subdirectives belong to `transport fastcgi`. It is also unnecessary — Caddy's `reverse_proxy`
+applies no response timeout unless one is configured, so plain `reverse_proxy` already waits as
+long as DiffDock takes, and a 100-pose dock is slow. If a limit is ever wanted, the correct
+knob is `response_header_timeout`. See the comment in `Caddyfile`.
 
 ## Order of operations
 

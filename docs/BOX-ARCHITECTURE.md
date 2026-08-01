@@ -1,5 +1,17 @@
 # What runs where, and why
 
+> ## ⚠ §2–§3 sequencing is SUPERSEDED. Read this first.
+>
+> This document says the two releases "must not be one day" and that the server swap should
+> ship weeks before delivery. **That happened** — Release A went live 2026-07-29 — **and was
+> then deliberately rolled back** on 2026-07-31. The owner's decision, 2026-08-01, is that
+> arrival day does the **port swap and the docking cutover together**, in that order, with the
+> port swap gated on the box services passing validation first.
+>
+> **For execution order, [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) wins over this file.**
+> What remains authoritative here is the *topology* — what runs where and why — which is
+> unchanged and still supersedes every other document.
+
 **Decision record, 2026-07-28. Revised 2026-07-29 — §2 and §3 were reversed.** Supersedes the
 topology in every other document. Written after production was inventoried for the first time
 ([PRODUCTION-83-INVENTORY.md](./PRODUCTION-83-INVENTORY.md)), which changed the answer.

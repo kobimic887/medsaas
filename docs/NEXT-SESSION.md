@@ -122,6 +122,7 @@ about it.
 
 | # | Work | Needs the box? | Notes |
 |---|---|---|---|
+| 0 | **⛔ AutoDock-GPU is NOT IMPLEMENTED** | no | `deploy/box/docking/service/docking_service/engines/autodock_gpu.py` raises `DockingUnavailable` unconditionally, and a test asserts the 503. The working engines are **`vina` (CPU, real)** and `replay`. `.env.example` defaulted to the stub until 2026-08-01. **Arrival day can complete on CPU Vina — but GPU docking is engineering work that has not been done**, and it is the stated reason for the machine |
 | 1 | **Get the Tanimoto dump off the owner's Mac** | no | 1.2 GB, the **only copy** of a 2,951,975-molecule index, on one laptop. Oracle is still live so it is re-dumpable — but do not rely on that |
 | 2 | **Two critical tenant-isolation bugs** | no | Found 2026-08-01, unfixed. [SECURITY-FINDINGS.md](./SECURITY-FINDINGS.md) §A1, §A2 |
 | 3 | **Prove the Tanimoto dump restores** | no | `scripts/verify-tanimoto-restore.sh`. Needs any x86_64 Docker host. Asserts 2,951,975 rows |
@@ -164,6 +165,19 @@ by SSH:
 Tanimoto, GROMACS, ADMET and glioblastoma move **after** docking is proven, not alongside it.
 
 ---
+
+## Precedence, when two documents disagree
+
+1. **[ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md)** — for *what to do and in what order*. It
+   beats everything else on sequencing.
+2. **[BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md)** — for *topology*: what runs where and why.
+   Its §2–§3 sequencing is superseded; its topology is not.
+3. **The code and config** — `deploy/83/systemd/*.service`, `deploy/box/compose.yml`,
+   `server/index.js` — beat **all** prose. Every doc here has been wrong about the code at
+   least once. Check the unit file, not the sentence about the unit file.
+4. **`deploy/chem_beo/README.md` is stale on sequencing** — it predates the port-swap decision
+   and gives direct HTTP box URLs. Its *patch* is still valid and still unapplied; its
+   *arrival-day narrative* is not.
 
 ## Method notes that saved real time
 

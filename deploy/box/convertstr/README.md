@@ -166,9 +166,17 @@ The service also belongs to the private `box` Compose network. DiffDock reaches 
 network through `http://convertstr:8001/convertSTR` and declares `depends_on: [convertstr]`.
 
 `convertSTR` is unauthenticated by design only because it is a **private compute dependency**. It
-must never be exposed to the public internet. Keep `BIND_ADDR` on loopback while testing; for the
-83-to-box cutover, bind it to the approved private/VPN interface and allowlist 83 only. Do not set
-`BIND_ADDR=0.0.0.0`, and do not add a public proxy, DNS record, or public firewall rule. The
-platform-side `SDF_CONVERTER_URL` retains the `/convertSTR` path and changes host only. Cut over
-that one setting after the offline and live probes pass. No functioning converter rollback exists:
+must never be reachable by an unauthorised caller.
+
+⚠ **Corrected 2026-08-01 — this paragraph used to say "bind it to the approved private/VPN
+interface". There is no VPN.** That approach was considered and **rejected** on 2026-07-29. The
+settled shape is: `BIND_ADDR` stays on **loopback permanently**, **Caddy on `:443`** fronts it
+with a Let's Encrypt certificate, and the **host firewall admits only 83's IP**. So it *is*
+served through a public proxy and a public DNS record — the access control is the firewall, not
+the absence of a route. See `docs/ARRIVAL-RUNBOOK.md` §6.
+
+Do not set `BIND_ADDR=0.0.0.0`. The platform-side `SDF_CONVERTER_URL` retains the `/convertSTR`
+path and changes host only — to `https://<BOX_DOMAIN>/convertSTR`. ⚠ It is a module-scope
+constant (`server/index.js:107`), so that cutover needs a **restart**, not just an edit. Cut it
+over after the offline and live probes pass. No functioning converter rollback exists:
 port `8001` on 83 is already down and its source is gone.

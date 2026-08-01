@@ -1,5 +1,13 @@
 # What production actually is
 
+> ⚠ **Snapshot taken 2026-07-28; two things have changed since.** The findings are still the
+> best measured record of what production *is*, but: (1) all four services are now under
+> **systemd** (`deploy/83/systemd/`) and enabled, so "hand-started in shells, a reboot ends
+> production" is **no longer true**; (2) this repo's server runs alongside on **:5174**, and
+> the public site was deliberately rolled back to the original Pyxis on 2026-07-31. Where this
+> file describes process management, check
+> [`deploy/83/systemd/README.md`](../deploy/83/systemd/README.md) instead.
+
 **Inventoried 2026-07-28 over SSH, read-only.** Phase 0.9 / 0.2 / 0.10 of
 [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md).
 

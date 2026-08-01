@@ -87,6 +87,7 @@ plausible-looking address you find in a document.
 | `<BOX_DOMAIN>` | the DNS name the box answers on, for its Let's Encrypt certificate | §6 |
 | `<ORACLE_HOST>` / `<ORACLE_USER>` | Oracle's Postgres holds the only copy of the Tanimoto index | §10 |
 | **the Tanimoto dump** | 1.2 GB, **not in git** — see §1b | §10 |
+| **the `tonomitosql` image or source** | `compose.yml` references `tonomitosql:latest` with **no build context**, and the source is a **separate repo** (`kobimic887/tonomitosql`). Clone and build it, or the Tanimoto service will not start | §10 |
 | **Atlas allowlist access** | to add the box's IP. ⚠ **Not needed for §1–§10**; the ADMET worker in §11 polls Mongo and cannot start without it | §11 |
 | `.env` values | for the **box's own services** only (`deploy/box/.env.example` is the template). The API's `.env` stays on 83 | §5 |
 
@@ -109,6 +110,7 @@ when a step fails.
 | **`client/dist`** — the built frontend §8 deploys | build output | `bun run install:all && bun run build`. Needed **before** the port swap, and it is a separate `tar` from the source push |
 | **`.env` files** — root, `server/`, and `deploy/box/` | secrets | `.env.example` and `deploy/box/.env.example` are the templates. The API's live `.env` is already on 83 at `/root/pyxis/server/.env` and stays there — do not overwrite it from a template |
 | **DiffDock weights** — 124 MB | model artefact | `deploy/box/diffdock/fetch-weights.sh`, run **once** on the box before first start (§5) |
+| **The `tonomitosql` image** | it is a **separate repo**, `kobimic887/tonomitosql` | `deploy/box/compose.yml:153` references `tonomitosql:latest` with **no build context**, so compose will not build it for you. Clone that repo and build the image before §10 |
 
 Everything else the runbook calls — `scripts/verify-docking-response.mjs`,
 `scripts/verify-tanimoto-restore.sh`, `deploy/box/docking/service/test.sh`, all three service
@@ -255,9 +257,42 @@ docker run --rm pyxis-diffdock:test python -m pytest -q
 deploy/box/diffdock/fetch-weights.sh    # 124 MB into /srv/models/diffdock, ONCE, before first start
 ```
 
-Engines: **AutoDock-GPU** compiled for `sm_120` (the workhorse, and the reason the machine
-exists), **OSS DiffDock** (`gcorso/DiffDock`, MIT) on torch cu128, and **classic AutoDock
-Vina** across the 32 cores as the CPU reference path.
+Engines: **classic AutoDock Vina** across the 32 cores, **OSS DiffDock**
+(`gcorso/DiffDock`, MIT) on torch cu128, and a **`replay`** engine that returns the committed
+reference payload with no GPU at all.
+
+> ## ⛔ AutoDock-GPU IS NOT IMPLEMENTED. Read this before planning the day.
+>
+> Earlier versions of this runbook described "AutoDock-GPU compiled for `sm_120`" as the
+> workhorse and the reason the machine exists. **That engine does not exist in this repo.**
+>
+> `deploy/box/docking/service/docking_service/engines/autodock_gpu.py` is a stub whose `dock()`
+> raises `DockingUnavailable` **unconditionally**:
+>
+> ```python
+> class AutoDockGpuEngine:
+>     """Deliberately unavailable until native hardware qualification completes."""
+>     @staticmethod
+>     def require_qualified() -> None:
+>         raise DockingUnavailable("AutoDock-GPU is unavailable until hardware qualification is complete")
+> ```
+>
+> `deploy/box/docking/service/tests/test_http_contract.py` asserts that 503. It is intentional,
+> not a bug — but it means **selecting `DOCKING_ENGINE=autodock-gpu` makes every dock return
+> 503.** `deploy/box/.env.example` shipped that as its default until 2026-08-01; it is now
+> `vina`.
+>
+> **What actually works today:** `vina` (real — 81 + 279 lines that shell out to a Vina binary)
+> and `replay`. So arrival day can genuinely complete on **CPU Vina across 32 cores**, which is
+> a first-class path, not a workaround — but it is not GPU docking.
+>
+> **Implementing and qualifying AutoDock-GPU is a separate piece of engineering work**, after
+> the cutover. Do not let §7 pass on `replay` and then cut over on `autodock-gpu`.
+> **Check what you are running before §9:**
+>
+> ```bash
+> docker compose -f deploy/box/compose.yml exec docking printenv DOCKING_ENGINE
+> ```
 
 > **Not the DiffDock NIM container.** It requires an NVIDIA AI Enterprise licence, which the
 > owner declined on 2026-07-31 (*"we are not buying nvidia enterprise"*). RTX PRO cards do not
@@ -318,6 +353,10 @@ node scripts/verify-docking-response.mjs --url https://<BOX_DOMAIN>/docking \
 **Exit 0 required.** It pushes the payload through both production parsers
 (`/api/sanitizedminimalsdf` and the client's `parseSdfData`) and prints the pose table the
 dashboard would render.
+
+⚠ **Confirm which engine produced that pass.** `replay` returns the committed reference
+payload, so it passes §7 trivially and proves only the plumbing. A pass on `replay` is **not**
+evidence that docking works. Check `DOCKING_ENGINE` (see §5) and re-run on `vina` before §9.
 
 **Why a field-by-field diff is not enough.** The two parsers disagree about strictness. A
 payload that is chemically perfect and passes any reasonable SDF validator will still render
@@ -432,11 +471,11 @@ is expected, not a regression.
 
 ## 9. Cut docking over — one URL at a time
 
-With §8 done, production is this repo's server, and the cutover is a **settings change: no
-restart, no redeploy, no deploy at all.**
+With §8 done, production is this repo's server. **Two of the four knobs are hot; two are not.**
+Do not describe the whole cutover as "no restart" — that is true only of the first two.
 
-`getRequestLigandServiceConfig()` resolves the company's four URLs on every docking request.
-Change them with:
+`getRequestLigandServiceConfig()` resolves the company's **four** `ligandServiceConfig` fields
+on every docking request, so those change with **no restart and no redeploy**:
 
 ```
 PATCH /api/company/ligand-service-config      (owner/admin)
@@ -446,22 +485,27 @@ PATCH /api/company/ligand-service-config      (owner/admin)
 four values read-only with a Default/Custom chip each — so anyone can confirm the box is live
 without admin rights.
 
+⚠ **`TANIMOTO_API_BASE` and `SDF_CONVERTER_URL` are NOT in `ligandServiceConfig`.** They are
+module-scope constants read once at boot (`server/index.js:106-107`), so changing either means
+editing `/root/pyxis/server/.env` and `systemctl restart pyxis-web`.
+
 **One field, then verify, then the next:**
 
-| Order | Field | Set to | |
+| Order | Knob | Set to | Mechanism |
 |---|---|---|---|
-| 1 | `dockingApiUrl` | `https://<BOX_DOMAIN>/docking` | |
-| 2 | `diffdockApiUrl` | `https://<BOX_DOMAIN>/molecular-docking/diffdock/generate` | |
-| 3 | `SDF_CONVERTER_URL` | `https://<BOX_DOMAIN>/convertSTR` | env var, needs a restart — it is not part of `ligandServiceConfig` |
-| 4 | `TANIMOTO_API_BASE` | `https://<BOX_DOMAIN>/tanimoto` | after §10 restores the data |
-| — | `catalogApiBase`, `stockApiUrl` | **leave on Asinex.** The catalog needs their compound file for licensing reasons, and live stock cannot be self-hosted at any price | |
+| 1 | `dockingApiUrl` | `https://<BOX_DOMAIN>/docking` | `PATCH` — **hot, no restart** |
+| 2 | `diffdockApiUrl` | `https://<BOX_DOMAIN>/molecular-docking/diffdock/generate` | `PATCH` — **hot, no restart** |
+| 3 | `SDF_CONVERTER_URL` | `https://<BOX_DOMAIN>/convertSTR` | **`.env` + restart** |
+| 4 | `TANIMOTO_API_BASE` | `https://<BOX_DOMAIN>/tanimoto` | **`.env` + restart.** Only after §10 restores the data |
+| — | `catalogApiBase`, `stockApiUrl` | **leave on Asinex.** The catalog needs their compound file for licensing reasons, and live stock cannot be self-hosted at any price | — |
 
 **Verify the credit behaviour between each, not just the response.** Run one dock that
 succeeds and one against a nonsense PDB ID. The failing one must return an error and leave the
 balance **unchanged**. That is the thing most likely to regress under a new upstream.
 
-**Rollback:** put the Asinex hostname back in the same field. Seconds, no restart. Keep those
-URLs valid — they are the disaster-recovery path, and the box has a 1–3 week repair time.
+**Rollback:** put the Asinex hostname back in the same field (items 1–2 are instant; 3–4 need
+the `.env` edited back and a restart). Keep those URLs valid — they are the disaster-recovery
+path, and the box has a 1–3 week repair time.
 
 **At this point docking no longer depends on Moscow. That is the project.** Everything below
 is consolidation.

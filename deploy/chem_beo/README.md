@@ -1,11 +1,24 @@
 # Patches for `chem_beo`
 
-`chem_beo` (`eitangenis/chem_beo`, running on 83 as `/root/chem_beo`) is the production API.
-**It stays the API through arrival day** — [BOX-ARCHITECTURE.md](../../docs/BOX-ARCHITECTURE.md)
-§2. Replacing it with this repo's server is a separate release with no deadline, weeks later
-(§3 there, ARRIVAL-RUNBOOK Phase 5). **This patch is the prerequisite for arrival day**: without
-it, every service address in production is a hardcoded string literal and there is no cutover
-and no rollback. The goal is
+`chem_beo` (`eitangenis/chem_beo`, running on 83 as `/root/chem_beo`) is the production API
+**right now** — the owner rolled production back to the original Pyxis on 2026-07-31, and
+`chem_beo` on `:3000` is what serves it.
+
+> ## ⚠ The arrival-day narrative below is STALE. The patch is not.
+>
+> Corrected 2026-08-01. This file says `chem_beo` "stays the API through arrival day" and that
+> swapping in this repo's server is "weeks later". **That is no longer the plan.** Arrival day
+> now does the **port swap first** (this repo takes 5173), and the docking cutover then happens
+> through `ligandServiceConfig` — a hot settings change — not through the env vars below.
+> See [ARRIVAL-RUNBOOK.md](../../docs/ARRIVAL-RUNBOOK.md) §8 and §9.
+>
+> **The patch itself is still worth applying, and is still unapplied.** It is no longer an
+> arrival-day *prerequisite* — it is a fix for the API that is serving the public site today,
+> closing five money/data routes and making the credit charge atomic and refundable. The env
+> vars it adds become the cutover mechanism **only** if the port swap is deferred or rolled
+> back.
+
+The goal is
 **1:1 with what `app.pyxis-discovery.com` does today, plus the bugs fixed and the compute moved
 to the box.** These patches are that work, prepared ahead of arrival day so the maintenance
 window is short.
@@ -154,10 +167,15 @@ The last row is the whole point: before this patch that dock cost a credit and r
 Set nothing at first — defaults reproduce today's behaviour exactly. Then, when the box is up,
 cut over one variable at a time:
 
+⚠ **Only relevant if the port swap is deferred or rolled back** — otherwise the cutover goes
+through `ligandServiceConfig` on this repo's server instead (ARRIVAL-RUNBOOK §9). Note these
+are **HTTPS through Caddy on the box**, not direct HTTP to a port: every box service binds
+`127.0.0.1` and the only listener is `:443`.
+
 ```bash
-DOCKING_API_URL=http://<box>:8000/docking          # verify a dock, then
-DIFFDOCK_API_URL=http://<box>:8001/...             # verify, then
-TANIMOTO_API_BASE=http://<box>:8000                # verify, then retire Oracle
+DOCKING_API_URL=https://<BOX_DOMAIN>/docking                              # verify a dock, then
+DIFFDOCK_API_URL=https://<BOX_DOMAIN>/molecular-docking/diffdock/generate # verify, then
+TANIMOTO_API_BASE=https://<BOX_DOMAIN>/tanimoto                           # verify, then retire Oracle
 ```
 
 Roll back by unsetting the variable and restarting.
