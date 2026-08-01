@@ -87,7 +87,8 @@ reference `/gsd:*` commands; that workflow is retired.
   Folding (`/api/openfold3/predict`) and molecule generation (`/api/generate-molecules`) **stay
   on NVIDIA's hosted NIM permanently** — the only two endpoints calling `health.api.nvidia.com`.
   No MSA pipeline, no ColabFold databases, no OSS OpenFold3, no MolMIM replacement. Everything
-  else moves and gets materially better: Tanimoto leaves an **arm64 Ampere VPS** for 32 x86_64
+  else moves and gets materially better: Tanimoto leaves an **arm64 Ampere VPS** (4 cores /
+  24 GB as of 2026-08-01, up from 2/12 — so this gap is narrower than it was) for 32 x86_64
   cores; GROMACS leaves a **CPU-only apt build** for a CUDA one; ADMET and glioblastoma have
   **never been deployed at all**. The purchase rule *"nothing that only benefits incidentally
   gets a euro"* governed **component selection, which is closed** — it forbids spending more
@@ -228,7 +229,7 @@ Dev URLs: frontend at **http://localhost:5173**, API at http://localhost:3000, A
 |---|---|
 | `83.229.87.94` (shared VPS, nginx + TLS) | **all of production compute today** — inventoried 2026-07-28, see [`docs/PRODUCTION-83-INVENTORY.md`](docs/PRODUCTION-83-INVENTORY.md). nginx proxies `app.pyxis-discovery.com` to a **Vite dev server** on `:5173` (`/root/material-tailwind-dashboard-react`, the Creative Tim template — a different lineage from this repo's `client/`). The API is a **second HTTPS server on `:3000`** (`/root/chem_beo`, 73 routes) that terminates TLS itself and bypasses nginx. ⚠ That inventory predates systemd: all four services are now under `deploy/83/systemd/` and enabled, so **a reboot no longer ends production**, and this repo's server runs alongside on `:5174`. GROMACS runs here in Docker on `:8000`; `/convertSTR` on `:8001` is **down**. Shared with an unrelated project (`app.fin-srv.com` on `:4000`); **do not modify nginx, TLS, DNS, or the firewall there.** |
 | **MongoDB Atlas** (`cluster0.asrz0o3…`) | **the production database** — not on 83, not on Oracle. Database name is `test`. ⚠ **83 is effectively the only machine on its IP allowlist**, which is why the server cannot boot from a dev machine (TLS alert 80 reads as a handshake failure, not an access error). The `companyId` backfill has **been applied** — 0 users remain without one. Atlas stays; only compute moves. |
-| Oracle VPS `151.145.91.17` (Ampere arm64) | **half of it is production.** The `medsaas-*` containers that `deploy.yml` ships (app + Mongo + MCP) are genuinely non-prod and discardable. **The tonomitosql stack is not** — `chem_beo` on 83 proxies all eight `/tanimoto/*` routes here, hardcoded, and the Deep Similarity page calls them. Its Postgres is production data; its Mongo is a side-project copy. Ops notes in the separate `~/projects/oracle` repo. |
+| Oracle VPS `151.145.91.17` (Ampere arm64, **4 cores / 24 GB** — upgraded 2026-08-01 from 2/12) | **half of it is production.** The `medsaas-*` containers that `deploy.yml` ships (app + Mongo + MCP) are genuinely non-prod and discardable. **The tonomitosql stack is not** — `chem_beo` on 83 proxies all eight `/tanimoto/*` routes here, hardcoded, and the Deep Similarity page calls them. Its Postgres is production data; its Mongo is a side-project copy. Ops notes in the separate `~/projects/oracle` repo. |
 | Amsterdam GPU box | **ordered 2026-08-01, not delivered.** **Compute only** — docking, DiffDock, convertSTR, Tanimoto, GROMACS, ADMET, glioblastoma. No API server, no Mongo. `docs/BOX-SPEC.md`, `docs/ARRIVAL-RUNBOOK.md`. |
 
 ### Server

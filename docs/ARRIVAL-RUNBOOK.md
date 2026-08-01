@@ -262,8 +262,11 @@ Every image pins `--platform linux/amd64`, and for a long time no host could run
 with no `binfmt` emulation. **Owner's call, unchanged: build them on the box.** It is the right
 architecture, it is not production, and a native build has no emulation surprises.
 
-⚠ Do not install `binfmt` on Oracle — that is a privileged container on the host holding the
-only copy of production Tanimoto Postgres.
+⚠ **Do not install `binfmt` on Oracle**, and note the objection is **risk, not capacity**:
+registering amd64 emulation means running a privileged container on the host that serves
+production Tanimoto. Oracle was upgraded to **4 cores / 24 GB on 2026-08-01** (from 2 vCPU /
+12 GB), which makes emulated builds more *feasible* than they were and changes nothing about
+whether they are *wise*. Do not revisit this on the strength of the extra cores.
 
 *(A fallback exists: the owner has an x86_64 Windows PC with WSL2 — i7-12700K, RTX 3060 —
 which could host these builds and the §2.3 restore proof. **Do not plan around it.** The owner
@@ -555,6 +558,11 @@ PC, with no surviving record. Ask the operator whether that configuration was ev
 
 > **This is the only irreversible section.** It happens weeks after arrival day under different
 > conditions, and reaching it by momentum from §11 is a mistake. It requires its own go-ahead.
+
+⚠ **Oracle was upgraded to 4 cores / 24 GB on 2026-08-01**, so it is a more capable host than
+when this section was written and decommissioning it is correspondingly **less urgent**. The
+reason to do it eventually is consolidation and one less dependency, not that the machine is
+inadequate. It is also still free-tier, so it is not costing anything to leave running.
 
 **Two of Oracle's five containers serve production.** `tonomitosql-api-1` and `tonomitosql-db-1`
 answer the Deep Similarity page today. The three `medsaas-*` containers are a genuinely

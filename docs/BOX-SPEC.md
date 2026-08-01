@@ -48,7 +48,7 @@ welcome; nothing that only benefits incidentally gets a euro.**
 >
 > | | Today | On the box |
 > |---|---|---|
-> | Tanimoto / RDKit search | Oracle Ampere **arm64** VPS, 2.9 M molecules | x86_64, 32 cores, 128 GB |
+> | Tanimoto / RDKit search | Oracle Ampere **arm64**, 4 cores / 24 GB, 2.9 M molecules | x86_64, 32 cores, 128 GB |
 > | GROMACS MD | 83, Docker, **CPU-only apt build** | CUDA build |
 > | ADMET | **never deployed.** Every job ever queued is still `status: "queued"` | GPU torch cu128 |
 > | Glioblastoma | never deployed | runs at all |
@@ -209,9 +209,18 @@ sequence would make a 300-ligand screen inference-only — but that rests on an 
 assumption, and there is a hosted endpoint that already works.
 
 **Everything that was not on NIM is a straight upgrade**, because what it replaces is a
-2 vCPU / 12 GB free-tier Ampere instance (and for GROMACS, a CPU-only build): Tanimoto search
-goes arm64 → x86_64 with 32 cores; GROMACS gains CUDA; ADMET and glioblastoma get deployed at
-all, for the first time.
+small Ampere instance (and for GROMACS, a CPU-only build): Tanimoto search goes arm64 →
+x86_64 with 32 cores; GROMACS gains CUDA; ADMET and glioblastoma get deployed at all, for the
+first time.
+
+⚠ **Updated 2026-08-01 — Oracle was upgraded to 4 cores / 24 GB** (from 2 vCPU / 12 GB, and
+still within Oracle's free Ampere allowance). That **narrows this gap and is worth being honest
+about**: Tanimoto is no longer running on something starved, so "it moves to the box because
+the current host is too small" is a materially weaker argument than it was. The remaining case
+for moving it is architecture (arm64 → x86_64, which removes the `rdkit-pypi` ARM fallback that
+degrades chemistry to SQL-side validation), core count (4 → 32), and consolidation — not
+rescue. **None of this touches the reason the box is being bought**, which is GPU docking and
+independence from Moscow; Oracle has no GPU and never will.
 
 ---
 
