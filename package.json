@@ -46,7 +46,7 @@
     "services:mcp": "docker compose --profile mcp up -d mcp-server"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.0",
+    "@biomejs/biome": "^2.5.6",
     "concurrently": "^10.0.3"
   }
 }
