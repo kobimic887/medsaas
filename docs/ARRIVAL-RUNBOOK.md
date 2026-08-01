@@ -82,7 +82,7 @@ plausible-looking address you find in a document.
 | Placeholder | What it is | Needed by |
 |---|---|---|
 | `<BOX_IP>` / `<BOX_USER>` | the box's address on the Science Park network, and an SSH account | §4 |
-| `<IPMI_IP>` / `<IPMI_USER>` / `<IPMI_PASS>` | out-of-band access — the only way back in if you break networking | §3 |
+| ~~`<IPMI_*>`~~ | ⛔ **Do not expect it.** The hosting company controls access and we cannot ask. See **§1c** | — |
 | `<83_HOST>` / `<83_USER>` | SSH to `83.229.87.94` | §8 |
 | `<BOX_DOMAIN>` | the DNS name the box answers on, for its Let's Encrypt certificate | §6 |
 | `<ORACLE_HOST>` / `<ORACLE_USER>` | Oracle's Postgres holds the only copy of the Tanimoto index | §10 |
@@ -91,7 +91,10 @@ plausible-looking address you find in a document.
 | **Atlas allowlist access** | to add the box's IP. ⚠ **Not needed for §1–§10**; the ADMET worker in §11 polls Mongo and cannot start without it | §11 |
 | `.env` values | for the **box's own services** only (`deploy/box/.env.example` is the template). The API's `.env` stays on 83 | §5 |
 
-**If the operator does not have `<IPMI_*>`, stop.** Do not begin §3 without a way back in.
+⚠ **There is no guaranteed way back in.** The box is in a managed building, we do not control
+SSH, and we cannot ask them anything. **Read §1c before touching the firewall or sshd** — it
+contains the probe that tells you what you actually have, and the deadman switch that makes
+the two lockout-capable steps survivable.
 
 **Not needed, and do not ask for them:** Stripe dashboard access (nothing repoints), or an
 Atlas connection string for the docking path (it never touches Mongo).
@@ -122,6 +125,122 @@ unless you pass the path you copied it to.
 
 ---
 
+## 1c. ⚠ We do not control access, and we cannot ask. Probe, then adapt.
+
+**The box sits in a building managed by another company. They control SSH. We probably have no
+IPMI, and we cannot ask them questions — what we get is what we get.** (Owner, 2026-08-01.)
+
+An earlier version of this section said *"stop without IPMI"*, and a later one said *"ask the
+hosting company these seven questions"*. **Both are void.** You cannot stop and you cannot ask.
+So the first thing you do with a shell is **find out what you actually have**, and the plan
+bends around the answer.
+
+### Run this the moment you have SSH, before changing anything
+
+```bash
+# --- privilege ---
+id -u; sudo -n true 2>/dev/null && echo "SUDO: passwordless" || echo "SUDO: none or needs password"
+
+# --- is there a BMC after all? ---
+ls /dev/ipmi* 2>/dev/null; sudo dmidecode -t 38 2>/dev/null | head -20   # empty = no IPMI
+
+# --- whose firewall is it? ---
+sudo ufw status verbose 2>/dev/null; sudo iptables -S 2>/dev/null | head -30
+systemctl is-active firewalld 2>/dev/null
+
+# --- what does the world see us as, and can we even hold :443? ---
+curl -s https://ifconfig.me; echo
+ip -4 addr show scope global | grep inet          # RFC1918 here = we are behind NAT
+
+# --- outbound: the build needs all three of these ---
+curl -sI --max-time 10 https://registry-1.docker.io/v2/ | head -1   # Docker images
+curl -sI --max-time 10 https://acme-v02.api.letsencrypt.org/directory | head -1  # ACME
+curl -sI --max-time 10 https://github.com | head -1                 # weights, source
+
+# --- who else is on this machine ---
+getent passwd | awk -F: '$3>=1000'; sudo ls /root/.ssh/authorized_keys 2>/dev/null && sudo wc -l /root/.ssh/authorized_keys
+```
+
+**Then the one test that decides the architecture** — run it *from 83*, not from the box:
+
+```bash
+# on the box:  sudo python3 -m http.server 443
+# from 83:
+curl -sS --max-time 10 http://<BOX_IP>:443/ >/dev/null && echo "INBOUND 443 OK" || echo "INBOUND 443 BLOCKED"
+```
+
+Write the result in the state file. Everything below branches on it.
+
+### Branch A — inbound `:443` reaches the box (the designed path)
+
+Proceed with §6 exactly as written: services on loopback, Caddy on `:443` with a Let's Encrypt
+certificate, host firewall admitting only 83. Nothing changes.
+
+### Branch B — inbound is blocked, or the box is behind NAT
+
+**This is survivable and does not need anyone's permission, because outbound almost always
+works even when inbound does not.** Invert the direction: the **box dials out to 83** and holds
+a persistent tunnel; 83 then talks to a local port as if the services were on localhost.
+
+```bash
+# On the BOX, as a systemd unit with Restart=always:
+ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+    -R 127.0.0.1:8443:127.0.0.1:443 <83_USER>@83.229.87.94
+```
+
+83 then points at `https://127.0.0.1:8443/...` instead of `https://<BOX_DOMAIN>/...`, and the
+cutover in §9 is the same settings change against a different hostname.
+
+> **This is not a reversal of the "no VPN, no tunnel" decision.** That decision (2026-07-29)
+> rejected WireGuard/Tailscale on the grounds that *TLS already solves this* — which assumed we
+> control inbound `:443`. **If we do not, the premise is gone and so is the conclusion.** Prefer
+> Branch A whenever inbound works; use Branch B only when the probe says it does not, and
+> record which one you used.
+
+Trade-offs to accept knowingly: one more moving part; the tunnel must be a `Restart=always`
+unit or a dropout takes docking down silently; and `assertConfiguredUrlsArePublic` **would**
+reject a `127.0.0.1` URL — but it has a single call site on the admin-UI PATCH path, so set the
+loopback URL via `.env`/direct DB update rather than through that form.
+
+### Exactly two steps can lock you out. Deadman-switch both.
+
+- **§5.1** — `UFW default deny` + disabling password auth
+- **§6.3** — the firewall rule admitting only 83's IP to `:443`
+
+Nothing else in §1–§12 can cost you the machine; everything else is a container, a file, or a
+setting reachable over the session you already have. **Since re-entry now means another
+company's ticket queue with no SLA we know of, schedule the undo before you make the change:**
+
+```bash
+# 1. BEFORE touching the firewall, schedule a revert 10 minutes out.
+sudo systemd-run --on-active=10min --unit=ufw-deadman \
+  /bin/sh -c 'ufw --force reset && ufw allow OpenSSH && ufw --force enable'
+
+# 2. Make the risky change.
+sudo ufw default deny incoming && sudo ufw allow from <83_IP> to any port 443 && sudo ufw --force enable
+
+# 3. Prove access FROM A SECOND, NEW SSH SESSION. An established TCP connection survives a
+#    firewall that would refuse a new one, so testing from your current shell proves nothing.
+
+# 4. Only once the NEW session works, cancel the revert.
+sudo systemctl stop ufw-deadman.timer 2>/dev/null; sudo systemctl reset-failed ufw-deadman 2>/dev/null || true
+```
+
+**Never close your working session while changing sshd or the firewall.** For `sshd_config`,
+same pattern — `sshd -t` catches syntax errors but not "you just locked out your own key".
+
+### Default to touching nothing you do not have to
+
+**If the probe shows a firewall already active and not ours, leave it alone.** The real security
+requirement for this box is that its *services* are not open to the internet, and that is
+satisfied by binding every service to `127.0.0.1` and putting Caddy in front — which carries
+**zero lockout risk**. `ufw default deny` is belt-and-braces on top of that.
+
+**A firewall we did not need is a poor reason to lose a €24k machine to someone else's ticket
+queue.** If §5.1 is not clearly ours to make, skip it, record that you skipped it, and move on.
+
+---
+
 ## 2. Before the box ships — do these now, they need no hardware
 
 | # | Task | State |
@@ -142,29 +261,31 @@ Tanimoto Postgres.
 
 ---
 
-## 3. Physical setup — the gate on everything, and nobody is assigned to it
+## 3. Physical setup — done by the hosting company, not by us
 
-**The owner will not be in Amsterdam.** Before any software step can start, somebody
-physically present has to:
+**The building's management company racks and cables the machine. We do not, and we cannot
+direct them.** So this section is not a task list — it is **what to verify was done**, once you
+have a shell, and what to do about each thing that was not.
 
-1. Unbox a ~30 kg Big-Tower; check the cards have not shifted in transit and every PCIe power
-   cable is latched.
-2. Plug it into a circuit that carries the sustained load, and confirm the room can shed that
-   heat continuously. (The old 1,620 W figure assumed 2× 575 W GeForce cards; with 4× RTX PRO
-   4000 it is substantially lower — **recompute it from the delivered parts, do not reuse the
-   number**.)
-3. Cable **two** network connections: a data port, and **IPMI on its own port with its own
-   address**.
-4. Set the IPMI address and **change its default credentials before anything else.** IPMI is
-   the only way back in when the network configuration is wrong, and it will be wrong at least
-   once.
-5. Configure the Science Park router: a static lease or reservation for `<BOX_IP>`.
+Verify from §1c's probe plus §4's acceptance checks:
 
-**Assign a name to this.** It is a couple of hours of work by someone on site and it needs
-nothing but hands and the IPMI credentials. Until it happens the box is a heavy box. Once IPMI
-is up, everything below can be done from anywhere.
+| What | How you find out | If it is wrong |
+|---|---|---|
+| Cards seated, PCIe power latched | `nvidia-smi` shows **four** cards (§4) | Fewer than four is a hardware fault, not a config problem — it is a vendor/hosting conversation, and everything else can proceed on the cards that do appear |
+| Adequate power and cooling | GPU stress test in §4 — watch for thermal throttling | Record it and proceed at reduced load. Not fixable by us |
+| Data network | you have SSH, so this is proven | — |
+| IPMI on its own port | `ls /dev/ipmi*`, `dmidecode -t 38` (§1c) | Expected to be absent. **§1c Branch B and the deadman switch are the answer** |
+| Static address | `ip -4 addr`, `curl ifconfig.me` (§1c) | An RFC1918 address means NAT → **§1c Branch B** |
 
-Do not start §4 until the operator confirms all five, explicitly. Ask; do not assume.
+⚠ **Do not block on any of these.** The old version of this section said *"Assign a name to
+this"* and *"do not start until the operator confirms all five, explicitly."* Neither is
+available: the work is another company's, and we cannot ask them for confirmation. **Probe,
+record what you found in the state file, and route around what is missing.**
+
+The one thing genuinely worth doing early: **run §4 acceptance in full before building
+anything on top.** If the delivered machine does not match [BOX-SPEC.md](./BOX-SPEC.md) §2,
+that is a vendor conversation and it is much easier to have on day one than after the migration
+is half done.
 
 ### State file protocol
 
@@ -226,6 +347,9 @@ not something to work around.
 ## 5. Base platform
 
 1. SSH keys only, passwords off. `unattended-upgrades`. UFW default deny.
+   ⚠ **This is one of only two lockout-capable steps in the runbook.** If you do not have
+   IPMI, use the deadman switch in **§1c** — schedule the undo before you make the change, and
+   verify with a *second, new* SSH session before cancelling it.
 2. **Docker's published ports bypass UFW.** This already bit this project on Oracle, where
    `3000` and `8080` were internet-reachable behind a default-deny firewall. Bind every
    publish to `127.0.0.1` and let the reverse proxy be the only listener.
@@ -309,7 +433,12 @@ an estimate from typical box dimensions and has never been measured.
 
 ## 6. Ingress — public hostname over HTTPS, firewalled to 83
 
-**Decided 2026-07-29: no VPN, no tunnel.** Earlier drafts floated WireGuard or Tailscale. That
+> ⚠ **This section assumes inbound `:443` reaches the box. Run the §1c probe first.** We are in
+> a managed building, we do not control the network, and we cannot ask. If inbound is blocked
+> or the box is behind NAT, **§1c Branch B** (a box-initiated reverse tunnel to 83) is the
+> fallback, and the rest of this section does not apply.
+
+**Decided 2026-07-29, and still preferred where it works: no VPN, no tunnel.** Earlier drafts floated WireGuard or Tailscale. That
 was a suggestion in a compose-file comment which four documents then repeated as though it
 were settled. It never was, and it is rejected — it adds a third-party account and a daemon on
 both machines to solve a problem TLS already solves.
@@ -325,7 +454,9 @@ All of this is on the box; **none of it is on 83**:
 2. **Caddy on `:443`** with a Let's Encrypt certificate for `<BOX_DOMAIN>`, reverse-proxying to
    those loopback ports. One certificate, one open port.
 3. The host firewall admits **only 83's IP** to `:443`. That is the allowlist, and it is one
-   rule.
+   rule. ⚠ **The second lockout-capable step** — if this rule is written wrong it can also
+   drop your own SSH. Use the **§1c** deadman switch, and make sure the rule scopes to `:443`
+   rather than becoming a blanket policy.
 
 **The paths already line up, so the cutover is hostname-only:**
 
