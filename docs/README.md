@@ -25,6 +25,18 @@ bloat it.
 > **Box day is a port swap, then a settings change** — [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md)
 > §8 then §9. Same day, owner's call.
 >
+> **Settled 2026-08-01:**
+> - **Arrival day ships on CPU Vina.** `engines/autodock_gpu.py` is a stub that raises
+>   unconditionally — and that is **not a blocker**. The box exists so docking stops depending
+>   on Moscow (*"not throughput, not cost"*), and 32 cores of Vina does that. AutoDock-GPU is a
+>   follow-up, buildable on the box at leisure.
+> - **We do not control access.** The building's management company owns SSH, IPMI is unlikely,
+>   and **we cannot ask them anything.** [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §1c is a
+>   probe, not a question list, and carries the reverse-tunnel fallback if inbound `:443` is
+>   blocked.
+> - **Only two steps can lock you out** (§5.1, §6.3). Both carry a deadman switch. Default to
+>   touching nothing — loopback + Caddy already satisfies the requirement at zero lockout risk.
+>
 > **Decisions that override anything older you read:**
 > - **The box is compute only.** The API stays on 83; the database stays in **MongoDB Atlas**
 >   and does not move. Nothing on the box opens a Mongo connection.
@@ -77,7 +89,7 @@ bloat it.
 
 | Path | What |
 |---|---|
-| [`deploy/box/`](../deploy/box/) | The box's stack: `compose.yml`, `.env.example`, and the three services — [docking](../deploy/box/docking/), [diffdock](../deploy/box/diffdock/), [convertstr](../deploy/box/convertstr/), each with a Dockerfile carrying `test` and `runtime` targets and a pytest suite. **Never had an execution host** — built on the box, per §5 of the runbook. |
+| [`deploy/box/`](../deploy/box/) | The box's stack: `compose.yml`, `.env.example`, and the three services — [docking](../deploy/box/docking/), [diffdock](../deploy/box/diffdock/), [convertstr](../deploy/box/convertstr/), each with a Dockerfile carrying `test` and `runtime` targets and a pytest suite. Every image pins `--platform linux/amd64` and **none has ever been executed** — they get built natively on the box (§5). ⚠ `autodock-gpu` is a **stub that always 503s**; ship on `vina`. |
 | [`deploy/box/docking/BRIEF.md`](../deploy/box/docking/BRIEF.md) | Self-contained build brief for the docking service. The byte-level contract, reproducible receptor prep, the recovered search box, and the engine interface that makes it testable without a GPU. |
 | [`deploy/chem_beo/`](../deploy/chem_beo/) | A patch for the **legacy** production API: service addresses become env vars, the credit charge becomes atomic and refundable, five money/data routes get closed. Verified by running it against the real database. **Written, rehearsed, unapplied** — and `chem_beo` is serving the public site. |
 | [`deploy/83/systemd/`](../deploy/83/systemd/) | The four production units, and the staged retirement plan for the legacy stack after the port swap. |
