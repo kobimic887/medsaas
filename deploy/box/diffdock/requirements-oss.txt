@@ -40,7 +40,7 @@ torch-geometric==2.6.1
 
 e3nn==0.5.1
 networkx==2.8.4
-numpy==1.26.4
+numpy==2.2.6
 pandas==1.5.1
 prody==2.2.0
 pybind11==2.11.1
