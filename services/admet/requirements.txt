@@ -3,4 +3,4 @@
 #
 # `pika` is gone: the transport is MongoDB now (docs/BOX-ARCHITECTURE.md §5).
 pymongo==4.10.1
-requests==2.32.3
+requests==2.33.0

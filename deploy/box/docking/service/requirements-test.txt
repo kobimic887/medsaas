@@ -1,2 +1,2 @@
 # Test-only dependency; runtime image intentionally does not ship pytest.
-pytest==8.3.5
+pytest==9.1.1

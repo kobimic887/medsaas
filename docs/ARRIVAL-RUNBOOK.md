@@ -169,7 +169,10 @@ getent passwd | awk -F: '$3>=1000'; sudo ls /root/.ssh/authorized_keys 2>/dev/nu
 curl -sS --max-time 10 http://<BOX_IP>:443/ >/dev/null && echo "INBOUND 443 OK" || echo "INBOUND 443 BLOCKED"
 ```
 
-Write the result in the state file. Everything below branches on it.
+Write the result in the state file. **Everything below branches on it, and there is no
+default** — owner's call, 2026-08-01: *decide on the day, from what the probe finds.* Neither
+branch is a fallback for the other. Do not pre-commit to one while planning; do not treat
+Branch B as a defeat if the probe points there.
 
 ### Branch A — inbound `:443` reaches the box (the designed path)
 
@@ -194,8 +197,8 @@ cutover in §9 is the same settings change against a different hostname.
 > **This is not a reversal of the "no VPN, no tunnel" decision.** That decision (2026-07-29)
 > rejected WireGuard/Tailscale on the grounds that *TLS already solves this* — which assumed we
 > control inbound `:443`. **If we do not, the premise is gone and so is the conclusion.** Prefer
-> Branch A whenever inbound works; use Branch B only when the probe says it does not, and
-> record which one you used.
+> Branch A when the probe says inbound works, Branch B when it does not. **That is the whole
+> decision rule** — record which one you used and why.
 
 Trade-offs to accept knowingly: one more moving part; the tunnel must be a `Restart=always`
 unit or a dropout takes docking down silently; and `assertConfiguredUrlsArePublic` **would**

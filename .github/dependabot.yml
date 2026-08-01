@@ -1,0 +1,101 @@
+# Dependabot configuration.
+#
+# WHY THIS EXISTS
+#   The repo sat at 19 open alerts, and 15 of them were in Python services that have never
+#   been deployed. Most of those were a single package — `torch` — pinned deliberately, so the
+#   alerts could never be actioned and would fire forever. An alert list that can never reach
+#   zero stops being read, which is worse than having no alerts at all.
+#
+#   So: every `ignore` below is a DELIBERATE pin with a stated reason and a condition under
+#   which it should be revisited. Nothing here is ignored because it was inconvenient.
+#
+# BEFORE ADDING AN IGNORE: bump it instead if you can. These four could not be.
+
+version: 2
+updates:
+  # ── JavaScript ─────────────────────────────────────────────────────────────────────
+  - package-ecosystem: npm
+    directories:
+      - "/"
+      - "/client"
+      - "/server"
+      - "/services/mcp-server"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    ignore:
+      # react-router / react-router-dom: the fix for the open-redirect and constructor-
+      # injection advisories lands only in v7, and this app is on 6.30.4. That is a framework
+      # migration with breaking route API changes, not a patch bump — see docs/NEXT-SESSION.md
+      # "Do NOT do these" #2. Revisit as a planned migration, never as a Dependabot PR.
+      - dependency-name: "react-router"
+        versions: ["< 7"]
+      - dependency-name: "react-router-dom"
+        versions: ["< 7"]
+
+  # ── Python: the compute-box services ───────────────────────────────────────────────
+  - package-ecosystem: pip
+    directories:
+      - "/deploy/box/convertstr"
+      - "/deploy/box/diffdock"
+      - "/deploy/box/docking/service"
+      - "/services/admet"
+      - "/services/glioblastoma-predictor"
+      - "/services/gromacs-api"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    ignore:
+      # torch is pinned to 2.7.1+cu128 in BOTH deploy/box/diffdock/requirements-oss.txt and
+      # services/admet/requirements-model.txt, and the pin is load-bearing twice over:
+      #
+      #   1. The GPUs are Blackwell (sm_120), which needs CUDA 12.8. The +cu128 build is the
+      #      requirement, not the version number — and Dependabot cannot see local version
+      #      suffixes, so it will keep proposing a plain `torch` that silently drops CUDA.
+      #      That failure does not raise: the worker starts, predicts correctly, and runs on
+      #      the CPU forever. See the header of services/admet/requirements-model.txt.
+      #   2. 2.7.1 is the LAST release with cp310 wheels for this line, which is what fixes
+      #      DiffDock's interpreter at 3.10, and the four PyG compiled extensions are built
+      #      against exactly this torch. A mismatch is an import-time crash.
+      #
+      # REVISIT WHEN: the box is running and there is a maintenance window to re-qualify the
+      # whole cu128 + PyG extension set together. Never as a standalone bump.
+      - dependency-name: "torch"
+
+      # scikit-learn 1.1.0 in deploy/box/diffdock/requirements-oss.txt is UPSTREAM DiffDock's
+      # own pin. That file's stated strategy is that every version which CAN stay at upstream's
+      # pin DOES, because DiffDock is a 2022-era codebase whose requirements.txt is a
+      # known-working set. This is scoped to that file only — services/glioblastoma-predictor
+      # is on 1.5.2 and is NOT ignored, so it will still get alerts.
+      #
+      # REVISIT WHEN: DiffDock is re-qualified against a newer stack, or upstream moves.
+      - dependency-name: "scikit-learn"
+        versions: ["< 1.5.0"]
+
+  # ── Docker base images ─────────────────────────────────────────────────────────────
+  - package-ecosystem: docker
+    directories:
+      - "/"
+      - "/deploy/box/convertstr"
+      - "/deploy/box/diffdock"
+      - "/deploy/box/docking/service"
+      - "/services/admet"
+      - "/services/glioblastoma-predictor"
+      - "/services/gromacs-api"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    ignore:
+      # The RDKit cartridge image is pinned by digest in deploy/box/.env.example because the
+      # dump it restores is pg_dump archive format 1.16, which only PostgreSQL 17's pg_restore
+      # reads. The image tags are RDKit release numbers and say nothing about the Postgres
+      # major inside, so a tag bump could silently move to 18 — and the thing it would break is
+      # the only copy of 2,951,975 molecules. See scripts/verify-tanimoto-restore.sh.
+      - dependency-name: "informaticsmatters/rdkit-cartridge-debian"
+
+  # ── GitHub Actions ─────────────────────────────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
