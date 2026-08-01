@@ -53,9 +53,9 @@ bloat it.
 >
 > **The largest live exposure:** ~60 unauthenticated `chem_beo` routes, on the public site
 > right now. `/api/sanitizedminimalsdf/<key>` returns real customer results with no token.
-> ⛔ **Settled 2026-08-01: the patch will never be applied** — `chem_beo` is going away at the
-> port swap, so **the port swap is the remediation**. It has no dependency on the box.
-> ⚠ A rollback to `:3000` re-opens all of it.
+> ⛔ **Settled 2026-08-01: the patch will never be applied**, and **the port swap stays on
+> arrival day** — both put to the owner and decided. So the exposure until then is knowingly
+> accepted, and the port swap is the remediation. ⚠ A rollback to `:3000` re-opens all of it.
 
 ## Where to start
 

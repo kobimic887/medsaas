@@ -362,8 +362,14 @@ not delegate the plumbing check — run the script.
 
 ## 8. Port swap — this repo takes 5173
 
-**Owner's call, 2026-08-01: same day as the cutover.** Do it *after* §7 passes — if the box
-services are not good, you never touch the live site at all.
+**Owner's call, 2026-08-01: same day as the cutover, and it stays on arrival day.** It was put
+to the owner that this step has no dependency on the box and could ship earlier — it is the
+only thing that closes `chem_beo`'s ~60 unauthenticated routes, since that patch will never be
+applied. The answer was to keep it here. ⛔ **Do not re-raise it.**
+
+Do it *after* §7 passes — if the box services are not good, you never touch the live site at
+all. ⚠ **And get §7 right**, because the rollback path returns to an API with those routes
+open, so a botched swap now costs more than a delayed one.
 
 Today (deliberately, since 2026-07-31):
 

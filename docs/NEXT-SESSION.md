@@ -141,15 +141,18 @@ the port swap is worth.
 `/api/generate-molecules` reaches the NVIDIA key (and is the rate-limit cause), and there is a
 credit-minting hole at `chem_beo:3343`. None of that will now be fixed in place.
 
-**So the port swap is the remediation.** That reframes it from a deployment convenience into
-the thing that closes this, which means two things:
+**So the port swap is the remediation.** Two consequences, and the first was put to the owner
+directly:
 
-1. **It is worth doing promptly**, and does not need to wait for the box — §8 has no dependency
-   on the box. It was sequenced onto arrival day for convenience, not necessity.
+1. **It stays on arrival day.** §8 has no dependency on the box, so it *could* have moved
+   earlier — the owner was asked on 2026-08-01 and chose to keep it where it is. ⛔ **Do not
+   re-raise this.** The exposure until then is therefore **knowingly accepted**, not an
+   oversight; treat it as a decision with a stated cost rather than an open finding.
 2. **⚠ Rolling back re-opens all of it.** [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §8's
    rollback path returns to `chem_beo`, permanently unpatched. That makes it an emergency
-   measure with a real security cost, not a comfortable resting state — and raises the value of
-   getting §7 validation right *before* touching 5173.
+   measure with a real security cost, not a comfortable resting state — and it raises the value
+   of getting §7 validation right *before* touching 5173, because a botched swap now costs more
+   than a delayed one.
 
 ---
 
