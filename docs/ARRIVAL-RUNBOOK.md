@@ -247,221 +247,25 @@ queue.** If §5.1 is not clearly ours to make, skip it, record that you skipped 
 |---|---|---|
 | 2.1 | **Capture the docking output contract from Asinex while Moscow still answers.** | ✅ **done 2026-07-28** — [DOCKING-CONTRACT.md](./DOCKING-CONTRACT.md). Read it; do not re-derive it |
 | 2.2 | **`pg_dump` Oracle's Tanimoto Postgres.** An unauthenticated, internet-reachable `DELETE` reaches this dataset, so do not wait for arrival day | ✅ **done 2026-07-29** — `~/backups/tanimoto/tonomitosql-20260729.dump`, 1.2 GB, sha256 verified |
-| 2.3 | **Prove that dump actually restores**, with a row count — not just a zero exit code | ❌ **open, but now unblocked.** Needs an x86_64 Docker host; the Mac has none, but the owner's **Windows PC (12700K / RTX 3060 / WSL2)** does. `scripts/verify-tanimoto-restore.sh <dump>` asserts 2,951,975 rows |
+| 2.3 | **Prove that dump actually restores**, with a row count | ⏸ **deferred to the box — §10.** It needs an x86_64 Docker host and there is no convenient one; the Mac has no container runtime and 83 is a 1 GB production box. Acceptable to defer: the sha256 and the Postgres-version compatibility are already verified, and Oracle is still live as a re-dump fallback. **It must still happen before §12**, and §10 runs it |
 | 2.4 | **Write the three box services** | ✅ **done** — `deploy/box/docking/service/`, `deploy/box/diffdock/`, `deploy/box/convertstr/`, each with a Dockerfile carrying `test` and `runtime` targets and a pytest suite |
 | 2.5 | **Decide the GPU** | ✅ **settled 2026-08-01** — 4× RTX PRO 4000 |
 | 2.6 | **Order the machine** | ✅ **ordered 2026-08-01.** [BOX-SPEC.md](./BOX-SPEC.md) §5 is now an invoice/arrival checklist — confirm the ~€5.2k VAT reverse charge was applied |
 
-### ✅ An x86_64 build host exists after all — the owner's Windows PC
+### Where the amd64 images actually get built
 
-**Corrected 2026-08-01.** This section used to say the three services had *"never had an
-execution host"*, because the only Docker hosts reachable were 83 (2 cores, 1 GB RAM, and it is
-production — an OOM there takes the live site down) and Oracle (arm64, no `binfmt` amd64
-emulation). **That is no longer true.**
-
-The owner has a **Windows PC: i7-12700K (12C/20T), RTX 3060, WSL2** — x86_64 with CUDA and a
-container runtime. It is not the box, but it is the right *architecture*, and that is what the
-`--platform linux/amd64` pin needed.
-
-**What it can genuinely do, before the box ships:**
-
-| Task | Why it works there |
-|---|---|
-| **Prove the Tanimoto restore** (§2.3) | `scripts/verify-tanimoto-restore.sh` needs only "any x86_64 host with Docker". This is the open item it was blocked on |
-| **Build and test all three services** | Native amd64, no QEMU. `deploy/box/docking/service/test.sh`, plus the convertstr and diffdock suites |
-| **`RUN_VINA=1` — the real CPU docking path** | 12 cores. **This is the engine arrival day will actually run** (see the AutoDock-GPU warning below), so validating it here is validating the critical path |
-| **Implement and validate AutoDock-GPU** | The stub is the single biggest blocker in this runbook. RTX 3060 is Ampere `sm_86`: build for `sm_86`, get the engine *correct*, then it is a recompile for `sm_120` on the box rather than a from-scratch build on delivery day |
-| **OSS DiffDock inference end to end** | 12 GB VRAM against a ~2 GB docking working set; cu128 torch supports Ampere |
-
-**What it cannot do — do not over-claim it:**
-
-- **It is not Blackwell.** Nothing built for `sm_86` runs on `sm_120` without a rebuild, and a
-  `sm_120` compile cannot be *executed* here, only cross-compiled. §4's driver and
-  `compute_cap` checks still have to happen on the box.
-- **It is not a performance proxy.** An RTX 3060 tells you nothing useful about RTX PRO 4000
-  throughput.
-- **WSL2 specifics to check first:** GPU passthrough needs a recent NVIDIA *Windows* driver plus
-  `nvidia-container-toolkit` inside the distro; WSL2 caps memory at ~50 % of RAM by default
-  (`.wslconfig`) which the Postgres restore may exceed; and that restore needs the 1.2 GB dump
-  plus room for the restored database — budget ~20 GB free.
-
-**Owner's call stands that the *final* build happens on the box** — native, correct arch, no
-surprises. But "build on the box" was chosen because there was no alternative, and there now
-is. **Use the Windows PC to de-risk, not to ship:** get the code correct and the tests green
-there, so arrival day is a recompile rather than a debugging session.
+Every image pins `--platform linux/amd64`, and for a long time no host could run them: 83 is
+2 cores / 1 GB and is production (an OOM there takes the live site down), and Oracle is arm64
+with no `binfmt` emulation. **Owner's call, unchanged: build them on the box.** It is the right
+architecture, it is not production, and a native build has no emulation surprises.
 
 ⚠ Do not install `binfmt` on Oracle — that is a privileged container on the host holding the
-only copy of production Tanimoto Postgres. That advice is unchanged and unrelated.
+only copy of production Tanimoto Postgres.
 
----
-
-## 3. Physical setup — done by the hosting company, not by us
-
-**The building's management company racks and cables the machine. We do not, and we cannot
-direct them.** So this section is not a task list — it is **what to verify was done**, once you
-have a shell, and what to do about each thing that was not.
-
-Verify from §1c's probe plus §4's acceptance checks:
-
-| What | How you find out | If it is wrong |
-|---|---|---|
-| Cards seated, PCIe power latched | `nvidia-smi` shows **four** cards (§4) | Fewer than four is a hardware fault, not a config problem — it is a vendor/hosting conversation, and everything else can proceed on the cards that do appear |
-| Adequate power and cooling | GPU stress test in §4 — watch for thermal throttling | Record it and proceed at reduced load. Not fixable by us |
-| Data network | you have SSH, so this is proven | — |
-| IPMI on its own port | `ls /dev/ipmi*`, `dmidecode -t 38` (§1c) | Expected to be absent. **§1c Branch B and the deadman switch are the answer** |
-| Static address | `ip -4 addr`, `curl ifconfig.me` (§1c) | An RFC1918 address means NAT → **§1c Branch B** |
-
-⚠ **Do not block on any of these.** The old version of this section said *"Assign a name to
-this"* and *"do not start until the operator confirms all five, explicitly."* Neither is
-available: the work is another company's, and we cannot ask them for confirmation. **Probe,
-record what you found in the state file, and route around what is missing.**
-
-The one thing genuinely worth doing early: **run §4 acceptance in full before building
-anything on top.** If the delivered machine does not match [BOX-SPEC.md](./BOX-SPEC.md) §2,
-that is a vendor conversation and it is much easier to have on day one than after the migration
-is half done.
-
-### State file protocol
-
-**First action after your first successful SSH:**
-
-```bash
-sudo mkdir -p /srv/archive && sudo chown $USER /srv/archive
-test -f /srv/archive/MIGRATION-STATE.md || printf '# Migration state\n\n' | tee /srv/archive/MIGRATION-STATE.md
-```
-
-**Before doing anything else in any later session, read it:**
-
-```bash
-cat /srv/archive/MIGRATION-STATE.md
-```
-
-Resume from the last line. Do not redo completed steps; several are not idempotent. After
-every verified step append one line:
-
-```
-YYYY-MM-DD HH:MM  §<section>  DONE|BLOCKED|SKIPPED  <one line of detail>
-```
-
-Never put a credential in it, and never put an IP in it that the operator has not already
-shared in the open.
-
----
-
-## 4. Hardware acceptance — one hour, do not skip
-
-Far cheaper to find a wrong part now than after the migration is half done, and the warranty
-is **pick-up**: a fault means the machine is gone for 1–3 weeks.
-
-```bash
-nvidia-smi                                              # FOUR cards, 24 GB each, driver >= 570
-nvidia-smi --query-gpu=compute_cap --format=csv         # 12.x, matching sm_120
-dmidecode -t memory | grep -E 'Size|Speed|Type:'        # FOUR 32 GB DDR5-5600 ECC modules
-lscpu | grep -E 'Model name|^CPU\(s\)'                  # 9975WX, 32C / 64T
-lsblk && cat /proc/mdstat                               # mirror assembled, 4 TB + 24 TB raw
-efibootmgr -v                                           # EFI entries on BOTH mirror disks
-```
-
-**Driver branch is the likeliest fault.** If Coreto shipped the 550 branch the cards will not
-initialise on Blackwell. Replace it before doing anything else.
-
-Two tests that must happen **while the machine is still empty**:
-
-- **Pull one mirror disk and boot from the other.** A mirror that only boots off one disk is
-  not a mirror. Doing this later means doing it with live service state on it.
-- **Load all four GPUs flat out for 30+ minutes** and watch for thermal throttling. If it
-  throttles, raise it in week one, not month six.
-
-Record the actual delivered configuration in the state file. If it does not match
-[BOX-SPEC.md](./BOX-SPEC.md) §2, that is a stop under rule 6 — it is a vendor conversation,
-not something to work around.
-
----
-
-## 5. Base platform
-
-1. SSH keys only, passwords off. `unattended-upgrades`. UFW default deny.
-   ⚠ **This is one of only two lockout-capable steps in the runbook.** If you do not have
-   IPMI, use the deadman switch in **§1c** — schedule the undo before you make the change, and
-   verify with a *second, new* SSH session before cancelling it.
-2. **Docker's published ports bypass UFW.** This already bit this project on Oracle, where
-   `3000` and `8080` were internet-reachable behind a default-deny firewall. Bind every
-   publish to `127.0.0.1` and let the reverse proxy be the only listener.
-3. Partition and mount `/srv/scratch`, `/srv/cache`, `/srv/archive`.
-4. `nvidia-container-toolkit`, then confirm a **container** sees all four cards — not just the
-   host.
-
-### Build the three services, in this order
-
-Each is self-contained and needs no GPU except where noted.
-
-```bash
-# 1. convertSTR — CPU only, no network, smallest and highest immediate value:
-#    it is DOWN in production today, which is why DiffDock is broken.
-docker build --platform linux/amd64 --target test -t pyxis-convertstr:test deploy/box/convertstr
-docker run --rm --network none pyxis-convertstr:test python -m pytest -q
-
-# 2. Docking — builds both targets, runs the offline replay suite, then stands the real
-#    service up on an internal-only network and checks it against the immutable oracle
-#    (scripts/verify-docking-response.mjs) using the captured 1cx7 baseline.
-deploy/box/docking/service/test.sh
-
-#    Once the cards are up, the CPU-Vina path too (downloads the real RCSB receptor):
-RUN_VINA=1 deploy/box/docking/service/test.sh
-
-# 3. DiffDock — the wrapper's 28 tests run without a GPU; inference does not.
-docker build --platform linux/amd64 --target test -t pyxis-diffdock:test deploy/box/diffdock
-docker run --rm pyxis-diffdock:test python -m pytest -q
-deploy/box/diffdock/fetch-weights.sh    # 124 MB into /srv/models/diffdock, ONCE, before first start
-```
-
-Engines: **classic AutoDock Vina** across the 32 cores, **OSS DiffDock**
-(`gcorso/DiffDock`, MIT) on torch cu128, and a **`replay`** engine that returns the committed
-reference payload with no GPU at all.
-
-> ## ⛔ AutoDock-GPU IS NOT IMPLEMENTED. Read this before planning the day.
->
-> Earlier versions of this runbook described "AutoDock-GPU compiled for `sm_120`" as the
-> workhorse and the reason the machine exists. **That engine does not exist in this repo.**
->
-> `deploy/box/docking/service/docking_service/engines/autodock_gpu.py` is a stub whose `dock()`
-> raises `DockingUnavailable` **unconditionally**:
->
-> ```python
-> class AutoDockGpuEngine:
->     """Deliberately unavailable until native hardware qualification completes."""
->     @staticmethod
->     def require_qualified() -> None:
->         raise DockingUnavailable("AutoDock-GPU is unavailable until hardware qualification is complete")
-> ```
->
-> `deploy/box/docking/service/tests/test_http_contract.py` asserts that 503. It is intentional,
-> not a bug — but it means **selecting `DOCKING_ENGINE=autodock-gpu` makes every dock return
-> 503.** `deploy/box/.env.example` shipped that as its default until 2026-08-01; it is now
-> `vina`.
->
-> **What actually works today:** `vina` (real — 81 + 279 lines that shell out to a Vina binary)
-> and `replay`. So arrival day can genuinely complete on **CPU Vina across 32 cores**, which is
-> a first-class path, not a workaround — but it is not GPU docking.
->
-> **Implementing and qualifying AutoDock-GPU is a separate piece of engineering work**, after
-> the cutover. Do not let §7 pass on `replay` and then cut over on `autodock-gpu`.
-> **Check what you are running before §9:**
->
-> ```bash
-> docker compose -f deploy/box/compose.yml exec docking printenv DOCKING_ENGINE
-> ```
-
-> **Not the DiffDock NIM container.** It requires an NVIDIA AI Enterprise licence, which the
-> owner declined on 2026-07-31 (*"we are not buying nvidia enterprise"*). RTX PRO cards do not
-> change that. Do not re-propose NIM and do not price AI Enterprise.
-
-### Grid map cache
-
-`autogrid` maps are per-receptor, CPU-bound and cacheable. Key them by PDB ID under
-`/srv/cache`. The first dock against a protein pays for the maps; subsequent ligands do not.
-**Record the actual size per receptor in the state file** — the ~60 MB figure in these docs is
-an estimate from typical box dimensions and has never been measured.
+*(A fallback exists: the owner has an x86_64 Windows PC with WSL2 — i7-12700K, RTX 3060 —
+which could host these builds and the §2.3 restore proof. **Do not plan around it.** The owner
+would rather not use it (2026-08-01), and nothing in this runbook requires it. Raise it only if
+something genuinely cannot proceed without an x86_64 host before delivery, and say plainly why.)*
 
 ---
 

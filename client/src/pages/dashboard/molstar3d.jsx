@@ -129,20 +129,30 @@ export function Molstar3D() {
     }
   };
 
+  // Parse SDF text into the pose table and kick off the price lookups.
+  //
+  // Split out from loadSdfData so a caller that has ALREADY fetched the SDF can reuse the
+  // text instead of fetching the same URL a second time. loadSDFStructure did exactly that:
+  // it fetched the SDF to hand to Molstar, then called loadSdfData(url), which fetched it
+  // again and re-ran the whole price fan-out. The route sets no Cache-Control, so the browser
+  // could not be relied on to collapse the two.
+  const applySdfText = (sdfText) => {
+    const parsedData = parseSdfData(sdfText);
+    setSdfData(parsedData);
+    setSdfStatus(parsedData.length > 0 ? 'ok' : 'empty');
+    console.log('SDF data loaded:', parsedData.length, 'poses');
+
+    // Fetch prices for all molecules
+    fetchAllMoleculePrices(parsedData);
+  };
+
   const loadSdfData = async (url) => {
     try {
       console.log('Loading SDF data from URL:', url);
       setIsLoading(true);
       const response = await authedFetch(url);
       if (response.ok) {
-        const sdfText = await response.text();
-        const parsedData = parseSdfData(sdfText);
-        setSdfData(parsedData);
-        setSdfStatus(parsedData.length > 0 ? 'ok' : 'empty');
-        console.log('SDF data loaded:', parsedData.length, 'poses');
-
-        // Fetch prices for all molecules
-        fetchAllMoleculePrices(parsedData);
+        applySdfText(await response.text());
       } else {
         setSdfData([]);
         setSdfStatus('error');
@@ -728,8 +738,8 @@ const _HideMenu =()=>{
                 `);
               }
             }, 700); // Delay to ensure PDB is loaded and UI is ready
-      // Also reload the SDF data for the table
-      loadSdfData(sdfUrl);
+      // Populate the table from the text we already fetched above — no second request.
+      applySdfText(sdfText);
     }
   };
 

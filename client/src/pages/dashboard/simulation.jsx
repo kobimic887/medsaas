@@ -776,17 +776,14 @@ export function Simulation() {
       const pdbUrl = API_CONFIG.buildApiUrl(`/sanitizedpdb/${simResult.simulationKey}`);      
       const sdfUrl = API_CONFIG.buildApiUrl(`/sanitizedminimalsdf/${simResult.simulationKey}`);
       
-      // Fetch user IP address
-      const storeSimulationData = async () => {
-        let currentUserIp = null;
-        try {
-          const ipResponse = await fetch('https://api.ipify.org?format=json');
-          const ipData = await ipResponse.json();
-          currentUserIp = ipData.ip;
-        } catch (ipErr) {
-          console.error('Failed to fetch IP address:', ipErr);
-        }
-        
+      // Store URLs, navigate, and only THEN look up the IP.
+      //
+      // This used to `await fetch('https://api.ipify.org')` before navigating, with no
+      // timeout and no abort. A third-party outage or a slow DNS answer therefore left the
+      // user staring at a finished simulation for as long as the request took to give up —
+      // potentially forever. The IP is diagnostic metadata; it is not worth one second of
+      // the user's time, let alone an unbounded number.
+      const storeSimulationData = () => {
         // Store URLs in localStorage and navigate to Molstar3D
         localStorage.setItem('molstar_pdb_url', pdbUrl);
         localStorage.setItem('molstar_sdf_url', sdfUrl);
@@ -812,7 +809,7 @@ export function Simulation() {
         // Add new simulation pair to dictionary with simulationKey as key
         simulationPairs[simResult.simulationKey] = {
           simulationKey: simResult.simulationKey,
-          userIp: currentUserIp,
+          userIp: null,
           timestamp: new Date().toISOString()
         };
         
@@ -820,6 +817,24 @@ export function Simulation() {
         localStorage.setItem('molstar_simulation_pairs', JSON.stringify(simulationPairs));
         
         navigate('/dashboard/molstar3d');
+
+        // Fire-and-forget, after navigation, with a hard 5s ceiling. Re-reads the dictionary
+        // before writing because the user may have started another simulation by now.
+        fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(5000) })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((ipData) => {
+            if (!ipData?.ip) return;
+            try {
+              const pairs = JSON.parse(localStorage.getItem('molstar_simulation_pairs') || '{}');
+              if (pairs[simResult.simulationKey]) {
+                pairs[simResult.simulationKey].userIp = ipData.ip;
+                localStorage.setItem('molstar_simulation_pairs', JSON.stringify(pairs));
+              }
+            } catch (err) {
+              console.error('Failed to record IP for simulation:', err);
+            }
+          })
+          .catch((ipErr) => console.error('Failed to fetch IP address:', ipErr));
       };
       
       storeSimulationData();

@@ -103,6 +103,11 @@ const PUBLIC_APP_URL = FRONTEND_URL || APP_BASE_URL;
 // behave like the product, not like a locked-down variant nobody chose. Close it
 // deliberately with ALLOW_PUBLIC_SIGNUP=false.
 const PUBLIC_SIGNUP_ENABLED = String(process.env.ALLOW_PUBLIC_SIGNUP ?? 'true').trim().toLowerCase() !== 'false';
+// Newest-first cap on /api/simulation-logs. The Control Panel renders a flat table with no
+// pagination, so this is a safety ceiling rather than a page size: production currently holds
+// single-digit records, and a user would have to run 500 simulations to notice. Revisit as
+// real pagination if that ever happens.
+const SIMULATION_LOG_PAGE_LIMIT = 500;
 const TANIMOTO_API_BASE = (process.env.TANIMOTO_API_BASE || 'http://151.145.91.17:8000').replace(/\/$/, '');
 const SDF_CONVERTER_URL = process.env.SDF_CONVERTER_URL || 'http://83.229.87.94:8001/convertSTR';
 // Default ligand catalog/docking endpoints. Companies override these per-company
@@ -1113,6 +1118,18 @@ async function initializeDatabase() {
       await auditLogsCollection.createIndex({ actorUsername: 1, timestamp: -1 });
       await billingEventsCollection.createIndex({ stripeSessionId: 1 }, { unique: true, sparse: true });
       await billingEventsCollection.createIndex({ username: 1, createdAt: -1 });
+      // simulation_logs had NO index for the queries that actually run against it — only the
+      // unique simulationKey below. `/api/simulation-logs` does find(tenantFilter).sort({
+      // timestamp: -1 }), which without these is a collection scan plus an in-memory sort over
+      // documents that each carry a full receptor PDB. Harmless at today's handful of rows;
+      // expensive in the low thousands, on a 1 GB production host.
+      // Both shapes are indexed because buildTenantFilter keys on companyId for tenanted
+      // users and falls back to username for legacy ones.
+      const simulationLogsCollection = client.db().collection('simulation_logs');
+      await simulationLogsCollection.createIndex({ companyId: 1, timestamp: -1 });
+      await simulationLogsCollection.createIndex({ username: 1, timestamp: -1 });
+      // The cache-hit lookup: findOne({ ...tenantFilter, pdbid, smiles }).
+      await simulationLogsCollection.createIndex({ companyId: 1, pdbid: 1, smiles: 1 });
       // The unique index on simulationKey is what makes enqueueing idempotent — the ADMET
       // GET route queues on every request for a simulation without results, so without it
       // a user refreshing the page queues the same work a dozen times.
@@ -3511,7 +3528,20 @@ app.get('/api/simulation-logs', ensureMongoConnected, authenticateToken, require
   try {
     const simulationLogs = client.db().collection('simulation_logs');
     const tenantFilter = buildTenantFilter(req.user);
-    const logs = await simulationLogs.find(tenantFilter).sort({ timestamp: -1 }).toArray();
+    // Bounded, and without the heavy field.
+    //
+    // This was an unbounded .toArray() returning whole documents, each of which carries a
+    // full docking result — the receptor PDB alone is ~210 KB. The only consumer is the
+    // Control Panel table (client/src/pages/dashboard/controlpanel.jsx), which renders
+    // simulationKey / pdbid / smiles / timestamp / status and passes sdfData + resultsPath
+    // to handleViewInMolstar. It never reads `result`, so excluding it costs nothing and
+    // takes the response from megabytes to kilobytes. The full result stays available
+    // per-record via /api/sanitizedpdb/:key and /api/sanitizedminimalsdf/:key.
+    const logs = await simulationLogs
+      .find(tenantFilter, { projection: { result: 0 } })
+      .sort({ timestamp: -1 })
+      .limit(SIMULATION_LOG_PAGE_LIMIT)
+      .toArray();
     res.json(logs);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -5016,7 +5046,7 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
         }
         else{
           const smilesRequestBody = { smiles: ligand };
-          logToFile('SMILES->SDF REQUEST: ' + JSON.stringify(smilesRequestBody));
+          logToFile('SMILES->SDF REQUEST: ' + describeForLog(smilesRequestBody, 'body'));
           const sdfResponse = await fetchWithTimeout(SDF_CONVERTER_URL, {
             method: 'POST',
             headers: {
@@ -5032,7 +5062,7 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
           }
 
           const sdfJson = await sdfResponse.json();
-          logToFile('SMILES->SDF RESPONSE: ' + JSON.stringify(sdfJson));
+          logToFile('SMILES->SDF RESPONSE: ok ' + describeForLog(sdfJson, 'body'));
           const sdfContent = sdfJson.sdf;
           const normalizedSdf = sdfContent.replace(/\r\n/g, '\n');
           const sdfWithDelimiter = normalizedSdf.includes('$$$$') ? normalizedSdf : `${normalizedSdf}\n$$$$\n`;
@@ -5056,7 +5086,9 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
         save_trajectory: save_trajectory,
         is_staged: is_staged
       };
-      logToFile('makeDiffDockRequest REQUEST: ' + JSON.stringify(requestBody));
+      logToFile('makeDiffDockRequest REQUEST: ' + describeForLog(requestBody, 'body')
+        + ' ' + describeForLog(requestBody.protein, 'protein')
+        + ' ' + describeForLog(requestBody.ligand, 'ligand'));
       const response = await fetchWithTimeout(diffdockApiUrl, { timeoutMs: EXTERNAL_HTTP_TIMEOUT_LONG_MS,
         method: 'POST',
         headers: {
@@ -5069,7 +5101,12 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
       const text = await response.text();
       let data;
       try { data = JSON.parse(text); } catch { data = text; }
-      logToFile('makeDiffDockRequest RESPONSE: ' + text);
+      // Status plus size, never the body: the success payload is 111-114 KB and ~105 KB of
+      // that is the protein echoed straight back. On failure the body IS the diagnostic, so
+      // keep a bounded prefix of it.
+      logToFile('makeDiffDockRequest RESPONSE: status=' + response.status
+        + ' ' + describeForLog(text, 'body')
+        + (response.ok ? '' : ' detail=' + JSON.stringify(text.slice(0, 500))));
       return { response, data };
     };
 
@@ -7059,22 +7096,48 @@ app.post('/api/admet/create-task', ensureMongoConnected, authenticateToken, requ
   }
 });
 
-// Simple append log function
+// Append-only diagnostic log for the DiffDock path.
+//
+// ⚠ Do NOT pass whole request/response bodies to this. Until 2026-08-01 four of the five
+// call sites did — `JSON.stringify(requestBody)` carries a ~100 KB protein and the DiffDock
+// response is 111–114 KB — so every dock wrote 200 KB+ here. On a 2-core / 1 GB production
+// host that is avoidable allocation and disk churn on the hot path. Log sizes and identifiers;
+// use `summarizeForLog` for anything that might be a payload.
 const MAX_LOG_SIZE = 20 * 1024 * 1024; // 20 MB
 const LOG_PATH = 'diffdock_api.log';
 
+// Cheap size/eviction bookkeeping so the hot path never makes a synchronous fs call.
+// The previous version ran existsSync() + statSync() on EVERY log line; both are blocking
+// syscalls, and they sat directly in the docking request path.
+let logBytesWritten = null;
+
+function describeForLog(value, label) {
+  if (value == null) return `${label}=<null>`;
+  const text = typeof value === 'string' ? value : (() => {
+    try { return JSON.stringify(value); } catch { return String(value); }
+  })();
+  return `${label}=${Buffer.byteLength(text)}B`;
+}
+
 function logToFile(logStr) {
-  const timestamp = new Date().toISOString();
-  const entry = `[${timestamp}] ${logStr}\n`;
+  const entry = `[${new Date().toISOString()}] ${logStr}\n`;
+  const entryBytes = Buffer.byteLength(entry);
   try {
-    // Check log file size
-    if (fs.existsSync(LOG_PATH)) {
-      const stats = fs.statSync(LOG_PATH);
-      if (stats.size + Buffer.byteLength(entry) > MAX_LOG_SIZE) {
-        // If file exceeds max size, delete old log and start new
-        fs.unlinkSync(LOG_PATH);
+    // Establish the current size once per process, not once per line.
+    if (logBytesWritten === null) {
+      try {
+        logBytesWritten = fs.statSync(LOG_PATH).size;
+      } catch {
+        logBytesWritten = 0;
       }
     }
+    if (logBytesWritten + entryBytes > MAX_LOG_SIZE) {
+      // Truncate rather than unlink: unlinking races with an in-flight appendFile, and an
+      // open handle on a deleted inode silently keeps consuming disk.
+      try { fs.truncateSync(LOG_PATH, 0); } catch { /* first write, or already gone */ }
+      logBytesWritten = 0;
+    }
+    logBytesWritten += entryBytes;
     fs.appendFile(LOG_PATH, entry, err => {
       if (err) console.error('Failed to write log:', err);
     });
