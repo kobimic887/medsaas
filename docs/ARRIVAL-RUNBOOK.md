@@ -54,7 +54,7 @@ session broken. Nothing in §1–§11 is irreversible; §12 is, and happens week
    | Database | Where | What happens |
    |---|---|---|
    | Production Mongo — users, credits, billing, docking history | **Atlas** | **stays.** Never dumped, never moved |
-   | Tanimoto Postgres — 2,951,975 molecules | **Oracle** | **copied to the box** (§10). Production data, only copy |
+   | Tanimoto Postgres — 2,951,975 molecules | **Oracle** | **copied to the box** (§10). Production data, and the only **live** copy — there is no replica |
    | Oracle's Mongo | Oracle | **discarded. Never restore from it** |
 
    Refusing to copy the Postgres loses three million molecules. Copying the Mongo overwrites
@@ -85,7 +85,7 @@ plausible-looking address you find in a document.
 | ~~`<IPMI_*>`~~ | ⛔ **Do not expect it.** The hosting company controls access and we cannot ask. See **§1c** | — |
 | `<83_HOST>` / `<83_USER>` | SSH to `83.229.87.94` | §8 |
 | `<BOX_DOMAIN>` | the DNS name the box answers on, for its Let's Encrypt certificate | §6 |
-| `<ORACLE_HOST>` / `<ORACLE_USER>` | Oracle's Postgres holds the only copy of the Tanimoto index | §10 |
+| `<ORACLE_HOST>` / `<ORACLE_USER>` | Oracle's Postgres is the only **live** copy of the Tanimoto index, and the source to re-dump from | §10 |
 | **the Tanimoto dump** | 1.2 GB, **not in git** — see §1b | §10 |
 | **the `tonomitosql` image or source** | `compose.yml` references `tonomitosql:latest` with **no build context**, and the source is a **separate repo** (`kobimic887/tonomitosql`). Clone and build it, or the Tanimoto service will not start | §10 |
 | **Atlas allowlist access** | to add the box's IP. ⚠ **Not needed for §1–§10**; the ADMET worker in §11 polls Mongo and cannot start without it | §11 |
@@ -109,7 +109,7 @@ when a step fails.
 
 | Missing | Why it is not in git | How to get it |
 |---|---|---|
-| **The Tanimoto dump** — 1.2 GB, the **only copy** of a 2,951,975-molecule index | too large for git | It exists **only on the owner's Mac**, at `~/backups/tanimoto/tonomitosql-20260729.dump` (+ `.sha256`). It is **not on 83 and not on Oracle in dump form.** ⚠ **Ask the operator to transfer it, and confirm the sha256 matches after the copy.** If that laptop is lost the index is only recoverable by re-dumping Oracle — which is still live, so **re-dump it rather than panicking**, but do not assume the file is anywhere near you |
+| **The Tanimoto dump** — 1.2 GB | too large for git | On the owner's Mac at `~/backups/tanimoto/tonomitosql-20260729.dump` (+ `.sha256`), and **nowhere else** — not on 83, not on Oracle in dump form. ⚠ **Ask the operator to transfer it, and re-check the sha256 after the copy** (a truncated copy looks identical in `ls`). Integrity verified 2026-08-01: sha256 matches, header reads `PGDMP`/`tonomitosql`/`17.5`, tail intact. **If the laptop is lost, re-dump Oracle** — it is still live and is the authoritative source, so this is an inconvenience, not a data-loss event |
 | **`client/dist`** — the built frontend §8 deploys | build output | `bun run install:all && bun run build`. Needed **before** the port swap, and it is a separate `tar` from the source push |
 | **`.env` files** — root, `server/`, and `deploy/box/` | secrets | `.env.example` and `deploy/box/.env.example` are the templates. The API's live `.env` is already on 83 at `/root/pyxis/server/.env` and stays there — do not overwrite it from a template |
 | **DiffDock weights** — 124 MB | model artefact | `deploy/box/diffdock/fetch-weights.sh`, run **once** on the box before first start (§5) |

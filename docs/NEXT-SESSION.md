@@ -123,13 +123,27 @@ about it.
 | # | Work | Needs the box? | Notes |
 |---|---|---|---|
 | 0 | **AutoDock-GPU is not implemented — but it is NOT a blocker** | no | `engines/autodock_gpu.py` raises `DockingUnavailable` unconditionally and a test asserts the 503. **The bug was the documentation, and it is fixed:** the runbook called it "the workhorse" and `.env.example` defaulted to the stub, so following both gave 503 on every dock. Default is now `vina`. ⚠ **Arrival day should ship on CPU Vina and that fully achieves the goal** — the box exists so docking stops depending on Moscow ([BOX-SPEC.md](./BOX-SPEC.md) §1: *"Not throughput, not cost"*), and 32 cores of Vina does that. AutoDock-GPU is a **follow-up optimization**, buildable on the box at leisure |
-| 1 | **Copy the Tanimoto dump off the Mac** | no | 1.2 GB, the only copy of a 2,951,975-molecule index, on one laptop. **A plain file copy — external drive or cloud storage, no Docker, no PC.** Proving it *restores* needs an x86_64 Docker host and is deferred to the box ([ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §10) |
+| 1 | ~~Back up the Tanimoto dump~~ | — | ⛔ **Declined 2026-08-01. Do not re-raise.** The dump lives only at `~/backups/tanimoto/` on the owner's Mac, but **Oracle's Postgres is live and is the authoritative source**, so losing the laptop costs a re-dump, not the data. Integrity verified 2026-08-01 (sha256, `PGDMP`/`tonomitosql`/`17.5` header, tail intact). ⚠ The residual risk is stated once below and is not a task |
 | 2 | **Tenant-isolation and perf findings** | no | [SECURITY-FINDINGS.md](./SECURITY-FINDINGS.md) §A1–A3 and [IMPROVEMENTS.md](./IMPROVEMENTS.md) P1–P6 |
 | 4 | **Stripe webhook registration** | no | Register `https://app.pyxis-discovery.com/stripe/webhook`, put the signing secret in `STRIPE_WEBHOOK_SECRET`. Run `stripe webhook_endpoints list` first — do not create a duplicate. Until then real purchases grant no credits |
 | 5 | ~~`chem_beo` hardening patch~~ | — | ⛔ **SETTLED 2026-08-01: it will never be applied.** Owner's decision — `chem_beo` is going away at the port swap, so patching it is work on a component with a known end date. **Do not re-raise this.** See the exposure note below, which does not go away with the decision |
 | 6 | **Subresource Integrity on external tags** | no | Three external hosts left: jsdelivr (Bootstrap CSS), Google Fonts, unpkg/jsdelivr (RDKit, lazy). None carry SRI |
 | 7 | **Bundle code-splitting** | no | `vendor-charts` is 515 KB and the build warns. Gzipped it is ~135 KB on the wire, so lower priority than it looks |
 | 8 | **Arrival day** | yes | [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) |
+
+### The one residual risk on the Tanimoto index — stated once, not a task
+
+Backing up the dump was declined (2026-08-01) and that is reasonable: Oracle is live and is the
+authoritative source. But the reason the dump was taken in the first place has not gone away —
+**`DELETE /tanimoto/v1/datasets/:dataset_id` is unauthenticated and internet-reachable**
+(`chem_beo/index.js:437`, [PRODUCTION-83-INVENTORY.md](./PRODUCTION-83-INVENTORY.md) §8 row 3b).
+Anyone can destroy the 2,951,975-molecule index, and it has no replica.
+
+So the two copies fail together only in one specific way: someone triggers that route **and**
+the laptop is gone. That is unlikely, and it is now an accepted risk rather than an open item.
+Worth knowing because it is a one-line fix whenever `chem_beo` is next touched — except
+`chem_beo` is never being touched again, so in practice this closes when `/tanimoto/*` stops
+resolving to Oracle ([ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §10).
 
 ### ⚠ The consequence of never patching `chem_beo`
 

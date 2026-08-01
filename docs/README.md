@@ -10,8 +10,8 @@ bloat it.
 > executed. GPUs are **4× RTX PRO 4000**.
 >
 > ⚠ **Arrival day may be run from a fresh clone on another machine.** Four things it needs are
-> **not in git**: the 1.2 GB Tanimoto dump (the **only copy** of a 2.9 M-molecule index, living
-> on the owner's Mac alone), `client/dist`, the `.env` files, and the DiffDock weights.
+> **not in git**: the 1.2 GB Tanimoto dump (on the owner's Mac at `~/backups/tanimoto/` —
+> integrity verified 2026-08-01), `client/dist`, the `.env` files, and the DiffDock weights.
 > [ARRIVAL-RUNBOOK.md §1b](./ARRIVAL-RUNBOOK.md) lists how to get each.
 >
 > **Production serves the ORIGINAL Pyxis, deliberately.** The owner rolled back on
