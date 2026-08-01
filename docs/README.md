@@ -6,10 +6,13 @@ bloat it.
 
 > ## The state, 2026-08-01
 >
-> **The GPU box has not been ordered.** Several documents were written as though delivery
-> were imminent. They have been corrected — nothing about the box is in the past tense, and
-> nothing on it has been executed. **The critical path is a purchase**, not a deployment:
-> [BOX-SPEC.md](./BOX-SPEC.md) §5.
+> **The GPU box is ORDERED (2026-08-01), not yet delivered.** Nothing on it has been
+> executed. GPUs are **4× RTX PRO 4000**.
+>
+> ⚠ **Arrival day may be run from a fresh clone on another machine.** Four things it needs are
+> **not in git**: the 1.2 GB Tanimoto dump (the **only copy** of a 2.9 M-molecule index, living
+> on the owner's Mac alone), `client/dist`, the `.env` files, and the DiffDock weights.
+> [ARRIVAL-RUNBOOK.md §1b](./ARRIVAL-RUNBOOK.md) lists how to get each.
 >
 > **Production serves the ORIGINAL Pyxis, deliberately.** The owner rolled back on
 > 2026-07-31 and it stays there until the box arrives.
@@ -56,7 +59,7 @@ bloat it.
 | Document | What it is | Status |
 |---|---|---|
 | [NEXT-SESSION.md](./NEXT-SESSION.md) | **Start here.** Current production topology, the deploy commands, the one job only the owner can do, eight things that look correct and are not, and what is left in priority order. | **current — the working handoff** |
-| [BOX-SPEC.md](./BOX-SPEC.md) | **What to order and why.** The machine exists because Asinex's servers are in Moscow and go down because of the war. RECT WS-3229C, 4× RTX PRO 4000, Threadripper PRO 9975WX. Includes the GPU trade-off in full, the CUDA/workload matrix, and §5 — the four things to settle with Coreto, including ~€5.2k of reclaimable VAT. | **NOT ORDERED — §5 is the critical path** |
+| [BOX-SPEC.md](./BOX-SPEC.md) | **What was ordered and why.** The machine exists because Asinex's servers are in Moscow and go down because of the war. RECT WS-3229C, 4× RTX PRO 4000, Threadripper PRO 9975WX. Includes the GPU trade-off in full, the CUDA/workload matrix, and §5 — the four things to settle with Coreto, including ~€5.2k of reclaimable VAT. | **ordered 2026-08-01 — §5 is now an arrival checklist** |
 | [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) | **Agent-executable, in order.** §1–§12, each with its command, expected output and what to do on mismatch. Hard rules, a resumable state file, per-section rollback. Sections renumbered 2026-08-01 into a real sequence — the old "phase" numbers were explicitly historical and are gone. | **ready to run — needs the box** |
 | [BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md) | **Decision record: what runs where, and why.** The API stays on 83 because the box has pick-up warranty (a fault means 1–3 weeks gone), so box dies → docking stops → product survives. Atlas stays. Supersedes the topology in every other document. | **current** |
 | [PRODUCTION-83-INVENTORY.md](./PRODUCTION-83-INVENTORY.md) | **What production actually is** — inventoried over SSH 2026-07-28, read-only. Corrected several things the other docs assumed: Mongo is **Atlas**, the frontend is a **Vite dev server**, the API is a second HTTPS server on `:3000` bypassing nginx. | **current — measured, not inferred** |

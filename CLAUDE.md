@@ -37,10 +37,13 @@ reference `/gsd:*` commands; that workflow is retired.
 
 ### Where things stand — 2026-08-01
 
-- **⛔ The GPU box has NOT been ordered.** Several docs were written as though delivery were
-  imminent; corrected 2026-08-01. **The critical path is a purchase, not a deployment** —
-  `docs/BOX-SPEC.md` §5 has the four open questions for Coreto, incl. ~€5.2k of reclaimable
-  VAT. **Do not write about the box in the past tense.**
+- **The GPU box is ORDERED (2026-08-01), not delivered.** Nothing on it has been executed —
+  do not write about work done *on* it in the past tense. GPUs are **4× RTX PRO 4000**.
+- **⚠ Arrival day may be run from a FRESH CLONE on another machine.** Four things it needs are
+  **not in git**: the **1.2 GB Tanimoto dump** (the *only* copy of a 2,951,975-molecule index,
+  living on the owner's Mac at `~/backups/tanimoto/` — not on 83, not on Oracle in dump form),
+  `client/dist` (build it), the `.env` files, and the **DiffDock weights** (124 MB, via
+  `deploy/box/diffdock/fetch-weights.sh`). `docs/ARRIVAL-RUNBOOK.md` §1b.
 - **Production serves the ORIGINAL Pyxis, deliberately.** Rolled back by the owner
   2026-07-31 and it stays there until the box arrives.
 
@@ -69,8 +72,10 @@ reference `/gsd:*` commands; that workflow is retired.
   ADMET, glioblastoma. **No API server, no Mongo.** The API stays on 83 because the box has
   pick-up warranty (a fault = 1–3 weeks gone): box dies, docking stops, product survives.
   `docs/BOX-ARCHITECTURE.md` is the decision record and supersedes topology everywhere else.
-- **The database is MongoDB Atlas and does not move.** ⚠ But **83 is effectively the only
-  machine allowlisted to reach it** — that is why the server cannot boot from a dev machine
+- **The database is MongoDB Atlas and does not move.** The box's docking path never opens a
+  Mongo connection, so it needs no allowlist entry to cut docking over — ⚠ **but the ADMET
+  worker does** (`deploy/box/compose.yml:186`), so that later step needs the box added to the
+  Atlas allowlist first. ⚠ **83 is effectively the only machine allowlisted to reach it** — that is why the server cannot boot from a dev machine
   (Atlas rejects a non-allowlisted IP with TLS alert 80, which looks like a handshake failure,
   not an access error). Rigs that need real data run **on 83**. Nothing on the box opens a
   Mongo connection, so the box never needs an allowlist entry.

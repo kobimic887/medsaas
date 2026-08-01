@@ -2,14 +2,12 @@
 
 **Invoke with:** `execute the plan docs/ARRIVAL-RUNBOOK.md`
 
-> ## ⚠ The box has NOT been ordered. Confirmed by the owner, 2026-08-01.
+> ## STATUS: the box is ORDERED (2026-08-01) and has not been delivered.
 >
-> This runbook describes a day that has not happened. Nothing in it has been executed on the
-> machine, because the machine does not exist. **Do not rewrite any of it into the past
-> tense**, and do not treat any step as done unless the state file (§3) says so.
+> Nothing in this runbook has been executed. **Do not treat any step as done unless the state
+> file (§3) says so.**
 >
-> What to order, and the four questions still open with the vendor:
-> [BOX-SPEC.md](./BOX-SPEC.md) §5.
+> What was bought and why: [BOX-SPEC.md](./BOX-SPEC.md).
 
 **Why any of this is happening:** [BOX-SPEC.md](./BOX-SPEC.md) §1 — Asinex is in Moscow and
 goes down because of the war.
@@ -28,7 +26,7 @@ database.
 
 | | On arrival day |
 |---|---|
-| Database | **MongoDB Atlas — not touched, not dumped, not migrated.** Nothing on the box opens a Mongo connection, so the box never needs an Atlas allowlist entry |
+| Database | **MongoDB Atlas — not touched, not dumped, not migrated.** The arrival-day critical path never opens a Mongo connection, so the box needs no Atlas allowlist entry to finish §9. ⚠ **ADMET does** — see §11 |
 | nginx / TLS / DNS on 83 | **not touched.** Shared host, not ours |
 | Stripe | **not touched.** No URL changes, so Stripe has nothing to repoint |
 | Which server serves the site | **swapped** — this repo takes port 5173 from the legacy Vite server (§8). Owner's call, 2026-08-01: same day |
@@ -88,13 +86,37 @@ plausible-looking address you find in a document.
 | `<83_HOST>` / `<83_USER>` | SSH to `83.229.87.94` | §8 |
 | `<BOX_DOMAIN>` | the DNS name the box answers on, for its Let's Encrypt certificate | §6 |
 | `<ORACLE_HOST>` / `<ORACLE_USER>` | Oracle's Postgres holds the only copy of the Tanimoto index | §10 |
-| `.env` values | for the **box's own services** only. The API's `.env` stays on 83 | §5 |
+| **the Tanimoto dump** | 1.2 GB, **not in git** — see §1b | §10 |
+| **Atlas allowlist access** | to add the box's IP. ⚠ **Not needed for §1–§10**; the ADMET worker in §11 polls Mongo and cannot start without it | §11 |
+| `.env` values | for the **box's own services** only (`deploy/box/.env.example` is the template). The API's `.env` stays on 83 | §5 |
 
 **If the operator does not have `<IPMI_*>`, stop.** Do not begin §3 without a way back in.
 
-**Not needed, and do not ask for them:** Stripe dashboard access (nothing repoints), an Atlas
-connection string (nothing on the box talks to Mongo), or Atlas allowlist access (same
-reason).
+**Not needed, and do not ask for them:** Stripe dashboard access (nothing repoints), or an
+Atlas connection string for the docking path (it never touches Mongo).
+
+---
+
+## 1b. ⚠ What a fresh clone does NOT have
+
+**This runbook may be executed from a clean clone on a machine that has never seen this
+project.** Four things it needs are deliberately not in git. Check all four *before* §3, not
+when a step fails.
+
+| Missing | Why it is not in git | How to get it |
+|---|---|---|
+| **The Tanimoto dump** — 1.2 GB, the **only copy** of a 2,951,975-molecule index | too large for git | It exists **only on the owner's Mac**, at `~/backups/tanimoto/tonomitosql-20260729.dump` (+ `.sha256`). It is **not on 83 and not on Oracle in dump form.** ⚠ **Ask the operator to transfer it, and confirm the sha256 matches after the copy.** If that laptop is lost the index is only recoverable by re-dumping Oracle — which is still live, so **re-dump it rather than panicking**, but do not assume the file is anywhere near you |
+| **`client/dist`** — the built frontend §8 deploys | build output | `bun run install:all && bun run build`. Needed **before** the port swap, and it is a separate `tar` from the source push |
+| **`.env` files** — root, `server/`, and `deploy/box/` | secrets | `.env.example` and `deploy/box/.env.example` are the templates. The API's live `.env` is already on 83 at `/root/pyxis/server/.env` and stays there — do not overwrite it from a template |
+| **DiffDock weights** — 124 MB | model artefact | `deploy/box/diffdock/fetch-weights.sh`, run **once** on the box before first start (§5) |
+
+Everything else the runbook calls — `scripts/verify-docking-response.mjs`,
+`scripts/verify-tanimoto-restore.sh`, `deploy/box/docking/service/test.sh`, all three service
+source trees, and the systemd units — **is tracked and arrives with the clone.**
+
+⚠ `scripts/verify-tanimoto-restore.sh` defaults to `$HOME/backups/tanimoto/tonomitosql-20260729.dump`
+and takes an override as `$1`. On any machine but the owner's it will fail with `no dump at …`
+unless you pass the path you copied it to.
 
 ---
 
@@ -107,7 +129,7 @@ reason).
 | 2.3 | **Prove that dump actually restores**, with a row count — not just a zero exit code | ❌ **open.** Needs an x86_64 Docker host; there is none on the operator's Mac. `scripts/verify-tanimoto-restore.sh` does the whole thing and asserts 2,951,975 rows |
 | 2.4 | **Write the three box services** | ✅ **done** — `deploy/box/docking/service/`, `deploy/box/diffdock/`, `deploy/box/convertstr/`, each with a Dockerfile carrying `test` and `runtime` targets and a pytest suite |
 | 2.5 | **Decide the GPU** | ✅ **settled 2026-08-01** — 4× RTX PRO 4000 |
-| 2.6 | **Order the machine** | ❌ **open** — [BOX-SPEC.md](./BOX-SPEC.md) §5 has the four questions to settle with Coreto first, including ~€5.2k of reclaimable VAT |
+| 2.6 | **Order the machine** | ✅ **ordered 2026-08-01.** [BOX-SPEC.md](./BOX-SPEC.md) §5 is now an invoice/arrival checklist — confirm the ~€5.2k VAT reverse charge was applied |
 
 The three services have **never had an execution host**: every image pins
 `--platform linux/amd64`, and the only Docker hosts reachable before arrival are 83 (2 cores,
@@ -453,11 +475,12 @@ Oracle's Postgres answers live user traffic today:
 Similarity page. It is **production data and the only copy** — 2,951,975 molecules, built from
 `molsd4.csv`, indexed 2026-03-12.
 
-The dump exists (§2.2). Restore it on the box and **assert the row count, not the exit code** —
-`pg_restore` can exit 0 having restored a schema and no data:
+The dump exists (§2.2) — ⚠ **but only on the owner's Mac, not in git and not on 83.** See §1b;
+get it transferred and verify the sha256 after the copy. Restore it on the box and **assert the
+row count, not the exit code** — `pg_restore` can exit 0 having restored a schema and no data:
 
 ```bash
-scripts/verify-tanimoto-restore.sh
+scripts/verify-tanimoto-restore.sh /path/to/tonomitosql-20260729.dump
 ```
 
 **Rebuilding from source is not an available fallback.** Nobody knows where `molsd4.csv` is or
@@ -482,9 +505,15 @@ correctly and `/tanimoto/*` has been repointed and checked from a browser.
 1. **convertSTR** — repoint `SDF_CONVERTER_URL`. Leave 83's copy in place until the local one
    is proven. (83's has been **down** for some time, which is why DiffDock is broken in
    production today.)
-2. **RabbitMQ, then the ADMET worker.** `services/admet/` currently pulls a **CPU-only torch
-   wheel**. For GPU: base on `nvidia/cuda:12.8.x-runtime-ubuntu24.04` and install cu128 torch
-   **before** `admet-ai`, then verify **inside the built image**:
+2. **RabbitMQ, then the ADMET worker.** ⚠ **Prerequisite: the box's IP must be on the Atlas
+   allowlist.** The worker polls a Mongo job collection (`deploy/box/compose.yml:186` passes it
+   `MONGODB_URI`), and nothing about the failure will say so — a non-allowlisted IP is rejected
+   with **TLS alert 80**, which reads as a handshake error, not an access error. This is the
+   only step in the whole runbook that needs Atlas.
+
+   `services/admet/` currently pulls a **CPU-only torch wheel**. For GPU: base on
+   `nvidia/cuda:12.8.x-runtime-ubuntu24.04` and install cu128 torch **before** `admet-ai`, then
+   verify **inside the built image**:
    ```bash
    python -c "import torch; print(torch.cuda.is_available())"
    ```

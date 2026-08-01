@@ -12,13 +12,18 @@ git show docs-archive-2026-08-01:docs/NEXT-SESSION.md
 
 ## The single most important fact
 
-**The GPU box has not been ordered.** Confirmed by the owner, 2026-08-01. Several documents
-were written as though delivery were imminent; they have been corrected. Nothing about the box
-is in the past tense, and nothing on it has been executed.
+**The GPU box is ORDERED (2026-08-01) and has not been delivered.** Nothing on it has been
+executed. The GPU question is closed — **4× RTX PRO 4000**.
 
-**So the critical path is a purchase, not a deployment:** [BOX-SPEC.md](./BOX-SPEC.md) §5 has
-the four things to settle with Coreto, including ~€5.2k of reclaimable VAT that is not applied
-automatically. The GPU question is closed — **4× RTX PRO 4000**, settled 2026-08-01.
+**While waiting, three things are worth doing and none need the box:** confirm the ~€5.2k VAT
+reverse charge landed on the invoice ([BOX-SPEC.md](./BOX-SPEC.md) §5), transfer the Tanimoto
+dump off the owner's Mac (it is the **only copy** of a 2.9 M-molecule index and lives on one
+laptop — [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §1b), and apply the `chem_beo` patch that
+closes ~60 unauthenticated routes on the live site.
+
+⚠ **This runbook may be run from a fresh clone on another machine.** Four things it needs are
+not in git — the Tanimoto dump, `client/dist`, the `.env` files, and the DiffDock weights.
+[ARRIVAL-RUNBOOK.md §1b](./ARRIVAL-RUNBOOK.md) lists how to get each.
 
 ---
 
@@ -117,7 +122,7 @@ about it.
 
 | # | Work | Needs the box? | Notes |
 |---|---|---|---|
-| 1 | **Order the machine** | — | The critical path. [BOX-SPEC.md](./BOX-SPEC.md) §5 |
+| 1 | **Get the Tanimoto dump off the owner's Mac** | no | 1.2 GB, the **only copy** of a 2,951,975-molecule index, on one laptop. Oracle is still live so it is re-dumpable — but do not rely on that |
 | 2 | **Two critical tenant-isolation bugs** | no | Found 2026-08-01, unfixed. [SECURITY-FINDINGS.md](./SECURITY-FINDINGS.md) §A1, §A2 |
 | 3 | **Prove the Tanimoto dump restores** | no | `scripts/verify-tanimoto-restore.sh`. Needs any x86_64 Docker host. Asserts 2,951,975 rows |
 | 4 | **Stripe webhook registration** | no | Register `https://app.pyxis-discovery.com/stripe/webhook`, put the signing secret in `STRIPE_WEBHOOK_SECRET`. Run `stripe webhook_endpoints list` first — do not create a duplicate. Until then real purchases grant no credits |

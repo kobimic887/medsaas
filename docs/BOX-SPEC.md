@@ -1,14 +1,14 @@
 # Box spec — what to order, and why
 
-> ## ⚠ STATUS: NOT ORDERED. This is a pre-purchase document.
+> ## STATUS: ORDERED. Awaiting delivery.
 >
-> Confirmed by the owner on **2026-08-01**: the machine has **not been bought**. Everything
-> here is a specification and a set of open questions for the vendor — not a description of
-> hardware that exists.
+> Placed 2026-08-01. Everything below is what was bought and why; the open items in §5 that
+> were pre-order questions are now **things to check on the invoice and on arrival**, not
+> decisions.
 >
-> **Do not write any doc, script or comment in the past tense about this machine.** The
-> arrival sequence lives in [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) and is deliberately
-> written for a day that has not happened.
+> **Nothing has been executed on the machine.** Do not write any doc, script or comment in
+> the past tense about work done *on* it. The arrival sequence is
+> [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md).
 
 **RECT WS-3229C** (RECT-ID 1493), Coreto/RECT, Friedberg DE, delivered to Amsterdam.
 Budget ~€25k net.
@@ -277,12 +277,15 @@ over-corrected to *"the database has nothing to do with 83"*. Neither is right:
 So "83's database" is wrong about hosting and right about access. Say it precisely: **Atlas
 holds it; 83 is the only thing allowlisted to talk to it.**
 
-**The arrival-day consequence is a simplification, not a task.** Because the box is compute
-only — docking, DiffDock, convertSTR, Tanimoto, GROMACS, ADMET — **nothing on it ever opens a
-Mongo connection.** So the box does *not* need to be added to the Atlas allowlist, and the
-old runbook step asking for allowlist credentials on hardware day is dead. If a future change
-does put something database-touching on the box, that allowlist entry becomes a hard
-prerequisite and nothing will work until it exists.
+**The arrival-day consequence is a simplification.** The critical path — docking, DiffDock,
+convertSTR, Tanimoto — **never opens a Mongo connection**, so none of it needs an Atlas
+allowlist entry. Arrival day can complete with the box unable to reach the database at all.
+
+⚠ **But one later service does need it, and it is easy to miss.** The **ADMET worker** polls a
+Mongo job collection — `deploy/box/compose.yml:186` passes it `MONGODB_URI`. So before ADMET
+can run ([ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §11), **the box's IP must be added to the
+Atlas allowlist**, and nothing about the failure will say so: a non-allowlisted IP is rejected
+with TLS alert 80, which reads as a handshake error rather than an access error.
 
 That also removes most of the concentration risk this section used to warn about. Because the
 API stays on 83 and the database stays in Atlas
