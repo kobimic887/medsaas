@@ -122,10 +122,10 @@ about it.
 
 | # | Work | Needs the box? | Notes |
 |---|---|---|---|
-| 0 | **⛔ AutoDock-GPU is NOT IMPLEMENTED** | no | `deploy/box/docking/service/docking_service/engines/autodock_gpu.py` raises `DockingUnavailable` unconditionally, and a test asserts the 503. The working engines are **`vina` (CPU, real)** and `replay`. `.env.example` defaulted to the stub until 2026-08-01. **Arrival day can complete on CPU Vina — but GPU docking is engineering work that has not been done**, and it is the stated reason for the machine |
+| 0 | **⛔ AutoDock-GPU is NOT IMPLEMENTED** | no, and it can be built on the Windows PC | `deploy/box/docking/service/docking_service/engines/autodock_gpu.py` raises `DockingUnavailable` unconditionally, and a test asserts the 503. The working engines are **`vina` (CPU, real)** and `replay`. `.env.example` defaulted to the stub until 2026-08-01. **Arrival day can complete on CPU Vina — but GPU docking is engineering work that has not been done**, and it is the stated reason for the machine |
 | 1 | **Get the Tanimoto dump off the owner's Mac** | no | 1.2 GB, the **only copy** of a 2,951,975-molecule index, on one laptop. Oracle is still live so it is re-dumpable — but do not rely on that |
 | 2 | **Two critical tenant-isolation bugs** | no | Found 2026-08-01, unfixed. [SECURITY-FINDINGS.md](./SECURITY-FINDINGS.md) §A1, §A2 |
-| 3 | **Prove the Tanimoto dump restores** | no | `scripts/verify-tanimoto-restore.sh`. Needs any x86_64 Docker host. Asserts 2,951,975 rows |
+| 3 | **Prove the Tanimoto dump restores** | no | `scripts/verify-tanimoto-restore.sh <dump>`. Asserts 2,951,975 rows. **Unblocked 2026-08-01** — the owner's Windows PC (12700K / RTX 3060 / WSL2) is an x86_64 Docker host, which the Mac is not |
 | 4 | **Stripe webhook registration** | no | Register `https://app.pyxis-discovery.com/stripe/webhook`, put the signing secret in `STRIPE_WEBHOOK_SECRET`. Run `stripe webhook_endpoints list` first — do not create a duplicate. Until then real purchases grant no credits |
 | 5 | **`chem_beo` hardening patch** | no | `deploy/chem_beo/01-fixes-and-config.patch`. Written, applies cleanly, rehearsed against real Atlas. **Unapplied** — and `chem_beo` is serving the public site right now, so its ~60 unauthenticated routes are live |
 | 6 | **Subresource Integrity on external tags** | no | Three external hosts left: jsdelivr (Bootstrap CSS), Google Fonts, unpkg/jsdelivr (RDKit, lazy). None carry SRI |

@@ -247,17 +247,51 @@ queue.** If §5.1 is not clearly ours to make, skip it, record that you skipped 
 |---|---|---|
 | 2.1 | **Capture the docking output contract from Asinex while Moscow still answers.** | ✅ **done 2026-07-28** — [DOCKING-CONTRACT.md](./DOCKING-CONTRACT.md). Read it; do not re-derive it |
 | 2.2 | **`pg_dump` Oracle's Tanimoto Postgres.** An unauthenticated, internet-reachable `DELETE` reaches this dataset, so do not wait for arrival day | ✅ **done 2026-07-29** — `~/backups/tanimoto/tonomitosql-20260729.dump`, 1.2 GB, sha256 verified |
-| 2.3 | **Prove that dump actually restores**, with a row count — not just a zero exit code | ❌ **open.** Needs an x86_64 Docker host; there is none on the operator's Mac. `scripts/verify-tanimoto-restore.sh` does the whole thing and asserts 2,951,975 rows |
+| 2.3 | **Prove that dump actually restores**, with a row count — not just a zero exit code | ❌ **open, but now unblocked.** Needs an x86_64 Docker host; the Mac has none, but the owner's **Windows PC (12700K / RTX 3060 / WSL2)** does. `scripts/verify-tanimoto-restore.sh <dump>` asserts 2,951,975 rows |
 | 2.4 | **Write the three box services** | ✅ **done** — `deploy/box/docking/service/`, `deploy/box/diffdock/`, `deploy/box/convertstr/`, each with a Dockerfile carrying `test` and `runtime` targets and a pytest suite |
 | 2.5 | **Decide the GPU** | ✅ **settled 2026-08-01** — 4× RTX PRO 4000 |
 | 2.6 | **Order the machine** | ✅ **ordered 2026-08-01.** [BOX-SPEC.md](./BOX-SPEC.md) §5 is now an invoice/arrival checklist — confirm the ~€5.2k VAT reverse charge was applied |
 
-The three services have **never had an execution host**: every image pins
-`--platform linux/amd64`, and the only Docker hosts reachable before arrival are 83 (2 cores,
-1 GB RAM, and it is production — an OOM there takes the live site down) and Oracle (arm64, no
-`binfmt` amd64 emulation). **Owner's call: build them on the box.** Do not install `binfmt` on
-Oracle — that is a privileged container on the host holding the only copy of production
-Tanimoto Postgres.
+### ✅ An x86_64 build host exists after all — the owner's Windows PC
+
+**Corrected 2026-08-01.** This section used to say the three services had *"never had an
+execution host"*, because the only Docker hosts reachable were 83 (2 cores, 1 GB RAM, and it is
+production — an OOM there takes the live site down) and Oracle (arm64, no `binfmt` amd64
+emulation). **That is no longer true.**
+
+The owner has a **Windows PC: i7-12700K (12C/20T), RTX 3060, WSL2** — x86_64 with CUDA and a
+container runtime. It is not the box, but it is the right *architecture*, and that is what the
+`--platform linux/amd64` pin needed.
+
+**What it can genuinely do, before the box ships:**
+
+| Task | Why it works there |
+|---|---|
+| **Prove the Tanimoto restore** (§2.3) | `scripts/verify-tanimoto-restore.sh` needs only "any x86_64 host with Docker". This is the open item it was blocked on |
+| **Build and test all three services** | Native amd64, no QEMU. `deploy/box/docking/service/test.sh`, plus the convertstr and diffdock suites |
+| **`RUN_VINA=1` — the real CPU docking path** | 12 cores. **This is the engine arrival day will actually run** (see the AutoDock-GPU warning below), so validating it here is validating the critical path |
+| **Implement and validate AutoDock-GPU** | The stub is the single biggest blocker in this runbook. RTX 3060 is Ampere `sm_86`: build for `sm_86`, get the engine *correct*, then it is a recompile for `sm_120` on the box rather than a from-scratch build on delivery day |
+| **OSS DiffDock inference end to end** | 12 GB VRAM against a ~2 GB docking working set; cu128 torch supports Ampere |
+
+**What it cannot do — do not over-claim it:**
+
+- **It is not Blackwell.** Nothing built for `sm_86` runs on `sm_120` without a rebuild, and a
+  `sm_120` compile cannot be *executed* here, only cross-compiled. §4's driver and
+  `compute_cap` checks still have to happen on the box.
+- **It is not a performance proxy.** An RTX 3060 tells you nothing useful about RTX PRO 4000
+  throughput.
+- **WSL2 specifics to check first:** GPU passthrough needs a recent NVIDIA *Windows* driver plus
+  `nvidia-container-toolkit` inside the distro; WSL2 caps memory at ~50 % of RAM by default
+  (`.wslconfig`) which the Postgres restore may exceed; and that restore needs the 1.2 GB dump
+  plus room for the restored database — budget ~20 GB free.
+
+**Owner's call stands that the *final* build happens on the box** — native, correct arch, no
+surprises. But "build on the box" was chosen because there was no alternative, and there now
+is. **Use the Windows PC to de-risk, not to ship:** get the code correct and the tests green
+there, so arrival day is a recompile rather than a debugging session.
+
+⚠ Do not install `binfmt` on Oracle — that is a privileged container on the host holding the
+only copy of production Tanimoto Postgres. That advice is unchanged and unrelated.
 
 ---
 
