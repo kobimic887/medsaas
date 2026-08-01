@@ -4,7 +4,18 @@
 **right now** — the owner rolled production back to the original Pyxis on 2026-07-31, and
 `chem_beo` on `:3000` is what serves it.
 
-> ## ⚠ The arrival-day narrative below is STALE. The patch is not.
+> ## ⛔ SETTLED 2026-08-01: this patch will NEVER be applied. Do not re-raise it.
+>
+> Owner's decision. `chem_beo` is going away at the port swap
+> ([ARRIVAL-RUNBOOK.md](../../docs/ARRIVAL-RUNBOOK.md) §8), so patching it is work on a
+> component with a known end date. **The port swap is the remediation instead**, and it has no
+> dependency on the box.
+>
+> Everything below is kept as a **record of what is wrong with `chem_beo`**, because that is
+> still live until the swap and still re-opened by any rollback to `:3000`. It is documentation
+> now, not a plan.
+>
+> ## ⚠ The arrival-day narrative below is ALSO stale.
 >
 > Corrected 2026-08-01. This file says `chem_beo` "stays the API through arrival day" and that
 > swapping in this repo's server is "weeks later". **That is no longer the plan.** Arrival day
@@ -12,11 +23,9 @@
 > through `ligandServiceConfig` — a hot settings change — not through the env vars below.
 > See [ARRIVAL-RUNBOOK.md](../../docs/ARRIVAL-RUNBOOK.md) §8 and §9.
 >
-> **The patch itself is still worth applying, and is still unapplied.** It is no longer an
-> arrival-day *prerequisite* — it is a fix for the API that is serving the public site today,
-> closing five money/data routes and making the credit charge atomic and refundable. The env
-> vars it adds become the cutover mechanism **only** if the port swap is deferred or rolled
-> back.
+> It was once described as an arrival-day *prerequisite*. It is not, and it is not going to be
+> applied at all — see the box above. The env vars it adds would only ever have been the
+> cutover mechanism if the port swap were deferred or rolled back.
 
 The goal is
 **1:1 with what `app.pyxis-discovery.com` does today, plus the bugs fixed and the compute moved

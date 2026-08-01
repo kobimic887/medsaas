@@ -26,9 +26,11 @@ Two caveats that are not in the table:
   hole is closed (verified by forging a token and getting `403`), but roughly **60
   unauthenticated routes are open right now** — `/api/sanitizedminimalsdf/<key>` returns real
   customer results with no token from the public internet, and `/api/generate-molecules`
-  reaches the NVIDIA key. The fix is written and rehearsed at
-  `deploy/chem_beo/01-fixes-and-config.patch` and is **not applied**. This is the single
-  largest live exposure in the project.
+  reaches the NVIDIA key. This is the single largest live exposure in the project.
+  ⛔ **Settled 2026-08-01: `deploy/chem_beo/01-fixes-and-config.patch` will never be applied** —
+  `chem_beo` is going away at the port swap, so **the port swap is the remediation**, and it
+  has no dependency on the box. ⚠ Any rollback to `:3000` re-opens all of it, which makes a
+  rollback an emergency measure with a security cost rather than a comfortable resting state.
 - **`assertConfiguredUrlsArePublic` has exactly one call site** (`server/index.js`, the
   admin-UI `ligandServiceConfig` PATCH). The env vars that carry the box cutover —
   `TANIMOTO_API_BASE`, `SDF_CONVERTER_URL`, `ASINEX_DOCKING_API_URL`, `DIFFDOCK_API_URL`

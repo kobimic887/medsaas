@@ -126,14 +126,30 @@ about it.
 | 1 | **Copy the Tanimoto dump off the Mac** | no | 1.2 GB, the only copy of a 2,951,975-molecule index, on one laptop. **A plain file copy — external drive or cloud storage, no Docker, no PC.** Proving it *restores* needs an x86_64 Docker host and is deferred to the box ([ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §10) |
 | 2 | **Tenant-isolation and perf findings** | no | [SECURITY-FINDINGS.md](./SECURITY-FINDINGS.md) §A1–A3 and [IMPROVEMENTS.md](./IMPROVEMENTS.md) P1–P6 |
 | 4 | **Stripe webhook registration** | no | Register `https://app.pyxis-discovery.com/stripe/webhook`, put the signing secret in `STRIPE_WEBHOOK_SECRET`. Run `stripe webhook_endpoints list` first — do not create a duplicate. Until then real purchases grant no credits |
-| 5 | **`chem_beo` hardening patch** | no | `deploy/chem_beo/01-fixes-and-config.patch`. Written, applies cleanly, rehearsed against real Atlas. **Unapplied** — and `chem_beo` is serving the public site right now, so its ~60 unauthenticated routes are live |
+| 5 | ~~`chem_beo` hardening patch~~ | — | ⛔ **SETTLED 2026-08-01: it will never be applied.** Owner's decision — `chem_beo` is going away at the port swap, so patching it is work on a component with a known end date. **Do not re-raise this.** See the exposure note below, which does not go away with the decision |
 | 6 | **Subresource Integrity on external tags** | no | Three external hosts left: jsdelivr (Bootstrap CSS), Google Fonts, unpkg/jsdelivr (RDKit, lazy). None carry SRI |
 | 7 | **Bundle code-splitting** | no | `vendor-charts` is 515 KB and the build warns. Gzipped it is ~135 KB on the wire, so lower priority than it looks |
 | 8 | **Arrival day** | yes | [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) |
 
-⚠ **Item 5 got more urgent when production rolled back.** The patch closes five money/data
-routes including a credit-minting hole and the open `/api/generate-molecules` that is the
-NVIDIA rate-limit cause. Those routes are reachable on the live site today.
+### ⚠ The consequence of never patching `chem_beo`
+
+The decision is reasonable — but it has a shape worth stating plainly, because it changes what
+the port swap is worth.
+
+**Until the port swap, ~60 unauthenticated `chem_beo` routes are live on the public site.**
+`/api/sanitizedminimalsdf/<key>` returns real customer docking results to anyone with no token,
+`/api/generate-molecules` reaches the NVIDIA key (and is the rate-limit cause), and there is a
+credit-minting hole at `chem_beo:3343`. None of that will now be fixed in place.
+
+**So the port swap is the remediation.** That reframes it from a deployment convenience into
+the thing that closes this, which means two things:
+
+1. **It is worth doing promptly**, and does not need to wait for the box — §8 has no dependency
+   on the box. It was sequenced onto arrival day for convenience, not necessity.
+2. **⚠ Rolling back re-opens all of it.** [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §8's
+   rollback path returns to `chem_beo`, permanently unpatched. That makes it an emergency
+   measure with a real security cost, not a comfortable resting state — and raises the value of
+   getting §7 validation right *before* touching 5173.
 
 ---
 
@@ -175,8 +191,8 @@ Tanimoto, GROMACS, ADMET and glioblastoma move **after** docking is proven, not 
    `server/index.js` — beat **all** prose. Every doc here has been wrong about the code at
    least once. Check the unit file, not the sentence about the unit file.
 4. **`deploy/chem_beo/README.md` is stale on sequencing** — it predates the port-swap decision
-   and gives direct HTTP box URLs. Its *patch* is still valid and still unapplied; its
-   *arrival-day narrative* is not.
+   and gives direct HTTP box URLs. Its *patch* will never be applied (settled 2026-08-01);
+   it is now a record of `chem_beo`'s defects, not a plan.
 
 ## Method notes that saved real time
 

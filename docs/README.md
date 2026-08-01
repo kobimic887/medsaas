@@ -53,8 +53,9 @@ bloat it.
 >
 > **The largest live exposure:** ~60 unauthenticated `chem_beo` routes, on the public site
 > right now. `/api/sanitizedminimalsdf/<key>` returns real customer results with no token.
-> The fix is written and rehearsed at `deploy/chem_beo/01-fixes-and-config.patch` and is
-> **unapplied**.
+> ⛔ **Settled 2026-08-01: the patch will never be applied** — `chem_beo` is going away at the
+> port swap, so **the port swap is the remediation**. It has no dependency on the box.
+> ⚠ A rollback to `:3000` re-opens all of it.
 
 ## Where to start
 
@@ -91,7 +92,7 @@ bloat it.
 |---|---|
 | [`deploy/box/`](../deploy/box/) | The box's stack: `compose.yml`, `.env.example`, and the three services — [docking](../deploy/box/docking/), [diffdock](../deploy/box/diffdock/), [convertstr](../deploy/box/convertstr/), each with a Dockerfile carrying `test` and `runtime` targets and a pytest suite. Every image pins `--platform linux/amd64` and **none has ever been executed** — they get built natively on the box (§5). ⚠ `autodock-gpu` is a **stub that always 503s**; ship on `vina`. |
 | [`deploy/box/docking/BRIEF.md`](../deploy/box/docking/BRIEF.md) | Self-contained build brief for the docking service. The byte-level contract, reproducible receptor prep, the recovered search box, and the engine interface that makes it testable without a GPU. |
-| [`deploy/chem_beo/`](../deploy/chem_beo/) | A patch for the **legacy** production API: service addresses become env vars, the credit charge becomes atomic and refundable, five money/data routes get closed. Verified by running it against the real database. **Written, rehearsed, unapplied** — and `chem_beo` is serving the public site. |
+| [`deploy/chem_beo/`](../deploy/chem_beo/) | ⛔ **Will never be applied — settled 2026-08-01.** A patch for the legacy API, written and verified against the real database, then declined: `chem_beo` is going away at the port swap. Kept as a **record of what is wrong with `chem_beo`**, which is still live until the swap and re-opened by any rollback. |
 | [`deploy/83/systemd/`](../deploy/83/systemd/) | The four production units, and the staged retirement plan for the legacy stack after the port swap. |
 | [`scripts/verify-docking-response.mjs`](../scripts/verify-docking-response.mjs) | **Run before cutting docking over.** Pushes a candidate payload through both production parsers byte-for-byte and prints the pose table the dashboard would render. Exit 0 = it reaches the user. |
 | [`scripts/verify-tanimoto-restore.sh`](../scripts/verify-tanimoto-restore.sh) | Restores the Tanimoto dump and **asserts 2,951,975 rows** — `pg_restore` can exit 0 having restored a schema and no data. |
