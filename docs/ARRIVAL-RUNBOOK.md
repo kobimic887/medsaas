@@ -16,6 +16,25 @@ goes down because of the war.
 This file carries **what to do**. Those carry **why**. Do not restate their reasoning here;
 do not let them override the hard rules below.
 
+## Host identities — do not collapse the two Oracles
+
+There are **two different Oracle machines** in this plan. A fresh clone must keep them separate:
+
+| Name | Address | Role before Amsterdam arrival | Role after the verified arrival cutover |
+|---|---|---|---|
+| **`oracleOld`** | `151.145.91.17` | Old Oracle: live Tanimoto/Postgres + non-production medsaas containers + unrelated owner tooling | Tanimoto and **all medsaas containers are removed only after the Amsterdam migration is verified**; CLIProxyAPI/Crafty and other unrelated tooling are left alone |
+| **`oracleNew`** | `84.13.81.51` | **Intended 1:1 standby clone** of `83` — legacy Pyxis on `:5173`, `chem_beo` on `:3000`, this repo's `pyxis-web` standby on `:5174`, and FinSrv on `:4000` | Receives the **same Pyxis port swap and the same Amsterdam service-link settings as `83`**; remains the synchronized standby/failover host. It is not considered ready until secrets, Atlas access, and database-backed checks pass |
+
+`oracleOld` is the source for the Tanimoto migration. `oracleNew` is **not** the Tanimoto
+source and is **not** the Amsterdam compute box. Never use a bare label such as “Oracle” in
+commands or notes: say `oracleOld` (`151.145.91.17`) or `oracleNew` (`84.13.81.51`).
+Before the Amsterdam cutover, `oracleNew` must remain a legacy clone; do not switch it to
+`pyxis-web` early.
+
+The Amsterdam machine is a third, separate host: the **GPU/compute box**. It receives
+Tanimoto and the scientific services, but not the API server or the production Mongo database.
+
+
 ---
 
 ## The shape of the day, in one table
@@ -41,24 +60,30 @@ session broken. Nothing in §1–§11 is irreversible; §12 is, and happens week
 
 1. **Never run a destructive command without explicit human approval in the current session.**
    Destructive means `rm`, `docker rm`, `docker volume rm`, `dropDatabase`, `DROP`, `mkfs`,
-   `parted`, `dd`, disabling a running service, or anything on Oracle in §12. Quote the exact
+   `parted`, `dd`, disabling a running service, or anything on `oracleOld` in §12. Quote the exact
    command back and wait for a yes. A previous yes does not authorise the next command.
 2. **On `83.229.87.94`: do not modify nginx, TLS, DNS, the firewall, or any other
    application.** It is a shared VPS with an unrelated production project on it. You read from
    it and you copy from it — the one exception is the port swap in §8, which touches only our
    own two systemd units.
-3. **On Oracle `151.145.91.17`: do not touch CLIProxyAPI (`:8317`), Crafty (`:8443`), or
-   `~/.cli-proxy-api/auths/`.** Those are the owner's separate tooling.
-4. **Three databases, three different answers. Never let them collapse into one rule.**
+3. **The port swap in §8 applies to both application hosts: `83.229.87.94` and
+   `oracleNew` (`84.13.81.51`).** They must finish in the same post-cutover state. Do not
+   perform it on `oracleNew` before the Amsterdam services and `pyxis-web` validation pass.
+4. **On `oracleOld` (`151.145.91.17`): do not touch CLIProxyAPI (`:8317`), Crafty (`:8443`),
+   or `~/.cli-proxy-api/auths/`.** Those are the owner's separate tooling. Tanimoto and the
+   medsaas containers are removed only in the explicit post-migration cleanup in §12.
+5. **Three Mongo/Postgres situations, three different answers. Never let them collapse into one rule.**
 
    | Database | Where | What happens |
    |---|---|---|
-   | Production Mongo — users, credits, billing, docking history | **Atlas** | **stays.** Never dumped, never moved |
-   | Tanimoto Postgres — 2,951,975 molecules | **Oracle** | **copied to the box** (§10). Production data, and the only **live** copy — there is no replica |
-   | Oracle's Mongo | Oracle | **discarded. Never restore from it** |
+   | Pyxis production Mongo — users, credits, billing, docking history | **MongoDB Atlas** | **stays.** `chem_beo :3000` and `pyxis-web :5174`/`:5173` intentionally use this same Atlas database; never dump or replace it |
+   | FinSrv Mongo | **a separate MongoDB Atlas project/cluster** | Stays separate from Pyxis and from both Oracle hosts; verify both FinSrv hosts independently |
+   | Tanimoto Postgres — 2,951,975 molecules | **`oracleOld` (`151.145.91.17`)** | **copied to the Amsterdam box** (§10). It is production data and the only live copy until the migration is verified |
+   | `oracleOld`'s local Mongo | **`oracleOld` Docker (`mongo:7`, `medsaas` DB)** | Non-production side-project data; never restore it over Atlas; remove the old medsaas stack only in §12 after explicit approval |
 
-   Refusing to copy the Postgres loses three million molecules. Copying the Mongo overwrites
-   production with a side project.
+   Refusing to copy the Postgres loses three million molecules. Copying `oracleOld`'s local
+   Mongo over Atlas would overwrite production with a side project. The two Pyxis services
+   sharing the production Atlas database is intentional and required.
 5. **Secrets are supplied by the operator at runtime.** Never write a credential, key, token
    or password into this repo, into a commit, into the state file, or into any log or
    transcript. If you need one you do not have, stop and ask.
@@ -84,12 +109,13 @@ plausible-looking address you find in a document.
 | `<BOX_IP>` / `<BOX_USER>` | the box's address on the Science Park network, and an SSH account | §4 |
 | ~~`<IPMI_*>`~~ | ⛔ **Do not expect it.** The hosting company controls access and we cannot ask. See **§1c** | — |
 | `<83_HOST>` / `<83_USER>` | SSH to `83.229.87.94` | §8 |
-| `<BOX_DOMAIN>` | the DNS name the box answers on, for its Let's Encrypt certificate | §6 |
-| `<ORACLE_HOST>` / `<ORACLE_USER>` | Oracle's Postgres is the only **live** copy of the Tanimoto index, and the source to re-dump from | §10 |
+| `<ORACLE_NEW_HOST>` / `<ORACLE_NEW_USER>` | SSH to the synchronized Oracle standby `84.13.81.51`; it receives the same port swap as `83` | §8 |
+| `<BOX_DOMAIN>` | the DNS name the Amsterdam box answers on, for its Let's Encrypt certificate | §6 |
+| `<ORACLE_OLD_HOST>` / `<ORACLE_OLD_USER>` | SSH to `oracleOld` (`151.145.91.17`); its Postgres is the only **live** Tanimoto source until §10 completes | §10, §12 |
 | **the Tanimoto dump** | 1.2 GB, **not in git** — see §1b | §10 |
 | **the `tonomitosql` image or source** | `compose.yml` references `tonomitosql:latest` with **no build context**, and the source is a **separate repo** (`kobimic887/tonomitosql`). Clone and build it, or the Tanimoto service will not start | §10 |
 | **Atlas allowlist access** | to add the box's IP. ⚠ **Not needed for §1–§10**; the ADMET worker in §11 polls Mongo and cannot start without it | §11 |
-| `.env` values | for the **box's own services** only (`deploy/box/.env.example` is the template). The API's `.env` stays on 83 | §5 |
+| `.env` values | for the Amsterdam box's services (`deploy/box/.env.example`) **and for both application hosts**: the Pyxis API env must be present and equivalent on `83` and `oracleNew`; do not assume a source-tree copy includes secrets | §5, §8, §9 |
 
 ⚠ **There is no guaranteed way back in.** The box is in a managed building, we do not control
 SSH, and we cannot ask them anything. **Read §1c before touching the firewall or sshd** — it
@@ -109,9 +135,9 @@ when a step fails.
 
 | Missing | Why it is not in git | How to get it |
 |---|---|---|
-| **The Tanimoto dump** — 1.2 GB | too large for git | On the owner's Mac at `~/backups/tanimoto/tonomitosql-20260729.dump` (+ `.sha256`), and **nowhere else** — not on 83, not on Oracle in dump form. ⚠ **Ask the operator to transfer it, and re-check the sha256 after the copy** (a truncated copy looks identical in `ls`). Integrity verified 2026-08-01: sha256 matches, header reads `PGDMP`/`tonomitosql`/`17.5`, tail intact. **If the laptop is lost, re-dump Oracle** — it is still live and is the authoritative source, so this is an inconvenience, not a data-loss event |
+| **The Tanimoto dump** — 1.2 GB | too large for git | On the owner's Mac at `~/backups/tanimoto/tonomitosql-20260729.dump` (+ `.sha256`), and **nowhere else** — not on 83, not on `oracleOld` in dump form. ⚠ **Ask the operator to transfer it, and re-check the sha256 after the copy** (a truncated copy looks identical in `ls`). Integrity verified 2026-08-01: sha256 matches, header reads `PGDMP`/`tonomitosql`/`17.5`, tail intact. **If the laptop is lost, re-dump `oracleOld`** — it is still live and is the authoritative source, so this is an inconvenience, not a data-loss event |
 | **`client/dist`** — the built frontend §8 deploys | build output | `bun run install:all && bun run build`. Needed **before** the port swap, and it is a separate `tar` from the source push |
-| **`.env` files** — root, `server/`, and `deploy/box/` | secrets | `.env.example` and `deploy/box/.env.example` are the templates. The API's live `.env` is already on 83 at `/root/pyxis/server/.env` and stays there — do not overwrite it from a template |
+| **`.env` files** — root, `server/`, and `deploy/box/` | secrets | `.env.example` and `deploy/box/.env.example` are templates. The live Pyxis API env must be present on **both** `/root/pyxis/server/.env` on `83` and `oracleNew`; copy/supply it securely and compare only redacted fingerprints. Never overwrite a production env from a template |
 | **DiffDock weights** — 124 MB | model artefact | `deploy/box/diffdock/fetch-weights.sh`, run **once** on the box before first start (§5) |
 | **The `tonomitosql` image** | it is a **separate repo**, `kobimic887/tonomitosql` | `deploy/box/compose.yml:153` references `tonomitosql:latest` with **no build context**, so compose will not build it for you. Clone that repo and build the image before §10 |
 
@@ -249,24 +275,22 @@ queue.** If §5.1 is not clearly ours to make, skip it, record that you skipped 
 | # | Task | State |
 |---|---|---|
 | 2.1 | **Capture the docking output contract from Asinex while Moscow still answers.** | ✅ **done 2026-07-28** — [DOCKING-CONTRACT.md](./DOCKING-CONTRACT.md). Read it; do not re-derive it |
-| 2.2 | **`pg_dump` Oracle's Tanimoto Postgres.** An unauthenticated, internet-reachable `DELETE` reaches this dataset, so do not wait for arrival day | ✅ **done 2026-07-29** — `~/backups/tanimoto/tonomitosql-20260729.dump`, 1.2 GB, sha256 verified |
-| 2.3 | **Prove that dump actually restores**, with a row count | ⏸ **deferred to the box — §10.** Needs an x86_64 Docker host; the Mac has no container runtime and 83 is a 1 GB production box. **Re-verified 2026-08-01 without one:** `shasum -a 256 -c` passes, the archive header reads `PGDMP` / `tonomitosql` / **17.5 (Debian 17.5-1)**, and the tail is not truncated — so the bytes are intact and the Postgres major matches the pinned cartridge image. What remains unproven is only that `pg_restore` reads it end to end and the row count returns 2,951,975. Oracle is live as a re-dump fallback. **Must still happen before §12**, and §10 runs it |
+| 2.2 | **`pg_dump` `oracleOld`'s Tanimoto Postgres.** An unauthenticated, internet-reachable `DELETE` reaches this dataset, so do not wait for arrival day | ✅ **done 2026-07-29** — `~/backups/tanimoto/tonomitosql-20260729.dump`, 1.2 GB, sha256 verified |
+| 2.3 | **Prove that dump actually restores**, with a row count | ⏸ **deferred to the Amsterdam box — §10.** Needs an x86_64 Docker host; the Mac has no container runtime and 83 is a 1 GB production box. **Re-verified 2026-08-01 without one:** `shasum -a 256 -c` passes, the archive header reads `PGDMP` / `tonomitosql` / **17.5 (Debian 17.5-1)**, and the tail is not truncated — so the bytes are intact and the Postgres major matches the pinned cartridge image. What remains unproven is only that `pg_restore` reads it end to end and the row count returns 2,951,975. `oracleOld` is live as a re-dump fallback. **Must still happen before §12**, and §10 runs it |
 | 2.4 | **Write the three box services** | ✅ **done** — `deploy/box/docking/service/`, `deploy/box/diffdock/`, `deploy/box/convertstr/`, each with a Dockerfile carrying `test` and `runtime` targets and a pytest suite |
 | 2.5 | **Decide the GPU** | ✅ **settled 2026-08-01** — 4× RTX PRO 4000 |
 | 2.6 | **Order the machine** | ✅ **ordered 2026-08-01.** [BOX-SPEC.md](./BOX-SPEC.md) §5 is now an invoice/arrival checklist — confirm the ~€5.2k VAT reverse charge was applied |
 
 ### Where the amd64 images actually get built
 
-Every image pins `--platform linux/amd64`, and for a long time no host could run them: 83 is
-2 cores / 1 GB and is production (an OOM there takes the live site down), and Oracle is arm64
-with no `binfmt` emulation. **Owner's call, unchanged: build them on the box.** It is the right
+Every image pins `--platform linux/amd64`, and for a long time no host could run them: 83 is2 cores / 1 GB and is production (an OOM there takes the live site down), and `oracleOld`/`oracleNew` are arm64 with no `binfmt` emulation. **Owner's call, unchanged: build them on the Amsterdam box.** It is the right
 architecture, it is not production, and a native build has no emulation surprises.
 
-⚠ **Do not install `binfmt` on Oracle**, and note the objection is **risk, not capacity**:
-registering amd64 emulation means running a privileged container on the host that serves
-production Tanimoto. Oracle was upgraded to **4 cores / 24 GB on 2026-08-01** (from 2 vCPU /
-12 GB), which makes emulated builds more *feasible* than they were and changes nothing about
-whether they are *wise*. Do not revisit this on the strength of the extra cores.
+⚠ **Do not install `binfmt` on either Oracle host**, and note the objection is **risk, not
+capacity**: registering amd64 emulation means running a privileged container on a host that
+currently carries production or standby services. `oracleOld` was upgraded to **4 cores /
+24 GB** and `oracleNew` is **2 OCPU / 12 GB**; that changes nothing about whether emulation is
+wise. Build the Amsterdam images natively on the Amsterdam x86_64 GPU box.
 
 *(A fallback exists: the owner has an x86_64 Windows PC with WSL2 — i7-12700K, RTX 3060 —
 which could host these builds and the §2.3 restore proof. **Do not plan around it.** The owner
@@ -309,7 +333,7 @@ All of this is on the box; **none of it is on 83**:
 | `services.asinex.com:8000/docking` | `POST /docking` on `:8000` | `handle /docking*` (prefix kept) |
 | `services.asinex.com:58000/molecular-docking/diffdock/generate` | same path on `:8002` | `handle /molecular-docking/*` |
 | `83.229.87.94:8001/convertSTR` | `POST /convertSTR` on `:8001` | `handle /convertSTR*` |
-| `151.145.91.17:8000` + `/v1/…` | tanimoto on `:8003` | `handle_path /tanimoto/*` (prefix stripped) |
+| `oracleOld` (`151.145.91.17:8000`) + `/v1/…` | Tanimoto on `:8003` | `handle_path /tanimoto/*` (prefix stripped) |
 
 ⚠ **`handle` vs `handle_path` is deliberate and load-bearing.** The first three services expect
 their prefix; Tanimoto does not. Swapping one for the other 404s the lot.
@@ -370,9 +394,11 @@ to the owner that this step has no dependency on the box and could ship earlier 
 only thing that closes `chem_beo`'s ~60 unauthenticated routes, since that patch will never be
 applied. The answer was to keep it here. ⛔ **Do not re-raise it.**
 
-Do it *after* §7 passes — if the box services are not good, you never touch the live site at
-all. ⚠ **And get §7 right**, because the rollback path returns to an API with those routes
-open, so a botched swap now costs more than a delayed one.
+Do it *after* §7 passes — if the Amsterdam box services are not good, you never touch either
+live application host. ⚠ **And get §7 right**, because the rollback path returns to an API with
+those routes open, so a botched swap now costs more than a delayed one.
+Before touching either host, verify that the Pyxis API env and Atlas access are present on both
+`83` and `oracleNew`; a copied source tree without `.env` is not a runnable standby.
 
 Today (deliberately, since 2026-07-31):
 
@@ -384,17 +410,23 @@ Today (deliberately, since 2026-07-31):
 Both units are `enabled`, so both survive a reboot. `Conflicts=` was removed — they are on
 different ports and must be able to run together.
 
-**Swap the ports. Do not enable or disable anything:**
+**Swap the ports on both application hosts. Do not enable or disable anything:**
+
+Perform the following once on `83.229.87.94` and once on `oracleNew` (`84.13.81.51`). Do not
+change `oracleOld` for this step; it is the separate Tanimoto/old-Oracle host.
 
 1. `pyxis-web`: set `Environment=PORT=5173` and **delete the `Environment=BIND_HOST=127.0.0.1`
    line** — it must bind every interface again to be served by nginx.
 2. `pyxis-vite-legacy`: move it to 5174. Its `ExecStart` is `npm run dev-vite-only` with no
    port argument, so this needs `-- --port 5174` appending.
 3. `systemctl daemon-reload && systemctl restart pyxis-web pyxis-vite-legacy`
-4. Confirm: `ss -ltnp | grep -E ':5173|:5174'` shows **bun on 5173** and **node on 5174**.
+4. Confirm on **each host**: `ss -ltnp | grep -E ':5173|:5174'` shows **bun on 5173** and
+   **node on 5174**.
+5. Confirm the two hosts have the same post-swap service state before changing DNS. `83` is
+   the live host; `oracleNew` is the standby/failover clone.
 
-nginx already proxies `/ → localhost:5173` and never learns anything changed. **No nginx, TLS,
-DNS or Stripe change.**
+nginx already proxies `/ → localhost:5173` on both hosts and never learns anything changed.
+**No nginx, TLS, DNS or Stripe change.** DNS remains unchanged until both hosts pass validation.
 
 **Rollback is the same swap in reverse**, and the legacy stack stays installed on 5174. Never
 delete `/root/material-tailwind-dashboard-react` — it is a different codebase from this repo's
@@ -452,8 +484,16 @@ is expected, not a regression.
 
 ## 9. Cut docking over — one URL at a time
 
-With §8 done, production is this repo's server. **Two of the four knobs are hot; two are not.**
+With §8 done on **both `83` and `oracleNew`**, production on `83` and the synchronized
+standby on `oracleNew` are this repo's server. **Two of the four knobs are hot; two are not.**
 Do not describe the whole cutover as "no restart" — that is true only of the first two.
+
+Apply the Amsterdam service-link configuration to both application hosts. Change and verify
+`83` first; then make the host-local changes on `oracleNew` and verify it independently. The
+four `ligandServiceConfig` values live in the shared Atlas company document: PATCH them **once**
+through the production API, then confirm the same values are visible from both hosts. Do not
+PATCH the shared document twice. Do not point either host at `oracleOld` after the Tanimoto
+migration is complete.
 
 `getRequestLigandServiceConfig()` resolves the company's **four** `ligandServiceConfig` fields
 on every docking request, so those change with **no restart and no redeploy**:
@@ -474,19 +514,22 @@ editing `/root/pyxis/server/.env` and `systemctl restart pyxis-web`.
 
 | Order | Knob | Set to | Mechanism |
 |---|---|---|---|
-| 1 | `dockingApiUrl` | `https://<BOX_DOMAIN>/docking` | `PATCH` — **hot, no restart** |
-| 2 | `diffdockApiUrl` | `https://<BOX_DOMAIN>/molecular-docking/diffdock/generate` | `PATCH` — **hot, no restart** |
-| 3 | `SDF_CONVERTER_URL` | `https://<BOX_DOMAIN>/convertSTR` | **`.env` + restart** |
-| 4 | `TANIMOTO_API_BASE` | `https://<BOX_DOMAIN>/tanimoto` | **`.env` + restart.** Only after §10 restores the data |
+| 1 | `dockingApiUrl` | `https://<BOX_DOMAIN>/docking` | PATCH the shared Atlas company document **once**, then verify from both hosts |
+| 2 | `diffdockApiUrl` | `https://<BOX_DOMAIN>/molecular-docking/diffdock/generate` | PATCH the shared Atlas company document **once**, then verify from both hosts |
+| 3 | `SDF_CONVERTER_URL` | `https://<BOX_DOMAIN>/convertSTR` | Set the equivalent host-local `.env` value on **83 and `oracleNew`**, then restart each `pyxis-web` |
+| 4 | `TANIMOTO_API_BASE` | `https://<BOX_DOMAIN>/tanimoto` | Set the equivalent host-local `.env` value on **83 and `oracleNew`**, then restart each `pyxis-web`; only after §10 restores the data |
 | — | `catalogApiBase`, `stockApiUrl` | **leave on Asinex.** The catalog needs their compound file for licensing reasons, and live stock cannot be self-hosted at any price | — |
 
 **Verify the credit behaviour between each, not just the response.** Run one dock that
 succeeds and one against a nonsense PDB ID. The failing one must return an error and leave the
 balance **unchanged**. That is the thing most likely to regress under a new upstream.
 
-**Rollback:** put the Asinex hostname back in the same field (items 1–2 are instant; 3–4 need
-the `.env` edited back and a restart). Keep those URLs valid — they are the disaster-recovery
-path, and the box has a 1–3 week repair time.
+**Rollback:** put the Asinex hostname back in the shared fields once, then restore the
+host-local `.env` values on both `83` and `oracleNew` and restart each `pyxis-web`. Keep those
+URLs valid — they are the disaster-recovery path, and the box has a 1–3 week repair time.
+Before §12 cleanup, also update the legacy `chem_beo` Tanimoto target on both application hosts
+(or explicitly document that legacy rollback no longer includes Tanimoto); otherwise a rollback
+to the legacy frontend after deleting `oracleOld` silently loses Deep Similarity.
 
 **At this point docking no longer depends on Moscow. That is the project.** Everything below
 is consolidation.
@@ -495,10 +538,11 @@ is consolidation.
 
 ## 10. Tanimoto — restore the Postgres index onto the box
 
-Oracle's Postgres answers live user traffic today:
-`browser → :3000 chem_beo → 151.145.91.17:8000 tonomitosql → Postgres/RDKit`, from the Deep
-Similarity page. It is **production data and the only copy** — 2,951,975 molecules, built from
-`molsd4.csv`, indexed 2026-03-12.
+`oracleOld`'s Postgres answers live user traffic today:
+`browser → :3000 chem_beo → oracleOld (151.145.91.17):8000 tonomitosql → Postgres/RDKit`, from
+the Deep Similarity page. It is **production data and the only copy** — 2,951,975 molecules,
+built from `molsd4.csv`, indexed 2026-03-12. `oracleOld`'s separate local Mongo (`mongo:7`,
+ database `medsaas`) is not this production database and must not be copied into the box.
 
 The dump exists (§2.2) — ⚠ **but only on the owner's Mac, not in git and not on 83.** See §1b;
 get it transferred and verify the sha256 after the copy. Restore it on the box and **assert the
@@ -512,6 +556,13 @@ scripts/verify-tanimoto-restore.sh /path/to/tonomitosql-20260729.dump
 whether it still exists. Ask the operator early whether that file survives anywhere; if it
 does, a rebuild is a cross-check worth having.
 
+After the Amsterdam copy is restored, verify the Tanimoto API from both `83` and `oracleNew`
+through the real Pyxis path—not only with a direct health request. Only then change the
+legacy rollback path on both application hosts: replace `chem_beo`'s hardcoded
+`http://151.145.91.17:8000` target with the verified Amsterdam Tanimoto endpoint, test the
+legacy `/tanimoto/*` routes, and confirm no production path still reaches `oracleOld`.
+Do not delete `oracleOld` first and hope the legacy rollback will find the new endpoint.
+
 `deploy/box/.env` pins the cartridge image to `Release_2025_03_3` (amd64 `sha256:c7eeff51…`)
 rather than `:latest`, because `:latest` is a moving tag that could be rebuilt onto Postgres 18
 and the thing it would break is the only copy of three million molecules.
@@ -520,8 +571,10 @@ and the thing it would break is the only copy of three million molecules.
 it should install normally — **verify that branch is not being taken silently**, because it
 degrades chemistry to SQL-side validation.
 
-**Do not remove either `tonomitosql` container** until the box answers the same queries
-correctly and `/tanimoto/*` has been repointed and checked from a browser.
+**Do not remove either `tonomitosql` container from `oracleOld`** until the Amsterdam box
+answers the same queries correctly and `/tanimoto/*` has been repointed on both `83` and
+`oracleNew`, then checked from a browser. The old Oracle containers are the rollback source
+until that verification is complete.
 
 ---
 
@@ -533,8 +586,12 @@ correctly and `/tanimoto/*` has been repointed and checked from a browser.
 2. **RabbitMQ, then the ADMET worker.** ⚠ **Prerequisite: the box's IP must be on the Atlas
    allowlist.** The worker polls a Mongo job collection (`deploy/box/compose.yml:186` passes it
    `MONGODB_URI`), and nothing about the failure will say so — a non-allowlisted IP is rejected
-   with **TLS alert 80**, which reads as a handshake error, not an access error. This is the
-   only step in the whole runbook that needs Atlas.
+   with **TLS alert 80**, which reads as a handshake error, not an access error.
+
+   **FinSrv is separate.** Its `MONGO_URI` belongs to a different Atlas project/cluster than
+   Pyxis. `GET /api/health` is a static process check and does **not** prove Mongo connectivity;
+   validate FinSrv with an authenticated database-backed request on both `83` and `oracleNew`
+   before calling the standby healthy.
 
    `services/admet/` currently pulls a **CPU-only torch wheel**. For GPU: base on
    `nvidia/cuda:12.8.x-runtime-ubuntu24.04` and install cu128 torch **before** `admet-ai`, then
@@ -554,29 +611,48 @@ PC, with no surviving record. Ask the operator whether that configuration was ev
 
 ---
 
-## 12. Oracle decommission — weeks later, and it is a separate engagement
+## 12. `oracleOld` cleanup — only after Amsterdam migration is verified
 
-> **This is the only irreversible section.** It happens weeks after arrival day under different
-> conditions, and reaching it by momentum from §11 is a mistake. It requires its own go-ahead.
+> **This is the irreversible cleanup section.** It applies only to `oracleOld` (`151.145.91.17`),
+> never to `oracleNew` (`84.13.81.51`) and never to the Amsterdam GPU box. It happens only after
+> Tanimoto is live on Amsterdam and both application hosts are verified. It requires its own
+> explicit go-ahead in the current session.
 
-⚠ **Oracle was upgraded to 4 cores / 24 GB on 2026-08-01**, so it is a more capable host than
-when this section was written and decommissioning it is correspondingly **less urgent**. The
-reason to do it eventually is consolidation and one less dependency, not that the machine is
-inadequate. It is also still free-tier, so it is not costing anything to leave running.
+⚠ **`oracleOld` was upgraded to 4 cores / 24 GB on 2026-08-01**, so it is a more capable host
+than when this section was written and decommissioning it is correspondingly **less urgent**.
+The reason to do it eventually is consolidation and one less dependency, not that the machine
+is inadequate. It is also still free-tier, so it is not costing anything to leave running.
 
-**Two of Oracle's five containers serve production.** `tonomitosql-api-1` and `tonomitosql-db-1`
-answer the Deep Similarity page today. The three `medsaas-*` containers are a genuinely
-discardable non-prod copy; the two `tonomitosql-*` ones are a service migration, not a cleanup.
+On `oracleOld`, `tonomitosql-api-1` and `tonomitosql-db-1` serve the production Tanimoto
+path today. The separate `medsaas` compose project currently has `medsaas-app-1`,
+`medsaas-mcp-server-1`, and `medsaas-mongo-1` stopped; its Mongo is local `mongo:7`, database
+`medsaas`, and is **not** the production Pyxis Atlas database. After Amsterdam Tanimoto has
+been verified, remove **all medsaas stack artifacts** from `oracleOld`—its containers, local
+Mongo volume/data, medsaas images, compose project/source files, and related medsaas-only
+artifacts—plus both tonomitosql containers/data, as one explicitly approved cleanup. Do not
+remove CLIProxyAPI, Crafty, their data, or any unrelated owner tooling.
 
 Confirm every one of these with the human, explicitly, before starting:
 
 - [ ] Everything in §1–§11 is green
-- [ ] **`/tanimoto/*` no longer resolves to `151.145.91.17` from anywhere**, verified from a
-      browser and not just from a shell on the box
-- [ ] The box has served real production traffic for a period the operator considers
+- [ ] **No production path, including the legacy rollback path, resolves to `151.145.91.17`**
+      for Tanimoto from either `83` or `oracleNew`; verify from a browser and from both hosts
+- [ ] Tanimoto queries, dataset count, similarity search, and the Deep Similarity page pass
+      through the Amsterdam box from both application hosts
+- [ ] Both `83` and `oracleNew` have the same verified post-arrival port swap and service links
+- [ ] The legacy `chem_beo` Tanimoto target on both hosts is updated or the operator has
+      explicitly accepted that legacy rollback loses Deep Similarity
+- [ ] FinSrv has passed a real authenticated Mongo-backed check on both `83` and `oracleNew`;
+      `/api/health` alone is not sufficient
+- [ ] The Amsterdam box has served real production traffic for a period the operator considers
       sufficient — their judgement, not yours
-- [ ] Offsite backup exists, or the operator has explicitly accepted proceeding without one
-- [ ] The operator has said "proceed with the Oracle decommission" in the current session
+- [ ] Offsite backup exists for any data being deleted, or the operator has explicitly accepted
+      proceeding without one
+- [ ] The operator has said **"proceed with the `oracleOld` cleanup"** in the current session
 
-Missing any of these? Stop. Then remove containers one at a time, verifying between each, and
-leave the owner's unrelated tooling (rule 3) alone.
+Before any destructive command, inventory the exact medsaas containers, images, volumes,
+compose/source paths, and the two tonomitosql containers on `oracleOld`; show that inventory to
+the operator and quote the exact removal commands. Missing any gate? Stop. Once explicitly
+approved, remove the medsaas artifacts and Tanimoto artifacts one category at a time,
+verifying after each category that CLIProxyAPI, Crafty, and all unrelated owner tooling remain
+healthy. `oracleNew` is not part of this cleanup.
