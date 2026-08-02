@@ -41,10 +41,10 @@ export function Sidenav({ brandImg, brandName, routes }) {
         id="left-sidebar"
         className={`${sidenavTypes[sidenavType]} ${
           openSidenav ? "translate-x-0" : "-translate-x-80"
-        } fixed inset-0 z-50 my-4 ml-4 h-[calc(100vh-32px)] w-72 rounded-xl border border-blue-gray-100 transition-transform duration-300 dark:border-slate-800 xl:translate-x-0`}
+        } fixed inset-0 z-50 my-4 ml-4 flex h-[calc(100vh-32px)] w-72 flex-col overflow-hidden rounded-xl border border-blue-gray-100 transition-transform duration-300 dark:border-slate-800 xl:translate-x-0`}
       >
         {/* Sidebar Header */}
-        <div id="sidebar-header" className="relative z-50">
+        <div id="sidebar-header" className="relative z-50 shrink-0">
           <Link to="/" className="flex min-h-[104px] flex-col items-center justify-center gap-2 px-8 py-5 text-center">
             {showBrandImage && (
               <img
@@ -76,7 +76,7 @@ export function Sidenav({ brandImg, brandName, routes }) {
         </div>
         
         {/* Sidebar Navigation Menu */}
-        <div id="sidebar-menu" className="m-4">
+        <div id="sidebar-menu" className="min-h-0 flex-1 overflow-y-auto m-4 pr-1">
           {routes.map(({ layout, title, pages }, key) => (
             <ul key={key} className="mb-4 flex flex-col gap-1">
               {title && (

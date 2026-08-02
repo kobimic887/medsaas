@@ -180,7 +180,6 @@
             <div class="control-group">
                 <button onclick="resetView()">Reset View</button>
                 <button onclick="takeScreenshot()">Take Screenshot</button>
-                <button onclick="clearStructure()">Clear</button>
             </div>
             
             <div class="status" id="status"></div>
@@ -383,6 +382,16 @@
                 } finally {
                     URL.revokeObjectURL(blobUrl);
                     showLoading(false);
+                }
+            } else if (event.data && event.data.type === 'clearStructure') {
+                // The parent's "Clear Result" button empties the scene by posting this
+                // message. The in-frame Clear button was removed because it did the same
+                // thing with no way to clear the parent's stored result, which only
+                // confused users into thinking the result was gone when a refresh brought
+                // it back.
+                if (viewer) {
+                    viewer.plugin.clear();
+                    showStatus('Structure cleared', 'success');
                 }
             } else if (event.data && event.data.type === 'resetCamera') {
                 // Frame whatever is currently loaded.

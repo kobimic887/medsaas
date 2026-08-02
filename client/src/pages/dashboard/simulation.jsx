@@ -670,7 +670,27 @@ export function Simulation() {
     }
   };
 
+  const clearViewerStorage = () => {
+    [
+      'molstar_pdb_url',
+      'molstar_sdf_url',
+      'molstar_simulation_key',
+      'molstar_pdb_code',
+      'diffdock_result',
+      'diffdock_pdb_id',
+      'diffdock_ligand_id',
+      'diffdock_timestamp',
+      'diffdock_protein',
+      'diffdock_ligand',
+      'diffdock_ligand_position',
+      'diffdock_confidence_score',
+    ].forEach((key) => {
+      localStorage.removeItem(key);
+    });
+  };
+
   const handleSimulation = async () => {
+    clearViewerStorage();
     // Check if we have a SMILES from the search
     if (!searchCode) {
       setSimError("Please search for a molecule first to get the SMILES code for docking");
@@ -716,6 +736,7 @@ export function Simulation() {
       localStorage.removeItem('diffdock_ligand_position');
     }
   const handleDiffDock = async () => {
+    clearViewerStorage();
     const ligand_file_type = "sdf";
     // Check if we have both PDB ID and Ligand ID
     if (!diffDockPdbId) {
@@ -774,7 +795,7 @@ export function Simulation() {
   useEffect(() => {
     if (simResult && simResult.simulationKey) {
       const pdbUrl = API_CONFIG.buildApiUrl(`/sanitizedpdb/${simResult.simulationKey}`);      
-      const sdfUrl = API_CONFIG.buildApiUrl(`/sanitizedminimalsdf/${simResult.simulationKey}`);
+      const sdfUrl = API_CONFIG.buildApiUrl(`/sanitizedsdf/${simResult.simulationKey}`);
       
       // Store URLs, navigate, and only THEN look up the IP.
       //

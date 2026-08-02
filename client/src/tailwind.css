@@ -91,6 +91,28 @@
    Pyxis dark scale from tailwind.config.cjs, step for step at the same positions, so
    contrast relationships are unchanged and only the hue moves. */
 @layer components {
+  html.dark .literature-search-input input {
+    background-color: #072824 !important;
+    color: #dde8e6 !important;
+    border-color: #648b85 !important;
+  }
+
+  html.dark .literature-search-input label,
+  html.dark .literature-search-input input:focus ~ label,
+  html.dark .literature-search-input input:not(:placeholder-shown) ~ label {
+    color: #93aeaa !important;
+    background-color: #072824 !important;
+  }
+
+  html.dark .literature-search-input fieldset {
+    border-color: #648b85 !important;
+  }
+
+  html.dark .literature-search-input input:focus {
+    border-color: rgb(var(--brand-500)) !important;
+    box-shadow: 0 0 0 1px rgb(var(--brand-500) / 0.35);
+  }
+
   html.dark .bg-white {
     background-color: #072824 !important;
     color: #dde8e6;

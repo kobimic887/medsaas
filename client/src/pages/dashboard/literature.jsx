@@ -80,8 +80,8 @@ export function Literature() {
 
   return (
     <div className="mt-12 mb-8 flex flex-col gap-6">
-      <Card className="border border-blue-gray-100 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <CardHeader floated={false} shadow={false} className="rounded-none dark:bg-slate-900">
+      <Card className="border border-blue-gray-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">
+        <CardHeader floated={false} shadow={false} className="rounded-none bg-white dark:bg-slate-900">
           <Typography variant="h5" color="blue-gray" className="dark:text-slate-100">
             Literature Search
           </Typography>
@@ -90,15 +90,14 @@ export function Literature() {
             unmetered — no simulation credits are used.
           </Typography>
         </CardHeader>
-        <CardBody className="pt-0">
+        <CardBody className="bg-white pt-0 dark:bg-slate-900">
           <form
             className="flex flex-col gap-3 sm:flex-row"
             onSubmit={(event) => {
               event.preventDefault();
               runSearch();
             }}
-          >
-            <div className="flex-1">
+          >            <div className="flex-1 literature-search-input">
               <Input
                 label="Target, compound or disease"
                 value={query}
@@ -150,8 +149,8 @@ export function Literature() {
       </Card>
 
       {status === "ok" && (
-        <Card className="border border-blue-gray-100 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <CardHeader floated={false} shadow={false} className="rounded-none dark:bg-slate-900">
+        <Card className="border border-blue-gray-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">
+          <CardHeader floated={false} shadow={false} className="rounded-none bg-white dark:bg-slate-900">
             <div className="flex items-center gap-3">
               <Typography variant="h6" color="blue-gray" className="dark:text-slate-100">
                 Results

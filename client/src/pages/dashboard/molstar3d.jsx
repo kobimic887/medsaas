@@ -20,8 +20,6 @@ const authedFetch = (url, init = {}) => {
 
 export function Molstar3D() {
   const molstarRef = useRef(null);
-  // Which run's pose is already drawn, so it is not stacked again on re-entry.
-  const overlaidPoseKeyRef = useRef(null);
   const navigate = useNavigate();
   const [sdfData, setSdfData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -32,6 +30,7 @@ export function Molstar3D() {
   // survived parsing — the failure mode that used to render as a blank panel.
   const [sdfStatus, setSdfStatus] = useState('idle'); // 'idle' | 'ok' | 'empty' | 'error'
   const [cart, setCart] = useState([]); // Shopping cart state
+  const viewerClearedRef = useRef(false);
 
   // Function to parse SDF data
   const parseSdfData = (sdfText) => {
@@ -60,7 +59,10 @@ export function Molstar3D() {
       }
       
       // Extract the molecule name/ID from the first line
-      const moleculeName = lines[0]?.trim() || `Molecule ${index + 1}`;
+      const moleculeName = properties.IUPAC_NAME
+        || properties.name
+        || (properties.ligand_id && properties.ligand_id !== 'N/A' ? `Ligand ${properties.ligand_id}` : '')
+        || `Ligand ${index + 1}`;
       
       return {
         id: index + 1,
@@ -70,65 +72,13 @@ export function Molstar3D() {
         score: properties.SCORE || 'N/A',
         ligand_id: properties.ligand_id || 'N/A',
         original_smiles: properties.original_smiles || 'N/A',
-        smiles: properties.smiles || 'N/A'
+        smiles: properties.smiles || 'N/A',
+        title: lines[0]?.trim() || ''
       };
     });
   };
 
   // Function to load SDF data from URL
-  /**
-   * Draw a run's docked pose into the Molstar iframe.
-   *
-   * There are two ways into this page and they load structures independently: the
-   * localStorage path, and the `?pdb=…&simulation=…` link the results page actually
-   * navigates with. Only the first ever rendered the pose. The second fetched the
-   * same SDF but handed it to `loadSdfData`, which fills the results *table* and
-   * posts nothing to the viewer — so the protein appeared, the table listed poses,
-   * and the 3D view had no ligand in it. Both paths call this now.
-   *
-   * Fetched here rather than passing the iframe a URL: /api/sanitized* needs a
-   * bearer token, the iframe is a separate document and cannot attach one, and a
-   * same-origin 401 signs the user out rather than failing quietly.
-   */
-  const overlayPoseInViewer = async (simulationKey) => {
-    if (!molstarRef.current || !simulationKey) return;
-    const target = molstarRef.current.contentWindow;
-    if (!target) return;
-    // Both entry paths can fire for one page view, and each mount used to add
-    // another copy — the state tree filled up with identical 16-element models
-    // stacked on each other. Draw a given run's pose once.
-    if (overlaidPoseKeyRef.current === simulationKey) return;
-    overlaidPoseKeyRef.current = simulationKey;
-    try {
-      const response = await authedFetch(
-        API_CONFIG.buildApiUrl(`/sanitizedminimalsdf/${simulationKey}`)
-      );
-      if (!response.ok) {
-        // A run with no stored pose is a normal outcome, not an error worth a banner.
-        console.log('No pose to overlay for this simulation:', response.status);
-        return;
-      }
-      const sdfText = await response.text();
-      if (!sdfText.trim()) return;
-      target.postMessage({ type: 'loadStructureFromData', text: sdfText, format: 'sdf' }, '*');
-      // Frame it once it has parsed. Molstar does not move the camera for a
-      // structure that arrives after the first, and the pose is at the receptor's
-      // coordinates rather than the origin — so without this it can be loaded,
-      // visible in the state tree, and still off-screen.
-      setTimeout(() => {
-        try {
-          target.postMessage({ type: 'resetCamera' }, '*');
-        } catch (error) {
-          console.error('Could not frame the pose:', error);
-        }
-      }, 500);
-    } catch (error) {
-      console.error('Could not overlay the docked pose:', error);
-      // Let a retry happen — the pose was never drawn.
-      overlaidPoseKeyRef.current = null;
-    }
-  };
-
   // Parse SDF text into the pose table and kick off the price lookups.
   //
   // Split out from loadSdfData so a caller that has ALREADY fetched the SDF can reuse the
@@ -151,8 +101,11 @@ export function Molstar3D() {
       console.log('Loading SDF data from URL:', url);
       setIsLoading(true);
       const response = await authedFetch(url);
+      if (viewerClearedRef.current) return;
       if (response.ok) {
-        applySdfText(await response.text());
+        const sdfText = await response.text();
+        if (viewerClearedRef.current) return;
+        applySdfText(sdfText);
       } else {
         setSdfData([]);
         setSdfStatus('error');
@@ -261,8 +214,15 @@ export function Molstar3D() {
     priceResults.forEach(result => {
       priceMap[result.smiles] = result.price;
     });
-    
+
+    if (viewerClearedRef.current) return;
     setMoleculePrices(priceMap);
+    setSdfData((current) => current.map((molecule) => {
+      const catalogName = priceMap[molecule.smiles]?.name;
+      return catalogName && catalogName !== 'N/A'
+        ? { ...molecule, name: catalogName }
+        : molecule;
+    }));
   };
 
   // Shopping cart functions
@@ -353,6 +313,7 @@ export function Molstar3D() {
     };
     
     clearLocalhostUrls();
+    viewerClearedRef.current = false;
     
     // Check for checkout status and simulation data from URL parameters
     const urlParams = new URLSearchParams(window.location.search);
@@ -360,65 +321,23 @@ export function Molstar3D() {
     const _sessionId = urlParams.get('session_id');
     const pdbParam = urlParams.get('pdb');
     const simulationParam = urlParams.get('simulation');
-    
-    // Auto-load SDF file if parameters are present
-    if (pdbParam && simulationParam) {
-      const sdfUrl = API_CONFIG.buildApiUrl(`/sanitizedminimalsdf/${simulationParam}`);
-      console.log('Auto-loading SDF with URL:', sdfUrl);
-      loadSdfData(sdfUrl);
-    }
 
     // Auto-load PDB file from RCSB if pdb parameter is present
     if (pdbParam) {
-      const pdbUrl = `https://files.rcsb.org/download/${pdbParam}.pdb`;
-      console.log('Auto-loading PDB from RCSB:', pdbUrl);
+      const pdbUrl = simulationParam
+        ? API_CONFIG.buildApiUrl(`/sanitizedpdb/${simulationParam}`)
+        : `https://files.rcsb.org/download/${pdbParam}.pdb`;
+      console.log('Auto-loading PDB:', pdbUrl);
       
-      // Store the URLs and PDB code in localStorage
+      // Store the URLs for the single shared loader below. A simulation uses its
+      // authenticated stored receptor, not a second RCSB copy.
       localStorage.setItem('molstar_pdb_url', pdbUrl);
-      localStorage.setItem('molstar_pdb_code', pdbParam);
+      localStorage.removeItem('molstar_pdb_code');
       if (simulationParam) {
         localStorage.setItem('molstar_simulation_key', simulationParam);
+        localStorage.setItem('molstar_sdf_url', API_CONFIG.buildApiUrl(`/sanitizedsdf/${simulationParam}`));
       }
-      
-      // Load PDB into Molstar after iframe is ready
-      const loadPdbWhenReady = () => {
-        if (molstarRef.current) {
-          setTimeout(() => {
-            console.log('Loading PDB structure from RCSB:', pdbUrl);
-            molstarRef.current.contentWindow.postMessage({
-              type: 'loadStructureFromUrl',
-              url: pdbUrl,
-              format: 'pdb'
-            }, '*');
 
-            // Draw the docked pose on top. Let the receptor land first so the camera
-            // frames both together rather than fitting to the ligand and then jumping.
-            if (simulationParam) {
-              setTimeout(() => overlayPoseInViewer(simulationParam), 600);
-            }
-
-            // Collapse Molstar main menu
-            setTimeout(() => {
-              if (molstarRef.current && molstarRef.current.contentWindow) {
-                molstarRef.current.contentWindow.eval(`
-                  (function() {
-                    var btn = document.querySelector('.msp-btn.msp-btn-icon.msp-btn-link-toggle-off.msp-transparent-bg');
-                    if (btn) { btn.click(); setTimeout(() => btn.click(), 100); }
-                  })();
-                `);
-              }
-            }, 700);
-          }, 2000);
-        }
-      };
-
-      // If iframe is already loaded, load immediately
-      if (molstarRef.current) {
-        loadPdbWhenReady();
-      } else {
-        // Wait for iframe to load
-        setTimeout(loadPdbWhenReady, 3000);
-      }
     }
 
     // Handle checkout status
@@ -484,18 +403,12 @@ export function Molstar3D() {
       pdbUrl = newPdbUrl;
     }
 
-    // Load SDF data if URL is available
-    if (sdfUrl) {
-      // Check if the URL is using localhost and rebuild it if necessary
-      if ( simulationKey) {
-        const newSdfUrl = API_CONFIG.buildApiUrl(`/sanitizedminimalsdf/${simulationKey}`);
-        console.log('Rebuilding localhost SDF URL:', sdfUrl, '->', newSdfUrl);
-        localStorage.setItem('molstar_sdf_url', newSdfUrl);
-        loadSdfData(newSdfUrl);
-      } else {
-        console.log('Loading SDF from localStorage URL:', sdfUrl);
-        loadSdfData(sdfUrl);
-      }
+    // The shared iframe loader fetches a simulation's full SDF once, after its
+    // receptor is loaded. Avoid fetching it here as well. Standalone SDF URLs
+    // (for example the test fixture) still use the normal table loader.
+    if (sdfUrl && !simulationKey) {
+      console.log('Loading standalone SDF from localStorage URL:', sdfUrl);
+      loadSdfData(sdfUrl);
     }
 
     
@@ -539,6 +452,7 @@ export function Molstar3D() {
         console.log('Loading DiffDock ligand with positioning from blob URL');
         // Small delay to ensure protein is in place before ligand overlays
         setTimeout(() => {
+          if (viewerClearedRef.current) return;
           target.postMessage({
             type: 'loadStructureFromUrl',
             url: diffdockLigandPositionUrl,
@@ -549,6 +463,7 @@ export function Molstar3D() {
 
       // Collapse Molstar main menu by toggling twice
       setTimeout(() => {
+        if (viewerClearedRef.current) return;
         if (molstarRef.current && molstarRef.current.contentWindow) {
           molstarRef.current.contentWindow.eval(`
             (function() {
@@ -560,11 +475,8 @@ export function Molstar3D() {
       }, 700);
     };
 
-    // Both entry paths share one implementation now — see overlayPoseInViewer.
-    const loadPoseIntoViewer = () => overlayPoseInViewer(simulationKey);
-
     const loadDefaultStructures = async () => {
-      if (!molstarRef.current || !pdbUrl) return;
+      if (viewerClearedRef.current || !molstarRef.current || !pdbUrl) return;
       const target = molstarRef.current.contentWindow;
       console.log('Loading PDB structure:', pdbUrl);
 
@@ -578,12 +490,13 @@ export function Molstar3D() {
       if (needsAuth) {
         try {
           const response = await authedFetch(pdbUrl);
+          if (viewerClearedRef.current) return;
           if (!response.ok) {
             console.error('Could not fetch this run\'s protein:', response.status);
             return;
           }
           const pdbText = await response.text();
-          if (!pdbText.trim()) return;
+          if (viewerClearedRef.current || !pdbText.trim()) return;
           target.postMessage({ type: 'loadStructureFromData', text: pdbText, format: 'pdb' }, '*');
         } catch (error) {
           console.error('Could not fetch this run\'s protein:', error);
@@ -597,10 +510,30 @@ export function Molstar3D() {
         }, '*');
       }
 
-      // Let the receptor land first so the camera frames both together rather than
-      // fitting to the ligand alone and then jumping when the protein arrives.
-      setTimeout(loadPoseIntoViewer, 600);
+      // Load the full SDF once after the receptor. The parent fetches it with the
+      // bearer token and passes the text to the iframe; the iframe cannot authenticate
+      // the protected URL itself.
+      if (simulationKey) {
+        const sdfUrl = API_CONFIG.buildApiUrl(`/sanitizedsdf/${simulationKey}`);
+        setTimeout(async () => {
+          if (viewerClearedRef.current) return;
+          try {
+            const sdfResponse = await authedFetch(sdfUrl);
+            if (viewerClearedRef.current || !sdfResponse.ok) return;
+            const sdfText = await sdfResponse.text();
+            if (viewerClearedRef.current || !sdfText.trim()) return;
+            target.postMessage({ type: 'loadStructureFromData', text: sdfText, format: 'sdf' }, '*');
+            applySdfText(sdfText);
+            setTimeout(() => {
+              if (!viewerClearedRef.current) target.postMessage({ type: 'resetCamera' }, '*');
+            }, 500);
+          } catch (error) {
+            console.error('Could not load this run\'s SDF:', error);
+          }
+        }, 600);
+      }
       setTimeout(() => {
+        if (viewerClearedRef.current) return;
         if (molstarRef.current && molstarRef.current.contentWindow) {
           molstarRef.current.contentWindow.eval(`
             (function() {
@@ -620,14 +553,17 @@ export function Molstar3D() {
     let structuresLoaded = false;
 
     const handleIframeLoad = () => {
+      // Claim the one automatic load immediately. The iframe `load` event and the
+      // already-loaded check can both run during Molstar startup; waiting to set
+      // this flag until the timeout expires would schedule two identical loads.
+      if (structuresLoaded) return;
+      structuresLoaded = true;
       // Wait a bit more for Molstar to fully initialize
       setTimeout(() => {
         if (!molstarRef.current) return;
-        if (structuresLoaded) return;
-        structuresLoaded = true;
         if (diffdockProteinUrl || diffdockLigandPositionUrl) {
           loadDiffDockStructures();
-        } else if (pdbUrl && sdfUrl && simulationKey) {
+        } else if (pdbUrl) {
           loadDefaultStructures();
         }
       }, 2000);
@@ -648,7 +584,7 @@ export function Molstar3D() {
         return false;
       }
     })();
-    if (alreadyLoaded && (diffdockProteinUrl || diffdockLigandPositionUrl || (pdbUrl && sdfUrl && simulationKey))) {
+    if (alreadyLoaded && (diffdockProteinUrl || diffdockLigandPositionUrl || pdbUrl)) {
       handleIframeLoad();
     }
 
@@ -662,6 +598,41 @@ export function Molstar3D() {
       if (diffdockLigandPositionUrl) URL.revokeObjectURL(diffdockLigandPositionUrl);
     };
   }, []);
+
+  const clearViewerStorage = () => {
+    [
+      'molstar_pdb_url',
+      'molstar_sdf_url',
+      'molstar_simulation_key',
+      'molstar_pdb_code',
+      'diffdock_result',
+      'diffdock_pdb_id',
+      'diffdock_ligand_id',
+      'diffdock_timestamp',
+      'diffdock_protein',
+      'diffdock_ligand',
+      'diffdock_ligand_position',
+      'diffdock_confidence_score',
+    ].forEach((key) => {
+      localStorage.removeItem(key);
+    });
+  };
+
+  const handleClearViewer = () => {
+    viewerClearedRef.current = true;
+    clearViewerStorage();
+    setSdfData([]);
+    setSdfStatus('idle');
+    setMoleculePrices({});
+    setMessage('Docking result cleared');
+    setMessageType('success');
+    molstarRef.current?.contentWindow?.postMessage({ type: 'clearStructure' }, '*');
+    window.history.replaceState({}, document.title, window.location.pathname);
+    setTimeout(() => {
+      setMessage('');
+      setMessageType('');
+    }, 3000);
+  };
 
   const handleBackToSimulation = () => {
     navigate('/dashboard/simulation');
@@ -946,6 +917,15 @@ const _HideMenu =()=>{
                   size="sm"
                   variant="outlined"
                   color="white"
+                  onClick={handleClearViewer}
+                  className="border-white text-white hover:bg-white hover:text-blue-500"
+                >
+                  Clear Result
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outlined"
+                  color="white"
                   onClick={handleBackToSimulation}
                   className="border-white text-white hover:bg-white hover:text-blue-500"
                 >
@@ -1149,12 +1129,12 @@ const _HideMenu =()=>{
                     </tr>
                   </thead>
                   <tbody>
-                    {sdfData
+                    {[...sdfData]
+                      .sort((a, b) => parseFloat(a.score) - parseFloat(b.score)) // Best score first
                       .filter((molecule, index, self) => {
-                        // Filter for unique molecules based on SMILES
+                        // Keep the best-scoring pose for each unique ligand.
                         return index === self.findIndex(m => m.smiles === molecule.smiles && m.smiles !== 'N/A');
                       })
-                      .sort((a, b) => parseFloat(a.score) - parseFloat(b.score)) // Sort by score (most negative first)
                       .map((molecule, index, rows) => {
                       const isLast = index === rows.length - 1;
                       const classes = isLast ? "p-3" : "p-3 border-b border-blue-gray-50";
