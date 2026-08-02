@@ -1,6 +1,15 @@
 # What runs where, and why
 
-> ## ⚠ §2–§3 sequencing is SUPERSEDED. Read this first.
+> ## Post-promotion note
+>
+> If `oracleNew` (`84.13.81.51`) has already been promoted by DNS, read
+> [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md) before applying any execution
+> sequence. This document preserves the architecture decision and historical pre-promotion
+> release record; it does not authorize a second DNS change or an automatic port swap. In the
+> post-promotion state, `84` is production, `83` is standby, `oracleOld` remains the temporary
+> Tanimoto source, and Amsterdam remains compute-only.
+>
+> > ## ⚠ §2–§3 sequencing is SUPERSEDED. Read this first.
 >
 > This document says the two releases "must not be one day" and that the server swap should
 > ship weeks before delivery. **That happened** — Release A went live 2026-07-29 — **and was
@@ -20,6 +29,10 @@ topology in every other document. Written after production was inventoried for t
 
 ## The shape
 
+> **Topology qualifier:** the table below is the historical/pre-promotion topology record.
+> The post-promotion host roles are defined in `POST-PROMOTION-HANDOFF.md`; that document
+> takes precedence for operations after DNS has moved to `84`.
+>
 | | What runs there |
 |---|---|
 | **83.229.87.94** | nginx/TLS on `:443` → **one Node process on `:5173`** serving the API *and* the frontend |

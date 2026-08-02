@@ -9,6 +9,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > **don't remove things users recognise** — fix how a thing works, keep the thing.
 > Everything below is detail in service of that file.
 
+## Production-role switch after DNS promotion
+
+The detailed post-promotion handoff is [`docs/POST-PROMOTION-HANDOFF.md`](docs/POST-PROMOTION-HANDOFF.md).
+Read it **first** whenever `oracleNew` (`84.13.81.51`) has already been promoted by DNS.
+In that state:
+
+- `84.13.81.51` (`oracleNew`) is the live production application host;
+- `83.229.87.94` is the standby/rollback application host;
+- `151.145.91.17` (`oracleOld`) remains the separate, temporary Tanimoto source;
+- Amsterdam is compute-only and does not receive the API or MongoDB Atlas.
+
+Do not blindly execute the pre-promotion port swap in `docs/ARRIVAL-RUNBOOK.md` §8 after
+promotion. Measure listeners, DNS, deployed build identity, Atlas access and real authenticated
+requests first. Do not change DNS again or remove anything from `oracleOld` without the separate
+approval gates in the handoff and runbook §12. Pyxis Atlas and FinSrv Atlas are separate
+projects; the two application hosts intentionally share Pyxis Atlas, not FinSrv's database.
+
 ## Planning
 
 Before non-trivial work, write a short plan and get it agreed.
@@ -35,7 +52,10 @@ preserved in git history at the tag **`planning-archive`** — recover any file 
 `git checkout planning-archive -- .planning`. Do not write new `.planning/` files or
 reference `/gsd:*` commands; that workflow is retired.
 
-### Where things stand — 2026-08-01
+### Where things stand — 2026-08-01 (pre-promotion record)
+
+> The following is the recorded pre-promotion state. If DNS has since promoted `84`, the
+> post-promotion handoff above overrides these host-role statements for operations.
 
 - **The GPU box is ORDERED (2026-08-01), not delivered.** Nothing on it has been executed —
   do not write about work done *on* it in the past tense. GPUs are **4× RTX PRO 4000**.

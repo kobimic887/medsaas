@@ -59,6 +59,12 @@ bloat it.
 
 ## Where to start
 
+> **Already promoted `oracleNew` (`84.13.81.51`) to production?** Read
+> [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md) first. It is the operational
+> authority for that state: `84` is production, `83` is standby, `oracleOld` remains the
+> temporary Tanimoto source, and Amsterdam is compute-only. Do not blindly run the old port
+> swap or change DNS again.
+
 | I want to… | Read |
 |---|---|
 | know what to do next | [NEXT-SESSION.md](./NEXT-SESSION.md) |
@@ -71,10 +77,11 @@ bloat it.
 
 | Document | What it is | Status |
 |---|---|---|
-| [NEXT-SESSION.md](./NEXT-SESSION.md) | **Start here.** Current production topology, the deploy commands, the one job only the owner can do, eight things that look correct and are not, and what is left in priority order. | **current — the working handoff** |
+| [POST-PROMOTION-HANDOFF.md](./POST-PROMOTION-HANDOFF.md) | **Start here after `84` is promoted.** Defines the post-DNS production roles, fresh-agent arrival prompt, validation order, Mongo separation and destructive-action gates. | **conditional authority after DNS promotion** |
+| [NEXT-SESSION.md](./NEXT-SESSION.md) | **Start here before promotion.** Current pre-promotion topology, deploy commands, the one job only the owner can do, eight things that look correct and are not, and what is left in priority order. | **current pre-promotion working handoff** |
 | [BOX-SPEC.md](./BOX-SPEC.md) | **What was ordered and why.** The machine exists because Asinex's servers are in Moscow and go down because of the war. RECT WS-3229C, 4× RTX PRO 4000, Threadripper PRO 9975WX. Includes the GPU trade-off in full, the CUDA/workload matrix, and §5 — the four things to settle with Coreto, including ~€5.2k of reclaimable VAT. | **ordered 2026-08-01 — §5 is now an arrival checklist** |
-| [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) | **Agent-executable, in order.** §1–§12, each with its command, expected output and what to do on mismatch. Hard rules, a resumable state file, per-section rollback. Sections renumbered 2026-08-01 into a real sequence — the old "phase" numbers were explicitly historical and are gone. | **ready to run — needs the box** |
-| [BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md) | **Decision record: what runs where, and why.** The API stays on 83 because the box has pick-up warranty (a fault means 1–3 weeks gone), so box dies → docking stops → product survives. Atlas stays. Supersedes the topology in every other document. | **current** |
+| [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) | **Agent-executable, in order.** §1–§12, each with its command, expected output and what to do on mismatch. Hard rules, a resumable state file, per-section rollback. Its main sequence assumes pre-promotion; the post-promotion handoff is required first after DNS moves to `84`. | **ready to run — needs the box** |
+| [BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md) | **Decision record: what runs where, and why.** Preserves the architecture decision and historical pre-promotion release record; after DNS promotion, use `POST-PROMOTION-HANDOFF.md` for operational host roles. The box remains compute-only and Atlas stays. | **current architecture record** |
 | [PRODUCTION-83-INVENTORY.md](./PRODUCTION-83-INVENTORY.md) | **What production actually is** — inventoried over SSH 2026-07-28, read-only. Corrected several things the other docs assumed: Mongo is **Atlas**, the frontend is a **Vite dev server**, the API is a second HTTPS server on `:3000` bypassing nginx. | **current — measured, not inferred** |
 | [DOCKING-CONTRACT.md](./DOCKING-CONTRACT.md) | **The full 1-click docking contract** — request (§0), response (§1–§6), and how it reaches the screen (§7). Pose format, exact property-tag bytes, the URL-encoded SMILES trap, the `TORSDO`/`"F 5"` truncation artifact, and the silent HTTP-200 failure where a one-space tag difference renders an empty viewer. Captured from production while Asinex still answered. | **current — the only ground truth** |
 | [SECURITY-FINDINGS.md](./SECURITY-FINDINGS.md) | Recorded findings and their state. ⚠ The "already fixed" table is fixed in *this repo*, which is not what is serving the site right now. Three findings added 2026-08-01. | **current** |

@@ -2,6 +2,15 @@
 
 **Invoke with:** `execute the plan docs/ARRIVAL-RUNBOOK.md`
 
+> ## If `oracleNew` is already production
+>
+> Stop using the pre-promotion assumptions in this file as the starting state. Read
+> [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md) first. It defines `84.13.81.51`
+> (`oracleNew`) as production and `83.229.87.94` as standby after DNS promotion. In that state,
+> do **not** blindly execute §8's port swap: measure both hosts first and make only the smallest
+> change needed to maintain a verified rollback host. Do not change DNS again, and do not touch
+> `oracleOld` destructively until §12's gates and a fresh explicit approval are complete.
+>
 > ## STATUS: the box is ORDERED (2026-08-01) and has not been delivered.
 >
 > Nothing in this runbook has been executed. **Do not treat any step as done unless the state
@@ -17,6 +26,11 @@ This file carries **what to do**. Those carry **why**. Do not restate their reas
 do not let them override the hard rules below.
 
 ## Host identities — do not collapse the two Oracles
+
+> **State qualifier:** the table below describes the **pre-promotion / arrival-day starting
+> state**. If `oracleNew` was promoted to production before the box arrived, the post-promotion
+> roles in [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md) take precedence. The two
+> hosts must still be kept distinct in every state.
 
 There are **two different Oracle machines** in this plan. A fresh clone must keep them separate:
 

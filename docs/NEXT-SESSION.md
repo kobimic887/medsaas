@@ -1,6 +1,15 @@
 # What to do next
 
-**Current as of 2026-08-01.** Everything older is recoverable from the git tag
+> ## Post-promotion handoff
+>
+> If `oracleNew` (`84.13.81.51`) has already been promoted to production by DNS, stop using
+> this file's pre-promotion host assumptions as the operating starting point. Read
+> [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md) first: `84` is production,
+> `83` is standby, `oracleOld` (`151.145.91.17`) remains the temporary Tanimoto source, and
+> Amsterdam is compute-only. Do not blindly run the old §8 port swap, change DNS again, or
+> delete anything from `oracleOld`.
+>
+> **Current as of 2026-08-01.** Everything older is recoverable from the git tag
 `docs-archive-2026-08-01` — a ~1,130-line historical log used to live at the bottom of this
 file and was deleted, not lost. Recover it with:
 
@@ -195,10 +204,13 @@ directly:
 
 ---
 
-## The prompt to paste on arrival day
+## The prompt to paste on arrival day (pre-promotion only)
 
-Copy this verbatim into a fresh session once the box is powered, on the network and reachable
-by SSH:
+> **If `84` is already production, use [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md)
+> instead. The prompt below assumes the older state in which `83` is public and `84` is standby.**
+>
+> Copy this verbatim into a fresh session once the box is powered, on the network and reachable
+> by SSH:
 
 > The Amsterdam GPU box has arrived and I can SSH to it. Read `docs/ARRIVAL-RUNBOOK.md`, then
 > `docs/BOX-ARCHITECTURE.md`.
