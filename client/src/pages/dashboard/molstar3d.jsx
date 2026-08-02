@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Card, CardHeader, CardBody, Typography, Button, Chip } from "@material-tailwind/react";
 import { useNavigate } from "react-router-dom";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
+import { clearViewerStorage } from "@/utils/viewerStorage";
 
 // The /api/sanitized* endpoints require a bearer token. Every same-origin 401 is
 // treated by the global interceptor as a dead session, so a bare fetch() here did
@@ -81,11 +82,8 @@ export function Molstar3D() {
   // Function to load SDF data from URL
   // Parse SDF text into the pose table and kick off the price lookups.
   //
-  // Split out from loadSdfData so a caller that has ALREADY fetched the SDF can reuse the
-  // text instead of fetching the same URL a second time. loadSDFStructure did exactly that:
-  // it fetched the SDF to hand to Molstar, then called loadSdfData(url), which fetched it
-  // again and re-ran the whole price fan-out. The route sets no Cache-Control, so the browser
-  // could not be relied on to collapse the two.
+  // Split out from loadSdfData so a caller that has already fetched the SDF can reuse the
+  // text instead of fetching the same URL a second time.
   const applySdfText = (sdfText) => {
     const parsedData = parseSdfData(sdfText);
     setSdfData(parsedData);
@@ -248,32 +246,6 @@ export function Molstar3D() {
     }
   };
 
-  const _addToCart = (molecule, amount, priceInfo) => {
-    const cartItem = {
-      id: `${molecule.smiles}_${Date.now()}`,
-      smiles: molecule.smiles,
-      name: molecule.name,
-      score: molecule.score,
-      amount: amount,
-      pricePerMg: priceInfo?.price1mg || 100,
-      totalPrice: priceInfo?.price1mg || 100, // Do not multiply by amount - just use the price as is
-      moleculeId: priceInfo?.id || 'N/A',
-      availableMg: priceInfo?.availableMg || 0,
-      addedAt: new Date().toISOString()
-    };
-
-    const updatedCart = [...cart, cartItem];
-    setCart(updatedCart);
-    saveCartToStorage(updatedCart);
-    
-    setMessage(`Added ${amount}mg of ${molecule.name} to cart`);
-    setMessageType('success');
-    setTimeout(() => {
-      setMessage('');
-      setMessageType('');
-    }, 3000);
-  };
-
   const removeFromCart = (itemId) => {
     const updatedCart = cart.filter(item => item.id !== itemId);
     setCart(updatedCart);
@@ -376,10 +348,8 @@ export function Molstar3D() {
     const simulationKey = localStorage.getItem('molstar_simulation_key');
     const pdbCode = localStorage.getItem('molstar_pdb_code');
     const diffdockProtein = localStorage.getItem('diffdock_protein');
-    const diffdockLigand = localStorage.getItem('diffdock_ligand');
     const diffdockLigandPosition = localStorage.getItem('diffdock_ligand_position');
     const diffdockProteinUrl = createObjectUrlFromString(diffdockProtein, 'chemical/x-pdb');
-    const diffdockLigandUrl = createObjectUrlFromString(diffdockLigand, 'chemical/x-mdl-molfile');
     const diffdockLigandPositionUrl = createObjectUrlFromString(diffdockLigandPosition, 'chemical/x-mdl-molfile');
 
     console.log('localStorage URLs:', { pdbUrl, sdfUrl, simulationKey, pdbCode });
@@ -594,29 +564,9 @@ export function Molstar3D() {
       }
       window.removeEventListener('message', handleMessage);
       if (diffdockProteinUrl) URL.revokeObjectURL(diffdockProteinUrl);
-      if (diffdockLigandUrl) URL.revokeObjectURL(diffdockLigandUrl);
       if (diffdockLigandPositionUrl) URL.revokeObjectURL(diffdockLigandPositionUrl);
     };
   }, []);
-
-  const clearViewerStorage = () => {
-    [
-      'molstar_pdb_url',
-      'molstar_sdf_url',
-      'molstar_simulation_key',
-      'molstar_pdb_code',
-      'diffdock_result',
-      'diffdock_pdb_id',
-      'diffdock_ligand_id',
-      'diffdock_timestamp',
-      'diffdock_protein',
-      'diffdock_ligand',
-      'diffdock_ligand_position',
-      'diffdock_confidence_score',
-    ].forEach((key) => {
-      localStorage.removeItem(key);
-    });
-  };
 
   const handleClearViewer = () => {
     viewerClearedRef.current = true;
@@ -669,48 +619,35 @@ export function Molstar3D() {
             }, 700); // Delay to ensure PDB is loaded and UI is ready
     }
   };
-const _HideMenu =()=>{
-        
 
-    };
-  const loadSDFStructure = async () => {
+  // Manually retry the authenticated result SDF without fetching it twice.
+  const reloadSdfStructure = async () => {
     const sdfUrl = localStorage.getItem('molstar_sdf_url');
-    if (sdfUrl && molstarRef.current) {
-      console.log('Manually loading SDF:', sdfUrl);
-      // Same reason as loadSmilesIntoMolstar: this URL is one of our protected
-      // /api/sanitized* routes, so fetch it here with the token and post the text.
-      let sdfText;
-      try {
-        const response = await authedFetch(sdfUrl);
-        if (!response.ok) {
-          setMessage('Failed to load SDF structure');
-          setMessageType('error');
-          return;
-        }
-        sdfText = await response.text();
-      } catch (error) {
-        console.error('Error loading SDF structure:', error);
-        setMessage('Failed to load SDF structure');
-        setMessageType('error');
-        return;
-      }
+    if (!sdfUrl || !molstarRef.current) return;
+
+    if (viewerClearedRef.current) return;
+    setIsLoading(true);
+    try {
+      const response = await authedFetch(sdfUrl);
+      if (viewerClearedRef.current) return;
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const sdfText = await response.text();
+      if (viewerClearedRef.current || !sdfText.trim()) throw new Error('Empty SDF response');
       molstarRef.current.contentWindow.postMessage({
         type: 'loadStructureFromData',
         text: sdfText,
-        format: 'sdf'
+        format: 'sdf',
       }, '*');
-      setTimeout(() => {
-              if (molstarRef.current && molstarRef.current.contentWindow) {
-                molstarRef.current.contentWindow.eval(`
-                  (function() {
-                    var btn = document.querySelector('.msp-btn.msp-btn-icon.msp-btn-link-toggle-off.msp-transparent-bg');
-                    if (btn) { btn.click(); setTimeout(() => btn.click(), 100); }
-                  })();
-                `);
-              }
-            }, 700); // Delay to ensure PDB is loaded and UI is ready
-      // Populate the table from the text we already fetched above — no second request.
+      if (viewerClearedRef.current) return;
       applySdfText(sdfText);
+      setMessage('SDF reloaded');
+      setMessageType('success');
+    } catch (error) {
+      console.error('Error reloading SDF structure:', error);
+      setMessage('Failed to reload SDF structure');
+      setMessageType('error');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -764,22 +701,6 @@ const _HideMenu =()=>{
     }
   };
 
-  const loadTestSDF = () => {
-    // For testing, we'll load a sample SDF file
-    const testSdfUrl = '/pdbs/sample-docking-results.sdf';
-    loadSdfData(testSdfUrl);
-  };
-
-  // Function to send SMILES to Molstar for visualization
-  const _sendSmilesToMolstar = (smiles) => {
-    if (molstarRef.current && smiles && smiles !== 'N/A') {
-      console.log('Sending SMILES to Molstar:', smiles);
-      molstarRef.current.contentWindow.postMessage({
-        type: 'loadSmilesStructure',
-        smiles: smiles
-      }, '*');
-    }
-  };
 
   // Function to download molecule as SDF file
   const downloadMoleculeAsSDF = async (molecule, event) => {
@@ -890,28 +811,10 @@ const _HideMenu =()=>{
                   size="sm"
                   variant="outlined"
                   color="white"
-                  onClick={loadPDBStructure}
+                  onClick={reloadSdfStructure}
                   className="border-white text-white hover:bg-white hover:text-blue-500"
                 >
-                  Load PDB
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outlined"
-                  color="white"
-                  onClick={loadSDFStructure}
-                  className="border-white text-white hover:bg-white hover:text-blue-500"
-                >
-                  Load SDF
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outlined"
-                  color="white"
-                  onClick={loadTestSDF}
-                  className="border-white text-white hover:bg-white hover:text-blue-500"
-                >
-                  Test SDF
+                  Reload SDF
                 </Button>
                 <Button
                   size="sm"

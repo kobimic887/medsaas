@@ -16,6 +16,7 @@ import {
 import { ShoppingCartIcon } from '@heroicons/react/24/solid';
 import { API_CONFIG } from "@/utils/constants";
 import { convertPriceToEuro, formatPrice } from '@/utils/algo/algo';
+import { clearViewerStorage } from '@/utils/viewerStorage';
 
 // Copy text to the clipboard, with a fallback for non-secure contexts.
 // navigator.clipboard only exists over HTTPS or on localhost, so on a plain
@@ -670,33 +671,18 @@ export function Simulation() {
     }
   };
 
-  const clearViewerStorage = () => {
-    [
-      'molstar_pdb_url',
-      'molstar_sdf_url',
-      'molstar_simulation_key',
-      'molstar_pdb_code',
-      'diffdock_result',
-      'diffdock_pdb_id',
-      'diffdock_ligand_id',
-      'diffdock_timestamp',
-      'diffdock_protein',
-      'diffdock_ligand',
-      'diffdock_ligand_position',
-      'diffdock_confidence_score',
-    ].forEach((key) => {
-      localStorage.removeItem(key);
-    });
-  };
-
   const handleSimulation = async () => {
-    clearViewerStorage();
-    // Check if we have a SMILES from the search
+    // Check all required inputs before discarding the previous result.
     if (!searchCode) {
       setSimError("Please search for a molecule first to get the SMILES code for docking");
       return;
     }
+    if (!simPdbId) {
+      setSimError("Please provide a PDB ID before starting docking");
+      return;
+    }
     const _searchSmiles = searchCode.replace(',', ';').trim();
+    clearViewerStorage();
     setSimLoading(true);
     setSimError("");
     setSimResult(null);
@@ -736,7 +722,6 @@ export function Simulation() {
       localStorage.removeItem('diffdock_ligand_position');
     }
   const handleDiffDock = async () => {
-    clearViewerStorage();
     const ligand_file_type = "sdf";
     // Check if we have both PDB ID and Ligand ID
     if (!diffDockPdbId) {
@@ -753,6 +738,7 @@ export function Simulation() {
       return;
     }
     
+    clearViewerStorage();
     setDiffDockLoading(true);
     setDiffDockError("");
     setDiffDockResult(null);
