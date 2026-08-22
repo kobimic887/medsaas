@@ -115,6 +115,10 @@ loose grep counts and mocked fixtures have produced false confidence here.
 
 - Use the `pyxis-arrival` skill when the box arrives, when preparing its cutover, or when checking
   arrival readiness.
+- Use `pyxis-api-route` when adding or changing Express `/api` routes, auth middleware, credit
+  metering, proxies, or 401/403/502 behavior.
+- Use `pyxis-feature-slice` when a product change needs client + server + the right test harness
+  (includes gen-test guidance for `server/test` vs lifecycle scripts).
 - Use the Pyxis operations custom agent (`pyxis_ops` in Codex, `pyxis-ops` in Claude) only for a
   read-only topology, runbook, deployment-risk, or live identity audit. Do not spawn it for ordinary
   one-file work.
