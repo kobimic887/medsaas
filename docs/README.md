@@ -1,137 +1,79 @@
 # docs/
 
-Reference material for the Pyxis Discovery platform. Architecture and commands live in the
-repo root [`CLAUDE.md`](../CLAUDE.md); this directory holds the longer-form docs that would
-bloat it.
+Longer-form reference for Pyxis Discovery. Shared agent instructions:
+[`../AGENTS.md`](../AGENTS.md). Product intent: [`../GOAL.md`](../GOAL.md).
 
-> ## The state, 2026-08-01
->
-> **The GPU box is ORDERED (2026-08-01), not yet delivered.** Nothing on it has been
-> executed. GPUs are **4× RTX PRO 4000**.
->
-> ⚠ **Arrival day may be run from a fresh clone on another machine.** Four things it needs are
-> **not in git**: the 1.2 GB Tanimoto dump (on the owner's Mac at `~/backups/tanimoto/` —
-> integrity verified 2026-08-01), `client/dist`, the `.env` files, and the DiffDock weights.
-> [ARRIVAL-RUNBOOK.md §1b](./ARRIVAL-RUNBOOK.md) lists how to get each.
->
-> **Production serves the ORIGINAL Pyxis, deliberately.** The owner rolled back on
-> 2026-07-31 and it stays there until the box arrives.
->
-> | Port | Unit | What | Reachable |
-> |---|---|---|---|
-> | **5173** | `pyxis-vite-legacy` | the original Pyxis (Vite dev) → `chem_beo` on `:3000` | **the public site** |
-> | **5174** | `pyxis-web` | this repo (Bun + `client/dist`) → Atlas | loopback only |
->
-> **Box day is a port swap, then a settings change** — [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md)
-> §8 then §9. Same day, owner's call.
->
-> **Settled 2026-08-01:**
-> - **Arrival day ships on CPU Vina.** `engines/autodock_gpu.py` is a stub that raises
->   unconditionally — and that is **not a blocker**. The box exists so docking stops depending
->   on Moscow (*"not throughput, not cost"*), and 32 cores of Vina does that. AutoDock-GPU is a
->   follow-up, buildable on the box at leisure.
-> - **We do not control access.** The building's management company owns SSH, IPMI is unlikely,
->   and **we cannot ask them anything.** [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §1c is a
->   probe, not a question list, and carries the reverse-tunnel fallback if inbound `:443` is
->   blocked.
-> - **Only two steps can lock you out** (§5.1, §6.3). Both carry a deadman switch. Default to
->   touching nothing — loopback + Caddy already satisfies the requirement at zero lockout risk.
->
-> **Decisions that override anything older you read:**
-> - **The box is compute only.** The API stays on 83; the database stays in **MongoDB Atlas**
->   and does not move. Nothing on the box opens a Mongo connection.
-> - **GPUs are 4× RTX PRO 4000**, settled 2026-08-01. Not 2× RTX 5090.
-> - **The box is reached by public hostname over HTTPS.** Caddy on `:443`, services on
->   loopback, firewall admits only 83. **No VPN, no tunnel** — that was one code comment four
->   docs repeated as settled. It never was, and it is rejected.
-> - **NVIDIA NIM / AI Enterprise will not be bought.** DiffDock is rebuilt from OSS
->   `gcorso/DiffDock` (MIT). Do not re-propose it.
-> - **Folding and molecule generation stay on hosted NIM, permanently.**
-> - **"De-SaaS" meant BRANDING, not deleting features.** A 2026-07-29 pass read it the other
->   way and removed sign-up and the plans page. That was wrong and is reverted. What stayed
->   deleted, correctly, is the seven marketing pages (tag `saas-surface-v1`).
->
-> **The largest live exposure:** ~60 unauthenticated `chem_beo` routes, on the public site
-> right now. `/api/sanitizedminimalsdf/<key>` returns real customer results with no token.
-> ⛔ **Settled 2026-08-01: the patch will never be applied**, and **the port swap stays on
-> arrival day** — both put to the owner and decided. So the exposure until then is knowingly
-> accepted, and the port swap is the remediation. ⚠ A rollback to `:3000` re-opens all of it.
+> **Current state (2026-08-22):** DNS for `app.pyxis-discovery.com` / `app.fin-srv.com` →
+> **`84.13.81.51`**. Public product = legacy Vite **`:5173`** (intentionally not improved).
+> This repo on **`:5174`** = dress rehearsal. **Boss approved** public → `pyxis-web`
+> (**not executed**) — [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md). Soft flip may precede
+> Amsterdam box. **`83`** = imminent shutdown (still up until killed — not long-lived
+> standby). Box ordered, not delivered. Atlas shared. Details: the three files below.
 
-## Where to start
+## Where to start (pick one)
 
-> **Already promoted `oracleNew` (`84.13.81.51`) to production?** Read
-> [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md) first. It is the operational
-> authority for that state: `84` is production, `83` is standby, `oracleOld` remains the
-> temporary Tanimoto source, and Amsterdam is compute-only. Do not blindly run the old port
-> swap or change DNS again.
-
-| I want to… | Read |
+| Situation | Read |
 |---|---|
-| know what to do next | [NEXT-SESSION.md](./NEXT-SESSION.md) |
-| buy the machine | [BOX-SPEC.md](./BOX-SPEC.md) §5 |
-| run arrival day | [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) |
-| understand what runs where | [BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md), then [PRODUCTION-83-INVENTORY.md](./PRODUCTION-83-INVENTORY.md) |
-| rebuild docking | [DOCKING-CONTRACT.md](./DOCKING-CONTRACT.md) and [`deploy/box/docking/BRIEF.md`](../deploy/box/docking/BRIEF.md) |
+| **Any ops / fresh agent** | [POST-PROMOTION-HANDOFF.md](./POST-PROMOTION-HANDOFF.md) |
+| **What to do while waiting / owner decisions** | [NEXT-SESSION.md](./NEXT-SESSION.md) |
+| **Public → pyxis-web flip (approved / execute)** | [PYXIS-WEB-FLIP.md](./PYXIS-WEB-FLIP.md) — STOP until “do the flip now” |
+| **Box has arrived / cutover day** | [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) (after the handoff) |
 
-## Every document
+Topology *why*: [BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md). What was ordered:
+[BOX-SPEC.md](./BOX-SPEC.md). Docking bytes: [DOCKING-CONTRACT.md](./DOCKING-CONTRACT.md).
 
-| Document | What it is | Status |
-|---|---|---|
-| [POST-PROMOTION-HANDOFF.md](./POST-PROMOTION-HANDOFF.md) | **Start here after `84` is promoted.** Defines the post-DNS production roles, fresh-agent arrival prompt, validation order, Mongo separation and destructive-action gates. | **conditional authority after DNS promotion** |
-| [NEXT-SESSION.md](./NEXT-SESSION.md) | **Start here before promotion.** Current pre-promotion topology, deploy commands, the one job only the owner can do, eight things that look correct and are not, and what is left in priority order. | **current pre-promotion working handoff** |
-| [BOX-SPEC.md](./BOX-SPEC.md) | **What was ordered and why.** The machine exists because Asinex's servers are in Moscow and go down because of the war. RECT WS-3229C, 4× RTX PRO 4000, Threadripper PRO 9975WX. Includes the GPU trade-off in full, the CUDA/workload matrix, and §5 — the four things to settle with Coreto, including ~€5.2k of reclaimable VAT. | **ordered 2026-08-01 — §5 is now an arrival checklist** |
-| [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) | **Agent-executable, in order.** §1–§12, each with its command, expected output and what to do on mismatch. Hard rules, a resumable state file, per-section rollback. Its main sequence assumes pre-promotion; the post-promotion handoff is required first after DNS moves to `84`. | **ready to run — needs the box** |
-| [BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md) | **Decision record: what runs where, and why.** Preserves the architecture decision and historical pre-promotion release record; after DNS promotion, use `POST-PROMOTION-HANDOFF.md` for operational host roles. The box remains compute-only and Atlas stays. | **current architecture record** |
-| [PRODUCTION-83-INVENTORY.md](./PRODUCTION-83-INVENTORY.md) | **What production actually is** — inventoried over SSH 2026-07-28, read-only. Corrected several things the other docs assumed: Mongo is **Atlas**, the frontend is a **Vite dev server**, the API is a second HTTPS server on `:3000` bypassing nginx. | **current — measured, not inferred** |
-| [DOCKING-CONTRACT.md](./DOCKING-CONTRACT.md) | **The full 1-click docking contract** — request (§0), response (§1–§6), and how it reaches the screen (§7). Pose format, exact property-tag bytes, the URL-encoded SMILES trap, the `TORSDO`/`"F 5"` truncation artifact, and the silent HTTP-200 failure where a one-space tag difference renders an empty viewer. Captured from production while Asinex still answered. | **current — the only ground truth** |
-| [SECURITY-FINDINGS.md](./SECURITY-FINDINGS.md) | Recorded findings and their state. ⚠ The "already fixed" table is fixed in *this repo*, which is not what is serving the site right now. Three findings added 2026-08-01. | **current** |
-| [PYXIS-ONLY.md](./PYXIS-ONLY.md) | Retiring the SaaS *branding*: one product for one company. Which frontend wins, with evidence. Steps 1/3/4 applied, 2/5 reversed, 6 done. | **applied — but not currently live** |
-| [CLAUDE-LIFE-SCIENCES.md](./CLAUDE-LIFE-SCIENCES.md) | The MCP server: its 14 tools, the four that cannot work until the box is up, and how to connect Claude Science. | current |
-| [CI-CD.md](./CI-CD.md) | The two repo-owned workflows, the build-on-box deploy model, required secrets. | current |
-| [STRIPE_LIVE_CUTOVER.md](./STRIPE_LIVE_CUTOVER.md) | Moving Stripe from test to live keys. ⚠ Related live bug: **no webhook is registered at all**, so real purchases grant no credits. | reference |
-| [IMPROVEMENTS.md](./IMPROVEMENTS.md) | Backlog of known improvements. | reference |
-| [ASINEX-ESHOP-HANDOFF.md](./ASINEX-ESHOP-HANDOFF.md) | What `eitangenis/eShop` is, and how the three distinct Asinex data paths relate. | reference |
-| [ASINEX-ESHOP-REVERSE-ENGINEERING.md](./ASINEX-ESHOP-REVERSE-ENGINEERING.md) | Implementable spec from the legacy storefront: pricing table, compound model, search semantics. | reference |
+## Settled decisions (do not re-litigate)
 
-### Elsewhere in the repo
+Full table in [NEXT-SESSION.md](./NEXT-SESSION.md) § Owner decisions. Short form:
 
-| Path | What |
+- Dual stack: public `:5173` legacy / `:5174` maintained (future live).
+- Do **not** polish live legacy; all product energy on `:5174`.
+- **2026-08-22:** boss **approved** public → `pyxis-web` (**not executed**). Soft/product
+  flip may precede box — [PYXIS-WEB-FLIP.md](./PYXIS-WEB-FLIP.md). JWT rotate on flip; Stripe
+  webhook **after** flip.
+- Shared Atlas; `simulation_logs` dual-shape in the **reader**; ensure-on-login `companyId`.
+- Box access from runbook §1c probe — no Tailscale Pro mandate.
+- PubMed on maintained only; bare Molstar visit stays empty (by design).
+- `chem_beo` hardening patch will **never** be applied; public flip remediates exposure.
+
+## Reference catalog
+
+| Document | Role |
 |---|---|
-| [`deploy/box/`](../deploy/box/) | The box's stack: `compose.yml`, `.env.example`, and the three services — [docking](../deploy/box/docking/), [diffdock](../deploy/box/diffdock/), [convertstr](../deploy/box/convertstr/), each with a Dockerfile carrying `test` and `runtime` targets and a pytest suite. Every image pins `--platform linux/amd64` and **none has ever been executed** — they get built natively on the box (§5). ⚠ `autodock-gpu` is a **stub that always 503s**; ship on `vina`. |
-| [`deploy/box/docking/BRIEF.md`](../deploy/box/docking/BRIEF.md) | Self-contained build brief for the docking service. The byte-level contract, reproducible receptor prep, the recovered search box, and the engine interface that makes it testable without a GPU. |
-| [`deploy/chem_beo/`](../deploy/chem_beo/) | ⛔ **Will never be applied — settled 2026-08-01.** A patch for the legacy API, written and verified against the real database, then declined: `chem_beo` is going away at the port swap. Kept as a **record of what is wrong with `chem_beo`**, which is still live until the swap and re-opened by any rollback. |
-| [`deploy/83/systemd/`](../deploy/83/systemd/) | The four production units, and the staged retirement plan for the legacy stack after the port swap. |
-| [`scripts/verify-docking-response.mjs`](../scripts/verify-docking-response.mjs) | **Run before cutting docking over.** Pushes a candidate payload through both production parsers byte-for-byte and prints the pose table the dashboard would render. Exit 0 = it reaches the user. |
-| [`scripts/verify-tanimoto-restore.sh`](../scripts/verify-tanimoto-restore.sh) | Restores the Tanimoto dump and **asserts 2,951,975 rows** — `pg_restore` can exit 0 having restored a schema and no data. |
+| [POST-PROMOTION-HANDOFF.md](./POST-PROMOTION-HANDOFF.md) | **Authority** — host roles, `84` paths, before-kill `83`, arrival prompt |
+| [NEXT-SESSION.md](./NEXT-SESSION.md) | **Authority** — backlog, owner decisions, do-nots, deploy to `:5174` |
+| [PYXIS-WEB-FLIP.md](./PYXIS-WEB-FLIP.md) | **Flip checklist** — approved 2026-08-22; execute only on “do the flip now” |
+| [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) | Box-day sequence (pre-promotion body; handoff overrides host roles; §8 product swap superseded by flip doc when soft-flipping pre-box) |
+| [BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md) | Compute-only topology decision record |
+| [BOX-SPEC.md](./BOX-SPEC.md) | Ordered hardware (4× RTX PRO 4000) + VAT checklist |
+| [PRODUCTION-83-INVENTORY.md](./PRODUCTION-83-INVENTORY.md) | Historical legacy-stack inventory (2026-07-28 on `83`) |
+| [DOCKING-CONTRACT.md](./DOCKING-CONTRACT.md) | 1-click docking request/response ground truth |
+| [SECURITY-FINDINGS.md](./SECURITY-FINDINGS.md) | Findings; “fixed” = this repo, not necessarily public `:5173` |
+| [KNOWN-BROWSER-ISSUES.md](./KNOWN-BROWSER-ISSUES.md) | Safari/Molstar WebGL; workarounds |
+| [PYXIS-ONLY.md](./PYXIS-ONLY.md) | De-SaaS branding record (applied on `:5174`, not public yet) |
+| [CLAUDE-LIFE-SCIENCES.md](./CLAUDE-LIFE-SCIENCES.md) | MCP tools |
+| [CI-CD.md](./CI-CD.md) | Repo workflows; deploy.yml ≠ production |
+| [STRIPE_LIVE_CUTOVER.md](./STRIPE_LIVE_CUTOVER.md) | Webhook registration — **after** public flip |
+| [IMPROVEMENTS.md](./IMPROVEMENTS.md) | Optional backlog (not critical path) |
+| [ASINEX-ESHOP-HANDOFF.md](./ASINEX-ESHOP-HANDOFF.md) / [ASINEX-ESHOP-REVERSE-ENGINEERING.md](./ASINEX-ESHOP-REVERSE-ENGINEERING.md) | External catalog/storefront reference |
+| [archive/](./archive/) | Superseded plans (quality roadmap, Neurosnap, Bun↔Node rollback) |
 
-## Deleted, and how to get them back
+### Deploy trees agents trip on
 
-The 2026-08-01 cleanup removed ~2,400 lines of superseded planning. Everything is at the tag
-**`docs-archive-2026-08-01`**:
+| Path | Note |
+|---|---|
+| [`deploy/83/systemd/`](../deploy/83/systemd/) | Unit **pattern** also used on live `84`; directory name is historical |
+| [`deploy/chem_beo/`](../deploy/chem_beo/) | Patch record only — **never apply** |
+| [`deploy/box/`](../deploy/box/) | Amsterdam images/briefs — none executed until box day |
 
-```bash
-git show docs-archive-2026-08-01:docs/COMPUTE-BOX-MIGRATION.md
-git checkout docs-archive-2026-08-01 -- docs        # the whole tree
-```
+## Recovering deleted planning
 
-| Removed | Why | Where its content went |
-|---|---|---|
-| `COMPUTE-BOX-MIGRATION.md` (850 lines) | Its plan was explicitly superseded — it predates the production inventory and assumed the whole backend and database move to the box | CUDA/workload matrix → [BOX-SPEC.md](./BOX-SPEC.md) §4 |
-| `BOX-BEFORE-AFTER.md` (449 lines) | A planning narrative whose "before" is now measured in PRODUCTION-83-INVENTORY and whose "after" duplicated BOX-ARCHITECTURE | physical-setup and hardware-acceptance steps → [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §3–§4 |
-| `NEXT-SESSION.md` historical log (~1,130 lines) | A dated session-by-session log kept below a "this section outranks everything below it" header | — |
-| `ARRIVAL-RUNBOOK.md` phases 0, 4.1, 4.2, 5 | Done, dead (the Mongo move), or superseded by the port swap | live parts folded into the new §2 and §8 |
+Tag **`docs-archive-2026-08-01`** (e.g. `COMPUTE-BOX-MIGRATION.md`, old NEXT-SESSION log).
+Also: `planning-archive`, `saas-surface-v1`.
 
-Earlier archive tags: **`planning-archive`** (the 97-file `.planning/` tree),
-**`saas-surface-v1`** (the seven marketing pages — the only copy of the macrocycle copy).
+## Hosts outside this tree
 
-## Infrastructure notes that live outside this repo
-
-- **Oracle VPS `151.145.91.17`** — ops notes are in a separate local repo, `~/projects/oracle`.
-  ⚠ **Half of it is production:** the `tonomitosql` stack answers the Deep Similarity page via
-  eight hardcoded proxy routes in `chem_beo`. Its Postgres holds the **only copy** of a
-  2,951,975-molecule index. The three `medsaas-*` containers are genuinely discardable.
-- **tonomitosql** — the Tanimoto/RDKit search API that `TANIMOTO_API_BASE` points at, in its
-  own repo `kobimic887/tonomitosql`.
-- **`83.229.87.94`** — a shared VPS, **2 cores and 1 GB of RAM**, hosting an unrelated project
-  on `:4000` alongside all of our production. Its rules — do not modify nginx, TLS, DNS or the
-  firewall — are documented in that project, not here.
+- **`84.13.81.51` (`oracleNew`)** — live app host (measure DNS).
+- **`83.229.87.94`** — imminent shutdown; read-only until owner kills.
+- **`151.145.91.17` (`oracleOld`)** — temporary Tanimoto; ops notes in `~/projects/oracle`.
+- Amsterdam GPU box — compute only; access via ARRIVAL §1c probe.

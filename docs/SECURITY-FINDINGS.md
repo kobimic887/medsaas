@@ -4,8 +4,12 @@ Audit of the MedSaaS server (`server/index.js` and friends). Items are grouped b
 status: **what's already fixed in code**, then **open items** with severity and
 concrete fix guidance.
 
-_Last updated: 2026-08-01. Line numbers drift as the file changes — search by
-symbol/route, not by number._
+_Last updated: 2026-08-03 (host banner 2026-08-22). Line numbers drift as the file changes —
+search by symbol/route, not by number._
+
+> **Hosts:** public DNS → **`84`**; public product still legacy `:5173` → `chem_beo`. Fixes
+> below are in this repo / `:5174` until public flip (boss click-test **or** box arrival).
+> See [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md).
 
 ---
 
@@ -14,11 +18,11 @@ symbol/route, not by number._
 These were applied to **this repo's** `server/index.js`. They were live on
 `app.pyxis-discovery.com` from 2026-07-29 to 2026-07-31.
 
-⚠ **Corrected 2026-08-01: they are not in effect right now.** The owner deliberately rolled
-production back to the **original Pyxis** on 2026-07-31, which is served by `chem_beo` on
-`:3000`. This repo's server runs alongside on `:5174`, loopback only. So every fix in the
-table below is *written and deployed but not in the request path* until the port swap on box
-day ([ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §8).
+⚠ **Corrected 2026-08-01: they are not in effect on the public site.** The owner deliberately
+rolled the product back to the **original Pyxis** on 2026-07-31, which is served by `chem_beo`
+on `:3000` (now on live host **`84`**). This repo's server runs alongside on `:5174`,
+loopback only. So every fix in the table below is *written and deployed but not in the public
+request path* until the port swap ([ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §8 on `84`).
 
 Two caveats that are not in the table:
 
@@ -50,6 +54,10 @@ Two caveats that are not in the table:
 | `diff_dock.sh` shared output file + unvalidated args (was open item #3) | High | Per-request `mkdtemp` work dir passed to the script (no more shared `output.json`); `protein`/`ligand` validated (`^[A-Za-z0-9]{4}$` / `^[A-Za-z0-9]{1,8}$`); error responses no longer leak `stderr`/details. |
 | `simulation_logs` stored full decoded JWT (was open item #5) | Medium | `user: req.user` field dropped from both `/api/simulation` inserts; discrete `username`/`companyId`/`companyName` columns remain. |
 | Stale authorization on `authenticateToken`-only routes (was open item #7) | Medium | `requireActiveUser` added to every formerly token-only route (simulation, simulation-logs, shop, sanitized*, catalog proxies, api4, Asinex, Tanimoto, projects, activity, admet) — DB is now the per-request source of truth for active/role/tenant. |
+| Browser-controlled molecule checkout totals | High | `/create-checkout-session-onetime` now accepts only catalog identity/package size (plus bounded SMILES solely to re-resolve pre-migration numeric cart IDs), re-resolves each line from the configured catalog, itemizes Stripe from server-resolved cents, bounds the cart, and rejects unknown/unpriced items. Browser names, descriptions, prices and totals are ignored. |
+| Divergent Stripe plan routes and broken return path | High | Both legacy/current plan endpoints now build the same server-owned one-time credit-pack session; the legacy client-controlled monthly/yearly subscription branch is gone, successful/canceled checkout returns to the real `/dashboard/paid-plans` route, and provider errors are logged server-side without being returned verbatim. |
+| Client-only forged checkout success on Results | Medium | The obsolete `?checkout=success` branch was removed from Simulation Results. A crafted URL can no longer show a false purchase confirmation or delete the browser's molecule cart; real Stripe fulfillment remains webhook-only. |
+| Unbounded/heavy `/api/simulation-logs` list (was A3) | Low → scaling | Startup creates tenant/timestamp and cache-lookup indexes; the list is newest-first, capped at 500, and projects away stored PDB/SDF result blobs while retaining current and legacy ownership shapes. |
 
 ### Residual risk on the SSRF fix — read this
 The DNS check runs **at configuration time** (when an admin saves the URL). It does
@@ -113,26 +121,12 @@ index and scope the duplicate check to `req.user.companyId`. Note `/api/verify-e
 (`:2279`) does `updateOne({ email }, ...)` unscoped, which is safe *only because* email is
 globally unique — it must be fixed in the same change or it will verify the wrong user.
 
-### A3. `/api/simulation-logs` is unbounded and unindexed *(added 2026-08-01, verified)*
+### A3. `/api/simulation-logs` was unbounded and unindexed — ✅ fixed 2026-08-03
 
-```js
-const logs = await simulationLogs.find(tenantFilter).sort({ timestamp: -1 }).toArray();  // :3514
-```
-
-No `.limit()`, no pagination, and the whole result is serialised into one response. Worse,
-the index block at `:1106-1118` creates indexes for `users`, `companies`, `audit_logs` and
-`billing_events` but **nothing on `simulation_logs`** except the unique `simulationKey` index
-from `ensureAdmetQueueIndexes`. So this is a collection scan followed by an in-memory sort,
-and each document carries a full docking result — receptor PDB plus poses, tens to hundreds of
-KB each.
-
-**Severity: low now, degrades badly.** Production holds single-digit simulation logs today, so
-nothing is visibly slow. At a few thousand rows this becomes a multi-hundred-MB response that
-a page refresh can repeat.
-
-**Fix:** add `simulationLogs.createIndex({ companyId: 1, timestamp: -1 })` and
-`{ username: 1, timestamp: -1 }` to the startup block, add `.limit()` with cursor pagination,
-and project away `result` — the list view does not render pose data.
+The current server creates company/user timestamp indexes (including legacy record shapes),
+returns newest-first records with a 500-row safety ceiling, and excludes the heavy stored docking
+result from the list projection. Proper cursor pagination remains a later scaling improvement if a
+real user approaches the ceiling; the former unbounded multi-hundred-MB response path is closed.
 
 
 ### 1. Anyone can self-register as `owner` (the privilege model behind the SSRF)

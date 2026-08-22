@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pyxis Arrival"
+  short_description: "Run the measured GPU-box arrival workflow"
+  default_prompt: "Use $pyxis-arrival to prepare or execute the Pyxis box arrival workflow safely."

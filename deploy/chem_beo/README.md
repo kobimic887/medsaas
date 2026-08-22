@@ -1,8 +1,9 @@
 # Patches for `chem_beo`
 
-`chem_beo` (`eitangenis/chem_beo`, running on 83 as `/root/chem_beo`) is the production API
-**right now** — the owner rolled production back to the original Pyxis on 2026-07-31, and
-`chem_beo` on `:3000` is what serves it.
+`chem_beo` (`eitangenis/chem_beo`) is still the **public** API behind legacy Vite — on live
+**`84`** as `/root/pyxis-OLD-LIVE-backend-3000` (historically `/root/chem_beo` on `83`).
+Owner rolled the *product* back to original Pyxis on 2026-07-31; DNS later moved the *host*
+to `84`.
 
 > ## ⛔ SETTLED 2026-08-01: this patch will NEVER be applied. Do not re-raise it.
 >

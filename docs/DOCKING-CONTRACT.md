@@ -390,30 +390,31 @@ acceptable, a differently-shaped payload breaks the dashboard.
 
 ## 7. How the response reaches the screen — and how it silently doesn't
 
-**The client never renders `result` directly.** `POST /api/simulation` returns
-`{pdb, sdf, simulationKey}`, and `simulation.jsx:775` throws the payload away, keeps only
-`simulationKey`, and sends the browser to Molstar with two **URLs**:
+**The client never renders the submission response directly.** The normal dashboard call opts
+into `?includeResult=false`, receives only `simulationKey`, and sends the browser to Molstar with
+two authenticated **URLs**. The API remains backward compatible: callers that omit the query
+parameter still receive `{pdb, sdf, simulationKey}`.
 
 ```
-POST /api/simulation ──► { pdb, sdf, simulationKey }
-        │  simulation.jsx:775-793 — keeps simulationKey, stores two URLs in localStorage
+POST /api/simulation?includeResult=false ──► { simulationKey }
+        │  simulation.jsx — stores two authenticated artifact URLs in localStorage
         ▼
  /dashboard/molstar3d
         ├─► GET /api/sanitizedpdb/{key}          → receptor, \n converted to CRLF → Molstar
-        └─► GET /api/sanitizedminimalsdf/{key}   → REDUCED poses → parseSdfData() → the table
+        └─► GET /api/sanitizedsdf/{key}          → stored poses → parseSdfData() → the table/viewer
 ```
 
 So the engine's output is re-read from Mongo and passed through **two more transforms** before
 anyone sees it. Both endpoints are `authenticateToken` + `buildTenantFilter`, so the JWT
 `companyId` trap (ARRIVAL-RUNBOOK §5.3) makes the *viewer* 404 as well.
 
-### The reduction, and why 5 poses become 1
+### The minimal-download reduction, and why 5 poses become 1
 
-`/api/sanitizedminimalsdf` (`server/index.js:3359`) splits on `$$$$`, and for each block reads
+`/api/sanitizedminimalsdf` (used by the reduced SDF download action) splits on `$$$$`, and for each block reads
 `>  <smiles>` and `>  <SCORE>` **as literal string prefixes**. It then keys a map on the SMILES
 value, keeping the block with the **lowest** score. Every pose of one ligand carries the same
 `<smiles>`, so **5 poses collapse to 1 — the best-scoring one.** That is the "minimal" in the
-route name, and it is why the viewer lists one row per ligand, not five.
+route name. The result table independently groups stored poses by ligand and shows the best score.
 
 Two consequences for the box:
 

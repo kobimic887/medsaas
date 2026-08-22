@@ -6,8 +6,10 @@
 > [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md) before applying any execution
 > sequence. This document preserves the architecture decision and historical pre-promotion
 > release record; it does not authorize a second DNS change or an automatic port swap. In the
-> post-promotion state, `84` is production, `83` is standby, `oracleOld` remains the temporary
-> Tanimoto source, and Amsterdam remains compute-only.
+> post-promotion state, `84` is production, **`83` is imminent shutdown (not long-lived
+> standby)**, `oracleOld` remains the temporary Tanimoto source, and Amsterdam remains
+> compute-only. ⚠ Topology lines that still describe `83` as the live app host or as failover
+> are historical; rollback-to-`83` / mirror-to-`83` language needs owner confirmation after kill.
 >
 > > ## ⚠ §2–§3 sequencing is SUPERSEDED. Read this first.
 >

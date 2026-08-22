@@ -6,10 +6,13 @@
 >
 > Stop using the pre-promotion assumptions in this file as the starting state. Read
 > [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md) first. It defines `84.13.81.51`
-> (`oracleNew`) as production and `83.229.87.94` as standby after DNS promotion. In that state,
-> do **not** blindly execute §8's port swap: measure both hosts first and make only the smallest
-> change needed to maintain a verified rollback host. Do not change DNS again, and do not touch
-> `oracleOld` destructively until §12's gates and a fresh explicit approval are complete.
+> (`oracleNew`) as production. **`83.229.87.94` is scheduled for imminent shutdown** (owner
+> 2026-08-21) — do **not** treat it as a long-lived standby/rollback host. In that state, do
+> **not** blindly execute §8's port swap: measure **`84`** first. ⚠ Passages below that say
+> “port swap on both hosts”, “mirror/`sync` to `83`”, or “keep `83` as verified rollback”
+> need **owner confirmation of the post-shutdown rollback target** (likely on-disk / snapshot
+> on `84` only). Do not change DNS again, and do not touch `oracleOld` destructively until
+> §12's gates and a fresh explicit approval are complete.
 >
 > ## STATUS: the box is ORDERED (2026-08-01) and has not been delivered.
 >
@@ -37,7 +40,7 @@ There are **two different Oracle machines** in this plan. A fresh clone must kee
 | Name | Address | Role before Amsterdam arrival | Role after the verified arrival cutover |
 |---|---|---|---|
 | **`oracleOld`** | `151.145.91.17` | Old Oracle: live Tanimoto/Postgres + non-production medsaas containers + unrelated owner tooling | Tanimoto and **all medsaas containers are removed only after the Amsterdam migration is verified**; CLIProxyAPI/Crafty and other unrelated tooling are left alone |
-| **`oracleNew`** | `84.13.81.51` | **Intended 1:1 standby clone** of `83` — legacy Pyxis on `:5173`, `chem_beo` on `:3000`, this repo's `pyxis-web` standby on `:5174`, and FinSrv on `:4000` | Receives the **same Pyxis port swap and the same Amsterdam service-link settings as `83`**; remains the synchronized standby/failover host. It is not considered ready until secrets, Atlas access, and database-backed checks pass |
+| **`oracleNew`** | `84.13.81.51` | **Was** intended 1:1 standby of `83`. **If DNS already points here (measured 2026-08-21+), it is live production** — see [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md); ignore the “standby” column for ops. Dual stack: legacy `:5173` public, this repo `:5174` dress rehearsal. | After box cutover: same Amsterdam service links; port swap on this host (not on shut-down `83`). Not the Tanimoto source. |
 
 `oracleOld` is the source for the Tanimoto migration. `oracleNew` is **not** the Tanimoto
 source and is **not** the Amsterdam compute box. Never use a bare label such as “Oracle” in
@@ -403,10 +406,20 @@ not delegate the plumbing check — run the script.
 
 ## 8. Port swap — this repo takes 5173
 
+> **2026-08-22 supersession (product / soft flip):** Boss approved switching public Pyxis to
+> `pyxis-web` **without waiting for the Amsterdam box**. That product cutover is documented in
+> [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md) (nginx soft flip preferred on `84`; JWT rotate;
+> Stripe after; STOP until “do the flip now”). The 2026-08-01 “keep this on arrival day / do
+> not re-raise early flip” decision is **superseded for the product flip only**. Box day still
+> owns compute cutover (§9+). Do **not** run §8 on shut-down-bound `83`. Prefer the flip doc
+> when the owner asks to make maintained public before the box arrives.
+
 **Owner's call, 2026-08-01: same day as the cutover, and it stays on arrival day.** It was put
 to the owner that this step has no dependency on the box and could ship earlier — it is the
 only thing that closes `chem_beo`'s ~60 unauthenticated routes, since that patch will never be
-applied. The answer was to keep it here. ⛔ **Do not re-raise it.**
+applied. The answer was to keep it here. ⛔ **Do not re-raise it** — **except** as superseded
+above (2026-08-22 product-flip approval). Historical text below remains the classic port-swap
+procedure for a box-coupled day.
 
 Do it *after* §7 passes — if the Amsterdam box services are not good, you never touch either
 live application host. ⚠ **And get §7 right**, because the rollback path returns to an API with

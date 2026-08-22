@@ -1,11 +1,18 @@
-# systemd units for 83.229.87.94
+# systemd units (pattern for live `84`; directory name is historical)
+
+> **2026-08-21+:** Live app host is **`84.13.81.51`**. `83` is **imminent shutdown** (not
+> long-lived standby). These unit files are the pattern used on **`84`**; do not install or
+> mutate them on `83` toward kill. Before-kill checklist:
+> [`docs/POST-PROMOTION-HANDOFF.md`](../../docs/POST-PROMOTION-HANDOFF.md).
+> Public = legacy `:5173`; this repo = `:5174` dress rehearsal. Port swap on flip runs on
+> **`84`**.
 
 ## Why
 
-Every Pyxis process on 83 is hand-started in a foreground shell inside `screen`. **A reboot
-ends production until a human logs in.** That has been the machine's longest-standing
-operational problem, and it is the one failure mode that takes the product down completely
-with no alert and no automatic recovery.
+Historically every Pyxis process on `83` was hand-started in a foreground shell inside
+`screen` — **a reboot ended production until a human logged in.** That was the longest-
+standing operational failure mode. Units below fixed that; the same pattern runs on live
+`84`.
 
 It has already caused visible damage. On 2026-07-29 the box was running **two half-dead
 `concurrently` stacks**: one from 2026-07-02, one from 2026-07-08, each started with
@@ -17,12 +24,12 @@ cover both ports.
 
 All four units are installed and **enabled**, so all four survive a reboot.
 
-| Unit | Port | What | Live? |
+| Unit | Port | What | On live `84` |
 |---|---|---|---|
-| `pyxis-vite-legacy` | **5173** | the original Pyxis, a Vite dev server | **yes — this is the public site** |
+| `pyxis-vite-legacy` | **5173** | the original Pyxis, a Vite dev server | **yes — public site** (via nginx) |
 | `pyxis-api-legacy` | 3000 | `chem_beo`, the legacy API | yes — serves 5173 |
 | `pyxis-stripe` | 3001 | `stripe-server.cjs` — the contact form's backend | yes |
-| `pyxis-web` | **5174** | this repo's server + `client/dist`, on Bun | yes, but **loopback only** |
+| `pyxis-web` | **5174** | this repo's server + `client/dist`, on Bun | yes, **loopback only** (dress rehearsal) |
 
 ⚠ **Corrected 2026-08-01.** This table used to say `pyxis-web` was on 5173 and disabled, that
 enabling it *was* the cutover, and that it declared `Conflicts=pyxis-vite-legacy.service`.
@@ -35,15 +42,20 @@ and shares the **production Atlas** database — bound to `0.0.0.0` it published
 copy of the app over plain HTTP. Reach it with:
 
 ```bash
-ssh -N -L 5174:127.0.0.1:5174 root@83.229.87.94
+ssh -N -L 5174:127.0.0.1:5174 ubuntu@84.13.81.51
+# only if 83 is still up pre-kill and you need its loopback copy:
+# ssh -N -L 5174:127.0.0.1:5174 root@83.229.87.94
 ```
 
 ## Install
 
+Prefer **`84`** (live). Paths and users differ (`ubuntu` + sudo vs historical `root` on `83`).
+Do **not** install/enable on `83` as part of shutdown prep unless the owner asks.
+
 ```bash
-scp deploy/83/systemd/*.service root@83.229.87.94:/etc/systemd/system/
-ssh root@83.229.87.94 'systemctl daemon-reload && systemctl enable \
-  pyxis-vite-legacy pyxis-api-legacy pyxis-stripe pyxis-web'
+# example shape — measure paths on 84 first
+scp deploy/83/systemd/*.service ubuntu@84.13.81.51:/tmp/
+ssh ubuntu@84.13.81.51 'sudo cp /tmp/*.service /etc/systemd/system/ && sudo systemctl daemon-reload'
 ```
 
 To hand a service over without waiting for a reboot, do it one at a time and check the port

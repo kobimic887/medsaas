@@ -11,11 +11,13 @@ chemistry API, ADMET worker, GROMACS MD, and glioblastoma prediction. See
 > Package identities, the published MCP server name and this repo's own name are
 > deliberately exempt.
 
-**Where this actually runs:** the app is live at `app.pyxis-discovery.com`, served
-from the shared VPS `83.229.87.94` under systemd (`pyxis-web`), against MongoDB
-Atlas. It is **not** deployed by CI, and not by Docker — see
-[docs/PRODUCTION-83-INVENTORY.md](./docs/PRODUCTION-83-INVENTORY.md) before touching
-anything there, and never modify that host's nginx, TLS, DNS or firewall.
+**Where this actually runs (measure DNS):** `app.pyxis-discovery.com` → **`84.13.81.51`**
+(`oracleNew`). Public product is still **legacy Vite on `:5173`** → `chem_beo` on `:3000`.
+This repo (`pyxis-web` / `client/dist`) is the **`:5174` dress rehearsal** (loopback) until
+public flip. Shared MongoDB Atlas. **Not** deployed by CI or Docker.
+`83.229.87.94` is **imminent shutdown** — not the live DNS target. Start at
+[docs/POST-PROMOTION-HANDOFF.md](./docs/POST-PROMOTION-HANDOFF.md); never modify nginx, TLS,
+DNS or firewall without explicit owner approval.
 
 | Path | Purpose |
 |------|---------|
@@ -215,10 +217,10 @@ only after `main` is green; it is a manual non-prod deploy that reuses the CI ga
 ships a source archive to the Oracle VPS, and builds the Docker image there.
 
 **`deploy.yml` does not reach production.** It is `workflow_dispatch`-only and points
-at the Oracle VPS, which is not production. Production on `83.229.87.94` ships by
-`git archive HEAD | ssh … tar -x -C /root/pyxis` plus `systemctl restart pyxis-web`.
-So pushing runs CI and deploys nothing, and reaching production does not require
-pushing.
+at a non-production Oracle path. Live deploys are manual to **`84`**: refresh
+`/root/pyxis-new-standby-5174` (or the live legacy trees) via `git archive` / `tar`, then
+`systemctl restart` the relevant unit — see [docs/NEXT-SESSION.md](./docs/NEXT-SESSION.md).
+Pushing runs CI and deploys nothing.
 
 The current deploy does not use GitHub Packages/GHCR. See
 [docs/CI-CD.md](./docs/CI-CD.md) for the workflow order and deploy model.

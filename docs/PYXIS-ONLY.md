@@ -1,5 +1,10 @@
 # Pyxis only — retiring the SaaS surface
 
+> ## Branding record — not a live-host runbook
+>
+> Host roles: [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md). Public is still
+> legacy `:5173` on **`84`**; this rebrand lives on **`:5174`** until flip.
+>
 > ## ⚠ REVERSED IN PART, 2026-07-30
 >
 > The owner clarified that **"desaasified" meant BRANDING** — one company's identity —
@@ -16,9 +21,9 @@
 is DONE (2026-07-31).** This is no longer a plan for the code half. Steps 7–8 belong to the box
 migration and are untouched.
 
-⚠ **Everything here is deployed but not live.** Production was deliberately rolled back to the
-original Pyxis on 2026-07-31; this rebranded version runs on `:5174`, loopback only, until the
-port swap on box day.
+⚠ **Everything here is in this repo / `:5174` but not public.** Product rolled back to original
+Pyxis on 2026-07-31; DNS later moved the host to `84`. Flip = boss click-test **or** box
+arrival ([`NEXT-SESSION.md`](./NEXT-SESSION.md)).
 
 | §5 step | State | Commit |
 |---|---|---|
@@ -28,7 +33,7 @@ port swap on box day.
 | 4. Remove marketing routes, then pages | **done** — routes `1901596`, files `a4c6a37` | |
 | ~~5. Remove paid-plans, gate checkout~~ | **REVERSED 2026-07-30** — page restored, checkout is `requireActiveUser` | `f6b04f4`, reversed |
 | 6. Verify end to end | **done 2026-07-31** — 17 routes, 7 differences, none a regression | |
-| 7–8. Deploy to 83, CORS | **untouched** — arrival-day work | |
+| 7–8. Deploy / CORS | **untouched** — public flip on **`84`**, not a reason to keep `83` | |
 
 **The order was the owner's call, and it differs from what §5 recommended.** §5 assumed the
 de-SaaS work could land any time; the recommendation at the time of doing it was to ship the
@@ -272,13 +277,14 @@ This work and the box migration touch the same files, so ordering matters.
 
 **Then, as part of the migration** ([ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md)):
 
-7. Build `client/` with `VITE_API_BASE_URL` pointing at the box's API and deploy it to 83,
-   replacing the legacy bundle at `app.pyxis-discovery.com`. **Keep the old bundle on disk**
-   until the new one is confirmed working — that is the rollback.
-8. Add CORS for the `app.pyxis-discovery.com` origin on the API.
+7. On public flip, put this repo on **`84`** port **5173** (ARRIVAL §8 / measured nginx swap).
+   Keep the old legacy tree on disk — that is the rollback. Do not plan a fresh deploy to `83`
+   (`83` is imminent shutdown).
+8. CORS for `app.pyxis-discovery.com` is already a production concern on the live API host;
+   verify on **`84`** after flip, do not invent a second origin story.
 
-Doing 1–6 first means the thing deployed to 83 in step 7 is already Pyxis-only, so users see
-one change, not two.
+Doing 1–6 first means the thing promoted on flip is already Pyxis-only, so users see one
+change, not two.
 
 ---
 
@@ -288,10 +294,9 @@ one change, not two.
 - **`/api/issueSimulationTokens`** — rename, change to `$inc`, or drop? See §3b. Recommend
   rename. Not blocking; it is a small, isolated route.
 - **Who gets `admin`** — operational, decide before inviting people. Not a code change.
-- **What is answering the production API on 83 today?** Still unknown, still an inventory task
-  on that box, and now more pressing: step 7 replaces the frontend that talks to it, so we need
-  to know what we are cutting over *from*. ✅ **ANSWERED 2026-07-28** — it is `chem_beo`, a
-  second HTTPS server on `:3000` bypassing nginx. See PRODUCTION-83-INVENTORY.md.
+- ~~**What is answering the production API on 83 today?**~~ **ANSWERED 2026-07-28** — `chem_beo`
+  on `:3000`. Live path on **`84`** is `/root/pyxis-OLD-LIVE-backend-3000`. See
+  PRODUCTION-83-INVENTORY.md + POST-PROMOTION-HANDOFF.md.
 - ~~**Will there be a public marketing site at all** (`pyxis-discovery.com` as opposed to
   `app.`)?~~ **ANSWERED 2026-07-29: there already is one, and it is live.**
   `www.pyxis-discovery.com` is a separate WordPress site — Discover Macrocycles, Services,

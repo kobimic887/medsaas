@@ -2,21 +2,31 @@
 
 Prioritized, do-later plan. Effort is rough; risk is "chance of breaking something live."
 
+> **Not critical-path.** Owner decisions and current backlog:
+> [`NEXT-SESSION.md`](./NEXT-SESSION.md). Live host is **`84`**; public product is legacy
+> `:5173` (do not polish). Apply improvements to maintained `:5174` / this repo only.
+> Hardware notes below that say “2 cores / 1 GB” describe historical **`83`**, which is
+> imminent shutdown — not a reason to tune live `84` the same way.
+
 ---
 
 ## Performance — audited 2026-08-01, verified against real fixtures
 
-**Context that governs every item below:** production is **2 cores and 1 GB RAM**, shared with
-an unrelated project and a GROMACS container. RSS is the scarcest resource. But the measured
-data volumes are *small* — `simulation_logs` holds **7 documents**, `users` 50, `companies` 1 —
-so most of these are "correct the shape before it matters", not live fires. Where that
-distinction matters it is stated.
+**Context (historical `83` sizing):** that host was **2 cores / 1 GB RAM**, shared with an
+unrelated project and a GROMACS container. Live app host is now **`84`** — re-measure before
+RSS panic. Measured data volumes remain *small* — `simulation_logs` held **7 documents**,
+`users` ~50, `companies` 1 at audit time — so most items are "correct the shape before it
+matters", not live fires.
 
 Measured fixture sizes, from `deploy/box/*/reference/`: a normal docking response is
 **222,749 bytes** (the PDB field alone is 210,435); DiffDock success responses are
 **111,447–113,979 bytes**, of which ~105,696 is the echoed protein.
 
-### P1. DiffDock writes full scientific payloads to a log file, synchronously
+### P1. DiffDock writes full scientific payloads to a log file, synchronously — resolved
+
+`server/index.js` used to `JSON.stringify` the whole DiffDock request and response (~200 KB of protein per run) and rotate `diffdock_api.log` with synchronous `existsSync`/`statSync` on the request path.
+
+**Resolution:** logs now record byte counts, status, and a bounded error snippet. Rotation is asynchronous.
 
 `server/index.js:5019, 5035, 5059, 5072` — four of the six `logToFile()` calls stringify a
 whole request or response:
@@ -73,18 +83,18 @@ handful of concurrent large unauthenticated posts is a plausible memory-exhausti
 **Fix:** small global limit, with a larger parser mounted only on the routes that genuinely
 need it. Measure the largest legitimate body first. **Effort: moderate.**
 
-### P5. `/api/simulation` returns 223 KB the dashboard then re-fetches anyway
+### P5. `/api/simulation` returns 223 KB the dashboard then re-fetches anyway — resolved 2026-08-03
 
 `server/index.js:3460-3473, :3492` returns the full dock result; the client
 (`simulation.jsx:758-793`) immediately uses only `simulationKey` to build separate sanitized
 PDB/SDF URLs — and fetches those. The big payload is serialised, transferred, and parsed for
 nothing on the normal path.
 
-**Fix:** an opt-out (`?includeResult=false`) or a key-only response for the dashboard, keeping
-the full body for any consumer that needs it. **Effort: moderate** — it is a response-contract
-change, so check consumers first.
+**Resolution:** the dashboard now posts to `/api/simulation?includeResult=false` and receives only
+`simulationKey`. GET/POST cache-hit and fresh-result paths retain the full response by default for
+existing API/MCP consumers. Runtime smoke coverage pins both response contracts.
 
-### P6. `simulation_logs` has no index, and its list endpoint is unbounded
+### P6. `simulation_logs` has no index, and its list endpoint is unbounded — resolved
 
 Already recorded as [SECURITY-FINDINGS.md](./SECURITY-FINDINGS.md) §A3. Restated here because
 it is as much a performance item: the index block (`server/index.js:1106-1118`) creates indexes
@@ -92,8 +102,9 @@ for `users`, `companies`, `audit_logs` and `billing_events` and **nothing for
 `simulation_logs`** beyond the unique `simulationKey`. `/api/simulation-logs` (`:3514`) has no
 `.limit()` and no projection, over documents that each carry a full receptor PDB.
 
-**Harmless today at 7 documents.** It becomes a real problem in the low thousands — roughly
-where `docs × ~200 KB` approaches the process's available headroom.
+**Resolution:** startup creates tenant/timestamp and cache-lookup indexes for current record
+shapes, while `/api/simulation-logs` applies a bounded newest-first limit and excludes the heavy
+stored result. Both legacy/current username shapes remain supported for unmigrated accounts.
 
 ### Investigated and genuinely fine — do not re-audit
 
@@ -167,40 +178,56 @@ where `docs × ~200 KB` approaches the process's available headroom.
    `client/src/pages/dashboard/simulation.jsx`
    **Completed 2026-06-14:** removed the truthy fallback so a missing 2 mg
    price behaves like the other weights and cannot expose an invalid cart action.
+5. **Auth/public route cleanup.** **Completed 2026-08-03:** sign-in, reset and
+   sign-up requests are lifecycle-safe; the sign-up route no longer imports the large UI
+   component library; real marketing routes are available in desktop/mobile navigation; and
+   the broken browser-local Blog publisher now redirects old bookmarks to maintained Insights
+   content instead of crashing or fabricating public posts. RDKit initialization is now truly
+   route-demanded, and invented marketing usage totals were replaced with verifiable capabilities.
+   A 18-invariant Bun/Node check pins
+   these contracts.
 
 ## Tier 1 — Asinex stock feature (continues today's RE; medium)
 
 Builds directly on `server/utils/asinexCompound.js` (pricing + normalizer) and
 `docs/ASINEX-ESHOP-REVERSE-ENGINEERING.md`.
 
-5. **Phase 1 — read-only stock.** New `server/services/asinex/` module: a stock
+6. **Phase 1 — read-only stock.** New `server/services/asinex/` module: a stock
    search client that honours the **async substructure flow** (fire search →
    poll `ReCheckQuery` by `requestid` → fetch), reuses the normalizer, and has
    contract tests against saved/sanitised fixtures. Keep behind the existing
    SSRF guard + timeouts. Don't grow `server/index.js`.
-6. **Phase 2 — cart / quote.** Server-computed prices via the pricing util,
+7. **Phase 2 — cart / quote.** Server-computed prices via the pricing util,
    quote IDs with expiry + immutable line snapshots. Never trust a client-sent
    price/total (the legacy bug).
-7. **Phase 3 — ordering.** Company-scoped orders, idempotency keys, audit on
+   **Checkout tampering closed 2026-08-03:** the Stripe route now discards every browser-supplied
+   name/price/total, re-resolves records from the configured catalog, validates package sizes, and builds
+   itemized Stripe lines from server-owned cents. A durable expiring quote/order record is still a
+   later feature; do not describe the whole phase as complete yet.
+   **Plan checkout normalized 2026-08-03:** the two historical plan endpoints now produce the same
+   one-time, server-priced credit pack. The client-controlled monthly/yearly subscription variant and
+   its equal-price billing ambiguity were removed, and both pricing screens consume one client catalog
+   that is contract-tested against the server catalog.
+8. **Phase 3 — ordering.** Company-scoped orders, idempotency keys, audit on
    create/submit/cancel, PII handling. Confirm with Asinex whether they accept
    direct orders or only inquiries first.
 
 ## Tier 2 — Hardening & scale (bigger; some need infra)
 
-8. **Stripe webhook in non-prod** *(real billing gap)*. Real purchases grant no
+9. **Stripe webhook in non-prod** *(real billing gap)*. Real purchases grant no
    credits because no webhook is registered off-prod. Register it, and/or add an
    admin-only manual-fulfill endpoint (audited) for testing. — infra + small code
-9. **Redis-backed rate-limit + simulation-token state.** The in-memory limiter
+10. **Redis-backed rate-limit + simulation-token state.** The in-memory limiter
    and token counters don't survive restarts or share across instances — this
    blocks horizontal scaling. Move to Redis before running >1 instance. — medium
    + infra
-10. **Incrementally split `server/index.js`** (6,300+ lines). Extract one route
+11. **Incrementally split `server/index.js`** (6,300+ lines). Extract one route
     family at a time into `server/routes/*` — start with the Asinex family we
     just touched. High maintainability payoff, low risk if done per-family with
     the suite green between extractions. — large but incremental
-11. **Structured logging.** Replace `logToFile` (delete-on-rotate, loses history)
+12. **Structured logging.** Replace `logToFile` (delete-on-rotate, loses history)
     with `pino` + archival. — medium
-12. **Close the SSRF TOCTOU residual.** Current guard re-validates per request
+13. **Close the SSRF TOCTOU residual.** Current guard re-validates per request
     but can't pin the socket portably (Bun ignores undici dispatchers). A fixed
     egress allowlist/proxy in front of the ligand fetches would fully close it.
     — medium + infra
@@ -208,5 +235,5 @@ Builds directly on `server/utils/asinexCompound.js` (pricing + normalizer) and
 ## Suggested order
 
 Tier 0 first (cheap, item 1 is on a deadline). Then Tier 1 Phase 1 if stock is a
-real product direction. Tier 2 items 8 (billing) and 9 (scaling) are the ones
+real product direction. Tier 2 items 9 (billing) and 10 (scaling) are the ones
 with real production consequences — do them before a scale-up or real payments.

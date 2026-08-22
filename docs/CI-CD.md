@@ -50,17 +50,12 @@ The host `.env` must contain the runtime secrets and Mongo credentials. It is de
 
 ## Planned Change: Deploy Target Moves To x86_64
 
-Everything above describes the **current** deploy target: the Oracle Cloud VPS at
-`151.145.91.17`, an Ampere A1 `aarch64` host. "The box" in this document means that machine.
+Everything above describes the **non-prod** `deploy.yml` target: historically the Oracle Cloud
+VPS at `151.145.91.17` (`oracleOld`, Ampere A1 `aarch64`). That workflow is **not** how live
+Pyxis on `84` is shipped.
 
-The backend is planned to move to a dedicated Threadripper GPU machine in Amsterdam
-(`x86_64`, two RTX PRO 5000 Blackwell cards). That invalidates one of the stated reasons for
-the current model: build-on-box exists partly to avoid cross-architecture/QEMU issues on
-arm64, and on an amd64 target a runner-side build or a registry becomes viable again.
-
-Do not pre-emptively change these workflows. The architecture switch and the CORS/frontend
-split are still open; the ingress decision is settled — see
-[ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §6. Update this document in the same
-change that actually switches the target, not before, so it never describes a deploy path
-that does not exist.
+The Amsterdam compute box (ordered) is **4× RTX PRO 4000** on Threadripper — see
+[BOX-SPEC.md](./BOX-SPEC.md). It is compute-only; it does not replace the application host.
+Do not pre-emptively change these workflows. Update this document in the same change that
+actually switches a deploy target, not before.
 
