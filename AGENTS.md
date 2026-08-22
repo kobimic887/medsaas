@@ -2,24 +2,25 @@
 
 ## Mission and source of truth
 
-Read [`GOAL.md`](GOAL.md) before proposing non-trivial work. The owner wants the maintained
-frontend to remain recognizably Pyxis, deliver the best user experience, and make the Amsterdam
-compute-box cutover simple. Do not grow that goal into a general rewrite.
+Read [`GOAL.md`](GOAL.md) only when the task is roadmap, priority, or unclear scope — not for
+narrow bugfixes or API slices. The owner wants the maintained frontend to remain recognizably
+Pyxis, deliver the best user experience, and make the Amsterdam compute-box cutover simple. Do
+not grow that goal into a general rewrite.
 
-Operational facts change faster than this file. Determine the current state in this order:
+Operational docs (trigger-only — read when the task is prod/deploy/continuation or box work):
 
-1. Resolve `app.pyxis-discovery.com` and inspect the working tree.
+1. Resolve `app.pyxis-discovery.com` and inspect the working tree when identity matters.
 2. If DNS points at `oracleNew` (`84.13.81.51`), read
-   [`docs/POST-PROMOTION-HANDOFF.md`](docs/POST-PROMOTION-HANDOFF.md) first.
-3. Otherwise read [`docs/NEXT-SESSION.md`](docs/NEXT-SESSION.md) first.
-4. For box work, then read [`docs/ARRIVAL-RUNBOOK.md`](docs/ARRIVAL-RUNBOOK.md) and
+   [`docs/POST-PROMOTION-HANDOFF.md`](docs/POST-PROMOTION-HANDOFF.md).
+3. Otherwise, for continuation of box/cutover work, read
+   [`docs/NEXT-SESSION.md`](docs/NEXT-SESSION.md).
+4. For box work, then [`docs/ARRIVAL-RUNBOOK.md`](docs/ARRIVAL-RUNBOOK.md) and
    [`docs/BOX-ARCHITECTURE.md`](docs/BOX-ARCHITECTURE.md).
-5. Use [`docs/README.md`](docs/README.md) only as an index. Measure live state before
-   trusting any dated status paragraph. After DNS → `84`, the handoff file above outranks
-   older “`83` is production” prose anywhere else.
+5. [`docs/README.md`](docs/README.md) is an index only. Measure live state before trusting dated
+   status. After DNS → `84`, the handoff file above outranks older “`83` is production” prose.
 
-For architecture or file-relationship questions, query `graphify-out/graph.json` with the
-`graphify` skill first. The graph can be stale; confirm changed code and operational state directly.
+Architecture/relationship questions: use global `graphify` skill when `graphify-out/` exists;
+confirm changed code and operational state directly (graph can be stale).
 
 ## Product invariants
 
@@ -58,15 +59,8 @@ For architecture or file-relationship questions, query `graphify-out/graph.json`
 
 ## Working method
 
-1. Restate the requested outcome, constraints, and stop point.
-2. Inspect `git status`, the relevant code, and the current runbook/state file. Do not overwrite
-   unrelated work in this often-dirty repository.
-3. Give one short plan for non-trivial work, then execute it. Ask only for a decision that changes
-   the product or for an authorization boundary.
-4. Prefer the smallest change that solves the observed problem. Keep critical-path work separate
-   from optional improvements.
-5. Verify the actual affected surface. A build alone does not prove a dashboard flow works.
-6. Stop when the requested outcome is met; state material remaining work without adopting it.
+Follow global `~/.codex/AGENTS.md`. Preserve unrelated dirty work in this often-dirty repo; verify
+the actual affected surface (a build alone does not prove a dashboard flow).
 
 ## Commands and focused verification
 
@@ -98,8 +92,12 @@ loose grep counts and mocked fixtures have produced false confidence here.
 
 ## Git and release behavior
 
-- Do not commit unless asked or the task explicitly includes shipping. After any commit, push it
-  without asking; pushes run CI and do not deploy production.
+- **Git (identical everywhere):** When a meaningful unit of work looks done → commit (no secrets,
+  no half-done work, no unrelated dirty files). After that commit → push (non-force), including
+  `main`/`master`. Verified ≈ agent judgment; cheap/relevant tests if easy. Git push ≠ prod deploy:
+  pushes run CI and do not deploy production; still need explicit approval for oracleNew/84 live
+  mutations, billing, DNS/TLS. Never force-push; never commit `.env`/secrets. Plan-only /
+  "don't commit" / draft-discard in the user message overrides for that turn.
 - Production deployment is manual. Source upload, built `client/dist`, service restart, and deployed
   identity are separate concerns; follow the current runbook rather than reconstructing commands.
 - Begin remote work with read-only identity, DNS, listener, service, build, and database checks.
