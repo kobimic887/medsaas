@@ -94,7 +94,7 @@ if (failures.length > 0) {
   console.error('A same-origin 401 logs the user out (client/src/utils/authInterceptor.js),');
   console.error('so this does not fail softly — it ends the session.\n');
   for (const f of failures) console.error(`  ${f}`);
-  console.error('\nFix: add `...(token ? { Authorization: `Bearer ${token}` } : {})` using');
+  console.error('\nFix: add the conditional Authorization: Bearer <token> header using');
   console.error('getAuthToken() from @/utils/constants — or, if the route really is public,');
   console.error('add it to PUBLIC_ROUTES in scripts/check-authed-fetch.mjs.\n');
   process.exit(1);

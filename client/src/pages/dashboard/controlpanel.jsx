@@ -40,6 +40,8 @@ export function ControlPanel() {
   const [cart, setCart] = React.useState([]);
   const [message, setMessage] = React.useState('');
   const [messageType, setMessageType] = React.useState('');
+  const admetRefreshTimerRef = React.useRef(null);
+  const messageTimerRef = React.useRef(null);
 
   // ADMET popup state
   const [showAdmetPopup, setShowAdmetPopup] = React.useState(false);
@@ -51,12 +53,13 @@ export function ControlPanel() {
   const [computeConfig, setComputeConfig] = React.useState(null);
 
   // Function to fetch activities from API
-  const fetchActivities = async () => {
+  const fetchActivities = async (signal) => {
     try {
       setLoading(true);
       setError(null);
-      const token = localStorage.getItem('auth_token');
+      const token = getAuthToken();
       const response = await fetch(API_CONFIG.buildApiUrl('/activity'), {
+        signal,
         headers: {
           "Content-Type": "application/json",
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
@@ -70,18 +73,20 @@ export function ControlPanel() {
       const data = await response.json();
       setActivityData(data);
     } catch (err) {
+      if (err.name === 'AbortError') return;
       console.error('Error fetching activities:', err);
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   };
 
   // Function to fetch simulation logs for current user
-  const fetchUserSimulationLogs = async () => {
+  const fetchUserSimulationLogs = async (signal) => {
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = getAuthToken();
       const response = await fetch(API_CONFIG.buildApiUrl('/simulation-logs'), {
+        signal,
         headers: {
           "Content-Type": "application/json",
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
@@ -95,8 +100,8 @@ export function ControlPanel() {
       const data = await response.json();
       
       setUserSimulationLogs(data);
-      console.log('Simulation logs data:', data); // Debug log to see data structure
     } catch (err) {
+      if (err.name === 'AbortError') return;
       console.error('Error fetching simulation logs:', err);
       setError(err.message);
     }
@@ -105,10 +110,11 @@ export function ControlPanel() {
   // Which compute endpoints answered this company's docking. Readable by every
   // member, editable only by owner/admin in the Admin Panel — so on the day docking
   // moves to the box, anyone can confirm it moved without needing admin rights.
-  const fetchComputeEndpoints = async () => {
+  const fetchComputeEndpoints = async (signal) => {
     try {
       const token = getAuthToken();
       const response = await fetch(API_CONFIG.buildApiUrl('/company/ligand-service-config'), {
+        signal,
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {})
@@ -117,16 +123,23 @@ export function ControlPanel() {
       if (!response.ok) return; // Informational panel; a failure here hides it, nothing more.
       setComputeConfig(await response.json());
     } catch (err) {
+      if (err.name === 'AbortError') return;
       console.error('Error fetching compute endpoints:', err);
     }
   };
 
   // Fetch activities and simulation logs on component mount
   React.useEffect(() => {
-    fetchActivities();
-    fetchUserSimulationLogs();
-    fetchComputeEndpoints();
+    const controller = new AbortController();
+    fetchActivities(controller.signal);
+    fetchUserSimulationLogs(controller.signal);
+    fetchComputeEndpoints(controller.signal);
     loadCartFromStorage();
+    return () => {
+      controller.abort();
+      window.clearTimeout(admetRefreshTimerRef.current);
+      window.clearTimeout(messageTimerRef.current);
+    };
   }, []);
 
   // Format date for display
@@ -159,16 +172,37 @@ export function ControlPanel() {
     }
   };
 
+  const exportSimulationLogs = () => {
+    if (!userSimulationLogs.length) return;
+    const csvCell = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+    const rows = userSimulationLogs.map((log) => [
+      log.simulationKey || log.id || '',
+      log.pdbid || log.pdbId || '',
+      decodeSmiles(log.smiles || log.SMILES || ''),
+      log.timestamp || log.createdAt || '',
+      log.status || 'completed',
+    ]);
+    const csv = [
+      ['Simulation ID', 'PDB ID', 'SMILES', 'Timestamp', 'Status'],
+      ...rows,
+    ].map((row) => row.map(csvCell).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `pyxis-simulations-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
   // Function to fetch price data from API
   const fetchPriceData = async (smiles) => {
     try {
       setPriceLoading(true);
       setCurrentSmiles(smiles);
-      const token = localStorage.getItem('auth_token');      
+      const token = getAuthToken();
       const _smiles = decodeURIComponent(smiles);      
-      const _smiles1 = _smiles.split('\\').map(part => part.trim()).filter(part => part).join(`\\`);
-      console.log('URL that will be sent:', API_CONFIG.buildApiUrl(`/asinex/exact/${encodeURIComponent(_smiles1)}`));
-      const response = await fetch(API_CONFIG.buildApiUrl(`/asinex/exact/${_smiles}`), {
+      const normalizedSmiles = _smiles.split('\\').map(part => part.trim()).filter(part => part).join(`\\`);
+      const response = await fetch(API_CONFIG.buildApiUrl(`/asinex/exact/${encodeURIComponent(normalizedSmiles)}`), {
         headers: {
           "accept": "*/*",
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
@@ -196,7 +230,7 @@ export function ControlPanel() {
     try {
       setAdmetLoading(true);
       setCurrentSimulationId(simulationId);
-      const token = localStorage.getItem('auth_token');
+      const token = getAuthToken();
       const response = await fetch(API_CONFIG.buildApiUrl(`/simulation/${simulationId}/admet`), {
         headers: {
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
@@ -212,7 +246,8 @@ export function ControlPanel() {
       setShowAdmetPopup(true);
       
       // Reload simulation logs after 2 seconds
-      setTimeout(() => {
+      window.clearTimeout(admetRefreshTimerRef.current);
+      admetRefreshTimerRef.current = window.setTimeout(() => {
         fetchUserSimulationLogs();
       }, 2000);
     } catch (err) {
@@ -271,6 +306,7 @@ export function ControlPanel() {
   const addToCart = (molecule, amount, pricePerMg) => {
     const cartItem = {
       id: `${currentSmiles}_${Date.now()}`,
+      catalogId: molecule.BAS_CODE || molecule.bas_code || molecule.basCode || molecule.ASINEX_ID || molecule.id_number || molecule.id,
       smiles: currentSmiles,
       name: molecule.id_number || molecule.IUPAC_NAME || molecule.name || 'Molecule',
       formula: molecule.brutto_formula || molecule.BRUTTO_FORMULA || molecule.formula || '',
@@ -288,7 +324,8 @@ export function ControlPanel() {
     
     setMessage(`Added ${amount}mg of ${cartItem.name} to cart`);
     setMessageType('success');
-    setTimeout(() => {
+    window.clearTimeout(messageTimerRef.current);
+    messageTimerRef.current = window.setTimeout(() => {
       setMessage('');
       setMessageType('');
     }, 3000);
@@ -397,7 +434,7 @@ export function ControlPanel() {
             >
               <div>
                 <Typography variant="h6" color="blue-gray" className="mb-1 dark:text-slate-50">
-                  Please find your Past Jobs listed below. You can review your past jobs by clicking on the SIMULATION ID                  
+                  Past simulations — choose Open to inspect a stored result.
                 </Typography>
                 <Typography
                   variant="small"
@@ -420,7 +457,13 @@ export function ControlPanel() {
                 </Typography>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outlined" size="sm" className="flex items-center gap-2 dark:border-slate-600 dark:text-slate-200">
+                <Button
+                  variant="outlined"
+                  size="sm"
+                  disabled={userSimulationLogs.length === 0}
+                  onClick={exportSimulationLogs}
+                  className="flex items-center gap-2 dark:border-slate-600 dark:text-slate-200"
+                >
                   <ArrowDownTrayIcon className="h-4 w-4" />
                   Export
                 </Button>
@@ -432,8 +475,6 @@ export function ControlPanel() {
                   </MenuHandler>
                   <MenuList className="bg-white dark:border dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">
                     <MenuItem className="dark:hover:bg-slate-800" onClick={() => fetchUserSimulationLogs()}>Refresh Data</MenuItem>
-                    <MenuItem className="dark:hover:bg-slate-800">Filter by Status</MenuItem>
-                    <MenuItem className="dark:hover:bg-slate-800">Download Results</MenuItem>
                   </MenuList>
                 </Menu>
               </div>
@@ -442,7 +483,7 @@ export function ControlPanel() {
               <table className="w-full min-w-[640px] table-auto" id="results">
                 <thead className="sticky top-0 z-10 bg-white shadow-sm dark:bg-slate-900 dark:shadow-black/20">
                   <tr>
-                    {["Simulation ID", "PDB ID", "SMILES", "Timestamp", "Status", "Price", "ADMET"].map((el, index) => (
+                    {["Simulation ID", "PDB ID", "SMILES", "Timestamp", "Status", "Result", "Price", "ADMET"].map((el, index) => (
                       <th 
                         key={el} 
                         className="border-b border-blue-gray-50 bg-white px-6 py-3 text-left dark:border-slate-800 dark:bg-slate-900"
@@ -459,7 +500,7 @@ export function ControlPanel() {
                 <tbody>
                   {userSimulationLogs?.length === 0 ? (
                     <tr>
-                      <td colSpan="7" className="py-8 text-center">
+                      <td colSpan="8" className="py-8 text-center">
                         <Typography variant="small" color="gray" className="text-sm">Loading simulation logs...</Typography>
                       </td>
                     </tr>
@@ -469,38 +510,49 @@ export function ControlPanel() {
                       const status = log.status || 'completed';
                       
                       return (
-                        <tr key={log.simulationKey || log.id || key} className="cursor-pointer transition-colors hover:bg-blue-gray-50 dark:hover:bg-slate-800/60">
-                          <td className={className} onClick={() => handleViewInMolstar(log)}>
-                            <Typography variant="small" color="blue-gray" className="font-mono text-sm hover:text-blue-600 dark:text-slate-100 dark:hover:text-brand-300">
+                        <tr key={log.simulationKey || log.id || key} className="transition-colors hover:bg-blue-gray-50 dark:hover:bg-slate-800/60">
+                          <td className={className}>
+                            <Typography variant="small" color="blue-gray" className="font-mono text-sm dark:text-slate-100">
                               {log.simulationKey?.substring(0, 12) || log.id || 'N/A'}
                             </Typography>
                           </td>
                           <td 
                             className={className} 
-                            onClick={() => handleViewInMolstar(log)}
                             style={{ width: '60px', minWidth: '60px', maxWidth: '60px', padding: '12px 4px' }}
                           >
-                            <Typography variant="small" className="font-mono text-xs font-medium text-blue-gray-600 hover:text-blue-600 dark:text-slate-300 dark:hover:text-brand-300" style={{ fontSize: '12px', lineHeight: '1.3' }}>
+                            <Typography variant="small" className="font-mono text-xs font-medium text-blue-gray-600 dark:text-slate-300" style={{ fontSize: '12px', lineHeight: '1.3' }}>
                               {(log.pdbid || log.pdbId || 'N/A').toString().substring(0, 10)}
                             </Typography>
                           </td>
-                          <td className={className} onClick={() => handleViewInMolstar(log)} title={decodeSmiles(log.smiles || log.SMILES || 'N/A')}>
-                            <Typography variant="small" className="font-mono text-xs font-medium text-blue-gray-600 hover:text-blue-600 dark:text-slate-300 dark:hover:text-brand-300" style={{ fontSize: '12px', lineHeight: '1.3' }}>
+                          <td className={className} title={decodeSmiles(log.smiles || log.SMILES || 'N/A')}>
+                            <Typography variant="small" className="font-mono text-xs font-medium text-blue-gray-600 dark:text-slate-300" style={{ fontSize: '12px', lineHeight: '1.3' }}>
                               {decodeSmiles(log.smiles || log.SMILES || 'N/A').toString().substring(0, 15)}
                             </Typography>
                           </td>
-                          <td className={className} onClick={() => handleViewInMolstar(log)}>
+                          <td className={className}>
                             <Typography variant="small" className="text-sm font-medium text-blue-gray-600 dark:text-slate-300">
                               {formatDate(log.timestamp || log.createdAt)}
                             </Typography>
                           </td>
-                          <td className={className} onClick={() => handleViewInMolstar(log)}>
+                          <td className={className}>
                             <Chip
                               variant="gradient"
                               color={getStatusColor({ status })}
                               value={status.charAt(0).toUpperCase() + status.slice(1)}
                               className="py-0.5 px-2 text-[12px] font-medium w-fit"
                             />
+                          </td>
+                          <td className={className}>
+                            <Button
+                              variant="filled"
+                              size="sm"
+                              color="blue"
+                              onClick={() => handleViewInMolstar(log)}
+                              disabled={!log.simulationKey && !log.id}
+                              className="px-3 py-1 text-sm"
+                            >
+                              Open
+                            </Button>
                           </td>
                           <td className={className}>
                             <Button

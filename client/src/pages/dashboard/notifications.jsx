@@ -9,7 +9,7 @@ import {
   Spinner,
 } from "@material-tailwind/react";
 import { InformationCircleIcon } from "@heroicons/react/24/outline";
-import { API_CONFIG } from "@/utils/constants";
+import { API_CONFIG, getAuthToken } from "@/utils/constants";
 
 export function Notifications() {
   const [_showAlerts, _setShowAlerts] = React.useState({
@@ -27,24 +27,29 @@ export function Notifications() {
   const [activities, setActivities] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState(null);
+  const activityControllerRef = React.useRef(null);
   
   const _alerts = ["gray", "green", "orange", "red"];
   
   // Informational messages array
   const infoMessages = [
-    "You can execute simulations from the Simulation tab",
-    "Create a project and group your simulations under it", 
-    "Subscribe to a paid plan to get execution tokens",
-    "Subscribe to our mailing list to get notification over new docking capabilities"
+    "Run docking from the Simulation tab, then inspect every ranked pose in Simulation Results.",
+    "Use Deep Similarity to search the molecular corpus by exact match, similarity, or substructure.",
+    "Literature Search queries PubMed without using simulation credits.",
+    "Plans & Credits shows available execution-credit options."
   ];
 
   // Function to fetch activities from API
   const fetchActivities = async () => {
+    activityControllerRef.current?.abort();
+    const controller = new AbortController();
+    activityControllerRef.current = controller;
     try {
       setLoading(true);
       setError(null);
-      const token = localStorage.getItem('auth_token');
+      const token = getAuthToken();
       const response = await fetch(API_CONFIG.buildApiUrl('/activity'), {
+        signal: controller.signal,
         headers: {
           "Content-Type": "application/json",
           // If you have a token variable, include it; otherwise, remove this line
@@ -66,8 +71,8 @@ export function Notifications() {
         if (data.simulations && Array.isArray(data.simulations)) {
           activitiesArray = data.simulations.map(sim => ({
             type: 'simulation',
-            message: `Simulation by ${sim.user?.username || 'Unknown'} - PDB: ${sim.pdbid}`,
-            username: sim.user?.username,
+            message: `Simulation by ${sim.username || sim.user?.username || 'Unknown'} - PDB: ${sim.pdbid}`,
+            username: sim.username || sim.user?.username,
             pdbid: sim.pdbid,
             simulationKey: sim.simulationKey,
             timestamp: sim.timestamp,
@@ -88,21 +93,6 @@ export function Notifications() {
           activitiesArray = [...activitiesArray, ...projectActivities];
         }
         
-        // Add user registrations as activities
-        if (data.users && Array.isArray(data.users)) {
-          // No email. /api/activity stopped returning it — an activity ticker does
-          // not need colleagues' addresses, and the demo account is a member that
-          // anyone can sign into.
-          const userActivities = data.users.map(user => ({
-            type: 'user',
-            message: `User ${user.username} registered`,
-            username: user.username,
-            timestamp: null, // No timestamp in user data
-            id: user._id
-          }));
-          activitiesArray = [...activitiesArray, ...userActivities];
-        }
-        
         // Sort by timestamp (most recent first), handle null timestamps
         activitiesArray.sort((a, b) => {
           const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
@@ -116,16 +106,21 @@ export function Notifications() {
       
       setActivities(activitiesArray);
     } catch (err) {
+      if (err.name === 'AbortError') return;
       console.error('Error fetching activities:', err);
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (activityControllerRef.current === controller) {
+        activityControllerRef.current = null;
+        setLoading(false);
+      }
     }
   };
 
   // Fetch activities on component mount
   React.useEffect(() => {
     fetchActivities();
+    return () => activityControllerRef.current?.abort();
   }, []);
 
   // Function to get chip color based on activity type or status
@@ -181,14 +176,14 @@ export function Notifications() {
             <Typography variant="h5" color="blue-gray">
               Latest Activities
             </Typography>
-            <Typography
-              variant="small"
-              color="blue"
-              className="cursor-pointer hover:underline"
+            <button
+              type="button"
+              className="text-sm font-medium text-blue-600 hover:underline disabled:cursor-not-allowed disabled:opacity-60 dark:text-blue-300"
               onClick={fetchActivities}
+              disabled={loading}
             >
               Refresh
-            </Typography>
+            </button>
           </div>
         </CardHeader>
         <CardBody className="p-4">

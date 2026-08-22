@@ -1,22 +1,26 @@
-import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
-  Card,
-  CardBody,
-  CardHeader,
-  Typography,
-  Button,
-  Alert,
-  Spinner,
-  Input,
-} from "@material-tailwind/react";
-import { 
   CloudIcon,
 } from "@heroicons/react/24/outline";
 import { ShoppingCartIcon } from '@heroicons/react/24/solid';
-import { API_CONFIG } from "@/utils/constants";
+import {
+  Alert,
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Input,
+  Spinner,
+  Typography,
+} from "@material-tailwind/react";
+import {
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import { useNavigate } from 'react-router-dom';
 import { convertPriceToEuro, formatPrice } from '@/utils/algo/algo';
-import { clearViewerStorage } from '@/utils/viewerStorage';
+import { API_CONFIG, getAuthToken } from "@/utils/constants";
+import { clearViewerStorage, markViewerHandoff } from '@/utils/viewerStorage';
 
 // Copy text to the clipboard, with a fallback for non-secure contexts.
 // navigator.clipboard only exists over HTTPS or on localhost, so on a plain
@@ -40,18 +44,49 @@ async function copyToClipboard(text) {
   }
 }
 
+function catalogRowsFromResponse(result) {
+  if (Array.isArray(result)) return result;
+  if (!result || typeof result !== 'object') return [];
+
+  if (Array.isArray(result.data)) return result.data;
+  if (Array.isArray(result.molecules)) return result.molecules;
+  if (Array.isArray(result.list)) return result.list;
+  if (Array.isArray(result.items)) return result.items;
+  if (Array.isArray(result.rows)) return result.rows;
+  if (Array.isArray(result.results)) return result.results;
+
+  if (result.data && typeof result.data === 'object') return [result.data];
+  return result.ASINEX_ID || result.BAS_CODE || result.bas_code || result.id_number || result.id
+    ? [result]
+    : [];
+}
+
+function normalizeCatalogMolecule(molecule = {}) {
+  return {
+    ...molecule,
+    ASINEX_ID: molecule.ASINEX_ID || molecule.BAS_CODE || molecule.bas_code || molecule.basCode || molecule.id_number || molecule.id,
+    CATALOG_ROW_ID: molecule.CATALOG_ROW_ID || molecule.id_number || molecule.id,
+    SMILES_STRING: molecule.SMILES_STRING || molecule.SMILES || molecule.smiles_string || molecule.smiles,
+    BRUTTO_FORMULA: molecule.BRUTTO_FORMULA || molecule.brutto_formula || molecule.formula,
+    MW_STRUCTURE: molecule.MW_STRUCTURE ?? molecule.mol_weight ?? molecule.molecular_weight,
+    AVAILABLE_MG: molecule.AVAILABLE_MG ?? molecule.available_mg,
+    PRICE_1MG: molecule.PRICE_1MG ?? molecule.price_1mg,
+    PRICE_2MG: molecule.PRICE_2MG ?? molecule.price_2mg,
+    PRICE_5MG: molecule.PRICE_5MG ?? molecule.price_5mg,
+    PRICE_10MG: molecule.PRICE_10MG ?? molecule.price_10mg,
+    IUPAC_NAME: molecule.IUPAC_NAME || molecule.iupac_name || "N/A",
+    INCHI: molecule.INCHI || molecule.inchi || "N/A",
+    INCHIKEY: molecule.INCHIKEY || molecule.inchikey || "N/A",
+    SIMILARITY: molecule.SIMILARITY ?? molecule.similarity ?? molecule.Similarity ?? null,
+  };
+}
+
 export function Simulation() {
   // Popup state for clipboard copy
   const [showClipboardPopup, setShowClipboardPopup] = useState(false);
-  const [_loading, setLoading] = useState(false);
   // State for toggling simulation inputs
   const [showSimInputs, setShowSimInputs] = useState(false);
   const [showDiffDockInputs, setShowDiffDockInputs] = useState(false);
-  const [_response, setResponse] = useState(null);
-  const [_error, setError] = useState('');
-  const [_lastUpdated, setLastUpdated] = useState(null);
-  const [apiUrl, _setApiUrl] = useState('/api/hello');
-  const [useHttpbin, _setUseHttpbin] = useState(true);
   const [searchCode, setSearchCode] = useState("");
   const [searchResult, setSearchResult] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -62,28 +97,26 @@ export function Simulation() {
   const [diffDockLigandId, setDiffDockLigandId] = useState("");
   const [simResult, setSimResult] = useState(null);
   const [simLoading, setSimLoading] = useState(false);
+  const [simElapsedSeconds, setSimElapsedSeconds] = useState(0);
   const [simError, setSimError] = useState("");
   const [diffDockResult, setDiffDockResult] = useState(null);
   const [diffDockLoading, setDiffDockLoading] = useState(false);
   const [diffDockError, setDiffDockError] = useState("");
-  const [_message, setMessage] = useState('');
-    const [_messageType, setMessageType] = useState(''); // 'success', 'error', or ''
+  const [message, setMessage] = useState('');
+  const [messageType, setMessageType] = useState(''); // 'success', 'error', or ''
   const [topMolecules, setTopMolecules] = useState([]);
   const [topLoading, setTopLoading] = useState(false);
   const [topError, setTopError] = useState("");
 
   const [searchType, setSearchType] = useState("similarity"); // Add searchType state
   const [queryType, setQueryType] = useState("draw"); // Default to Draw molecule
-  const [_topLimit, _setTopLimit] = useState(8); // Add topLimit state
-  const [moleculeLimit, _setMoleculeLimit] = useState(30); // Add moleculeLimit state
+  const moleculeLimit = 30;
   const [similarityThreshold, setSimilarityThreshold] = useState(0.7); // Similarity threshold (0-1)
   const [molWeightMin, setMolWeightMin] = useState(0); // Molecular weight minimum (0-1000)
   const [molWeightMax, setMolWeightMax] = useState(1000); // Molecular weight maximum (0-1000)
   const [lastFromId, setLastFromId] = useState(0); // Track last fromId for pagination
   const [isSearchActive, setIsSearchActive] = useState(false); // Track if search is active
   const [lastSearchQuery, setLastSearchQuery] = useState(""); // Track last search query
-
-  const [_mculeSmiles, _setMculeSmiles] = useState(""); // For drawing in mcule component
 
   const [cart, setCart] = useState([]);
   
@@ -92,6 +125,7 @@ export function Simulation() {
   const [_allMolecules, setAllMolecules] = useState([]);
   const [hasMore, setHasMore] = useState(true);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [catalogSettled, setCatalogSettled] = useState(false);
   const [pageSize, setPageSize] = useState(10);
   
   // Hover preview state
@@ -100,6 +134,19 @@ export function Simulation() {
   
   // Checkbox selection state
   const [selectedMolecules, setSelectedMolecules] = useState(new Set());
+
+  useEffect(() => {
+    if (!simLoading) {
+      setSimElapsedSeconds(0);
+      return undefined;
+    }
+
+    const startedAt = Date.now();
+    const updateElapsed = () => setSimElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(timer);
+  }, [simLoading]);
   
   // Currency conversion state
   const [currency, setCurrency] = useState('USD');
@@ -114,81 +161,42 @@ export function Simulation() {
   const isLoadingPageRef = useRef(false); // Prevent multiple simultaneous requests
   const ketcherIframeRef = useRef(null);
   const isSearchActiveRef = useRef(false);
+  const lastSearchQueryRef = useRef("");
+  const lastFromIdRef = useRef(0);
+  const searchTypeRef = useRef(searchType);
+  const pageSizeRef = useRef(pageSize);
+  const similarityThresholdRef = useRef(similarityThreshold);
+  const molWeightMinRef = useRef(molWeightMin);
+  const molWeightMaxRef = useRef(molWeightMax);
+  const browseControllerRef = useRef(null);
+  const browseRequestIdRef = useRef(0);
+  const searchControllerRef = useRef(null);
+  const searchRequestIdRef = useRef(0);
+  const messageTimerRef = useRef(null);
+  const clipboardTimerRef = useRef(null);
 
   const navigate = useNavigate();
-  
-  // Helper function to check if current user is tester
-  const isTestUser = () => {
-    try {
-      const userInfo = localStorage.getItem('user_info');
-      if (userInfo) {
-        const user = JSON.parse(userInfo);
-        return user.username === 'tester123' || user.email === 'tester123';
-      }
-    } catch (err) {
-      console.error('Error checking user info:', err);
+
+  const showMessage = (text, type = 'success', duration = 4000) => {
+    if (messageTimerRef.current) window.clearTimeout(messageTimerRef.current);
+    setMessage(text);
+    setMessageType(type);
+    if (duration > 0) {
+      messageTimerRef.current = window.setTimeout(() => {
+        setMessage('');
+        setMessageType('');
+        messageTimerRef.current = null;
+      }, duration);
     }
-    return false;
   };
 
-  // Helper function to get test user's IP
-  const getTestUserIp = () => {
-    try {
-      const simulationPairs = localStorage.getItem('molstar_simulation_pairs');
-      if (simulationPairs) {
-        const pairs = JSON.parse(simulationPairs);
-        // Get the first IP from simulation pairs that belongs to this user
-        const userIp = Object.values(pairs)[0]?.userIp;
-        return userIp;
-      }
-    } catch (err) {
-      console.error('Error getting test user IP:', err);
-    }
-    return null;
-  };
-
-  // Filter function for test user by IP
-  const _filterForTestUserByIp = (data) => {
-    if (!isTestUser()) {
-      // Not a test user, return all data
-      return data;
-    }
-
-    const testUserIp = getTestUserIp();
-    if (!testUserIp) {
-      // No IP found, return all data
-      return data;
-    }
-
-    try {
-      const simulationPairs = localStorage.getItem('molstar_simulation_pairs');
-      if (!simulationPairs) {
-        return data;
-      }
-
-      const pairs = JSON.parse(simulationPairs);
-      
-      // Get all simulation keys that match the test user's IP
-      const matchingKeys = Object.keys(pairs).filter(key => 
-        pairs[key].userIp === testUserIp
-      );
-
-      // Filter data to only include items with matching simulation keys
-      // This assumes data items have a simulationKey or similar identifier
-      const filtered = data.filter(item => {
-        // Check if item has a simulation key that matches
-        if (item.simulationKey) {
-          return matchingKeys.includes(item.simulationKey);
-        }
-        // If no simulation key, include the item (for backward compatibility)
-        return true;
-      });
-
-      return filtered;
-    } catch (err) {
-      console.error('Error filtering for test user:', err);
-      return data;
-    }
+  const showClipboardConfirmation = () => {
+    if (clipboardTimerRef.current) window.clearTimeout(clipboardTimerRef.current);
+    setShowClipboardPopup(true);
+    clipboardTimerRef.current = window.setTimeout(() => {
+      setShowClipboardPopup(false);
+      clipboardTimerRef.current = null;
+    }, 3000);
   };
   
   // Update refs when state changes
@@ -211,6 +219,23 @@ export function Simulation() {
   useEffect(() => {
     isSearchActiveRef.current = isSearchActive;
   }, [isSearchActive]);
+
+  useEffect(() => {
+    lastSearchQueryRef.current = lastSearchQuery;
+    lastFromIdRef.current = lastFromId;
+    searchTypeRef.current = searchType;
+    pageSizeRef.current = pageSize;
+    similarityThresholdRef.current = similarityThreshold;
+    molWeightMinRef.current = molWeightMin;
+    molWeightMaxRef.current = molWeightMax;
+  }, [lastSearchQuery, lastFromId, searchType, pageSize, similarityThreshold, molWeightMin, molWeightMax]);
+
+  useEffect(() => () => {
+    browseControllerRef.current?.abort();
+    searchControllerRef.current?.abort();
+    if (messageTimerRef.current) window.clearTimeout(messageTimerRef.current);
+    if (clipboardTimerRef.current) window.clearTimeout(clipboardTimerRef.current);
+  }, []);
 
   // Check for payment success/cancel from URL params
   useEffect(() => {
@@ -242,53 +267,37 @@ export function Simulation() {
     }
   }, []);
 
-  const _fetchApiData = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      let fetchUrl = apiUrl;
-      if (useHttpbin) {
-        fetchUrl = '/api/hello';
-      }
-      const response = await fetch(fetchUrl);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      const result = await response.json();
-      if (result.success !== false) {
-        setResponse(result.data);
-        setLastUpdated(result.timestamp || new Date().toISOString());
-      } else {
-        throw new Error(result.error || 'Unknown error from API');
-      }
-    } catch (err) {
-      setError(`Failed to fetch data: ${err.message}`);
-      setResponse(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // Function to fetch molecules from /asinex/all/x_10
-  const fetchAllMolecules = async (page = 0, append = false) => {
-    // Prevent multiple simultaneous requests
-    if (isLoadingPageRef.current) {
-      console.log('Already loading, skipping request');
+  const fetchAllMolecules = async (page = 0, append = false, requestedPageSize = pageSizeRef.current) => {
+    // Only the infinite-scroll path needs this guard — it fires from a scroll handler
+    // and would otherwise queue the same page repeatedly. A fresh (non-append) load
+    // must never be blocked by it: that path aborts whatever is in flight and replaces
+    // it, so returning early here left the catalog permanently empty whenever the
+    // mount effect ran twice (its first request aborted, its second one swallowed).
+    if (append && isLoadingPageRef.current) {
       return;
     }
-    
+
+    if (!append) browseControllerRef.current?.abort();
+    const controller = new AbortController();
+    const requestId = ++browseRequestIdRef.current;
+    browseControllerRef.current = controller;
     isLoadingPageRef.current = true;
     try {
       if (!append) {
+        // Keep the empty state hidden for the entire first request. The catalog can
+        // legitimately take a few seconds to answer; an empty array during that
+        // window is not an empty catalog.
+        setCatalogSettled(false);
+        setInitialLoading(true);
         setTopLoading(true);
         setTopError("");
       }
       
-      console.log(`Fetching page ${page} from /asinex/all/${page}_${pageSize}`);
-      
-      const token = localStorage.getItem('auth_token');
-      const res = await fetch(API_CONFIG.buildApiUrl(`/asinex/all/${page}_${pageSize}`), {
+      const token = getAuthToken();
+      const res = await fetch(API_CONFIG.buildApiUrl(`/asinex/all/${page}_${requestedPageSize}`), {
         method: "GET",
+        signal: controller.signal,
         headers: { 
           'accept': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
@@ -300,50 +309,14 @@ export function Simulation() {
       }
       
       const result = await res.json();
-      console.log('Fetched molecules from /asinex/all:', result);
-      
-      // Check if response fromId matches request (if using pagination with fromId)
-      // Note: /asinex/all uses page-based pagination, but check in case API returns fromId
-      if (result.fromId !== undefined && page > 0 && result.fromId === lastFromId) {
-        console.log('Received same fromId - no new data available');
-        setHasMore(false);
+      // Aborting a fetch does not guarantee that a response already handed to the
+      // browser stops resolving. Never let an older refresh/page response overwrite
+      // the request that is currently visible.
+      if (browseControllerRef.current !== controller || requestId !== browseRequestIdRef.current) {
         return;
       }
-      
-      let formattedMolecules = [];
-      
-      // Handle different response formats
-      if (Array.isArray(result)) {
-        formattedMolecules = result.map(molecule => ({
-          ASINEX_ID: molecule.id_number || molecule.id,
-          SMILES_STRING: molecule.smiles_string,
-          BRUTTO_FORMULA: molecule.brutto_formula,
-          MW_STRUCTURE: molecule.mol_weight,
-          AVAILABLE_MG: molecule.available_mg,
-          PRICE_1MG: molecule.price_1mg,
-          PRICE_5MG: molecule.price_5mg,
-          PRICE_10MG: molecule.price_10mg,
-          IUPAC_NAME: molecule.iupac_name || "N/A",
-          INCHI: molecule.inchi || "N/A", 
-          INCHIKEY: molecule.inchikey || "N/A",
-          PRICE_2MG: molecule.price_2mg
-        }));
-      } else if (result.data && Array.isArray(result.data)) {
-        formattedMolecules = result.data.map(molecule => ({
-          ASINEX_ID: molecule.id_number || molecule.id,
-          SMILES_STRING: molecule.smiles_string,
-          BRUTTO_FORMULA: molecule.brutto_formula,
-          MW_STRUCTURE: molecule.mol_weight,
-          AVAILABLE_MG: molecule.available_mg,
-          PRICE_1MG: molecule.price_1mg,
-          PRICE_5MG: molecule.price_5mg,
-          PRICE_10MG: molecule.price_10mg,
-          IUPAC_NAME: molecule.iupac_name || "N/A",
-          INCHI: molecule.inchi || "N/A", 
-          INCHIKEY: molecule.inchikey || "N/A",
-          PRICE_2MG: molecule.price_2mg
-        }));
-      }
+      const resultRows = catalogRowsFromResponse(result);
+      const formattedMolecules = resultRows.map(normalizeCatalogMolecule);
       
       if (append) {
         setAllMolecules(prev => [...prev, ...formattedMolecules]);
@@ -359,9 +332,8 @@ export function Simulation() {
       }
       
       // Check if we have more data (if we got less than pageSize, we're at the end)
-      if (formattedMolecules.length < pageSize) {
+      if (formattedMolecules.length < requestedPageSize) {
         setHasMore(false);
-        console.log('No more data available');
       } else {
         setHasMore(true);
       }
@@ -369,16 +341,41 @@ export function Simulation() {
       setCurrentPage(page);
       
     } catch (err) {
+      if (err.name === 'AbortError') return;
+      if (browseControllerRef.current !== controller || requestId !== browseRequestIdRef.current) return;
       setTopError(`Failed to fetch molecules: ${err.message}`);
       console.error('Error fetching molecules:', err);
     } finally {
-      setTopLoading(false);
-      setInitialLoading(false);
-      isLoadingPageRef.current = false; // Always reset the loading flag
+      if (browseControllerRef.current === controller && requestId === browseRequestIdRef.current) {
+        browseControllerRef.current = null;
+        setTopLoading(false);
+        if (!append) {
+          setInitialLoading(false);
+          setCatalogSettled(true);
+        }
+        isLoadingPageRef.current = false;
+      }
     }
   };
 
   const handleSearch = async () => {
+    browseControllerRef.current?.abort();
+    // Invalidate any response that was already past fetch cancellation before
+    // starting the newer search request.
+    browseRequestIdRef.current += 1;
+    searchControllerRef.current?.abort();
+    // A search replaces the initial browse request. Settle that browse lifecycle
+    // immediately so its stale aborted finally block cannot leave the page believing
+    // it is still waiting forever.
+    setInitialLoading(false);
+    setCatalogSettled(true);
+    setTopLoading(false);
+    isLoadingPageRef.current = false;
+    const controller = new AbortController();
+    const requestId = ++searchRequestIdRef.current;
+    searchControllerRef.current = controller;
+    isSearchActiveRef.current = false;
+    setIsSearchActive(false);
     setSearchLoading(true);
     setSearchError("");
     setSearchResult(null);
@@ -393,7 +390,7 @@ export function Simulation() {
     setSelectedMolecules(new Set());
     
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = getAuthToken();
       const rawQuery = (searchCode || '').trim();
 
       // Map UI searchType to API method names
@@ -407,8 +404,9 @@ export function Simulation() {
       };
       const method = methodMap[searchType] || 'similarity';
 
-      // Use lastFromId for pagination (starts at 0 for new search)
-      const fromId = lastFromId;
+      // A new search always starts at the beginning. setLastFromId(0) above is
+      // asynchronous, so reading lastFromId here reused the previous query's cursor.
+      const fromId = 0;
 
       // Prepare request body with pagination parameters
       const requestBody = {
@@ -438,6 +436,7 @@ export function Simulation() {
       const url = API_CONFIG.buildApiUrl(`/api4/${method}`);
       const res = await fetch(url, {
         method: 'POST',
+        signal: controller.signal,
         headers: {
           'accept': '*/*',
           'Content-Type': 'application/json',
@@ -446,128 +445,61 @@ export function Simulation() {
         body: JSON.stringify(requestBody)
       });
       
+      const responseText = await res.text();
       if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(`HTTP ${res.status}: ${res.statusText} - ${errorText}`);
+        throw new Error(`HTTP ${res.status}: ${res.statusText}${responseText ? ` - ${responseText}` : ''}`);
       }
-      const result = await res.json();
-      //setSearchResult(result);
-      console.log('Search result data structure:', result); // Debug log
-      
-      // Check if response fromId matches request fromId (meaning we've hit the end)
-      if (result.fromId !== undefined && result.fromId === fromId) {
-        console.log('Received same fromId as request - no new data available');
-        setHasMore(false);
+      const result = responseText.trim() ? JSON.parse(responseText) : [];
+      if (searchControllerRef.current !== controller || requestId !== searchRequestIdRef.current) {
         return;
       }
-      
-      // Handle the new response structure
-      if (result.data) {
-        // Single result with data object (old format)
-        const molecule = result.data;
-        // Convert to array format for consistency with existing table rendering
-        const formattedMolecule = {
-          ASINEX_ID: molecule.id_number || molecule.id,
-          SMILES_STRING: molecule.smiles_string,
-          BRUTTO_FORMULA: molecule.brutto_formula,
-          MW_STRUCTURE: molecule.mol_weight,
-          AVAILABLE_MG: molecule.available_mg,
-          PRICE_1MG: molecule.price_1mg,
-          PRICE_5MG: molecule.price_5mg,
-          PRICE_10MG: molecule.price_10mg,
-          // Add other fields that might be missing
-          IUPAC_NAME: molecule.iupac_name || "N/A",
-          INCHI: molecule.inchi || "N/A", 
-          INCHIKEY: molecule.inchikey || "N/A",
-          PRICE_2MG: molecule.price_2mg,
-          SIMILARITY: molecule.similarity || molecule.Similarity || null
-        };
-        setTopMolecules([formattedMolecule]);
-        // Clear selected molecules when loading new search results
-        setSelectedMolecules(new Set());
-      } else if (Array.isArray(result)) {
-        // Direct array format (new format)
-        const formattedMolecules = result.map(molecule => ({
-          ASINEX_ID: molecule.id_number || molecule.id,
-          SMILES_STRING: molecule.smiles_string,
-          BRUTTO_FORMULA: molecule.brutto_formula,
-          MW_STRUCTURE: molecule.mol_weight,
-          AVAILABLE_MG: molecule.available_mg,
-          PRICE_1MG: molecule.price_1mg,
-          PRICE_5MG: molecule.price_5mg,
-          PRICE_10MG: molecule.price_10mg,
-          // Add other fields that might be missing
-          IUPAC_NAME: molecule.iupac_name || "N/A",
-          INCHI: molecule.inchi || "N/A", 
-          INCHIKEY: molecule.inchikey || "N/A",
-          PRICE_2MG: molecule.price_2mg,
-          SIMILARITY: molecule.similarity || molecule.Similarity || null
+      const resultRows = catalogRowsFromResponse(result);
+      const formattedMolecules = resultRows.map(normalizeCatalogMolecule);
+      setTopMolecules(formattedMolecules);
+      setSelectedMolecules(new Set());
+      setHasMore(formattedMolecules.length >= pageSize);
+
+      if (formattedMolecules.length > 0) {
+        const maxId = Math.max(...formattedMolecules.map((molecule) => {
+          const id = molecule.ASINEX_ID || '0';
+          return Number.parseInt(id, 10) || 0;
         }));
-        setTopMolecules(formattedMolecules);
-        // Clear selected molecules when loading new search results
-        setSelectedMolecules(new Set());
-        
-        // Update lastFromId to the maximum id_number from the response for next page
-        if (formattedMolecules.length > 0) {
-          const maxId = Math.max(...formattedMolecules.map(m => {
-            const id = m.ASINEX_ID || '0';
-            return parseInt(id, 10) || 0;
-          }));
-          setLastFromId(maxId);
-        }
-      } else if (result.id || result.id_number) {
-        // Single object format (new format)
-        const formattedMolecule = {
-          ASINEX_ID: result.id_number || result.id,
-          SMILES_STRING: result.smiles_string,
-          BRUTTO_FORMULA: result.brutto_formula,
-          MW_STRUCTURE: result.mol_weight,
-          AVAILABLE_MG: result.available_mg,
-          PRICE_1MG: result.price_1mg,
-          PRICE_5MG: result.price_5mg,
-          PRICE_10MG: result.price_10mg,
-          // Add other fields that might be missing
-          IUPAC_NAME: result.iupac_name || "N/A",
-          INCHI: result.inchi || "N/A", 
-          INCHIKEY: result.inchikey || "N/A",
-          PRICE_2MG: result.price_2mg,
-          SIMILARITY: result.similarity || result.Similarity || null
-        };
-        setTopMolecules([formattedMolecule]);
-        // Clear selected molecules when loading new search results  
-        setSelectedMolecules(new Set());
-      } else if (Array.isArray(result.molecules)) {
-        // Array format with molecules property (old format)
-        setTopMolecules(result.molecules);
-        // Clear selected molecules when loading new search results
-        setSelectedMolecules(new Set());
-      } else {
-        // Fallback for other formats
-        setTopMolecules([]);
-        // Clear selected molecules when loading new search results
-        setSelectedMolecules(new Set());
+        setLastFromId(maxId);
       }
-    } catch (_err) {
-      setSearchError("Not found, please try again later");
-      setTimeout(() => {
-        setSearchError("");
-      }, 2000);
+      isSearchActiveRef.current = true;
+      setIsSearchActive(true);
+      setLastSearchQuery(rawQuery);
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      if (searchControllerRef.current !== controller || requestId !== searchRequestIdRef.current) return;
+      setSearchError(`Search failed: ${err.message}`);
     } finally {
-      setSearchLoading(false);
-      setIsSearchActive(true); // Mark search as active
-      setLastSearchQuery(searchCode); // Store the search query
+      if (searchControllerRef.current === controller && requestId === searchRequestIdRef.current) {
+        searchControllerRef.current = null;
+        setSearchLoading(false);
+      }
     }
   };
 
   // Function to load more search results (for pagination during scroll)
   const loadMoreSearchResults = async () => {
-    if (!isSearchActive || !lastSearchQuery) return;
-    
+    const activeSearch = isSearchActiveRef.current;
+    const query = lastSearchQueryRef.current;
+    if (!activeSearch || !query || searchControllerRef.current) return;
+
+    const controller = new AbortController();
+    const requestId = searchRequestIdRef.current;
+    searchControllerRef.current = controller;
     setTopLoading(true);
     
     try {
-      const token = localStorage.getItem('auth_token');
-      const rawQuery = lastSearchQuery.trim();
+      const token = getAuthToken();
+      const rawQuery = query.trim();
+      const activeSearchType = searchTypeRef.current;
+      const activePageSize = pageSizeRef.current;
+      const activeThreshold = similarityThresholdRef.current;
+      const activeMolWeightMin = molWeightMinRef.current;
+      const activeMolWeightMax = molWeightMaxRef.current;
 
       // Map UI searchType to API method names
       const methodMap = {
@@ -578,24 +510,24 @@ export function Simulation() {
         molweight: 'mw',
         mw: 'mw'
       };
-      const method = methodMap[searchType] || 'similarity';
+      const method = methodMap[activeSearchType] || 'similarity';
 
       // Prepare request body with pagination parameters
       const requestBody = {
-        fromId: lastFromId,
-        pageSize: pageSize
+        fromId: lastFromIdRef.current,
+        pageSize: activePageSize
       };
 
       // Add method-specific parameters
-      if (searchType === 'bas') {
+      if (activeSearchType === 'bas') {
         requestBody.bas = rawQuery;
-      } else if (searchType === 'similarity') {
+      } else if (activeSearchType === 'similarity') {
         requestBody.smiles = rawQuery;
-        requestBody.threshold = similarityThreshold;
-      } else if (searchType === 'molweight' || searchType === 'mw') {
+        requestBody.threshold = activeThreshold;
+      } else if (activeSearchType === 'molweight' || activeSearchType === 'mw') {
         requestBody.smiles = rawQuery;
-        requestBody.mwFrom = molWeightMin;
-        requestBody.mwTo = molWeightMax;
+        requestBody.mwFrom = activeMolWeightMin;
+        requestBody.mwTo = activeMolWeightMax;
       } else {
         requestBody.smiles = rawQuery;
       }
@@ -604,6 +536,7 @@ export function Simulation() {
       const url = API_CONFIG.buildApiUrl(`/api4/${method}`);
       const res = await fetch(url, {
         method: 'POST',
+        signal: controller.signal,
         headers: {
           'accept': '*/*',
           'Content-Type': 'application/json',
@@ -616,33 +549,22 @@ export function Simulation() {
         throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }
       
-      const result = await res.json();
+      const responseText = await res.text();
+      const result = responseText.trim() ? JSON.parse(responseText) : [];
+      if (searchControllerRef.current !== controller || requestId !== searchRequestIdRef.current) {
+        return;
+      }
       
       // Check if response fromId matches request fromId (meaning we've hit the end)
-      if (result.fromId !== undefined && result.fromId === lastFromId) {
-        console.log('Received same fromId as request - no new data available');
+      if (result.fromId !== undefined && result.fromId === lastFromIdRef.current) {
         setHasMore(false);
         return;
       }
       
-      // Handle array response
-      if (Array.isArray(result)) {
-        const formattedMolecules = result.map(molecule => ({
-          ASINEX_ID: molecule.id_number || molecule.id,
-          SMILES_STRING: molecule.smiles_string,
-          BRUTTO_FORMULA: molecule.brutto_formula,
-          MW_STRUCTURE: molecule.mol_weight,
-          AVAILABLE_MG: molecule.available_mg,
-          PRICE_1MG: molecule.price_1mg,
-          PRICE_5MG: molecule.price_5mg,
-          PRICE_10MG: molecule.price_10mg,
-          IUPAC_NAME: molecule.iupac_name || "N/A",
-          INCHI: molecule.inchi || "N/A", 
-          INCHIKEY: molecule.inchikey || "N/A",
-          PRICE_2MG: molecule.price_2mg,
-          SIMILARITY: molecule.similarity || molecule.Similarity || null
-        }));
-        
+      const resultRows = catalogRowsFromResponse(result);
+      const formattedMolecules = resultRows.map(normalizeCatalogMolecule);
+
+      if (formattedMolecules.length > 0) {
         // Append to existing molecules
         setTopMolecules(prev => [...prev, ...formattedMolecules]);
         
@@ -650,24 +572,29 @@ export function Simulation() {
         if (formattedMolecules.length > 0) {
           const maxId = Math.max(...formattedMolecules.map(m => {
             const id = m.ASINEX_ID || '0';
-            return parseInt(id, 10) || 0;
+            return Number.parseInt(id, 10) || 0;
           }));
+          lastFromIdRef.current = maxId;
           setLastFromId(maxId);
         }
         
         // Check if we have more data
-        if (formattedMolecules.length < pageSize) {
+        if (formattedMolecules.length < activePageSize) {
           setHasMore(false);
         }
       } else {
-        // No more results
         setHasMore(false);
       }
     } catch (err) {
+      if (err.name === 'AbortError') return;
+      if (searchControllerRef.current !== controller || requestId !== searchRequestIdRef.current) return;
       console.error('Failed to load more search results:', err);
       setHasMore(false);
     } finally {
-      setTopLoading(false);
+      if (searchControllerRef.current === controller && requestId === searchRequestIdRef.current) {
+        searchControllerRef.current = null;
+        setTopLoading(false);
+      }
     }
   };
 
@@ -686,8 +613,10 @@ export function Simulation() {
     setSimLoading(true);
     setSimError("");
     setSimResult(null);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 11 * 60 * 1000);
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = getAuthToken();
       
       // Create JSON payload
       const requestBody = {
@@ -695,24 +624,35 @@ export function Simulation() {
         smiles: encodeURIComponent(_searchSmiles)
       };
       
-      const res = await fetch(API_CONFIG.buildApiUrl('/simulation'), {
+      // This page navigates to authenticated artifact URLs and only needs the
+      // durable handle. Avoid transferring the full PDB/SDF response just to
+      // discard it and fetch those artifacts again on the result page.
+      const res = await fetch(API_CONFIG.buildApiUrl('/simulation?includeResult=false'), {
         method: "POST",
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
       });
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      
+      const result = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(result?.error || `Simulation failed (HTTP ${res.status})`);
+      }
+
       clearDiffDockStorage();
-      const result = await res.json();
       setSimResult(result);
 
     } catch (err) {
-      setSimError(`Failed to simulate: ${err.message}`);
+      if (err.name === 'AbortError') {
+        setSimError('Docking is taking longer than expected and was stopped after 11 minutes. No result was returned.');
+      } else {
+        setSimError(`Failed to simulate: ${err.message}`);
+      }
     } finally {
+      window.clearTimeout(timeout);
       setSimLoading(false);
     }
   };
@@ -729,21 +669,23 @@ export function Simulation() {
       return;
     }
     
-    // If no Ligand ID provided, try to use SMILES from search input
-    const ligandId = searchCode;
+    // Prefer the explicit ligand field; drawing/search text remains a useful fallback.
+    const ligandId = diffDockLigandId.trim() || searchCode.trim();
 
-  
     if (!ligandId) {
       setDiffDockError("Please provide a Ligand ID for DiffDock or search for a molecule");
       return;
     }
     
     clearViewerStorage();
+    clearDiffDockStorage();
     setDiffDockLoading(true);
     setDiffDockError("");
     setDiffDockResult(null);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 11 * 60 * 1000);
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = getAuthToken();
       
       // Create JSON payload for DiffDock
       const requestBody = {
@@ -758,21 +700,25 @@ export function Simulation() {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
       });
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      const result = await res.json();
+      const result = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(result?.error || `HTTP ${res.status}: ${res.statusText}`);
+      if (!result || result.status === 'failed') {
+        throw new Error(result?.details || 'DiffDock returned no usable pose');
+      }
       setDiffDockResult(result);
-      setMessage('DiffDock simulation completed successfully!');
-      setMessageType('success');
-      setTimeout(() => {
-        setMessage('');
-        setMessageType('');
-      }, 5000);
+      showMessage('DiffDock simulation completed successfully!');
     } catch (err) {
-      setDiffDockError(`Failed to run DiffDock: ${err.message}`);
+      if (err.name === 'AbortError') {
+        setDiffDockError('DiffDock is taking longer than expected and was stopped after 11 minutes. No result was returned.');
+      } else {
+        setDiffDockError(`Failed to run DiffDock: ${err.message}`);
+      }
     } finally {
+      window.clearTimeout(timeout);
       setDiffDockLoading(false);
     }
   };
@@ -780,8 +726,11 @@ export function Simulation() {
   // Redirect to Molstar3D when simulation results are available
   useEffect(() => {
     if (simResult && simResult.simulationKey) {
-      const pdbUrl = API_CONFIG.buildApiUrl(`/sanitizedpdb/${simResult.simulationKey}`);      
-      const sdfUrl = API_CONFIG.buildApiUrl(`/sanitizedsdf/${simResult.simulationKey}`);
+      const pdbUrl = API_CONFIG.buildApiUrl(`/sanitizedpdb/${simResult.simulationKey}`);
+      // Match the legacy result handoff: the reduced SDF supplies the clickable
+      // SMILES/score rows, while the selected pose is fetched separately below.
+      const sdfUrl = API_CONFIG.buildApiUrl(`/sanitizedminimalsdf/${simResult.simulationKey}`);
+      const pdbName = `PDB ${String(simPdbId).trim().toUpperCase()} · Simulation result`;
       
       // Store URLs, navigate, and only THEN look up the IP.
       //
@@ -793,13 +742,15 @@ export function Simulation() {
       const storeSimulationData = () => {
         // Store URLs in localStorage and navigate to Molstar3D
         localStorage.setItem('molstar_pdb_url', pdbUrl);
+        localStorage.setItem('molstar_pdb_name', pdbName);
         localStorage.setItem('molstar_sdf_url', sdfUrl);
         localStorage.setItem('molstar_simulation_key', simResult.simulationKey);
         // Drop any protein left over from opening a share link (`?pdb=…`). That key
         // outlives the view that set it, and the viewer used to prefer it over this
         // run's own protein — so every simulation after one such link rendered the
         // wrong structure, and the pose vanished because it belongs to a different
-        // coordinate frame.
+        // coordinate frame. Never re-store molstar_pdb_code for a simulation run:
+        // the authenticated molstar_pdb_url is authoritative; sticky codes caused 1cx7.
         localStorage.removeItem('molstar_pdb_code');
         
         // Get existing simulation pairs dictionary or create new one
@@ -822,8 +773,15 @@ export function Simulation() {
         
         // Store updated dictionary
         localStorage.setItem('molstar_simulation_pairs', JSON.stringify(simulationPairs));
-        
-        navigate('/dashboard/molstar3d');
+
+        // Query + one-shot flag: molstar3d only auto-loads on handoff / deep link,
+        // not when the user later clicks Simulation Results in the nav.
+        markViewerHandoff();
+        const handoffParams = new URLSearchParams({
+          simulation: simResult.simulationKey,
+          pdb: String(simPdbId || '').trim(),
+        });
+        navigate(`/dashboard/molstar3d?${handoffParams.toString()}`);
 
         // Fire-and-forget, after navigation, with a hard 5s ceiling. Re-reads the dictionary
         // before writing because the user may have started another simulation by now.
@@ -854,7 +812,7 @@ export function Simulation() {
       // Store DiffDock result data in localStorage for the molecule viewer
       localStorage.setItem('diffdock_result', JSON.stringify(diffDockResult));
       localStorage.setItem('diffdock_pdb_id', diffDockPdbId);
-      localStorage.setItem('diffdock_ligand_id', diffDockLigandId);
+      localStorage.setItem('diffdock_ligand_id', diffDockLigandId.trim() || searchCode.trim());
       localStorage.setItem('diffdock_timestamp', new Date().toISOString());
       
       // Extract and store protein and ligand data for Molstar3D
@@ -864,9 +822,27 @@ export function Simulation() {
       if (diffDockResult.ligand) {
         localStorage.setItem('diffdock_ligand', diffDockResult.ligand);
       }
-      if (diffDockResult.ligand_positions && diffDockResult.ligand_positions.length > 0) {
-        localStorage.setItem('diffdock_ligand_position', diffDockResult.ligand_positions[0]);
+      // Keep the submitted ligand as a preview fallback because DiffDock pose SDFs
+      // generally contain coordinates but no SMILES property.
+      localStorage.setItem('diffdock_ligand_input', diffDockLigandId.trim() || searchCode.trim());
+      const firstPose = Array.isArray(diffDockResult.ligand_positions)
+        ? diffDockResult.ligand_positions.find((pose) => typeof pose === 'string' && pose.trim())
+        : null;
+      if (firstPose) {
+        localStorage.setItem('diffdock_ligand_position', firstPose);
       }
+      // Name the Molstar tree entry after the receptor. Without this the iframe falls
+      // back to a blob URL / host label (e.g. app.pyxis…) instead of 44HP.
+      const pdbLabel = String(diffDockPdbId || '').trim().toUpperCase();
+      if (pdbLabel) {
+        localStorage.setItem('molstar_pdb_name', `PDB ${pdbLabel} · DiffDock`);
+      }
+      // DiffDock owns this view; drop AutoDock share-link sticky codes so a prior
+      // ?pdb=1cx7 cannot outrank the receptor that was just docked.
+      localStorage.removeItem('molstar_pdb_code');
+      localStorage.removeItem('molstar_pdb_url');
+      localStorage.removeItem('molstar_sdf_url');
+      localStorage.removeItem('molstar_simulation_key');
       if (diffDockResult.position_confidence && diffDockResult.position_confidence.length > 0) {
         // Index 0, to match the pose stored above. DiffDock returns both arrays ranked
         // best-first and index-aligned: in every captured production response
@@ -879,8 +855,11 @@ export function Simulation() {
         }
       }
       
-      // Navigate to molecule viewer
-      navigate('/dashboard/molstar3d');
+      // Query + one-shot flag so a later bare nav visit does not reopen this run.
+      // Do not pass ?pdb= here: that path is the RCSB/share-link loader and would
+      // overwrite DiffDock's in-memory receptor handoff.
+      markViewerHandoff();
+      navigate('/dashboard/molstar3d?diffdock=1');
     }
   }, [diffDockResult, diffDockPdbId, diffDockLigandId, navigate]);
 
@@ -928,10 +907,8 @@ export function Simulation() {
         ) {
           // Check if we're in search mode or browsing all molecules
           if (isSearchActiveRef.current) {
-            console.log('Scroll triggered - Loading more search results');
             loadMoreSearchResults();
           } else {
-            console.log('Scroll triggered - Loading next page:', currentPageRef.current + 1);
             fetchAllMolecules(currentPageRef.current + 1, true);
           }
         }
@@ -949,10 +926,6 @@ export function Simulation() {
   }, []); // Empty dependency array - only set up once
 
 
-  const _handleCellClick = value => {
-    setSearchCode(value);
-  };
-
   const saveCartToStorage = (cartData) => {
     try {
       localStorage.setItem('moleculeCart', JSON.stringify(cartData));
@@ -963,7 +936,6 @@ export function Simulation() {
     }
   };
   const addToCart = (molecule, amount, price) => {
-    console.log(`Adding to cart: ${molecule}, Amount: ${amount}, Price: ${price}`);
     if (!molecule || !price) return;
     const priceNum = typeof price === 'number' ? price : Number(price) || 0;
     const cartItem = {
@@ -973,25 +945,18 @@ export function Simulation() {
       pricePerMg: priceNum, // for compatibility with dashboard-navbar
       totalPrice: priceNum, // Do not multiply by amount - just use the price as is
       id: molecule.ASINEX_ID || molecule.id || Math.random().toString(36).slice(2),
+      catalogId: molecule.BAS_CODE || molecule.bas_code || molecule.basCode || molecule.ASINEX_ID || molecule.id_number || molecule.id,
       smiles: molecule.SMILES_STRING || molecule.smiles || '',
       formula: molecule.BRUTTO_FORMULA || molecule.formula || '',
     };
     const updatedCart = [...cart, cartItem];
     setCart(updatedCart);
     saveCartToStorage(updatedCart);
-    setMessage(`Added ${amount}mg of ${cartItem.name} to cart`);
-    setMessageType('success');
-    setTimeout(() => {
-      setMessage('');
-      setMessageType('');
-    }, 3000);
+    showMessage(`Added ${amount} mg of ${cartItem.name} to cart`);
   };
 
   // Hover preview functions
   const handleMouseEnter = (smiles, event, type) => {
-    // Debug: Let's see what SMILES we're getting
-    console.log('Hover SMILES data:', smiles, 'Type:', type);
-    
     if (smiles && smiles !== 'N/A' && smiles.trim() !== '') {
       const rect = event.currentTarget.getBoundingClientRect();
       const windowWidth = window.innerWidth;
@@ -1020,9 +985,6 @@ export function Simulation() {
 
   // Helper function to extract SMILES from molecule object
   const extractSmiles = (mol) => {
-    console.log('Full molecule object:', mol);
-    console.log('Available fields:', Object.keys(mol));
-    
     // Try different possible field names for SMILES
     const possibleFields = [
       'SMILES_STRING', 'SMILES', 'smiles', 'canonical_smiles', 
@@ -1034,15 +996,11 @@ export function Simulation() {
         const smiles = mol[field].trim();
         // Basic SMILES validation - should contain typical SMILES characters
         if (smiles.length > 1 && /[A-Za-z0-9[\]()@=#+\-\\/\\\\]/.test(smiles)) {
-          console.log(`Found valid SMILES in field: ${field}, value: ${smiles}`);
           return smiles;
-        } else {
-          console.log(`Invalid SMILES format in field: ${field}, value: ${smiles}`);
         }
       }
     }
     
-    console.log('No valid SMILES found in molecule:', mol);
     return null;
   };
 
@@ -1072,10 +1030,11 @@ export function Simulation() {
     return formatPrice(convertedPrice, currency);
   };
 
+  const moleculeSelectionId = (molecule, index) => molecule.ASINEX_ID || molecule.id || `molecule-${index}`;
+
   // Handle checkbox selection
-  const handleCheckboxChange = (molecule, isChecked) => {
-    const moleculeId = molecule.ASINEX_ID || molecule.id || Math.random().toString(36).slice(2);
-    const _smiles = molecule.SMILES_STRING || molecule.SMILES || molecule.smiles || '';
+  const handleCheckboxChange = (molecule, index, isChecked) => {
+    const moleculeId = moleculeSelectionId(molecule, index);
     
     setSelectedMolecules(prev => {
       const newSelected = new Set(prev);
@@ -1087,8 +1046,8 @@ export function Simulation() {
       
       // Update search box with concatenated SMILES for all selected molecules
       const selectedSmiles = [];
-      topMolecules.forEach(mol => {
-        const id = mol.ASINEX_ID || mol.id || Math.random().toString(36).slice(2);
+      topMolecules.forEach((mol, molIndex) => {
+        const id = moleculeSelectionId(mol, molIndex);
         const molSmiles = mol.SMILES_STRING || mol.SMILES || mol.smiles || '';
         if (newSelected.has(id) && molSmiles) {
           selectedSmiles.push(molSmiles);
@@ -1107,8 +1066,8 @@ export function Simulation() {
       const newSelected = new Set();
       const selectedSmiles = [];
       
-      topMolecules.forEach(mol => {
-        const moleculeId = mol.ASINEX_ID || mol.id || Math.random().toString(36).slice(2);
+      topMolecules.forEach((mol, index) => {
+        const moleculeId = moleculeSelectionId(mol, index);
         const molSmiles = mol.SMILES_STRING || mol.SMILES || mol.smiles || '';
         newSelected.add(moleculeId);
         if (molSmiles) {
@@ -1130,8 +1089,8 @@ export function Simulation() {
     if (topMolecules.length === 0) return { checked: false, indeterminate: false };
     
     const totalMolecules = topMolecules.length;
-    const selectedCount = topMolecules.filter(mol => {
-      const moleculeId = mol.ASINEX_ID || mol.id || Math.random().toString(36).slice(2);
+    const selectedCount = topMolecules.filter((mol, index) => {
+      const moleculeId = moleculeSelectionId(mol, index);
       return selectedMolecules.has(moleculeId);
     }).length;
     
@@ -1153,27 +1112,37 @@ export function Simulation() {
           if (smiles) {
             await copyToClipboard(smiles);
             setSearchCode(smiles); // Also update the search box
-            setShowClipboardPopup(true);
-            setTimeout(() => setShowClipboardPopup(false), 3000);
+            showClipboardConfirmation();
           } else {
-            alert("No molecule drawn to get SMILES from.");
+            showMessage("Draw a molecule before copying its SMILES.", "error");
           }
         } else {
-          alert("Ketcher editor not available.");
+          showMessage("The molecule editor is still loading. Please try again.", "error");
         }
       } catch (err) {
         console.error("Failed to get SMILES from Ketcher:", err);
-        alert("Failed to get SMILES. Make sure a molecule is drawn.");
+        showMessage("SMILES could not be copied. Make sure a molecule is drawn.", "error");
       }
     }
   };
 
   return (
     <div className="min-h-screen flex flex-col pt-4 pb-4 bg-gray-50 w-full px-2 sm:px-4">
+      {message && (
+        <div className="fixed right-4 top-20 z-[70] w-[min(28rem,calc(100vw-2rem))]" role="status" aria-live="polite">
+          <Alert
+            color={messageType === "error" ? "red" : "green"}
+            dismissible
+            onClose={() => setMessage('')}
+          >
+            {message}
+          </Alert>
+        </div>
+      )}
       {/* Hover Preview Tooltip */}
       {hoveredPreview && (
         <div 
-          className="fixed z-50 bg-white border-2 border-gray-300 rounded-lg shadow-xl p-3"
+          className="fixed z-50 bg-white border-2 border-gray-300 rounded-lg p-3"
           style={{
             left: `${previewPosition.x}px`,
             top: `${previewPosition.y}px`,
@@ -1191,30 +1160,15 @@ export function Simulation() {
               alt="Molecule structure"
               style={{ width: '100%', height: '100%', objectFit: 'contain' }}
               onError={(e) => {
-                console.warn('Failed to load molecule image for SMILES:', hoveredPreview.smiles, 'URL:', e.target.src);
-                
-                // Try different approaches in sequence using data attributes to track attempts
+                // Retry the same structure with PubChem's simpler size parameter. Never
+                // strip SMILES characters here: that can display a different molecule.
                 if (!e.target.getAttribute('data-fallback-attempted')) {
                   e.target.setAttribute('data-fallback-attempted', '1');
-                  // Try simplified SMILES encoding (remove special characters that might cause issues)
-                  const simplifiedSmiles = hoveredPreview.smiles.replace(/[^\w[\]()@=#+\-\\/\\\\]/g, '');
-                  if (simplifiedSmiles !== hoveredPreview.smiles) {
-                    console.log('Trying simplified SMILES:', simplifiedSmiles);
-                    e.target.src = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(simplifiedSmiles)}/PNG?record_type=2d&image_size=200x150`;
-                    return;
-                  }
-                }
-                
-                if (e.target.getAttribute('data-fallback-attempted') === '1') {
-                  e.target.setAttribute('data-fallback-attempted', '2');
-                  // Try different image size parameter
-                  console.log('Trying different image size for SMILES:', hoveredPreview.smiles);
                   e.target.src = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(hoveredPreview.smiles)}/PNG?image_size=small`;
                   return;
                 }
                 
                 // Final fallback - show text message
-                console.log('All fallbacks failed, showing text for SMILES:', hoveredPreview.smiles);
                 e.target.style.display = 'none';
                 e.target.nextSibling.style.display = 'flex';
               }}
@@ -1423,34 +1377,6 @@ export function Simulation() {
               </div>
             </div>
             
-            <style dangerouslySetInnerHTML={{__html: `
-              .molecular-weight-range input[type="range"] {
-                pointer-events: none;
-              }
-              
-              .molecular-weight-range input[type="range"]::-webkit-slider-thumb {
-                appearance: none;
-                width: 20px;
-                height: 20px;
-                border-radius: 50%;
-                background: #16a34a;
-                cursor: pointer;
-                border: 2px solid white;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-                pointer-events: auto;
-              }
-              
-              .molecular-weight-range input[type="range"]::-moz-range-thumb {
-                width: 20px;
-                height: 20px;
-                border-radius: 50%;
-                background: #16a34a;
-                cursor: pointer;
-                border: 2px solid white;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-                pointer-events: auto;
-              }
-            `}} />
           </div>
         )}
         
@@ -1467,8 +1393,8 @@ export function Simulation() {
             <Button
               size="lg"
               onClick={handleSearch}
-              disabled={searchLoading || !searchCode || selectedMolecules.size > 1}
-              className="flex items-center gap-3 px-6 py-3 text-lg font-semibold shadow-md whitespace-nowrap bg-brand-500 text-white shadow-brand-500/20 hover:shadow-lg hover:shadow-brand-500/40 focus:opacity-[0.85] focus:shadow-none active:opacity-[0.85] active:shadow-none"
+              disabled={searchLoading || !searchCode.trim() || selectedMolecules.size > 1}
+              className="flex items-center gap-3 px-6 py-3 text-lg font-semibold whitespace-nowrap bg-brand-500 text-white focus:opacity-[0.85] active:opacity-[0.85]"
             >
               {searchLoading ? <Spinner className="h-5 w-5" /> : <CloudIcon className="h-5 w-5" />}
               {searchLoading ? 'Searching...' : 'Search'}
@@ -1477,7 +1403,7 @@ export function Simulation() {
    
 
           {/* Docking section */}
-          <div className="w-full lg:w-1/2 flex flex-col gap-4 p-6 rounded-lg shadow-lg bg-gradient-to-br from-blue-50 via-blue-100 to-blue-200 border border-blue-300 self-start">
+          <div className="w-full lg:w-1/2 flex flex-col gap-4 p-6 rounded-lg bg-gradient-to-br from-blue-50 via-blue-100 to-blue-200 border border-blue-300 self-start">
             <div className="flex gap-4 items-center">
               <button
                 type="button"
@@ -1511,7 +1437,7 @@ export function Simulation() {
                   disabled={simLoading || !simPdbId || !searchCode}
                   className="items-center gap-2"
                 >
-                  {simLoading ? 'Simulating...' : 'Simulate'}
+                  {simLoading ? 'Simulating…' : 'Simulate'}
                 </Button>
               </div>
             )}
@@ -1547,15 +1473,15 @@ export function Simulation() {
 
       {/* Simulating Status Message */}
       {simLoading && (
-        <Card className="mb-6">
+        <Card className="mb-6 !shadow-none" style={{ boxShadow: 'none' }} role="status" aria-live="polite">
           <CardBody className="text-center py-8">
             <div className="flex flex-col items-center gap-4">
               <Spinner className="h-8 w-8" color="blue" />
               <Typography variant="h6" color="blue-gray" className="mb-2">
-                Processing Your Simulation
+                Docking in progress · {simElapsedSeconds}s elapsed
               </Typography>
               <Typography variant="small" color="gray" className="max-w-md">
-                You will be redirected soon to 3D model viewer of the result. The SMILES will appear below the 3D model.
+                Docking can take a few minutes. Keep this tab open; the result viewer will open automatically when the stored artifacts are ready.
               </Typography>
             </div>
           </CardBody>
@@ -1568,10 +1494,10 @@ export function Simulation() {
         </Alert>
       )}
       {searchResult && (
-        <Card className="mb-6">
+        <Card className="mb-6 !shadow-none" style={{ boxShadow: 'none' }}>
           <CardHeader
             variant="gradient"
-            className="mb-4 grid h-12 place-items-center bg-transparent bg-gradient-to-tr from-brand-600 to-brand-400 shadow-brand-500/40"
+            className="mb-4 grid h-12 place-items-center bg-transparent bg-gradient-to-tr from-brand-600 to-brand-400"
           >
             <Typography variant="h6" color="white">
               Search Result
@@ -1586,20 +1512,22 @@ export function Simulation() {
       )}
 
       {queryType !== "text" && (
-        <div id="editor" style={{ display: "flex", flexDirection: "row", width: "100%", height: "63vh", gap: "16px" }}>
-          {/* Ketcher Editor - Half width */}
-          <div style={{ width: "50%", height: "63vh", background: "#f5f5f5" }}>
-            <iframe
-              ref={ketcherIframeRef}
-              src="/ketcher/index.html"
-              title="Ketcher 2D Chemical Editor"
-              style={{ width: "100%", height: "63vh", border: "2px solid #ccc", borderRadius: 8, background: "white" }}
-              allowFullScreen
-            />
+        <div id="editor" className="flex w-full flex-col gap-4 lg:flex-row">
+          {/* Ketcher Editor - responsive primary pane */}
+          <div className="min-w-0 flex-1 rounded-2xl border-2 border-blue-gray-200 bg-blue-gray-50 p-1.5 transition-colors focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-950 dark:focus-within:border-brand-500">
+            <div className="overflow-hidden rounded-xl border border-blue-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+              <iframe
+                ref={ketcherIframeRef}
+                src="/ketcher/index.html"
+                title="Ketcher 2D Chemical Editor"
+                className="h-[clamp(28rem,63vh,42rem)] w-full border-0 bg-white dark:bg-slate-900"
+                allowFullScreen
+              />
+            </div>
           </div>
           
           {/* Controls Panel - Half width */}
-          <div id="controls-panel" className="flex flex-col gap-4 w-1/2 p-4 bg-white rounded-lg shadow-lg">
+          <div id="controls-panel" className="flex min-w-0 w-full flex-col gap-4 rounded-lg bg-white p-4 dark:bg-slate-900 lg:w-1/2">
             {/* Copy SMILES Button */}
             <Button 
               onClick={handleCopySmiles}
@@ -1623,7 +1551,7 @@ export function Simulation() {
                 size="lg"
                 onClick={handleSearch}
                 disabled={searchLoading || !searchCode || selectedMolecules.size > 1}
-                className="flex items-center justify-center gap-3 w-full bg-brand-500 text-white shadow-md shadow-brand-500/20 hover:shadow-lg hover:shadow-brand-500/40 focus:opacity-[0.85] focus:shadow-none active:opacity-[0.85] active:shadow-none"
+                className="flex items-center justify-center gap-3 w-full bg-brand-500 text-white focus:opacity-[0.85] active:opacity-[0.85]"
               >
                 {searchLoading ? <Spinner className="h-5 w-5" /> : <CloudIcon className="h-5 w-5" />}
                 {searchLoading ? 'Searching...' : 'Search'}
@@ -1665,7 +1593,7 @@ export function Simulation() {
                     disabled={simLoading || !simPdbId || !searchCode}
                     className="flex items-center justify-center gap-2 w-full"
                   >
-                    {simLoading ? 'Simulating...' : 'Simulate'}
+                    {simLoading ? 'Simulating…' : 'Simulate'}
                   </Button>
                 </div>
               )}
@@ -1712,7 +1640,9 @@ export function Simulation() {
                   setHasMore(true);
                   // Refetch with new page size
                   if (!isSearchActive) {
-                    fetchAllMolecules(0, false);
+                    const nextPageSize = Number(e.target.value);
+                    pageSizeRef.current = nextPageSize;
+                    fetchAllMolecules(0, false, nextPageSize);
                   }
                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer"
@@ -1725,25 +1655,25 @@ export function Simulation() {
           </div>
         </div>
       )}
-        <div id="results" style={{ width: "100%", height: "70vh", background: "#e3e8ef" }}>
+        <div id="results" className="w-full bg-slate-100 dark:bg-slate-900">
           {/* Header as a block element, not wrapping Card or div */}
           {/* <div className="mb-4">
             <Typography as="h5" variant="h5" color="blue-gray">Top {topMolecules.length} Molecules</Typography>
           </div> */}
-          {topLoading && topMolecules.length === 0 && (
-            <div className="flex items-center gap-2 mb-4">
+          {(initialLoading || (topLoading && topMolecules.length === 0)) && (
+            <div className="mb-4 flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/70 px-4 py-3" role="status" aria-live="polite">
               <Spinner className="h-5 w-5 text-blue-500" />
-              <Typography>Loading molecules...</Typography>
+              <Typography color="blue-gray">Loading catalog molecules...</Typography>
             </div>
           )}
           {topError && (
             <Alert color="red" className="mb-4">{topError}</Alert>
           )}
           {!initialLoading && !topError && topMolecules.length > 0 && (
-            <Card className="mb-4 overflow-auto" style={{ maxHeight: "70vh" }}>
+            <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
                 <table className="w-full text-left">
-                  <thead className="sticky top-0 bg-white z-10 shadow-sm">
+                  <thead className="sticky top-0 z-10 bg-white">
                     <tr>
                       <th className="p-2 font-bold bg-white">
                         <div className="flex items-center gap-2">
@@ -1783,10 +1713,10 @@ export function Simulation() {
                       return (
                         <tr key={uniqueKey} className="border-b">
                           <td className="p-2">
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={(e) => handleCheckboxChange(mol, e.target.checked)}
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => handleCheckboxChange(mol, idx, e.target.checked)}
                               className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
                             />
                           </td>
@@ -1796,106 +1726,116 @@ export function Simulation() {
                               {mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? parseFloat(mol.SIMILARITY).toFixed(3) : "N/A"}
                             </td>
                           )}
-                        <td
-                          className="p-2 cursor-pointer hover:bg-blue-100"
-                          title={mol.ASINEX_ID ? String(mol.ASINEX_ID).replace(/^ASN/i, "") : "N/A"}
-                          onClick={() => setSearchCode(mol.ASINEX_ID ? String(mol.ASINEX_ID).replace(/^ASN/i, "") : "")}
-                          onMouseEnter={(e) => handleMouseEnter(extractSmiles(mol), e, "mcule ID")}
-                          onMouseLeave={handleMouseLeave}
-                        >
-                          {(mol.ASINEX_ID ? String(mol.ASINEX_ID).replace(/^ASN/i, "") : "N/A").toString().slice(0,moleculeLimit)}{(mol.ASINEX_ID ? String(mol.ASINEX_ID).replace(/^ASN/i, "") : "N/A").toString().length > moleculeLimit ? '...' : ''}
+                        <td className="p-0">
+                          <button
+                            type="button"
+                            className="w-full p-2 text-left hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 dark:hover:bg-slate-800"
+                            title={mol.ASINEX_ID ? String(mol.ASINEX_ID).replace(/^ASN/i, "") : "N/A"}
+                            onClick={() => setSearchCode(mol.ASINEX_ID ? String(mol.ASINEX_ID).replace(/^ASN/i, "") : "")}
+                            onMouseEnter={(e) => handleMouseEnter(extractSmiles(mol), e, "mcule ID")}
+                            onMouseLeave={handleMouseLeave}
+                            onFocus={(e) => handleMouseEnter(extractSmiles(mol), e, "mcule ID")}
+                            onBlur={handleMouseLeave}
+                          >
+                            {(mol.ASINEX_ID ? String(mol.ASINEX_ID).replace(/^ASN/i, "") : "N/A").toString().slice(0,moleculeLimit)}{(mol.ASINEX_ID ? String(mol.ASINEX_ID).replace(/^ASN/i, "") : "N/A").toString().length > moleculeLimit ? '...' : ''}
+                          </button>
                         </td>
-                        <td
-                          className="p-2 cursor-pointer hover:bg-blue-100"
-                          title={mol.IUPAC_NAME || "N/A"}
-                          onClick={() => setSearchCode(mol.IUPAC_NAME || "")}
-                          onMouseEnter={(e) => handleMouseEnter(extractSmiles(mol), e, "IUPAC Name")}
-                          onMouseLeave={handleMouseLeave}
-                        >
-                          {(mol.IUPAC_NAME || "N/A").toString().slice(0,moleculeLimit)}{(mol.IUPAC_NAME || "N/A").toString().length > moleculeLimit ? '...' : ''}
+                        <td className="p-0">
+                          <button
+                            type="button"
+                            className="w-full p-2 text-left hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 dark:hover:bg-slate-800"
+                            title={mol.IUPAC_NAME || "N/A"}
+                            onClick={() => setSearchCode(mol.IUPAC_NAME || "")}
+                            onMouseEnter={(e) => handleMouseEnter(extractSmiles(mol), e, "IUPAC Name")}
+                            onMouseLeave={handleMouseLeave}
+                            onFocus={(e) => handleMouseEnter(extractSmiles(mol), e, "IUPAC Name")}
+                            onBlur={handleMouseLeave}
+                          >
+                            {(mol.IUPAC_NAME || "N/A").toString().slice(0,moleculeLimit)}{(mol.IUPAC_NAME || "N/A").toString().length > moleculeLimit ? '...' : ''}
+                          </button>
                         </td>
-                        <td
-                          className="p-2 font-mono text-xs cursor-pointer hover:bg-blue-100"
-                          title={mol.SMILES_STRING || mol.SMILES || mol.smiles || "N/A"}
-                          onClick={async () => {
-                            const smiles = mol.SMILES_STRING || mol.SMILES || mol.smiles || "";
-                            setSearchCode(smiles);
-                            try {
-                              await copyToClipboard(smiles);
-                              setShowClipboardPopup(true);
-                              setTimeout(() => setShowClipboardPopup(false), 3000);
-                            } catch (err) {
-                              alert("Failed to copy SMILES to clipboard: " + err);
-                            }
-                          }}
-                          onMouseEnter={(e) => handleMouseEnter(extractSmiles(mol), e, "SMILES")}
-                          onMouseLeave={handleMouseLeave}
-                        >
-                          {(mol.SMILES_STRING || mol.SMILES || mol.smiles || "N/A").toString().slice(0,moleculeLimit)}{(mol.SMILES_STRING || mol.SMILES || mol.smiles || "N/A").toString().length > moleculeLimit ? '...' : ''}
+                        <td className="p-0 font-mono text-xs">
+                          <button
+                            type="button"
+                            className="w-full p-2 text-left hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 dark:hover:bg-slate-800"
+                            title={mol.SMILES_STRING || mol.SMILES || mol.smiles || "N/A"}
+                            onClick={async () => {
+                              const smiles = mol.SMILES_STRING || mol.SMILES || mol.smiles || "";
+                              setSearchCode(smiles);
+                              try {
+                                await copyToClipboard(smiles);
+                                showClipboardConfirmation();
+                              } catch (err) {
+                                console.error("Failed to copy SMILES:", err);
+                                showMessage("SMILES could not be copied.", "error");
+                              }
+                            }}
+                            onMouseEnter={(e) => handleMouseEnter(extractSmiles(mol), e, "SMILES")}
+                            onMouseLeave={handleMouseLeave}
+                            onFocus={(e) => handleMouseEnter(extractSmiles(mol), e, "SMILES")}
+                            onBlur={handleMouseLeave}
+                          >
+                            {(mol.SMILES_STRING || mol.SMILES || mol.smiles || "N/A").toString().slice(0,moleculeLimit)}{(mol.SMILES_STRING || mol.SMILES || mol.smiles || "N/A").toString().length > moleculeLimit ? '...' : ''}
+                          </button>
                         </td>
-                        <td
-                          className="p-2 font-mono text-xs cursor-pointer hover:bg-blue-100"
-                          title={mol.INCHI || "N/A"}
-                          onClick={async () => {
-                            const inchi = mol.INCHI || "";
-                            setSearchCode(inchi);
-                            try {
-                              await copyToClipboard(inchi);
-                              setShowClipboardPopup(true);
-                              setTimeout(() => setShowClipboardPopup(false), 3000);
-                            } catch (err) {
-                              alert("Failed to copy InChI to clipboard: " + err);
-                            }
-                          }}
-                          onMouseEnter={(e) => handleMouseEnter(extractSmiles(mol), e, "InChI")}
-                          onMouseLeave={handleMouseLeave}
-                        >
-                          {(mol.INCHI || "N/A").toString().slice(0,moleculeLimit)}{(mol.INCHI || "N/A").toString().length > moleculeLimit ? '...' : ''}
+                        <td className="p-0 font-mono text-xs">
+                          <button
+                            type="button"
+                            className="w-full p-2 text-left hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 dark:hover:bg-slate-800"
+                            title={mol.INCHI || "N/A"}
+                            onClick={async () => {
+                              const inchi = mol.INCHI || "";
+                              setSearchCode(inchi);
+                              try {
+                                await copyToClipboard(inchi);
+                                showClipboardConfirmation();
+                              } catch (err) {
+                                console.error("Failed to copy InChI:", err);
+                                showMessage("InChI could not be copied.", "error");
+                              }
+                            }}
+                            onMouseEnter={(e) => handleMouseEnter(extractSmiles(mol), e, "InChI")}
+                            onMouseLeave={handleMouseLeave}
+                            onFocus={(e) => handleMouseEnter(extractSmiles(mol), e, "InChI")}
+                            onBlur={handleMouseLeave}
+                          >
+                            {(mol.INCHI || "N/A").toString().slice(0,moleculeLimit)}{(mol.INCHI || "N/A").toString().length > moleculeLimit ? '...' : ''}
+                          </button>
                         </td>
-                        <td
-                          className="p-2 font-mono text-xs cursor-pointer hover:bg-blue-100"
-                          title={mol.INCHIKEY || "N/A"}
-                          onClick={() => setSearchCode(mol.INCHIKEY || "")}
-                          onMouseEnter={(e) => handleMouseEnter(extractSmiles(mol), e, "InChIKey")}
-                          onMouseLeave={handleMouseLeave}
-                        >
-                          {(mol.INCHIKEY || "N/A").toString().slice(0,moleculeLimit)}{(mol.INCHIKEY || "N/A").toString().length > moleculeLimit ? '...' : ''}
+                        <td className="p-0 font-mono text-xs">
+                          <button
+                            type="button"
+                            className="w-full p-2 text-left hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 dark:hover:bg-slate-800"
+                            title={mol.INCHIKEY || "N/A"}
+                            onClick={() => setSearchCode(mol.INCHIKEY || "")}
+                            onMouseEnter={(e) => handleMouseEnter(extractSmiles(mol), e, "InChIKey")}
+                            onMouseLeave={handleMouseLeave}
+                            onFocus={(e) => handleMouseEnter(extractSmiles(mol), e, "InChIKey")}
+                            onBlur={handleMouseLeave}
+                          >
+                            {(mol.INCHIKEY || "N/A").toString().slice(0,moleculeLimit)}{(mol.INCHIKEY || "N/A").toString().length > moleculeLimit ? '...' : ''}
+                          </button>
                         </td>
                         <td className="p-2" title={mol.BRUTTO_FORMULA || "N/A"}>{(mol.BRUTTO_FORMULA || "N/A").toString().slice(0,moleculeLimit)}{(mol.BRUTTO_FORMULA || "N/A").toString().length > moleculeLimit ? '...' : ''}</td>
                         <td className="p-2" title={formatNumericValue(mol.MW_STRUCTURE)}>{formatNumericValue(mol.MW_STRUCTURE).toString().slice(0,moleculeLimit)}{formatNumericValue(mol.MW_STRUCTURE).toString().length > moleculeLimit ? '...' : ''}</td>
                         <td className="p-2" title={formatNumericValue(mol.AVAILABLE_MG)}>{formatNumericValue(mol.AVAILABLE_MG).toString().slice(0,moleculeLimit)}{formatNumericValue(mol.AVAILABLE_MG).toString().length > moleculeLimit ? '...' : ''}</td>
-                        <td className="p-2 cursor-pointer group" title={mol.PRICE_1MG ? formatPriceWithCurrency(mol.PRICE_1MG) : "-"}
-                          onClick={() => addToCart(mol, 1, mol.PRICE_1MG)}
-                        >
-                          <span>{(mol.PRICE_1MG ? formatPriceWithCurrency(mol.PRICE_1MG) : "-").toString().slice(0,moleculeLimit)}{(mol.PRICE_1MG ? formatPriceWithCurrency(mol.PRICE_1MG) : "-").toString().length > moleculeLimit ? '...' : ''}</span>
-                          {mol.PRICE_1MG && (
-                            <ShoppingCartIcon
-                              className="inline-block h-5 w-5 text-brand-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
-                              title="Add 1mg to cart"
-                            />
-                          )}
+                        <td className="p-0" title={mol.PRICE_1MG ? formatPriceWithCurrency(mol.PRICE_1MG) : "-"}>
+                          <button type="button" disabled={!mol.PRICE_1MG} className="group w-full p-2 text-left hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 disabled:cursor-default dark:hover:bg-slate-800" onClick={() => addToCart(mol, 1, mol.PRICE_1MG)} aria-label={mol.PRICE_1MG ? `Add 1 mg to cart for ${formatPriceWithCurrency(mol.PRICE_1MG)}` : "1 mg unavailable"}>
+                            <span>{(mol.PRICE_1MG ? formatPriceWithCurrency(mol.PRICE_1MG) : "-").toString().slice(0,moleculeLimit)}{(mol.PRICE_1MG ? formatPriceWithCurrency(mol.PRICE_1MG) : "-").toString().length > moleculeLimit ? '...' : ''}</span>
+                            {mol.PRICE_1MG && <ShoppingCartIcon className="ml-2 inline-block h-5 w-5 text-brand-600 opacity-70 group-hover:opacity-100" aria-hidden="true" />}
+                          </button>
                         </td>
-                        <td className="p-2 cursor-pointer group" title={mol.PRICE_5MG ? formatPriceWithCurrency(mol.PRICE_5MG) : "-"}
-                          onClick={() => addToCart(mol, 5, mol.PRICE_5MG)}
-                        >
-                          <span>{(mol.PRICE_5MG ? formatPriceWithCurrency(mol.PRICE_5MG) : "-").toString().slice(0,moleculeLimit)}{(mol.PRICE_5MG ? formatPriceWithCurrency(mol.PRICE_5MG) : "-").toString().length > moleculeLimit ? '...' : ''}</span>
-                          {mol.PRICE_5MG && (
-                            <ShoppingCartIcon
-                              className="inline-block h-5 w-5 text-brand-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
-                              title="Add 5mg to cart"
-                            />
-                          )}
+                        <td className="p-0" title={mol.PRICE_5MG ? formatPriceWithCurrency(mol.PRICE_5MG) : "-"}>
+                          <button type="button" disabled={!mol.PRICE_5MG} className="group w-full p-2 text-left hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 disabled:cursor-default dark:hover:bg-slate-800" onClick={() => addToCart(mol, 5, mol.PRICE_5MG)} aria-label={mol.PRICE_5MG ? `Add 5 mg to cart for ${formatPriceWithCurrency(mol.PRICE_5MG)}` : "5 mg unavailable"}>
+                            <span>{(mol.PRICE_5MG ? formatPriceWithCurrency(mol.PRICE_5MG) : "-").toString().slice(0,moleculeLimit)}{(mol.PRICE_5MG ? formatPriceWithCurrency(mol.PRICE_5MG) : "-").toString().length > moleculeLimit ? '...' : ''}</span>
+                            {mol.PRICE_5MG && <ShoppingCartIcon className="ml-2 inline-block h-5 w-5 text-brand-600 opacity-70 group-hover:opacity-100" aria-hidden="true" />}
+                          </button>
                         </td>
-                        <td className="p-2 cursor-pointer group" title={mol.PRICE_10MG ? formatPriceWithCurrency(mol.PRICE_10MG) : "-"}
-                          onClick={() => addToCart(mol, 10, mol.PRICE_10MG)}
-                        >
-                          <span>{(mol.PRICE_10MG ? formatPriceWithCurrency(mol.PRICE_10MG) : "-").toString().slice(0,moleculeLimit)}{(mol.PRICE_10MG ? formatPriceWithCurrency(mol.PRICE_10MG) : "-").toString().length > moleculeLimit ? '...' : ''}</span>
-                          {mol.PRICE_10MG && (
-                            <ShoppingCartIcon
-                              className="inline-block h-5 w-5 text-brand-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
-                              title="Add 10mg to cart"
-                            />
-                          )}
+                        <td className="p-0" title={mol.PRICE_10MG ? formatPriceWithCurrency(mol.PRICE_10MG) : "-"}>
+                          <button type="button" disabled={!mol.PRICE_10MG} className="group w-full p-2 text-left hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 disabled:cursor-default dark:hover:bg-slate-800" onClick={() => addToCart(mol, 10, mol.PRICE_10MG)} aria-label={mol.PRICE_10MG ? `Add 10 mg to cart for ${formatPriceWithCurrency(mol.PRICE_10MG)}` : "10 mg unavailable"}>
+                            <span>{(mol.PRICE_10MG ? formatPriceWithCurrency(mol.PRICE_10MG) : "-").toString().slice(0,moleculeLimit)}{(mol.PRICE_10MG ? formatPriceWithCurrency(mol.PRICE_10MG) : "-").toString().length > moleculeLimit ? '...' : ''}</span>
+                            {mol.PRICE_10MG && <ShoppingCartIcon className="ml-2 inline-block h-5 w-5 text-brand-600 opacity-70 group-hover:opacity-100" aria-hidden="true" />}
+                          </button>
                         </td>
                       </tr>
                     )
@@ -1924,24 +1864,22 @@ export function Simulation() {
           )}
           
           {/* No Data State */}
-          {!initialLoading && !topLoading && !topError && topMolecules.length === 0 && (
-            <div className="text-center py-8">
+          {(!isSearchActive ? catalogSettled : !searchLoading) && !initialLoading && !topLoading && !topError && !searchError && topMolecules.length === 0 && (
+            <div className="text-center py-8" role="status" aria-live="polite">
               <Typography variant="small" color="gray">
-                No molecules found. Try searching for specific compounds.
+                {queryType === "text"
+                  ? isSearchActive
+                    ? "No molecules matched this search. Try another query or adjust the search options."
+                    : "Enter a molecule identifier or structure above, then select Search."
+                  : "No catalog molecules are available right now."}
               </Typography>
             </div>
           )}
         </div>
       {showClipboardPopup && (
-        <Alert color="green" className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-fit px-6 py-3 text-center shadow-lg">
+        <Alert color="green" className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-fit px-6 py-3 text-center">
           Ctrl+V into Draw molecule
         </Alert>
-      )}
-      {simLoading && (
-        <div className="flex justify-center items-center mb-6">
-          <Spinner className="h-8 w-8 text-blue-500" />
-          <Typography className="ml-2">Running simulation...</Typography>
-        </div>
       )}
       {simError && (
         <Alert color="red" className="mb-6">
@@ -1952,7 +1890,7 @@ export function Simulation() {
         </Alert>
       )}
       {simResult && (
-        <Card className="mb-6">
+        <Card className="mb-6 !shadow-none" style={{ boxShadow: 'none' }}>
           <CardHeader
             variant="gradient"
             className="mb-4 grid h-12 place-items-center"
@@ -1987,7 +1925,7 @@ export function Simulation() {
         </Card>
       )}
       {diffDockLoading && (
-        <Card className="mb-6">
+        <Card className="mb-6 !shadow-none" style={{ boxShadow: 'none' }}>
           <CardBody className="text-center py-8">
             <div className="flex flex-col items-center gap-4">
               <Spinner className="h-8 w-8" color="purple" />
@@ -2010,7 +1948,7 @@ export function Simulation() {
         </Alert>
       )}
       {diffDockResult && (
-        <Card className="mb-6">
+        <Card className="mb-6 !shadow-none" style={{ boxShadow: 'none' }}>
           <CardHeader
             variant="gradient"
             color="purple"

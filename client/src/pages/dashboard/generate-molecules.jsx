@@ -1,5 +1,18 @@
-import { useState } from "react";
-import { API_CONFIG } from "@/utils/constants";
+import { useEffect, useRef, useState } from "react";
+import { API_CONFIG, getAuthToken } from "@/utils/constants";
+
+const showStructurePreviewFallback = (event, smiles) => {
+  const image = event.currentTarget;
+  if (!image.dataset.fallbackAttempted) {
+    image.dataset.fallbackAttempted = "true";
+    image.src = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(smiles)}/PNG?image_size=small`;
+    return;
+  }
+
+  image.style.display = "none";
+  if (image.nextElementSibling) image.nextElementSibling.style.display = "flex";
+};
+
 const GenerateMolecules = () => {
   // State for form inputs
   const [smiles, setSmiles] = useState("");
@@ -8,16 +21,23 @@ const GenerateMolecules = () => {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
+  const requestControllerRef = useRef(null);
+
+  useEffect(() => () => requestControllerRef.current?.abort(), []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setResults(null);
+    requestControllerRef.current?.abort();
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
     try {
-      const token = localStorage.getItem("auth_token");
+      const token = getAuthToken();
       const response = await fetch(API_CONFIG.buildApiUrl("/generate-molecules"), {
         method: "POST",
+        signal: controller.signal,
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -28,16 +48,23 @@ const GenerateMolecules = () => {
           numMolecules,
         }),
       });
-      if (!response.ok) throw new Error("API error");
-      const data = await response.json();
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(
+          data?.details?.detail ||
+            data?.details ||
+            data?.error ||
+            `Molecule generation failed (HTTP ${response.status})`
+        );
+      }
 
       // Normalize results into an array of SMILES strings when possible
       let molecules = [];
       if (Array.isArray(data)) {
         molecules = data;
-      } else if (data.molecules && Array.isArray(data.molecules)) {
+      } else if (data?.molecules && Array.isArray(data.molecules)) {
         molecules = data.molecules;
-      } else if (data.molecules && typeof data.molecules === 'string') {
+      } else if (data?.molecules && typeof data.molecules === 'string') {
         try {
           const parsed = JSON.parse(data.molecules);
           if (Array.isArray(parsed)) molecules = parsed;
@@ -45,16 +72,16 @@ const GenerateMolecules = () => {
           // keep as string fallback
           molecules = [data.molecules];
         }
-      } else if (data.results && Array.isArray(data.results)) {
+      } else if (data?.results && Array.isArray(data.results)) {
         molecules = data.results;
-      } else if (data.results && typeof data.results === 'string') {
+      } else if (data?.results && typeof data.results === 'string') {
         try {
           const parsed = JSON.parse(data.results);
           if (Array.isArray(parsed)) molecules = parsed;
         } catch (_e) {
           molecules = [data.results];
         }
-      } else if (data.smiles) {
+      } else if (data?.smiles) {
         molecules = Array.isArray(data.smiles) ? data.smiles : [data.smiles];
       } else if (typeof data === "string") {
         molecules = [data];
@@ -65,18 +92,19 @@ const GenerateMolecules = () => {
 
       setResults(molecules);
     } catch (err) {
+      if (err.name === "AbortError") return;
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   };
 
   return (
-    <div className="p-6 w-full bg-white rounded shadow">
+    <div className="w-full rounded bg-white p-6 shadow dark:bg-slate-900 dark:text-slate-100">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
           <h2 className="text-2xl font-bold mb-4">Generate Molecules</h2>
-          <div className="mb-4 text-sm text-gray-700">
+          <div className="mb-4 text-sm text-gray-700 dark:text-slate-300">
             <strong>Description:</strong>
             <p className="mt-2">
               MolMIM generates a random sample of new molecules in SMILES
@@ -134,7 +162,7 @@ const GenerateMolecules = () => {
                 type="text"
                 value={smiles}
                 onChange={(e) => setSmiles(e.target.value)}
-                className="w-full border rounded px-3 py-2"
+                className="w-full rounded border px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
                 placeholder="Enter SMILES string"
                 required
               />
@@ -149,7 +177,7 @@ const GenerateMolecules = () => {
                 max="1"
                 value={minSimilarity}
                 onChange={(e) => setMinSimilarity(parseFloat(e.target.value))}
-                className="w-full border rounded px-3 py-2"
+                className="w-full rounded border px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
                 required
               />
             </div>
@@ -162,7 +190,7 @@ const GenerateMolecules = () => {
                 max="100"
                 value={numMolecules}
                 onChange={(e) => setNumMolecules(parseInt(e.target.value, 10))}
-                className="w-full border rounded px-3 py-2"
+                className="w-full rounded border px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
                 required
               />
             </div>
@@ -171,7 +199,7 @@ const GenerateMolecules = () => {
               className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
               disabled={loading}
             >
-              {loading ? "Generating..." : "Generate"}
+              {loading ? "Generating…" : "Generate"}
             </button>
           </form>
           {error && <div className="mt-4 text-red-600">Error: {error}</div>}
@@ -179,22 +207,22 @@ const GenerateMolecules = () => {
 
         <div>
           <h3 className="text-lg font-semibold mb-3">Results</h3>
-          {loading && !results && <div className="text-sm text-gray-500">Waiting for results...</div>}
+          {loading && !results && <div className="text-sm text-gray-500 dark:text-slate-400">Waiting for results…</div>}
           {!loading && results && results.length === 0 && (
-            <div className="text-sm text-gray-500">No molecules returned.</div>
+            <div className="text-sm text-gray-500 dark:text-slate-400">No molecules returned.</div>
           )}
 
           <div className="overflow-x-auto">
             {results && results.length > 0 && (typeof results[0] === 'object' && (results[0].sample || results[0].smiles || results[0].score !== undefined)) ? (
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
+                <thead className="bg-gray-50 dark:bg-slate-800">
                   <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Structure</th>
-                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Score</th>  
-                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">SMILES</th>                 
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-slate-400">Structure</th>
+                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-slate-400">Score</th>  
+                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-slate-400">SMILES</th>                 
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="divide-y divide-gray-200 bg-white dark:divide-slate-700 dark:bg-slate-900">
                   {results.map((item, idx) => {
                     const smilesStr = (item && (item.sample || item.smiles)) || (typeof item === 'string' ? item : JSON.stringify(item));
                     const score = item && (item.score ?? item.scoring ?? item.value);
@@ -202,45 +230,12 @@ const GenerateMolecules = () => {
                     return (
                       <tr key={`row-${idx}`}>
                         <td className="px-4 py-3 align-top">
-                          <div className="border border-gray-300 rounded overflow-hidden bg-white" style={{ width: '200px', height: '150px' }}>
+                          <div className="overflow-hidden rounded border border-gray-300 bg-white dark:border-slate-700 dark:bg-slate-800" style={{ width: '200px', height: '150px' }}>
                             <img
                               src={imgUrl}
-                              alt={`structure-${idx}`}
+                              alt={`Generated molecule ${idx + 1} structure`}
                               style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                              onError={(e) => {
-                                // Retry logic for failed image loads (400 status)
-                                const maxRetries = 5;
-                                let retryCount = parseInt(e.target.getAttribute('data-retry-count') || '0', 10);
-                                if (!e.target.getAttribute('data-retry-timer')) {
-                                  e.target.setAttribute('data-retry-timer', '1');
-                                }
-                                // Only retry for 400 status images (PubChem returns blank PNG)
-                                if (retryCount < maxRetries) {
-                                  setTimeout(() => {
-                                    retryCount++;
-                                    e.target.setAttribute('data-retry-count', retryCount);
-                                    // Try reloading the image
-                                    e.target.src = `${imgUrl}?retry=${retryCount}`;
-                                  }, 1000);
-                                  return;
-                                }
-                                // Fallback logic after retries
-                                if (!e.target.getAttribute('data-fallback-attempted')) {
-                                  e.target.setAttribute('data-fallback-attempted', '1');
-                                  const simplifiedSmiles = smilesStr.replace(/[^\w[\]()@=#+\-/\\]/g, '');
-                                  if (simplifiedSmiles !== smilesStr) {
-                                    e.target.src = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(simplifiedSmiles)}/PNG?record_type=2d&image_size=200x150`;
-                                    return;
-                                  }
-                                }
-                                if (e.target.getAttribute('data-fallback-attempted') === '1') {
-                                  e.target.setAttribute('data-fallback-attempted', '2');
-                                  e.target.src = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(smilesStr)}/PNG?image_size=small`;
-                                  return;
-                                }
-                                e.target.style.display = 'none';
-                                if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex';
-                              }}
+                              onError={(event) => showStructurePreviewFallback(event, smilesStr)}
                             />
                             <div className="flex items-center justify-center bg-gray-50 text-gray-500 text-sm w-full h-full" style={{ display: 'none' }}>
                               <div className="text-center">
@@ -250,7 +245,7 @@ const GenerateMolecules = () => {
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 align-top">{score !== undefined && score !== null ? Number(score).toFixed(4) : '-'}</td>                
+                        <td className="px-4 py-3 align-top tabular-nums">{score !== undefined && score !== null ? Number(score).toFixed(4) : '-'}</td>                
                         <td className="px-4 py-3 align-top break-words" style={{maxWidth: '40%'}}>{smilesStr}</td>
                       </tr>
                     )
@@ -263,40 +258,14 @@ const GenerateMolecules = () => {
                   const smilesStr = typeof smi === 'string' ? smi : (smi.smiles || JSON.stringify(smi));
                   const imgUrl = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(smilesStr)}/PNG?record_type=2d&image_size=200x150`;
                   return (
-                    <div key={`${idx}-${smilesStr}`} className="flex items-center gap-3 border rounded p-2">
-                      <div className="border border-gray-300 rounded overflow-hidden bg-white" style={{ width: '200px', height: '150px' }}>
-                        <img src={imgUrl} alt={`structure-${idx}`} style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={(e) => {
-                          // Retry logic for failed image loads (400 status)
-                          const maxRetries = 5;
-                          let retryCount = parseInt(e.target.getAttribute('data-retry-count') || '0', 10);
-                          if (!e.target.getAttribute('data-retry-timer')) {
-                            e.target.setAttribute('data-retry-timer', '1');
-                          }
-                          if (retryCount < maxRetries) {
-                            setTimeout(() => {
-                              retryCount++;
-                              e.target.setAttribute('data-retry-count', retryCount);
-                              e.target.src = `${imgUrl}?retry=${retryCount}`;
-                            }, 1000);
-                            return;
-                          }
-                          // Fallback logic after retries
-                          if (!e.target.getAttribute('data-fallback-attempted')) {
-                            e.target.setAttribute('data-fallback-attempted', '1');
-                            const simplifiedSmiles = smilesStr.replace(/[^\w[\]()@=#+\-/\\]/g, '');
-                            if (simplifiedSmiles !== smilesStr) {
-                              e.target.src = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(simplifiedSmiles)}/PNG?record_type=2d&image_size=200x150`;
-                              return;
-                            }
-                          }
-                          if (e.target.getAttribute('data-fallback-attempted') === '1') {
-                            e.target.setAttribute('data-fallback-attempted', '2');
-                            e.target.src = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(smilesStr)}/PNG?image_size=small`;
-                            return;
-                          }
-                          e.target.style.display = 'none';
-                          if (e.target.nextSibling) e.target.nextSibling.style.display = 'flex';
-                        }} />
+                    <div key={`${idx}-${smilesStr}`} className="flex items-center gap-3 rounded border p-2 dark:border-slate-700">
+                      <div className="overflow-hidden rounded border border-gray-300 bg-white dark:border-slate-700 dark:bg-slate-800" style={{ width: '200px', height: '150px' }}>
+                        <img
+                          src={imgUrl}
+                          alt={`Generated molecule ${idx + 1} structure`}
+                          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                          onError={(event) => showStructurePreviewFallback(event, smilesStr)}
+                        />
                         <div className="flex items-center justify-center bg-gray-50 text-gray-500 text-sm w-full h-full" style={{ display: 'none' }}>
                           <div className="text-center">
                             <div>Structure Preview</div>

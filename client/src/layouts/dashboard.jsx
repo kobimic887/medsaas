@@ -10,6 +10,7 @@ import routes from "@/routes";
 import { ThemeProvider } from "@material-tailwind/react";
 import { useMaterialTailwindController, MaterialTailwindControllerProvider } from "@/context";
 import { useBranding } from "@/hooks/useBranding";
+import { SkipLink } from "@/components/SkipLink";
 
 class DashboardErrorBoundary extends React.Component {
   constructor(props) {
@@ -78,7 +79,8 @@ function DashboardShell() {
   const { platformName, logo } = useBranding();
 
   return (
-    <div id="dashboard-layout" className="flex min-h-screen bg-blue-gray-50/50 text-blue-gray-900 dark:bg-slate-950 dark:text-slate-100">
+    <div id="dashboard-layout" className="flex min-h-screen overflow-x-hidden bg-blue-gray-50/50 text-blue-gray-900 dark:bg-slate-950 dark:text-slate-100">
+      <SkipLink />
       {/* Left Sidebar Navigation */}
       <div id="sidebar-container" className="relative">
         <Sidenav
@@ -91,7 +93,7 @@ function DashboardShell() {
       {/* Main Content Area */}
       <div 
         id="main-content-wrapper" 
-        className={`flex-1 flex flex-col transition-all duration-300 ${
+        className={`min-w-0 flex-1 flex flex-col transition-all duration-300 ${
           openSidenav ? 'xl:ml-72' : 'xl:ml-0'
         }`}
       >
@@ -101,7 +103,7 @@ function DashboardShell() {
         </header>
 
         {/* Main Content */}
-        <main id="main-content" className="flex-1 p-4">
+        <main id="main-content" className="min-w-0 flex-1 p-4">
           <Routes>
             <Route index element={<Navigate to="dashboardHome" replace />} />
             {routes.flatMap(({ layout, pages }) =>
@@ -130,9 +132,9 @@ function DashboardShell() {
         </main>
 
         {/* Footer */}
-        <footer id="dashboard-footer" className="p-4 text-blue-gray-600 dark:text-slate-400">
+        <div id="dashboard-footer" className="p-4 text-blue-gray-600 dark:text-slate-400">
           <Footer />
-        </footer>
+        </div>
       </div>
     </div>
   );

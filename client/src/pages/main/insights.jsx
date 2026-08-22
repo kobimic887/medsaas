@@ -7,23 +7,17 @@ export default function Insights() {
       {/* Pyxis Discovery Insights Feed */}
       <div className="mt-8 space-y-6">
         <div className="border rounded-lg p-4 bg-white shadow">
-          <a
-            href="#"
-            className="text-xl font-semibold text-blue-700 hover:underline"
-          >
+          <h2 className="text-xl font-semibold text-blue-700">
             Pyxis Discovery platform goes live
-          </a>
+          </h2>
           <p className="text-gray-600 mt-2">
             News &mdash; Announcement of the new Pyxis Discovery platform launch — a digital playground for chemistry labs.
           </p>
         </div>
         <div className="border rounded-lg p-4 bg-white shadow">
-          <a
-            href="#"
-            className="text-xl font-semibold text-blue-700 hover:underline"
-          >
+          <h2 className="text-xl font-semibold text-blue-700">
             Pyxis Discovery at RICT 2023 — 57th International Conference on Medicinal Chemistry
-          </a>
+          </h2>
           <p className="text-gray-600 mt-2">
             Event &mdash; Automated liquid handling system for high-throughput
             screening and new product lines announced at the 57th International

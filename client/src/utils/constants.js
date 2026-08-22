@@ -4,6 +4,7 @@ import {
   API_HOSTNAME as RESOLVED_API_HOSTNAME,
   API_PORT as RESOLVED_API_PORT,
 } from './api.js';
+import { clearViewerStorage } from './viewerStorage.js';
 
 // Utility function to check if running on localhost
 export const isLocalhost = () => {
@@ -48,6 +49,7 @@ export const hasValidToken = () => {
 
 // Remove every auth-related key. Mirrors AuthContext.logout() for use outside React.
 export const clearAuthStorage = () => {
+  clearViewerStorage();
   localStorage.removeItem('user_info');
   localStorage.removeItem('access_token');
   localStorage.removeItem('auth_token');

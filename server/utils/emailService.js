@@ -152,7 +152,7 @@ function describe(config) {
   return `${config.name} (host ${config.host}, port ${config.port}, secure ${config.secure})`;
 }
 
-export async function sendTitanEmail({ name, subject, message, recipientEmail, htmlContent = null }) {
+export async function sendTitanEmail({ subject, message, recipientEmail, htmlContent = null }) {
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     throw new Error('EMAIL_USER and EMAIL_PASS environment variables must be set');
   }

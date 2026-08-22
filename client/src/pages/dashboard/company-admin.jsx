@@ -138,6 +138,7 @@ export function CompanyAdmin() {
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState("");
   const [message, setMessage] = React.useState(null);
+  const [pendingRemoval, setPendingRemoval] = React.useState("");
   const [inviteForm, setInviteForm] = React.useState(initialInviteForm);
   const [temporaryPassword, setTemporaryPassword] = React.useState("");
   const [ligandServiceForm, setLigandServiceForm] = React.useState({
@@ -166,14 +167,19 @@ export function CompanyAdmin() {
   const [logoPreviewUrl, setLogoPreviewUrl] = React.useState(null);
   const [logoInputKey, setLogoInputKey] = React.useState(0);
   const pendingLogoUrlRef = React.useRef(null);
+  const messageTimerRef = React.useRef(null);
 
-  const showMessage = (type, text) => {
+  const showMessage = React.useCallback((type, text) => {
+    if (messageTimerRef.current) window.clearTimeout(messageTimerRef.current);
     setMessage({ type, text });
-    window.setTimeout(() => setMessage(null), 5000);
-  };
+    messageTimerRef.current = window.setTimeout(() => {
+      setMessage(null);
+      messageTimerRef.current = null;
+    }, 5000);
+  }, []);
 
-  const loadUsage = React.useCallback(async () => {
-    const data = await companyRequest("/company/usage");
+  const loadUsage = React.useCallback(async (signal) => {
+    const data = await companyRequest("/company/usage", signal instanceof AbortSignal ? { signal } : {});
     setUsageData(data);
     const usagePolicy = data.usagePolicy || {};
     setPolicyForm({
@@ -194,30 +200,33 @@ export function CompanyAdmin() {
     setMemberDrafts(drafts);
   }, []);
 
-  const loadAudit = React.useCallback(async () => {
+  const loadAudit = React.useCallback(async (signal) => {
     const params = new URLSearchParams();
     if (auditFilters.action.trim()) params.set("action", auditFilters.action.trim());
     if (auditFilters.status) params.set("status", auditFilters.status);
     if (auditFilters.limit) params.set("limit", auditFilters.limit);
-    const data = await companyRequest(`/company/audit-logs?${params.toString()}`);
+    const data = await companyRequest(`/company/audit-logs?${params.toString()}`, signal instanceof AbortSignal ? { signal } : {});
     setAuditLogs(data.logs || []);
   }, [auditFilters]);
 
-  const refreshAll = React.useCallback(async () => {
+  const refreshAll = React.useCallback(async (signal) => {
+    const abortSignal = signal instanceof AbortSignal ? signal : undefined;
     setLoading(true);
     try {
-      await Promise.all([loadUsage(), loadAudit()]);
+      await Promise.all([loadUsage(abortSignal), loadAudit(abortSignal)]);
     } catch (error) {
+      if (error.name === "AbortError") return;
       showMessage("red", error.message);
     } finally {
-      setLoading(false);
+      if (!abortSignal?.aborted) setLoading(false);
     }
-  }, [loadAudit, loadUsage]);
+  }, [loadAudit, loadUsage, showMessage]);
 
   React.useEffect(() => {
-    if (!authLoading && canManageCompany) {
-      refreshAll();
-    }
+    if (authLoading || !canManageCompany) return undefined;
+    const controller = new AbortController();
+    refreshAll(controller.signal);
+    return () => controller.abort();
   }, [authLoading, canManageCompany, refreshAll]);
 
   React.useEffect(() => {
@@ -234,6 +243,7 @@ export function CompanyAdmin() {
     if (pendingLogoUrlRef.current) {
       URL.revokeObjectURL(pendingLogoUrlRef.current);
     }
+    if (messageTimerRef.current) window.clearTimeout(messageTimerRef.current);
   }, []);
 
   if (authLoading) {
@@ -458,13 +468,12 @@ export function CompanyAdmin() {
   };
 
   const handleRemoveMember = async (member) => {
-    const confirmed = window.confirm(`Remove ${member.username} from the company?`);
-    if (!confirmed) return;
     setSaving(`remove-${member.username}`);
     try {
       await companyRequest(`/company/members/${encodeURIComponent(member.username)}`, {
         method: "DELETE",
       });
+      setPendingRemoval("");
       showMessage("green", "Member removed");
       await Promise.all([loadUsage(), loadAudit()]);
     } catch (error) {
@@ -787,18 +796,44 @@ export function CompanyAdmin() {
                                     {member.active === false ? "Enable" : "Disable"}
                                   </Button>
                                 )}
-                                {!isSelfLocked && (
+                                {!isSelfLocked && pendingRemoval !== member.username && (
                                   <Button
                                     size="sm"
                                     variant="text"
                                     color="red"
                                     className="flex items-center gap-2"
-                                    onClick={() => handleRemoveMember(member)}
-                                    disabled={saving === `remove-${member.username}`}
+                                    onClick={() => setPendingRemoval(member.username)}
                                   >
                                     <TrashIcon className="h-4 w-4" />
                                     Remove
                                   </Button>
+                                )}
+                                {!isSelfLocked && pendingRemoval === member.username && (
+                                  <fieldset
+                                    aria-label={`Confirm removal of ${member.username}`}
+                                    className="flex flex-wrap items-center gap-2 rounded-lg border border-red-100 bg-red-50 px-2 py-1 dark:border-red-900/60 dark:bg-red-950/30"
+                                  >
+                                    <Typography variant="small" color="red" className="font-medium">
+                                      Remove {member.username}?
+                                    </Typography>
+                                    <Button
+                                      size="sm"
+                                      color="red"
+                                      onClick={() => handleRemoveMember(member)}
+                                      disabled={saving === `remove-${member.username}`}
+                                    >
+                                      {saving === `remove-${member.username}` ? <Spinner className="h-4 w-4" /> : 'Confirm'}
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="text"
+                                      color="blue-gray"
+                                      onClick={() => setPendingRemoval("")}
+                                      disabled={saving === `remove-${member.username}`}
+                                    >
+                                      Cancel
+                                    </Button>
+                                  </fieldset>
                                 )}
                               </div>
                             </td>

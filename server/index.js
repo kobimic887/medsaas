@@ -3,7 +3,6 @@ import fs from 'fs';
 import axios from 'axios';
 import { execFile } from 'child_process';
 import express from 'express';
-import compression from 'compression';
 import cors from 'cors';
 import fetch from 'node-fetch';
 import { MongoClient, ObjectId } from 'mongodb';
@@ -30,10 +29,7 @@ import { validateEmailCredentials, getTitanMailHelp } from './utils/emailDebug.j
 import {
   admetQueueHealthCheck,
   createAdmetTask,
-  ensureAdmetQueueIndexes,
   getQueueStatus,
-  reapStaleAdmetJobs,
-  resetAdmetJob,
 } from './utils/admetQueue.js';
 import { normalizeShopSearchResponse } from './utils/asinexCompound.js';
 import {
@@ -43,6 +39,11 @@ import {
   parseAndNormalizeLogoUpload,
   serializeCompanyBranding
 } from './utils/companyBranding.js';
+import {
+  buildSimulationLogOwnership,
+  buildTenantFilter,
+} from './utils/simulationLogs.js';
+import { ensureUserTenantOnLogin } from './utils/ensureUserTenant.js';
 import scientificServicesRouter from './routes/scientificServices.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -51,13 +52,6 @@ const __dirname = path.dirname(__filename);
 // Load environment variables
 configDotenv({ path: path.resolve(__dirname, '../.env') });
 configDotenv();
-
-// Which interface to listen on. Defaults to every interface, which is what the public
-// site needs behind nginx. Set BIND_HOST=127.0.0.1 for an instance that should only be
-// reachable through an SSH tunnel — a staging copy running beside the live one has no
-// business answering the open internet on a plain-HTTP port, especially when it shares
-// the production database.
-const BIND_HOST = process.env.BIND_HOST || '0.0.0.0';
 
 const REQUIRED_ENV = ['MONGODB_URI', 'JWT_SECRET', 'STRIPE_SECRET_KEY'];
 const missingRequiredEnv = REQUIRED_ENV.filter((key) => !process.env[key]);
@@ -92,21 +86,11 @@ const MONGODB_URI = process.env.MONGODB_URI;
 const APP_BASE_URL = (process.env.BASE_URL || '').replace(/\/$/, '');
 const FRONTEND_URL = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
 const PUBLIC_APP_URL = FRONTEND_URL || APP_BASE_URL;
-// Public signup is OPEN by default.
-//
-// ⚠ This default was inverted on 2026-07-29 as part of "de-SaaS", which shut self-serve
-// registration off on a deploy that set no such variable — so it went dark silently, which
-// is not what the owner meant by the word. Corrected 2026-07-30 on their explicit
-// instruction: they meant one company's *branding*, not removing the ability to sign up.
-//
-// Default-on matters more than the flag: a fresh deploy that forgets the variable must
-// behave like the product, not like a locked-down variant nobody chose. Close it
-// deliberately with ALLOW_PUBLIC_SIGNUP=false.
-const PUBLIC_SIGNUP_ENABLED = String(process.env.ALLOW_PUBLIC_SIGNUP ?? 'true').trim().toLowerCase() !== 'false';
-// Newest-first cap on /api/simulation-logs. The Control Panel renders a flat table with no
-// pagination, so this is a safety ceiling rather than a page size: production currently holds
-// single-digit records, and a user would have to run 500 simulations to notice. Revisit as
-// real pagination if that ever happens.
+// Public signup is CLOSED unless explicitly opted into. See POST /api/signup for why.
+// Opt in with ALLOW_PUBLIC_SIGNUP=true; anything else, including unset, leaves it shut.
+const PUBLIC_SIGNUP_ENABLED = String(process.env.ALLOW_PUBLIC_SIGNUP || '').trim().toLowerCase() === 'true';
+// Newest-first cap on /api/simulation-logs. The Control Panel renders a flat table
+// with no pagination, so this is a safety ceiling rather than a page size.
 const SIMULATION_LOG_PAGE_LIMIT = 500;
 const TANIMOTO_API_BASE = (process.env.TANIMOTO_API_BASE || 'http://151.145.91.17:8000').replace(/\/$/, '');
 const SDF_CONVERTER_URL = process.env.SDF_CONVERTER_URL || 'http://83.229.87.94:8001/convertSTR';
@@ -197,13 +181,6 @@ app.use(cors({
   },
   credentials: true
 }));
-// Nothing this server sends has ever been compressed. nginx on 83 proxies to us
-// without compressing, and we did not either, so production shipped the React
-// vendor chunk as 332 kB of raw JavaScript and the stylesheet as 157 kB — both
-// roughly a third of that over the wire once gzipped. This is the whole fix, and
-// it stays inside our own process: the host's nginx config is not ours to touch.
-app.use(compression());
-
 app.use('/blobs', express.static(path.join(__dirname, 'blobs')));
 
 app.use((_req, res, next) => {
@@ -496,43 +473,6 @@ async function callNvidiaNim({
  * A 429 likewise becomes 503, since this API has its own rate limiters and a
  * relayed 429 would be indistinguishable from one of them firing.
  */
-// Asinex sits behind an edge proxy that answers with a Microsoft "The page cannot be
-// displayed" HTML page — as HTTP 500 — when the docking host itself is unreachable.
-// That is the Moscow-outage signature (docs/BOX-SPEC.md), and it is worth telling
-// apart from the docking application returning an error of its own: one means "come
-// back later", the other means "your request was rejected".
-function describeDockingFailure(message, bodySnippet) {
-  const snippet = typeof bodySnippet === 'string' ? bodySnippet : '';
-  if (/<!DOCTYPE HTML|<HTML|page cannot be displayed/i.test(snippet)) {
-    return 'The docking provider is unreachable right now. Your credit was not spent — please try again later.';
-  }
-  // The provider answers 404 with {"detail":"Not Found"} when it has no result for
-  // this receptor/ligand pair. That is an outcome, not an outage, and telling the
-  // user the service is down sends them to wait for a recovery that never comes.
-  if (/Docking service returned 404/.test(message) || /"detail"\s*:\s*"Not Found"/i.test(snippet)) {
-    return 'The docking provider returned no result for this receptor and ligand. Your credit was not spent — try a different pairing.';
-  }
-  return `Docking service is unavailable: ${message}`;
-}
-
-// A PDB id that does not exist reaches Asinex, fails there, and comes back as a
-// generic 500 — so the user is told the service is down when in fact they typed an
-// id that is not in the RCSB. Checked against RCSB directly, and ONLY an explicit
-// 404 counts: if RCSB is slow or unreachable we proceed to the dock rather than
-// letting a third host become a hard dependency of the docking path.
-async function pdbEntryIsMissing(pdbid) {
-  if (!/^[0-9][A-Za-z0-9]{3}$/.test(String(pdbid))) return 'format';
-  try {
-    const probe = await fetchWithTimeout(`https://files.rcsb.org/download/${encodeURIComponent(pdbid)}.pdb`, {
-      method: 'HEAD',
-      timeoutMs: 10000
-    });
-    return probe.status === 404 ? 'missing' : null;
-  } catch {
-    return null; // RCSB unreachable — not the user's problem, carry on.
-  }
-}
-
 function upstreamProxyStatus(error) {
   const status = error?.response?.status;
   if (!status) return 502;
@@ -540,23 +480,6 @@ function upstreamProxyStatus(error) {
   if (status === 429) return 503;
   if (status >= 500) return 502;
   return status;
-}
-
-// Tanimoto rejects a malformed query with a 400 and a genuinely useful body —
-// {"detail":"Invalid SMILES: 'xyz123' could not be parsed by RDKit"}. Every one of
-// these routes used to answer `{ error: error.message }`, and for an axios failure
-// that message is "Request failed with status code 400", so the one thing the user
-// needed to see was the one thing that never reached them. Pass the upstream detail
-// through on 4xx; keep our own generic text for 5xx, which is not the caller's
-// business and may leak internals.
-function respondTanimotoFailure(res, error) {
-  const status = upstreamProxyStatus(error);
-  const upstreamStatus = error?.response?.status;
-  const detail = error?.response?.data?.detail;
-  if (typeof detail === 'string' && upstreamStatus >= 400 && upstreamStatus < 500) {
-    return res.status(status).json({ error: detail });
-  }
-  return res.status(status).json({ error: error.message });
 }
 
 // Translate any error from a NVIDIA proxy route into a response, refunding the
@@ -709,10 +632,6 @@ app.get('/health/db', async (_req, res) => {
 // Root route serves frontend if available; falls back to API docs
 app.get('/', (_req, res) => {
   if (hasFrontendBuild()) {
-    // The landing route serves index.html too, and it is registered well before
-    // the SPA fallback, so it needs the same no-cache treatment. Without this the
-    // most-visited URL on the site was the one page still pinned to a stale bundle.
-    res.setHeader('Cache-Control', 'no-cache');
     return res.sendFile(FRONTEND_INDEX_PATH);
   }
   res.redirect('/api-docs');
@@ -736,7 +655,7 @@ app.get('/tanimoto/health', ensureMongoConnected, authenticateToken, requireActi
     const response = await axios.get(`${TANIMOTO_API_BASE}/health`);
     res.json(response.data);
   } catch (error) {
-    respondTanimotoFailure(res, error);
+    res.status(upstreamProxyStatus(error)).json({ error: error.message });
   }
 });
 
@@ -764,7 +683,7 @@ app.post('/tanimoto/v1/upload', ensureMongoConnected, authenticateToken, require
     });
     res.json(response.data);
   } catch (error) {
-    respondTanimotoFailure(res, error);
+    res.status(upstreamProxyStatus(error)).json({ error: error.message });
   }
 });
 
@@ -790,7 +709,7 @@ app.get('/tanimoto/v1/search/exact', ensureMongoConnected, authenticateToken, re
     const response = await axios.get(`${TANIMOTO_API_BASE}/v1/search/exact`, { params: req.query });
     res.json(response.data);
   } catch (error) {
-    respondTanimotoFailure(res, error);
+    res.status(upstreamProxyStatus(error)).json({ error: error.message });
   }
 });
 
@@ -833,7 +752,7 @@ app.get('/tanimoto/v1/search/similarity', ensureMongoConnected, authenticateToke
     const response = await axios.get(`${TANIMOTO_API_BASE}/v1/search/similarity`, { params: req.query });
     res.json(response.data);
   } catch (error) {
-    respondTanimotoFailure(res, error);
+    res.status(upstreamProxyStatus(error)).json({ error: error.message });
   }
 });
 
@@ -859,7 +778,7 @@ app.get('/tanimoto/v1/search/substructure', ensureMongoConnected, authenticateTo
     const response = await axios.get(`${TANIMOTO_API_BASE}/v1/search/substructure`, { params: req.query });
     res.json(response.data);
   } catch (error) {
-    respondTanimotoFailure(res, error);
+    res.status(upstreamProxyStatus(error)).json({ error: error.message });
   }
 });
 
@@ -903,7 +822,7 @@ app.post('/tanimoto/v1/search/batch', ensureMongoConnected, authenticateToken, r
     });
     res.json(response.data);
   } catch (error) {
-    respondTanimotoFailure(res, error);
+    res.status(upstreamProxyStatus(error)).json({ error: error.message });
   }
 });
 
@@ -923,7 +842,7 @@ app.get('/tanimoto/v1/datasets', ensureMongoConnected, authenticateToken, requir
     const response = await axios.get(`${TANIMOTO_API_BASE}/v1/datasets`, { params: req.query });
     res.json(response.data);
   } catch (error) {
-    respondTanimotoFailure(res, error);
+    res.status(upstreamProxyStatus(error)).json({ error: error.message });
   }
 });
 
@@ -950,7 +869,7 @@ app.get('/tanimoto/v1/datasets/:dataset_id', ensureMongoConnected, authenticateT
     const response = await axios.get(`${TANIMOTO_API_BASE}/v1/datasets/${req.params.dataset_id}`);
     res.json(response.data);
   } catch (error) {
-    respondTanimotoFailure(res, error);
+    res.status(upstreamProxyStatus(error)).json({ error: error.message });
   }
 });
 
@@ -977,7 +896,7 @@ app.delete('/tanimoto/v1/datasets/:dataset_id', ensureMongoConnected, authentica
     const response = await axios.delete(`${TANIMOTO_API_BASE}/v1/datasets/${req.params.dataset_id}`);
     res.json(response.data);
   } catch (error) {
-    respondTanimotoFailure(res, error);
+    res.status(upstreamProxyStatus(error)).json({ error: error.message });
   }
 });
 
@@ -1118,22 +1037,6 @@ async function initializeDatabase() {
       await auditLogsCollection.createIndex({ actorUsername: 1, timestamp: -1 });
       await billingEventsCollection.createIndex({ stripeSessionId: 1 }, { unique: true, sparse: true });
       await billingEventsCollection.createIndex({ username: 1, createdAt: -1 });
-      // simulation_logs had NO index for the queries that actually run against it — only the
-      // unique simulationKey below. `/api/simulation-logs` does find(tenantFilter).sort({
-      // timestamp: -1 }), which without these is a collection scan plus an in-memory sort over
-      // documents that each carry a full receptor PDB. Harmless at today's handful of rows;
-      // expensive in the low thousands, on a 1 GB production host.
-      // Both shapes are indexed because buildTenantFilter keys on companyId for tenanted
-      // users and falls back to username for legacy ones.
-      const simulationLogsCollection = client.db().collection('simulation_logs');
-      await simulationLogsCollection.createIndex({ companyId: 1, timestamp: -1 });
-      await simulationLogsCollection.createIndex({ username: 1, timestamp: -1 });
-      // The cache-hit lookup: findOne({ ...tenantFilter, pdbid, smiles }).
-      await simulationLogsCollection.createIndex({ companyId: 1, pdbid: 1, smiles: 1 });
-      // The unique index on simulationKey is what makes enqueueing idempotent — the ADMET
-      // GET route queues on every request for a simulation without results, so without it
-      // a user refreshing the page queues the same work a dozen times.
-      await ensureAdmetQueueIndexes(client.db());
       console.log('✓ Database indexes created/verified');
     } catch (indexErr) {
       console.log('Note: Database indexes already exist or creation failed:', indexErr.message);
@@ -1221,16 +1124,6 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function buildTenantFilter(user) {
-  if (user?.companyId) {
-    return { companyId: user.companyId };
-  }
-  if (user?.username) {
-    return { 'user.username': user.username };
-  }
-  return {};
-}
-
 const DEFAULT_USAGE_POLICY = {
   monthlySimulationCap: null,
   defaultSimulationTokensPerUser: 50
@@ -1307,6 +1200,48 @@ function normalizeMonthlyUsage(rawUsage = {}) {
   };
 }
 
+function parseLigandUpload(rawLigandUpload, { required = false } = {}) {
+  if (!rawLigandUpload) {
+    if (required) throw new Error('Ligand file upload is required');
+    return null;
+  }
+  if (typeof rawLigandUpload !== 'object' || Array.isArray(rawLigandUpload)) {
+    throw new Error('ligandUpload must be an object');
+  }
+
+  const fileName = typeof rawLigandUpload.fileName === 'string' ? rawLigandUpload.fileName.trim() : '';
+  const contentType = typeof rawLigandUpload.contentType === 'string' && rawLigandUpload.contentType.trim()
+    ? rawLigandUpload.contentType.trim().slice(0, 128)
+    : 'application/octet-stream';
+  const contentBase64 = typeof rawLigandUpload.contentBase64 === 'string'
+    ? rawLigandUpload.contentBase64.trim()
+    : '';
+
+  if (!fileName) throw new Error('ligandUpload.fileName is required');
+  if (!contentBase64) throw new Error('ligandUpload.contentBase64 is required');
+
+  let decoded;
+  try {
+    decoded = Buffer.from(contentBase64, 'base64');
+  } catch (error) {
+    throw new Error(`ligandUpload.contentBase64 must be valid base64: ${error.message}`);
+  }
+
+  if (!decoded || decoded.length === 0) {
+    throw new Error('Ligand upload content is empty');
+  }
+  if (decoded.length > MAX_LIGAND_UPLOAD_BYTES) {
+    throw new Error(`Ligand file must be ${MAX_LIGAND_UPLOAD_BYTES / (1024 * 1024)}MB or smaller`);
+  }
+
+  return {
+    fileName: fileName.slice(0, 255),
+    contentType,
+    sizeBytes: decoded.length,
+    contentBase64: decoded.toString('base64'),
+    uploadedAt: new Date()
+  };
+}
 
 function toObjectIdSafe(value) {
   if (!value || !ObjectId.isValid(value)) return null;
@@ -1733,14 +1668,24 @@ async function refundSimulationToken(req, reason) {
   }
 }
 
+function secretsEqual(provided, expected) {
+  if (typeof provided !== 'string' || typeof expected !== 'string') return false;
+  const a = Buffer.from(provided, 'utf8');
+  const b = Buffer.from(expected, 'utf8');
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
 function requireAdmetCallbackAuth(req, res, next) {
   const expectedSecret = process.env.ADMET_CALLBACK_SECRET;
   if (!expectedSecret) {
     return res.status(503).json({ error: 'ADMET_CALLBACK_SECRET is not configured' });
   }
   const providedSecret = req.get('x-admet-secret');
-  if (providedSecret !== expectedSecret) {
-    return res.status(401).json({ error: 'Invalid ADMET callback secret' });
+  // 403, not 401 — the client logs out on any same-origin 401, and this is a
+  // worker shared-secret check, not a user session.
+  if (!secretsEqual(providedSecret, expectedSecret)) {
+    return res.status(403).json({ error: 'Invalid ADMET callback secret' });
   }
   next();
 }
@@ -2020,11 +1965,7 @@ app.post('/create-checkout-session-onetime', checkoutRateLimit, ensureMongoConne
 //
 // Not to be confused with /create-checkout-session-onetime below, which the compound
 // cart still calls for every active user. That is the e-shop, and it stays open.
-// Any active user may buy a plan for themselves. `requireCompanyAdmin` was added here on
-// 2026-07-29 alongside the removal of the plans page; with that page restored it would mean
-// a member sees "Plans & Credits", picks one, and gets a 403 — so it is back to
-// requireActiveUser, which is what the cart checkout below has always used.
-app.post('/create-checkout-session', checkoutRateLimit, ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+app.post('/create-checkout-session', checkoutRateLimit, ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (req, res) => {
   try {
     const { planName, isYearly } = req.body;
     const plan = getPlan(planName);
@@ -2597,6 +2538,9 @@ app.post('/api/demo-session', authRateLimit, ensureMongoConnected, async (req, r
   if (!demoUsername) {
     return res.status(404).json({ error: 'No demo account is configured' });
   }
+  if (demoUsername.toLowerCase() === 'tester123') {
+    console.warn('demo-session: DEMO_USERNAME matches legacy tester123 account; using configured server-side user record');
+  }
   const user = await usersCollection.findOne({ username: demoUsername });
   if (!user) {
     console.warn(`demo-session: DEMO_USERNAME="${demoUsername}" matches no user`);
@@ -2611,32 +2555,38 @@ app.post('/api/demo-session', authRateLimit, ensureMongoConnected, async (req, r
       return res.status(403).json({ error: 'The demo account is not available right now' });
     }
   }
+  // Same lazy tenant backfill as /api/signin — demo JWTs must carry companyId when safe.
+  const tenantUser = await ensureUserTenantOnLogin({
+    usersCollection,
+    companiesCollection,
+    user,
+  });
   const token = jwt.sign({
-    username: user.username,
-    email: user.email,
-    userId: user._id.toString(),
-    companyId: user.companyId || null,
-    companyName: user.companyName || null,
-    role: user.role || 'member',
+    username: tenantUser.username,
+    email: tenantUser.email,
+    userId: tenantUser._id.toString(),
+    companyId: tenantUser.companyId || null,
+    companyName: tenantUser.companyName || null,
+    role: tenantUser.role || 'member',
     demo: true
   }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
   res.json({
     message: 'Demo session started',
     token,
     user: {
-      username: user.username,
-      email: user.email,
-      companyId: user.companyId || null,
-      companyName: user.companyName || null,
-      role: user.role || 'member',
-      simulationTokens: typeof user.simulationTokens === 'number' ? user.simulationTokens : 0,
-      verified: user.verified,
+      username: tenantUser.username,
+      email: tenantUser.email,
+      companyId: tenantUser.companyId || null,
+      companyName: tenantUser.companyName || null,
+      role: tenantUser.role || 'member',
+      simulationTokens: typeof tenantUser.simulationTokens === 'number' ? tenantUser.simulationTokens : 0,
+      verified: tenantUser.verified,
       mustChangePassword: false,
       demo: true
     }
   });
   await recordAuditEvent(req, 'auth.demo_session.start', {
-    actorUsername: user.username,
+    actorUsername: tenantUser.username,
     targetType: 'user',
     targetId: user.username
   });
@@ -2679,37 +2629,44 @@ app.post('/api/signin', authRateLimit, ensureMongoConnected, async (req, res) =>
   if (!user.verified) return res.status(403).json({ error: 'Email not verified. Please check your email.' });
   const valid = await bcrypt.compare(password, user.password);
   if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+  // Prefer ensure-on-login over bulk Atlas surgery: when exactly one company exists,
+  // stamp missing companyId/role/active so this JWT is tenant-ready. No JWT_SECRET rotate.
+  const tenantUser = await ensureUserTenantOnLogin({
+    usersCollection,
+    companiesCollection,
+    user,
+  });
   const tokenPayload = {
-    username: user.username,
-    email: user.email,
-    userId: user._id.toString(),
-    companyId: user.companyId || null,
-    companyName: user.companyName || null,
-    role: user.role || 'member'
+    username: tenantUser.username,
+    email: tenantUser.email,
+    userId: tenantUser._id.toString(),
+    companyId: tenantUser.companyId || null,
+    companyName: tenantUser.companyName || null,
+    role: tenantUser.role || 'member'
   };
   const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
   res.json({
     message: 'Signin successful',
     token,
     user: {
-      username: user.username,
-      email: user.email,
-      companyId: user.companyId || null,
-      companyName: user.companyName || null,
-      role: user.role || 'member',
-      simulationTokens: typeof user.simulationTokens === 'number' ? user.simulationTokens : 0,
-      verified: user.verified,
-      mustChangePassword: user.mustChangePassword === true
+      username: tenantUser.username,
+      email: tenantUser.email,
+      companyId: tenantUser.companyId || null,
+      companyName: tenantUser.companyName || null,
+      role: tenantUser.role || 'member',
+      simulationTokens: typeof tenantUser.simulationTokens === 'number' ? tenantUser.simulationTokens : 0,
+      verified: tenantUser.verified,
+      mustChangePassword: tenantUser.mustChangePassword === true
     }
   });
 
   await recordAuditEvent(req, 'company.user.signin', {
-    actorUsername: user.username,
-    actorRole: user.role || 'member',
-    companyId: user.companyId || null,
-    companyName: user.companyName || null,
+    actorUsername: tenantUser.username,
+    actorRole: tenantUser.role || 'member',
+    companyId: tenantUser.companyId || null,
+    companyName: tenantUser.companyName || null,
     targetType: 'user',
-    targetId: user.username
+    targetId: tenantUser.username
   });
 });
 
@@ -3258,18 +3215,6 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, requireActiv
     // cache hit above returns before this point and must stay free. Conditional update, not
     // findOne-then-update: two concurrent requests on a single remaining token would both
     // pass a separate read and drive the balance negative.
-    // Before charging, not after. A dock for a PDB id that does not exist fails at the
-    // provider and surfaces as "the docking service is unavailable", which sends the
-    // user to look at our status page when they actually mistyped an id. Only an
-    // explicit RCSB 404 (or a malformed id) stops the run.
-    const pdbProblem = await pdbEntryIsMissing(pdbid);
-    if (pdbProblem) {
-      return res.status(400).json({
-        error: pdbProblem === 'format'
-          ? `"${pdbid}" is not a valid PDB id. They are four characters, starting with a digit — for example 1CX7.`
-          : `PDB entry "${pdbid}" was not found in the RCSB. Check the id and try again.`
-      });
-    }
     const charged = await chargeSimulationToken(req, res, 'simulation', { refundOnDisconnect: false });
     if (!charged.ok) {
       return res.status(403).json({ error: charged.error });
@@ -3291,20 +3236,14 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, requireActiv
     // The status was previously ignored, so an error body from the docking service
     // was stored as a result and served from cache forever after.
     if (!response.ok) {
-      // Keep a slice of the body: it is what distinguishes the provider's edge proxy
-      // being down from the docking application rejecting the request.
-      const bodySnippet = await response.text().catch(() => '');
-      const failure = new Error(`Docking service returned ${response.status}`);
-      failure.bodySnippet = bodySnippet.slice(0, 300);
-      throw failure;
+      throw new Error(`Docking service returned ${response.status}`);
     }
     const data = await response.json();
     dockingSucceeded = true;
-    // Record invocation in MongoDB, including the result and simulationKey
+    // Record invocation in MongoDB, including the result and simulationKey.
+    // Dual-write nested user.username so legacy Control Panel filters still match.
     await simulationLogs.insertOne({
-      username: req.user.username,
-      companyId: req.user.companyId || null,
-      companyName: req.user.companyName || null,
+      ...buildSimulationLogOwnership(req.user),
       pdbid,
       smiles,
       result: data,
@@ -3345,7 +3284,7 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, requireActiv
     if (dockingSucceeded) {
       return res.status(500).json({ error: 'Failed to record the simulation result' });
     }
-    res.status(502).json({ error: describeDockingFailure(error.message, error.bodySnippet) });
+    res.status(502).json({ error: 'Docking service is unavailable' });
   }
 });
 
@@ -3432,18 +3371,6 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, requireActi
     }
     // Charge the credit — see the GET handler for why this stays inline and is a
     // conditional update rather than a separate read.
-    // Before charging, not after. A dock for a PDB id that does not exist fails at the
-    // provider and surfaces as "the docking service is unavailable", which sends the
-    // user to look at our status page when they actually mistyped an id. Only an
-    // explicit RCSB 404 (or a malformed id) stops the run.
-    const pdbProblem = await pdbEntryIsMissing(pdbid);
-    if (pdbProblem) {
-      return res.status(400).json({
-        error: pdbProblem === 'format'
-          ? `"${pdbid}" is not a valid PDB id. They are four characters, starting with a digit — for example 1CX7.`
-          : `PDB entry "${pdbid}" was not found in the RCSB. Check the id and try again.`
-      });
-    }
     const charged = await chargeSimulationToken(req, res, 'simulation', { refundOnDisconnect: false });
     if (!charged.ok) {
       return res.status(403).json({ error: charged.error });
@@ -3467,20 +3394,13 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, requireActi
     });
     // See the GET handler: an ignored status cached error bodies as results.
     if (!response.ok) {
-      // Keep a slice of the body: it is what distinguishes the provider's edge proxy
-      // being down from the docking application rejecting the request.
-      const bodySnippet = await response.text().catch(() => '');
-      const failure = new Error(`Docking service returned ${response.status}`);
-      failure.bodySnippet = bodySnippet.slice(0, 300);
-      throw failure;
+      throw new Error(`Docking service returned ${response.status}`);
     }
     const data = await response.json();
     dockingSucceeded = true;
-    // Record invocation in MongoDB, including the result and simulationKey
+    // Dual-write nested user.username so legacy Control Panel filters still match.
     await simulationLogs.insertOne({
-      username: req.user.username,
-      companyId: req.user.companyId || null,
-      companyName: req.user.companyName || null,
+      ...buildSimulationLogOwnership(req.user),
       pdbid,
       smiles,
       result: data,
@@ -3520,7 +3440,7 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, requireActi
     if (dockingSucceeded) {
       return res.status(500).json({ error: 'Failed to record the simulation result' });
     }
-    res.status(502).json({ error: describeDockingFailure(error.message, error.bodySnippet) });
+    res.status(502).json({ error: 'Docking service is unavailable' });
   }
 });
 
@@ -3528,15 +3448,6 @@ app.get('/api/simulation-logs', ensureMongoConnected, authenticateToken, require
   try {
     const simulationLogs = client.db().collection('simulation_logs');
     const tenantFilter = buildTenantFilter(req.user);
-    // Bounded, and without the heavy field.
-    //
-    // This was an unbounded .toArray() returning whole documents, each of which carries a
-    // full docking result — the receptor PDB alone is ~210 KB. The only consumer is the
-    // Control Panel table (client/src/pages/dashboard/controlpanel.jsx), which renders
-    // simulationKey / pdbid / smiles / timestamp / status and passes sdfData + resultsPath
-    // to handleViewInMolstar. It never reads `result`, so excluding it costs nothing and
-    // takes the response from megabytes to kilobytes. The full result stays available
-    // per-record via /api/sanitizedpdb/:key and /api/sanitizedminimalsdf/:key.
     const logs = await simulationLogs
       .find(tenantFilter, { projection: { result: 0 } })
       .sort({ timestamp: -1 })
@@ -3929,7 +3840,15 @@ app.get('/api/company/usage', ensureMongoConnected, authenticateToken, requireCo
         id: company.companyId,
         name: company.name,
         active: company.active !== false,
-        ligandServiceConfig: normalizeLigandServiceConfig(company.ligandServiceConfig || {})
+        ligandServiceConfig: normalizeLigandServiceConfig(company.ligandServiceConfig || {}),
+        ligandUpload: company.ligandUpload
+          ? {
+              fileName: company.ligandUpload.fileName,
+              contentType: company.ligandUpload.contentType,
+              sizeBytes: company.ligandUpload.sizeBytes,
+              uploadedAt: company.ligandUpload.uploadedAt
+            }
+          : null
       },
       usagePolicy,
       usage: {
@@ -4018,38 +3937,40 @@ app.patch('/api/company/usage-policy', ensureMongoConnected, authenticateToken, 
   }
 });
 
-/**
- * @swagger
- * /api/company/ligand-service-config:
- *   get:
- *     summary: Read the compute endpoints this company's docking and catalog run against
- *     description: >
- *       Readable by any signed-in member. Writing stays owner/admin — see the PATCH
- *       on this path. The config holds four URLs and no credentials, so exposing it
- *       tells a member which engine answered their dock without handing them the
- *       ability to repoint it for all fifty accounts.
- *     tags: [Company]
- *     security: [{ bearerAuth: [] }]
- *     responses:
- *       200: { description: Current endpoints, plus whether they are still the built-in defaults }
- */
-app.get('/api/company/ligand-service-config', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+app.patch('/api/company/ligand-upload', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (req, res) => {
   try {
     const company = await getCompanyRecord(req.user.companyId);
-    const config = normalizeLigandServiceConfig(company?.ligandServiceConfig || {});
-    // Which endpoints are still the shipped defaults. On arrival day this is the
-    // single question everyone will want answered — "are we on the box yet?" — and
-    // it should not require being an admin to see.
-    const usingDefaults = Object.fromEntries(
-      Object.keys(DEFAULT_LIGAND_SERVICE_CONFIG).map((key) => [
-        key,
-        config[key] === DEFAULT_LIGAND_SERVICE_CONFIG[key]
-      ])
+    if (!company) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+
+    let normalizedLigandUpload;
+    try {
+      normalizedLigandUpload = parseLigandUpload(req.body?.ligandUpload, { required: true });
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    await companiesCollection.updateOne(
+      { companyId: req.user.companyId },
+      { $set: { ligandUpload: normalizedLigandUpload, updatedAt: new Date() } }
     );
+
+    await recordAuditEvent(req, 'company.ligand_upload.update', {
+      targetType: 'company',
+      targetId: req.user.companyId,
+      fileName: normalizedLigandUpload.fileName,
+      sizeBytes: normalizedLigandUpload.sizeBytes
+    });
+
     res.json({
-      ligandServiceConfig: config,
-      usingDefaults,
-      editable: req.user.role === 'owner' || req.user.role === 'admin'
+      message: 'Ligand file uploaded',
+      ligandUpload: {
+        fileName: normalizedLigandUpload.fileName,
+        contentType: normalizedLigandUpload.contentType,
+        sizeBytes: normalizedLigandUpload.sizeBytes,
+        uploadedAt: normalizedLigandUpload.uploadedAt
+      }
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -5046,7 +4967,7 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
         }
         else{
           const smilesRequestBody = { smiles: ligand };
-          logToFile('SMILES->SDF REQUEST: ' + describeForLog(smilesRequestBody, 'body'));
+          logToFile(`SMILES->SDF REQUEST: smiles_chars=${String(ligand || '').length}`);
           const sdfResponse = await fetchWithTimeout(SDF_CONVERTER_URL, {
             method: 'POST',
             headers: {
@@ -5062,7 +4983,7 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
           }
 
           const sdfJson = await sdfResponse.json();
-          logToFile('SMILES->SDF RESPONSE: ok ' + describeForLog(sdfJson, 'body'));
+          logToFile(`SMILES->SDF RESPONSE: sdf_bytes=${Buffer.byteLength(String(sdfJson?.sdf || ''))}`);
           const sdfContent = sdfJson.sdf;
           const normalizedSdf = sdfContent.replace(/\r\n/g, '\n');
           const sdfWithDelimiter = normalizedSdf.includes('$$$$') ? normalizedSdf : `${normalizedSdf}\n$$$$\n`;
@@ -5086,9 +5007,12 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
         save_trajectory: save_trajectory,
         is_staged: is_staged
       };
-      logToFile('makeDiffDockRequest REQUEST: ' + describeForLog(requestBody, 'body')
-        + ' ' + describeForLog(requestBody.protein, 'protein')
-        + ' ' + describeForLog(requestBody.ligand, 'ligand'));
+      logToFile(
+        `makeDiffDockRequest REQUEST: ligand_file_type=${ligandFileType} ` +
+        `ligand_bytes=${Buffer.byteLength(String(ligandPayload || ''))} ` +
+        `protein_bytes=${Buffer.byteLength(String(protein_bytes || ''))} ` +
+        `num_poses=${requestBody.num_poses}`
+      );
       const response = await fetchWithTimeout(diffdockApiUrl, { timeoutMs: EXTERNAL_HTTP_TIMEOUT_LONG_MS,
         method: 'POST',
         headers: {
@@ -5101,12 +5025,14 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
       const text = await response.text();
       let data;
       try { data = JSON.parse(text); } catch { data = text; }
-      // Status plus size, never the body: the success payload is 111-114 KB and ~105 KB of
-      // that is the protein echoed straight back. On failure the body IS the diagnostic, so
-      // keep a bounded prefix of it.
-      logToFile('makeDiffDockRequest RESPONSE: status=' + response.status
-        + ' ' + describeForLog(text, 'body')
-        + (response.ok ? '' : ' detail=' + JSON.stringify(text.slice(0, 500))));
+      const errorSnippet = typeof data === 'string'
+        ? data.slice(0, 240)
+        : String(data?.details || data?.error || '').slice(0, 240);
+      logToFile(
+        `makeDiffDockRequest RESPONSE: status=${response.status} ` +
+        `bytes=${Buffer.byteLength(text)}` +
+        (errorSnippet ? ` snippet=${errorSnippet}` : '')
+      );
       return { response, data };
     };
 
@@ -5670,13 +5596,13 @@ async function startServer() {
       key: fs.readFileSync(sslKeyPath),
       cert: fs.readFileSync(sslCertPath)
     };
-    https.createServer(httpsOptions, app).listen(PORT, BIND_HOST, () => {
+    https.createServer(httpsOptions, app).listen(PORT, '0.0.0.0', () => {
       console.log(`✅ HTTPS Server running on port ${PORT}`);
       console.log(`📚 API Documentation: https://localhost:${PORT}/api-docs`);
     });
   } catch (_error) {
     console.log('SSL certificates not found, starting HTTP server for development...');
-    app.listen(PORT, BIND_HOST, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`✅ HTTP Server running on port ${PORT}`);
       console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
       console.log(`🔍 Health Check: http://localhost:${PORT}/health`);
@@ -6154,17 +6080,6 @@ app.post('/api/projects', ensureMongoConnected, authenticateToken, requireActive
 
 /**
  * @swagger
- * /api/activity:
- *   get:
- *     summary: Get latest activity (users, projects, simulations)
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Latest activity
- */
-/**
- * @swagger
  * /api/pubmed/search:
  *   get:
  *     summary: Search PubMed for literature on a target, compound or disease
@@ -6248,13 +6163,24 @@ app.get('/api/pubmed/search', pubmedRateLimit, ensureMongoConnected, authenticat
 
     res.json({ query, total, articles });
   } catch (error) {
-    // Never relay an upstream status verbatim: a 401 from anywhere same-origin logs the
-    // user out, and NCBI's throttling 429 is not the caller's fault either.
+    // Never relay an upstream status verbatim: a same-origin 401 clears the
+    // session, and NCBI's throttling 429 is not the caller's fault either.
     console.error('[pubmed] search failed:', error.message);
     res.status(502).json({ error: 'PubMed is not answering right now. Try again shortly.' });
   }
 });
 
+/**
+ * @swagger
+ * /api/activity:
+ *   get:
+ *     summary: Get latest activity (users, projects, simulations)
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Latest activity
+ */
 app.get('/api/activity', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
     const db = client.db();
@@ -6264,9 +6190,8 @@ app.get('/api/activity', ensureMongoConnected, authenticateToken, requireActiveU
     const projectFilter = req.user.companyId
       ? { companyId: req.user.companyId }
       : { userid: req.user.username };
-    const simulationFilter = req.user.companyId
-      ? { companyId: req.user.companyId }
-      : { 'user.username': req.user.username };
+    // Same dual-shape ownership as /api/simulation-logs (legacy nested + maintained top-level).
+    const simulationFilter = buildTenantFilter(req.user);
     // Get latest registered users.
     //
     // Deliberately NOT selecting `email`. This is an activity ticker — "who joined" —
@@ -6287,8 +6212,10 @@ app.get('/api/activity', ensureMongoConnected, authenticateToken, requireActiveU
       .limit(50)
       .toArray();
     // Get latest executed simulations
+    // Include top-level `username` as well as nested `user` — maintained writers
+    // dual-write both, but older maintained rows may only have the top-level field.
     const simulations = await db.collection('simulation_logs')
-      .find(simulationFilter, { projection: { pdbid: 1, smiles: 1, user: 1, companyId: 1, companyName: 1, timestamp: 1, simulationKey: 1 } })
+      .find(simulationFilter, { projection: { pdbid: 1, smiles: 1, username: 1, user: 1, companyId: 1, companyName: 1, timestamp: 1, simulationKey: 1 } })
       .sort({ timestamp: -1 })
       .limit(50)
       .toArray();
@@ -6790,15 +6717,11 @@ app.get('/api/simulation/:simulationKey/admet', ensureMongoConnected, authentica
       });
     }
 
-    // If ADMET data is not present, queue the prediction for the worker to pick up.
+    // If ADMET data is not present, create a RabbitMQ task for processing
     if (!simulation.admet) {
       try {
-        console.log(`No ADMET data found for simulation ${simulationKey}, queueing ADMET job...`);
-
-        // ⚠ This used to wrap every SMILES in literal double-quote CHARACTERS
-        // (`.map(s => `"${s.trim()}"`)`), which the transport then nested inside another
-        // array. The worker grew a regex to undo it. The quotes were never in the data —
-        // splitting and trimming is the whole job, and normalizeSmiles does the rest.
+        console.log(`No ADMET data found for simulation ${simulationKey}, creating RabbitMQ task...`);
+        
         const taskResult = await createAdmetTask(client.db(), {
           simulationKey: simulation.simulationKey,
           smiles: simulation.smiles || [],
@@ -6817,23 +6740,17 @@ app.get('/api/simulation/:simulationKey/admet', ensureMongoConnected, authentica
           hasAdmet: false,
           lastUpdated: simulation.lastUpdated,
           processing: {
-            // Report the job's REAL status. This was hardcoded to 'queued' regardless of
-            // what the queue returned, so a job parked in `error` — or one that had run out
-            // of revivals — was reported as in-flight forever, and the UI sat on
-            // "Calculating…" with nothing behind it.
-            status: taskResult.status || 'queued',
-            message: taskResult.message,
-            error: taskResult.error || null,
-            attempts: taskResult.attempts,
+            status: 'queued',
+            message: 'ADMET prediction task has been queued for processing',
             taskId: taskResult.taskId,
             estimatedTime: taskResult.estimatedProcessingTime
           }
         });
-
-      } catch (queueError) {
-        console.error('Failed to create ADMET task:', queueError);
-
-        // Still return the simulation data even if queueing fails
+        
+      } catch (rabbitmqError) {
+        console.error('Failed to create ADMET task:', rabbitmqError);
+        
+        // Still return the simulation data even if RabbitMQ task creation fails
         return res.json({
           simulationKey: simulation.simulationKey,
           pdbid: simulation.pdbid,
@@ -6844,7 +6761,7 @@ app.get('/api/simulation/:simulationKey/admet', ensureMongoConnected, authentica
           processing: {
             status: 'error',
             message: 'Failed to queue ADMET prediction task',
-            error: queueError.message
+            error: rabbitmqError.message
           }
         });
       }
@@ -6914,24 +6831,17 @@ app.delete('/api/simulation/:simulationKey/admet', ensureMongoConnected, authent
     );
     
     if (updateResult.matchedCount === 0) {
-      return res.status(404).json({
+      return res.status(404).json({ 
         error: 'Simulation not found',
-        simulationKey
+        simulationKey 
       });
     }
-
-    // Clearing the result is only half of a recompute. One job exists per simulation for
-    // all time (unique index), and nothing else ever moves a `done` job back to `queued` —
-    // so without this the next GET would find the old `done` row, queue nothing, and report
-    // "queued" forever while no worker could ever claim it.
-    const { reset } = await resetAdmetJob(client.db(), simulationKey);
-
+    
     res.json({
       message: 'ADMET data removed from simulation successfully',
       simulationKey,
       removedAt: new Date().toISOString(),
-      modifiedCount: updateResult.modifiedCount,
-      jobRequeued: reset
+      modifiedCount: updateResult.modifiedCount
     });
     
   } catch (error) {
@@ -6944,26 +6854,22 @@ app.delete('/api/simulation/:simulationKey/admet', ensureMongoConnected, authent
   }
 });
 
-// The two routes below keep their `/api/rabbitmq/*` paths on purpose. The transport under
-// them is now MongoDB, but the paths are what anything already calling them knows; renaming
-// them would break a caller to fix a word. What they report changed; where they live did not.
-
 /**
  * @swagger
  * /api/rabbitmq/health:
  *   get:
- *     summary: Check ADMET job queue health (MongoDB-backed; path kept for compatibility)
+ *     summary: Check RabbitMQ connection health
  *     tags: [Email]
  *     responses:
  *       200:
- *         description: Queue health status
+ *         description: RabbitMQ health status
  *       500:
- *         description: Queue backend error
+ *         description: RabbitMQ connection error
  */
 app.get('/api/rabbitmq/health', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (_req, res) => {
   try {
     const healthStatus = await admetQueueHealthCheck(client.db());
-
+    
     if (healthStatus.status === 'healthy') {
       res.json(healthStatus);
     } else {
@@ -6983,7 +6889,7 @@ app.get('/api/rabbitmq/health', ensureMongoConnected, authenticateToken, require
  * @swagger
  * /api/rabbitmq/queue-status:
  *   get:
- *     summary: Get ADMET processing queue status, with counts per state
+ *     summary: Get ADMET processing queue status
  *     tags: [Email]
  *     responses:
  *       200:
@@ -6993,11 +6899,8 @@ app.get('/api/rabbitmq/health', ensureMongoConnected, authenticateToken, require
  */
 app.get('/api/rabbitmq/queue-status', ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (_req, res) => {
   try {
-    // Reaping here is deliberate: the one moment somebody looks at the queue is the moment
-    // a job abandoned by a dead worker should stop being counted as running.
-    const reaped = await reapStaleAdmetJobs(client.db());
     const queueStatus = await getQueueStatus(client.db());
-    res.json({ ...queueStatus, reaped });
+    res.json(queueStatus);
   } catch (error) {
     res.status(500).json({
       error: 'Failed to get queue status',
@@ -7051,35 +6954,14 @@ app.post('/api/admet/create-task', ensureMongoConnected, authenticateToken, requ
       });
     }
     
-    // ⚠ This route took simulationKey straight from the body and never checked the caller
-    // owned it. Any active user could queue work against another company's simulation —
-    // and, because the worker PUTs its result to /api/simulation/:key/admet, could cause a
-    // write into that tenant's record. Pre-dates the Mongo queue; the queue made it live.
-    //
-    // The SMILES now come from the stored simulation rather than the request body for the
-    // same reason: a caller-supplied molecule would be predicted and then written into a
-    // record it does not describe.
-    const simulationLogs = client.db().collection('simulation_logs');
-    const owned = await simulationLogs.findOne(
-      { simulationKey, ...buildTenantFilter(req.user) },
-      { projection: { simulationKey: 1, smiles: 1, pdbid: 1 } }
-    );
-
-    if (!owned) {
-      return res.status(404).json({
-        error: 'Simulation not found',
-        simulationKey
-      });
-    }
-
     const taskResult = await createAdmetTask(client.db(), {
-      simulationKey: owned.simulationKey,
-      smiles: owned.smiles || smiles,
-      pdbid: owned.pdbid ?? pdbid,
+      simulationKey,
+      smiles,
+      pdbid,
       userId: req.user.username,
       priority
     });
-
+    
     res.json({
       message: 'ADMET task created successfully',
       ...taskResult,
@@ -7096,88 +6978,43 @@ app.post('/api/admet/create-task', ensureMongoConnected, authenticateToken, requ
   }
 });
 
-// Append-only diagnostic log for the DiffDock path.
-//
-// ⚠ Do NOT pass whole request/response bodies to this. Until 2026-08-01 four of the five
-// call sites did — `JSON.stringify(requestBody)` carries a ~100 KB protein and the DiffDock
-// response is 111–114 KB — so every dock wrote 200 KB+ here. On a 2-core / 1 GB production
-// host that is avoidable allocation and disk churn on the hot path. Log sizes and identifiers;
-// use `summarizeForLog` for anything that might be a payload.
+// Append-only DiffDock log. Payloads stay out of it; size checks are async so a
+// 200 KB protein never blocks the request path. Truncate keeps the inode so an
+// in-flight append cannot land on a deleted file.
 const MAX_LOG_SIZE = 20 * 1024 * 1024; // 20 MB
 const LOG_PATH = 'diffdock_api.log';
-
-// Cheap size/eviction bookkeeping so the hot path never makes a synchronous fs call.
-// The previous version ran existsSync() + statSync() on EVERY log line; both are blocking
-// syscalls, and they sat directly in the docking request path.
-let logBytesWritten = null;
-
-function describeForLog(value, label) {
-  if (value == null) return `${label}=<null>`;
-  const text = typeof value === 'string' ? value : (() => {
-    try { return JSON.stringify(value); } catch { return String(value); }
-  })();
-  return `${label}=${Buffer.byteLength(text)}B`;
-}
+let logRotating = false;
 
 function logToFile(logStr) {
-  const entry = `[${new Date().toISOString()}] ${logStr}\n`;
-  const entryBytes = Buffer.byteLength(entry);
-  try {
-    // Establish the current size once per process, not once per line.
-    if (logBytesWritten === null) {
-      try {
-        logBytesWritten = fs.statSync(LOG_PATH).size;
-      } catch {
-        logBytesWritten = 0;
+  const timestamp = new Date().toISOString();
+  const entry = `[${timestamp}] ${logStr}\n`;
+  fs.appendFile(LOG_PATH, entry, (err) => {
+    if (err) {
+      console.error('Failed to write log:', err);
+      return;
+    }
+    if (logRotating) return;
+    logRotating = true;
+    fs.stat(LOG_PATH, (statErr, stats) => {
+      if (statErr || !stats || stats.size <= MAX_LOG_SIZE) {
+        logRotating = false;
+        return;
       }
-    }
-    if (logBytesWritten + entryBytes > MAX_LOG_SIZE) {
-      // Truncate rather than unlink: unlinking races with an in-flight appendFile, and an
-      // open handle on a deleted inode silently keeps consuming disk.
-      try { fs.truncateSync(LOG_PATH, 0); } catch { /* first write, or already gone */ }
-      logBytesWritten = 0;
-    }
-    logBytesWritten += entryBytes;
-    fs.appendFile(LOG_PATH, entry, err => {
-      if (err) console.error('Failed to write log:', err);
+      fs.truncate(LOG_PATH, 0, () => {
+        logRotating = false;
+      });
     });
-  } catch (err) {
-    console.error('Log rotation error:', err);
-  }
+  });
 }
 
 // Serve built frontend files before the SPA route fallback.
-//
-// Everything here went out as `cache-control: public, max-age=0`, so every reload
-// re-fetched the whole ~2 MB of assets. Vite already puts a content hash in the
-// filename of anything under /assets/, which means those URLs can never go stale —
-// a change produces a new filename — so they are safe to cache for a year.
-// Un-hashed files (ketcher, molstar, images, pdbs) get a short TTL instead, because
-// their URLs *do* stay the same across deploys.
-const HASHED_ASSET = /-[A-Za-z0-9_-]{8,}\.[a-z0-9]+$/;
-app.use(express.static(FRONTEND_DIST_PATH, {
-  index: false,
-  setHeaders: (res, filePath) => {
-    if (filePath.endsWith('index.html')) {
-      // The one file that must never be cached: it is what names the hashed
-      // bundles, so a stale copy pins the browser to the previous deploy.
-      res.setHeader('Cache-Control', 'no-cache');
-    } else if (filePath.includes(`${path.sep}assets${path.sep}`) && HASHED_ASSET.test(filePath)) {
-      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    } else {
-      res.setHeader('Cache-Control', 'public, max-age=3600');
-    }
-  }
-}));
+app.use(express.static(FRONTEND_DIST_PATH, { index: false }));
 
 // SPA fallback for non-API routes when frontend build is present
 app.get(/^(?!\/(?:api|api-docs|health|tanimoto|blobs)(?:\/|$)).*/, (_req, res, next) => {
   if (!hasFrontendBuild()) {
     return next();
   }
-  // Same reasoning as index.html above — this is the same file, served for every
-  // client-side route, and caching it would strand users on an old bundle.
-  res.setHeader('Cache-Control', 'no-cache');
   return res.sendFile(FRONTEND_INDEX_PATH);
 });
 

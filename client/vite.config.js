@@ -2,7 +2,22 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from 'path';
 
-export default defineConfig({
+// Vite's JSX transform and React's package entry both key off NODE_ENV. Bun does
+// not set NODE_ENV=production for `bun run build` the way npm does, so an unset
+// ambient value produced app chunks that call jsxDEV while vendor-react shipped
+// the production jsx-runtime where jsxDEV is void 0 — blank white screen on every
+// route (seen on 84:5174 after the 2026-08-21 deploy). Force production for
+// builds regardless of the shell.
+export default defineConfig(({ command }) => {
+  const nodeEnv =
+    command === "build"
+      ? "production"
+      : (process.env.NODE_ENV || "development");
+  if (command === "build") {
+    process.env.NODE_ENV = "production";
+  }
+
+  return {
   envDir: '..',
   plugins: [
     {
@@ -42,6 +57,17 @@ export default defineConfig({
     alias: [{ find: "@", replacement: "/src" }],
   },
   define: {
+    // `'process.env': {}` on its own also replaced `process.env.NODE_ENV`, so React's
+    // `process.env.NODE_ENV !== 'production'` guard read `undefined` and every build —
+    // including the one deployed to production — shipped the DEVELOPMENT react-dom.
+    // That is not just size: StrictMode double-invokes effects in the dev build, so the
+    // first request of every mount-fetch-with-AbortController page was aborted (the
+    // Simulation catalog rendered "No catalog molecules are available right now").
+    // The specific key must stay listed before the broad one.
+    // Always use the command-derived nodeEnv above — never re-read process.env here,
+    // or an unset ambient NODE_ENV under Bun recreates the jsxDEV/prod-React mismatch.
+    'process.env.NODE_ENV': JSON.stringify(nodeEnv),
+    // Kept because dependencies still read bare `process.env`.
     'process.env': {},
     global: 'window',
   },
@@ -50,6 +76,10 @@ export default defineConfig({
   },
   server: {
     host:'0.0.0.0',
+    // Vite 5.4+/6+/8 block unknown Host headers (DNS-rebinding guard). Public
+    // legacy and local `vite`/`preview` both need the production hostname here;
+    // without it some clients get "Blocked request. This host is not allowed."
+    allowedHosts: ['app.pyxis-discovery.com', 'localhost', '127.0.0.1'],
     https: false,
     port: 5173,
     headers: {
@@ -92,6 +122,10 @@ export default defineConfig({
     }
   },
   build: {
+    // Source maps are useful for local debugging but add roughly 98 MB to the
+    // deploy artifact and expose the entire source tree to every browser. The
+    // staging/prod server serves bundled assets, not source maps.
+    sourcemap: false,
     rollupOptions: {
       external: (id) => {
         // Exclude .git directory and only externalize actual npm packages
@@ -127,4 +161,5 @@ export default defineConfig({
       }
     }
   }
+};
 });

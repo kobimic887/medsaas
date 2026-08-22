@@ -4,40 +4,85 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Molstar 3D Molecular Viewer</title>
-    <script src="https://unpkg.com/molstar@latest/build/viewer/molstar.js"></script>
-    <link rel="stylesheet" type="text/css" href="https://unpkg.com/molstar@latest/build/viewer/molstar.css" />
+    <!-- Pin the viewer: `@latest` let a CDN release change the production UI
+         without a Pyxis deployment. Integrity values cover the exact 5.11.0 assets. -->
+    <script
+        src="https://unpkg.com/molstar@5.11.0/build/viewer/molstar.js"
+        integrity="sha384-5Mfx4eL50NkWPky+mcH//qY0sbml4il0CLFFmrMp8uv/saB3Z6uZMHn2dUpAnH92"
+        crossorigin="anonymous"
+    ></script>
+    <link
+        rel="stylesheet"
+        type="text/css"
+        href="https://unpkg.com/molstar@5.11.0/build/viewer/molstar.css"
+        integrity="sha384-RIontCdJN53gEl2fmiHN+4bscIBvaUaOiCeeGktXqmFqdEBF+COnSdt9O4IKFSvq"
+        crossorigin="anonymous"
+    />
     <style>
+        html,
         body {
+            width: 100%;
+            height: 100%;
             margin: 0;
             padding: 0;
+            overflow: hidden;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background: #f8fafc;
         }
         
         .container {
             display: flex;
-            height: 100vh;
+            width: 100%;
+            height: 100%;
+            min-height: 0;
             flex-direction: column;
+            overflow: hidden;
         }
         
+        /* The control strip users know: Load from PDB / Load from File / Reset View /
+           Take Screenshot / Clear. It was hidden once because the native file input's
+           "no file selected" text overflowed into the parent header — the fix is to
+           lay the strip out properly and keep the input from growing, not to remove
+           controls people use. */
         .controls {
+            flex: 0 0 auto;
             background: white;
-            padding: 16px;
+            padding: 10px 16px;
             border-bottom: 1px solid #e2e8f0;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
         }
-        
+
         .control-group {
             display: flex;
-            gap: 12px;
+            gap: 10px;
             align-items: center;
-            margin-bottom: 12px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
         }
-        
+
         .control-group:last-child {
             margin-bottom: 0;
         }
-        
+
+        /* Wrap onto one row on a wide viewport so the strip costs ~48px of viewport
+           height instead of ~180px, and stack on a narrow one. */
+        @media (min-width: 900px) {
+            .controls {
+                display: flex;
+                align-items: center;
+                gap: 20px;
+                flex-wrap: wrap;
+            }
+            .control-group {
+                margin-bottom: 0;
+            }
+        }
+
+        /* The file input reports its selection as text that has no width limit. */
+        #file-input {
+            max-width: 210px;
+            padding: 5px 8px;
+        }
         input, select, button {
             padding: 8px 12px;
             border: 1px solid #d1d5db;
@@ -90,15 +135,25 @@
         }
         
         .viewer {
-            flex: 1;
             position: relative;
+            min-height: 0;
+            flex: 1 1 auto;
+            overflow: hidden;
         }
-        
-        #molstar-container {
-            width: 100%;
-            height: 100%;
+
+        /* Size only the container and Molstar's own root. Everything below that —
+           the left icon strip, the sequence bar, the Structure Tools panel and the
+           viewport — is positioned by Molstar's stylesheet relative to which panels
+           are visible; forcing 100% on those nodes makes the viewport cover the
+           panels instead of sitting beside them. */
+        #molstar-container,
+        #molstar-container .msp-plugin {
+            width: 100% !important;
+            height: 100% !important;
+            min-height: 0 !important;
+            overflow: hidden !important;
         }
-        
+
         .loading {
             position: absolute;
             top: 50%;
@@ -180,6 +235,7 @@
             <div class="control-group">
                 <button onclick="resetView()">Reset View</button>
                 <button onclick="takeScreenshot()">Take Screenshot</button>
+                <button onclick="clearViewer()">Clear</button>
             </div>
             
             <div class="status" id="status"></div>
@@ -195,24 +251,69 @@
 
     <script>
         let viewer = null;
+        // Prevent overlapping parent loads (React Strict Mode remounts, double
+        // viewerReady, or a second Open Viewer click) from stacking two copies of
+        // the same receptor in the structure tree.
+        let dockingLoadGeneration = 0;
+
+        // Molstar's sphere/cylinder impostor programs fail to link in Safari 27 on
+        // the affected Mac, leaving waters, ions and docking poses invisible while
+        // cartoons still render. Keep the compatibility fallback narrow: Chromium
+        // and touch-based Apple devices have both rendered this viewer correctly.
+        const userAgent = navigator.userAgent;
+        const useMeshGeometryOnDesktopSafari =
+            userAgent.includes('Macintosh') &&
+            userAgent.includes('Safari') &&
+            !/(Chrome|Chromium|CriOS|Edg|OPR)/.test(userAgent) &&
+            navigator.maxTouchPoints === 0;
+
+        function installDesktopSafariMeshFallback() {
+            if (!useMeshGeometryOnDesktopSafari || !viewer) return;
+
+            // Molstar normally draws atoms and bonds with fast sphere/cylinder
+            // impostor shaders. They fail to link on the affected Safari/WebKit GPU
+            // stack in both WebGL 1 and WebGL 2. Injecting this representation
+            // parameter before any structure is loaded makes Molstar build ordinary
+            // mesh geometry instead. Keeping the override on the builder also covers
+            // representations subsequently added through Molstar's own controls.
+            const representationBuilder = viewer.plugin.builders.structure.representation;
+            const buildRepresentation = representationBuilder.buildRepresentation.bind(representationBuilder);
+            representationBuilder.buildRepresentation = (builder, structure, props = {}, options) =>
+                buildRepresentation(builder, structure, {
+                    ...props,
+                    typeParams: {
+                        ...props.typeParams,
+                        tryUseImpostor: false,
+                    },
+                }, options);
+        }
         
         // Initialize Molstar viewer
         async function initViewer() {
             try {
                 viewer = await molstar.Viewer.create('molstar-container', {
                     layoutIsExpanded: false,
+                    // Molstar's own shell — left icon strip, sequence bar and the
+                    // Structure Tools panel (Components, Quick Styles, Measurements,
+                    // Superposition). These are the viewer people actually work in;
+                    // a run that turned them off left only a bare 3D canvas.
                     layoutShowControls: true,
                     layoutShowRemoteState: false,
                     layoutShowSequence: true,
                     layoutShowLog: false,
                     layoutShowLeftPanel: true,
+                    // With the panels back the embedded viewport is small, so the
+                    // fullscreen toggle matters more, not less.
                     viewportShowExpand: true,
                     viewportShowSelectionMode: false,
                     viewportShowAnimation: false,
                     pdbProvider: 'rcsb',
                 });
+
+                installDesktopSafariMeshFallback();
                 
                 showStatus('Molstar viewer initialized successfully!', 'success');
+                window.parent.postMessage({ type: 'viewerReady' }, window.location.origin);
             } catch (error) {
                 console.error('Failed to initialize Molstar:', error);
                 showStatus('Failed to initialize Molstar viewer', 'error');
@@ -223,13 +324,16 @@
         async function loadPDB() {
             const pdbId = document.getElementById('pdb-input').value.trim();
             if (!pdbId || !viewer) return;
+            const pdbLabel = `PDB ${pdbId.toUpperCase()}`;
             
             showLoading(true);
             
             try {
                 await viewer.loadStructureFromUrl(
                     `https://files.rcsb.org/download/${pdbId.toUpperCase()}.pdb`,
-                    'pdb'
+                    'pdb',
+                    false,
+                    { label: pdbLabel }
                 );
                 showStatus(`Successfully loaded PDB structure: ${pdbId.toUpperCase()}`, 'success');
             } catch (error) {
@@ -258,16 +362,9 @@
             try {
                 const file = fileInput.files[0];
                 const text = await file.text();
-                
-                // Create a blob URL for the file content
-                const blob = new Blob([text], { type: 'text/plain' });
-                const url = URL.createObjectURL(blob);
-                
-                await viewer.loadStructureFromUrl(url, format);
+                const fileLabel = file.name || `${format.toUpperCase()} file`;
+                await loadStructureText(text, format, fileLabel);
                 showStatus(`Successfully loaded ${format.toUpperCase()} structure from file`, 'success');
-                
-                // Clean up the blob URL
-                URL.revokeObjectURL(url);
             } catch (error) {
                 console.error('Failed to load file:', error);
                 showStatus('Failed to load structure from file', 'error');
@@ -276,10 +373,22 @@
             }
         }
         
+        // Frame all loaded structures. `camera.reset()` restores the camera state but
+        // does not reliably fit a newly loaded pose whose coordinates are far from the
+        // previous scene, so prefer Molstar's canvas reset request when available.
+        function frameLoadedStructures() {
+            if (!viewer) return;
+            if (viewer.plugin.canvas3d?.requestCameraReset) {
+                viewer.plugin.canvas3d.requestCameraReset({ durationMs: 500 });
+            } else {
+                viewer.plugin.managers.camera.reset();
+            }
+        }
+
         // Reset view
         function resetView() {
             if (viewer) {
-                viewer.plugin.managers.camera.reset();
+                frameLoadedStructures();
                 showStatus('View reset successfully', 'success');
             }
         }
@@ -294,9 +403,36 @@
         
         // Clear structure
         function clearStructure() {
+            dockingLoadGeneration += 1;
             if (viewer) {
                 viewer.plugin.clear();
                 showStatus('Structure cleared', 'success');
+            }
+        }
+
+        // Same action from the control strip. It also tells the parent page so the
+        // React side drops the stored simulation/pdb keys — clearing only the plugin
+        // left the page ready to reload the very structure the user just cleared.
+        function clearViewer() {
+            clearStructure();
+            document.getElementById('pdb-input').value = '';
+            document.getElementById('file-input').value = '';
+            window.parent.postMessage({ type: 'viewerClearedByUser' }, window.location.origin);
+        }
+
+        async function loadStructureText(text, format, label = 'Structure') {
+            // Prefer the data API so the Structure Tools / sequence structure name is
+            // our label, not a blob: URL hostname (which used to surface as
+            // "app.pyxis-discovery.com" / "Unknown Entity" style entries).
+            if (typeof viewer.loadStructureFromData === 'function') {
+                await viewer.loadStructureFromData(text, format, { dataLabel: label });
+                return;
+            }
+            const blobUrl = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+            try {
+                await viewer.loadStructureFromUrl(blobUrl, format, false, { label });
+            } finally {
+                URL.revokeObjectURL(blobUrl);
             }
         }
         
@@ -331,18 +467,71 @@
 
         // Listen for postMessage events from parent React component
         window.addEventListener('message', async function(event) {
-            if (event.data && event.data.type === 'loadStructureFromUrl') {
+            if (event.origin !== window.location.origin || event.source !== window.parent) return;
+
+            if (event.data && event.data.type === 'requestViewerReady') {
+                if (viewer) window.parent.postMessage({ type: 'viewerReady' }, window.location.origin);
+            } else if (event.data && event.data.type === 'loadDockingResult') {
+                if (!viewer) {
+                    window.parent.postMessage({ type: 'resultLoadError', error: 'Viewer not ready' }, window.location.origin);
+                    return;
+                }
+
+                const {
+                    proteinText,
+                    proteinUrl,
+                    proteinName = 'Protein structure',
+                    sdfText,
+                    ligandUrl,
+                    ligandFormat = 'sdf',
+                    ligandName = 'Docking pose',
+                } = event.data;
+                const loadGeneration = ++dockingLoadGeneration;
+                showLoading(true);
+                try {
+                    await viewer.plugin.clear();
+                    if (loadGeneration !== dockingLoadGeneration) return;
+                    if (proteinText) {
+                        await loadStructureText(proteinText, 'pdb', proteinName);
+                    } else if (proteinUrl) {
+                        await viewer.loadStructureFromUrl(proteinUrl, 'pdb', false, { label: proteinName });
+                    }
+                    if (loadGeneration !== dockingLoadGeneration) return;
+                    // Ligand/SDF loading remains opt-in for non-AutoDock callers.
+                    // The post-simulation AutoDock handoff sends no sdfText/ligandUrl.
+                    if (sdfText) {
+                        await loadStructureText(sdfText, 'sdf', ligandName);
+                    } else if (ligandUrl) {
+                        await viewer.loadStructureFromUrl(ligandUrl, ligandFormat, false, { label: ligandName });
+                    }
+                    if (loadGeneration !== dockingLoadGeneration) return;
+                    frameLoadedStructures();
+                    showStatus('Docking result loaded', 'success');
+                    window.parent.postMessage({ type: 'resultLoaded' }, window.location.origin);
+                } catch (error) {
+                    if (loadGeneration !== dockingLoadGeneration) return;
+                    console.error('Failed to load docking result:', error);
+                    showStatus('Failed to load docking result', 'error');
+                    window.parent.postMessage({ type: 'resultLoadError', error: String(error) }, window.location.origin);
+                } finally {
+                    if (loadGeneration === dockingLoadGeneration) showLoading(false);
+                }
+            } else if (event.data && event.data.type === 'loadStructureFromUrl') {
                 if (!viewer) {
                     console.error('Molstar viewer not initialized');
                     return;
                 }
                 
-                const { url, format } = event.data;
+                const { url, format, label } = event.data;
+                const structureLabel = label
+                    || (typeof url === 'string' && /\/download\/([A-Za-z0-9]+)(?:\.pdb)?/i.test(url)
+                        ? `PDB ${url.match(/\/download\/([A-Za-z0-9]+)(?:\.pdb)?/i)[1].toUpperCase()}`
+                        : `${String(format || 'structure').toUpperCase()} structure`);
                 
                 showLoading(true);
                 
                 try {
-                    await viewer.loadStructureFromUrl(url, format);
+                    await viewer.loadStructureFromUrl(url, format, false, { label: structureLabel });
                     showStatus(`Successfully loaded ${format.toUpperCase()} structure from API`, 'success');
                 } catch (error) {
                     console.error('Failed to load structure from URL:', error);
@@ -362,7 +551,7 @@
                     return;
                 }
 
-                const { text, format } = event.data;
+                const { text, format, label } = event.data;
                 if (!text) {
                     showStatus('No structure data received', 'error');
                     return;
@@ -372,15 +561,17 @@
 
                 // loadStructureFromUrl is the only loader this build exposes, so wrap the
                 // text in an object URL. Revoked once Molstar has parsed it.
-                const blobUrl = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
                 try {
-                    await viewer.loadStructureFromUrl(blobUrl, format);
+                    await loadStructureText(
+                        text,
+                        format,
+                        label || `${String(format || 'structure').toUpperCase()} structure`,
+                    );
                     showStatus(`Successfully loaded ${format.toUpperCase()} structure`, 'success');
                 } catch (error) {
                     console.error('Failed to load structure from data:', error);
                     showStatus(`Failed to load ${format.toUpperCase()} structure`, 'error');
                 } finally {
-                    URL.revokeObjectURL(blobUrl);
                     showLoading(false);
                 }
             } else if (event.data && event.data.type === 'clearStructure') {
@@ -407,7 +598,7 @@
                     return;
                 }
                 try {
-                    viewer.plugin.managers.camera.reset();
+                    frameLoadedStructures();
                 } catch (error) {
                     console.error('Failed to reset the camera:', error);
                 }
@@ -418,6 +609,7 @@
                 }
                 
                 const { smiles, name } = event.data;
+                const moleculeLabel = name || 'Ligand';
                 
                 showLoading(true);
                 
@@ -425,40 +617,40 @@
                     // Use a chemical structure service to convert SMILES to 3D structure
                     const sdfUrl = `https://cactus.nci.nih.gov/chemical/structure/${encodeURIComponent(smiles)}/sdf`;
                     
-                    await viewer.loadStructureFromUrl(sdfUrl, 'sdf');
-                    showStatus(`Successfully loaded molecule: ${name || 'Unknown'} from SMILES`, 'success');
+                    await viewer.loadStructureFromUrl(sdfUrl, 'sdf', false, { label: moleculeLabel });
+                    showStatus(`Successfully loaded molecule: ${moleculeLabel} from SMILES`, 'success');
                     
                     // Send success message back to parent
                     window.parent.postMessage({
                         type: 'smilesLoaded',
-                        name: name || 'Unknown',
+                        name: moleculeLabel,
                         smiles: smiles
-                    }, '*');
+                    }, window.location.origin);
                 } catch (error) {
                     console.error('Failed to load SMILES structure:', error);
                     
                     // Try alternative approach using PubChem
                     try {
                         const pubchemUrl = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(smiles)}/SDF`;
-                        await viewer.loadStructureFromUrl(pubchemUrl, 'sdf');
-                        showStatus(`Successfully loaded molecule: ${name || 'Unknown'} from SMILES (PubChem)`, 'success');
+                        await viewer.loadStructureFromUrl(pubchemUrl, 'sdf', false, { label: moleculeLabel });
+                        showStatus(`Successfully loaded molecule: ${moleculeLabel} from SMILES (PubChem)`, 'success');
                         
                         // Send success message back to parent
                         window.parent.postMessage({
                             type: 'smilesLoaded',
-                            name: name || 'Unknown',
+                            name: moleculeLabel,
                             smiles: smiles
-                        }, '*');
+                        }, window.location.origin);
                     } catch (pubchemError) {
                         console.error('Failed to load from PubChem:', pubchemError);
-                        showStatus(`Failed to load molecule: ${name || 'Unknown'} from SMILES`, 'error');
+                        showStatus(`Failed to load molecule: ${moleculeLabel} from SMILES`, 'error');
                         
                         // Send error message back to parent
                         window.parent.postMessage({
                             type: 'smilesLoadError',
                             error: `Failed to load molecule from SMILES: ${smiles}`,
                             smiles: smiles
-                        }, '*');
+                        }, window.location.origin);
                     }
                 } finally {
                     showLoading(false);

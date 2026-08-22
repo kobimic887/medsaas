@@ -5,7 +5,7 @@ export function Footer({ brandName, brandLink, routes }) {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="fixed bottom-0 left-0 z-50 w-full bg-gray-100 py-2 shadow-md dark:border-t dark:border-slate-800 dark:bg-slate-950/95 dark:text-slate-300 dark:shadow-black/30">
+    <footer className="w-full border-t border-blue-gray-100 bg-gray-100/90 py-3 dark:border-slate-800 dark:bg-slate-950/95 dark:text-slate-300">
       <div className="flex w-full flex-wrap items-center justify-center gap-6 px-2 md:justify-between">
         <Typography variant="small" className="font-normal text-inherit">
           &copy; {year}{" "}
@@ -16,6 +16,17 @@ export function Footer({ brandName, brandLink, routes }) {
           >
             {brandName}
           </a>
+          <span className="mx-2 text-blue-gray-400 dark:text-slate-600" aria-hidden="true">·</span>
+          <span>made with <span aria-hidden="true">❤️</span><span className="sr-only"> love </span> by{" "}</span>
+          <a
+            href="https://outwize.tech/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-bold transition-colors hover:text-blue-500 dark:hover:text-brand-300"
+          >
+            Outwize inc
+          </a>{" "}
+          for a better web.
         </Typography>
         <ul className="flex items-center gap-4">
           {routes.map(({ name, path }) => (
@@ -24,6 +35,7 @@ export function Footer({ brandName, brandLink, routes }) {
                 as="a"
                 href={path}
                 target="_blank"
+                rel="noopener noreferrer"
                 variant="small"
                 className="px-1 py-0.5 font-normal text-inherit transition-colors hover:text-blue-500 dark:hover:text-brand-300"
               >
@@ -37,11 +49,9 @@ export function Footer({ brandName, brandLink, routes }) {
   );
 }
 
-// These defaults came from the Creative Tim template and were never changed, so
-// every dashboard page footer credited "Outwize inc" and carried four outbound
-// links to outwize.tech — including an "About Us" and a "Blog" that were not this
-// product's. They now point at the real Pyxis marketing site, whose paths are the
-// ones actually published at www.pyxis-discovery.com.
+// Keep Pyxis as the product attribution and navigation target. Outwize's separate
+// credit below preserves the original design attribution without making the old
+// template's unrelated About/Blog routes part of the current footer.
 Footer.defaultProps = {
   brandName: "Pyxis Discovery",
   brandLink: "https://www.pyxis-discovery.com/",

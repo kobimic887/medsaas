@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function ContactUs() {
   const [form, setForm] = useState({
@@ -10,6 +10,12 @@ export default function ContactUs() {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const requestControllerRef = useRef(null);
+
+  useEffect(() => () => {
+    requestControllerRef.current?.abort();
+    requestControllerRef.current = null;
+  }, []);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -31,19 +37,23 @@ export default function ContactUs() {
 
     setError("");
     setLoading(true);
+    requestControllerRef.current?.abort();
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
     
     try {
       const response = await fetch('/api/send-email', {
         method: 'POST',
+        signal: controller.signal,
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(form),
       });
 
-      const result = await response.json();
+      const result = await response.json().catch(() => null);
 
-      if (result.success) {
+      if (response.ok && result?.success) {
         setSubmitted(true);
         setForm({
           name: "",
@@ -52,98 +62,100 @@ export default function ContactUs() {
           message: "",
         });
       } else {
-        setError(result.error || 'Failed to send email. Please try again.');
+        setError(result?.error || `Message could not be sent (HTTP ${response.status}). Please try again.`);
       }
     } catch (error) {
+      if (error.name === 'AbortError') return;
       console.error('Error sending email:', error);
       setError('Failed to send email. Please check your connection and try again.');
     } finally {
-      setLoading(false);
+      if (requestControllerRef.current === controller) {
+        requestControllerRef.current = null;
+        setLoading(false);
+      }
     }
   };
 
   return (
-    <div className="max-w-xl mx-auto p-8 font-sans">
-      <h1 className="display-3 fw-bold mb-4">Email Client</h1>
-      <p className="lead mb-6 text-blue-gray-700">
-        Send an email directly to any recipient using our email service.
+    <div className="mx-auto max-w-2xl px-5 py-12 font-sans sm:px-8">
+      <h1 className="text-3xl font-bold tracking-tight text-blue-gray-900">Contact Pyxis Discovery</h1>
+      <p className="mt-3 text-base leading-7 text-blue-gray-700">
+        Tell our team how we can help with registration, partnerships, or technical support.
       </p>
-      <div className="mb-6">
-        <p className="fw-bold mb-1">Pyxis Discovery</p>
-        <p className="mb-0">
-          Contact our team for lab registration,
-          <br />
-          partnership inquiries, or
-          <br />
-          technical support.
-        </p>
-        <p className="mt-2 mb-0">
-          Email:{" "}
+      <div className="mt-6 rounded-xl border border-blue-gray-100 bg-blue-gray-50 p-4 text-sm text-blue-gray-700">
+        <p>
+          Prefer email?{" "}
           <a
             href="mailto:contact@pyxis-discovery.com"
-            className="text-blue-600 underline"
+            className="font-medium text-blue-700 underline underline-offset-2"
           >
             contact@pyxis-discovery.com
           </a>
         </p>
       </div>
       {submitted ? (
-        <div className="bg-green-100 text-green-800 p-4 rounded mb-4">
+        <div className="mt-8 rounded-lg border border-green-200 bg-green-50 p-4 text-green-800" role="status">
           Thank you for contacting us! We will get back to you soon.
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="mt-8 space-y-5">
           <div>
+            <label htmlFor="contact-name" className="mb-2 block text-sm font-medium text-blue-gray-800">Your name</label>
             <input
+              id="contact-name"
               type="text"
               name="name"
-              placeholder="Your Name *"
+              autoComplete="name"
               value={form.name}
               onChange={handleChange}
               required
-              className="form-control form-control-lg"
+              className="w-full rounded-lg border border-blue-gray-200 bg-white px-3 py-2.5 text-blue-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
             />
           </div>
           <div>
+            <label htmlFor="contact-email" className="mb-2 block text-sm font-medium text-blue-gray-800">Your email</label>
             <input
+              id="contact-email"
               type="email"
               name="recipientEmail"
-              placeholder="Send to Email *"
+              autoComplete="email"
               value={form.recipientEmail}
               onChange={handleChange}
               required
-              className="form-control form-control-lg"
+              className="w-full rounded-lg border border-blue-gray-200 bg-white px-3 py-2.5 text-blue-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
             />
           </div>
           <div>
+            <label htmlFor="contact-subject" className="mb-2 block text-sm font-medium text-blue-gray-800">Subject</label>
             <input
+              id="contact-subject"
               type="text"
               name="subject"
-              placeholder="Subject *"
               value={form.subject}
               onChange={handleChange}
               required
-              className="form-control form-control-lg"
+              className="w-full rounded-lg border border-blue-gray-200 bg-white px-3 py-2.5 text-blue-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
             />
           </div>
           <div>
+            <label htmlFor="contact-message" className="mb-2 block text-sm font-medium text-blue-gray-800">Message</label>
             <textarea
+              id="contact-message"
               name="message"
-              placeholder="Message *"
               value={form.message}
               onChange={handleChange}
               required
               rows={5}
-              className="form-control form-control-lg resize-none"
+              className="w-full resize-y rounded-lg border border-blue-gray-200 bg-white px-3 py-2.5 text-blue-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
             />
           </div>
-          {error && <div className="text-danger text-sm">{error}</div>}
+          {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">{error}</div>}
           <button
             type="submit"
             disabled={loading}
-            className="btn btn-success w-100 fw-bold py-2 text-lg"
+            className="w-full rounded-lg bg-brand-500 px-4 py-3 text-base font-semibold text-white transition hover:bg-brand-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-wait disabled:opacity-60"
           >
-            {loading ? "Sending..." : "Send Email"}
+            {loading ? "Sending..." : "Send message"}
           </button>
         </form>
       )}

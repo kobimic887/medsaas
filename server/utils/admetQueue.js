@@ -188,6 +188,7 @@ export async function createAdmetTask(db, taskData) {
     smiles,
     pdbid = null,
     userId = 'system',
+    companyId = null,
     priority = 'normal',
   } = taskData || {};
 
@@ -208,6 +209,7 @@ export async function createAdmetTask(db, taskData) {
     smiles: normalized,
     pdbid,
     userId,
+    companyId,
     priority: VALID_PRIORITIES.has(priority) ? priority : 'normal',
     status: ADMET_JOB_STATUS.QUEUED,
     attempts: 0,

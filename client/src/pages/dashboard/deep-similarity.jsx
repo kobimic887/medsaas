@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Card,
   CardBody,
@@ -9,6 +9,12 @@ import {
   Spinner,
   Alert,
 } from "@material-tailwind/react";
+import {
+  AdjustmentsHorizontalIcon,
+  BeakerIcon,
+  MagnifyingGlassIcon,
+  SparklesIcon,
+} from "@heroicons/react/24/outline";
 // getAuthToken reads access_token first and falls back to auth_token. Reading
 // auth_token directly worked only because sign-in happens to write both keys —
 // and a miss here does not fail softly: /tanimoto/* is authenticated, so a
@@ -25,25 +31,32 @@ export function DeepSimilarity() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  // Outcome of the last search. Without this, a search that legitimately matched
-  // nothing was indistinguishable from one that never ran: the spinner stopped,
-  // no error appeared, and the results grid — which only renders when
-  // results.length > 0 — simply stayed empty. "It just stops."
-  const [searchStatus, setSearchStatus] = useState("idle"); // idle | ok | empty | error
+  // idle | ok | empty | error
+  const [searchStatus, setSearchStatus] = useState("idle");
   const [searchedFor, setSearchedFor] = useState("");
+  const searchControllerRef = useRef(null);
+
+  useEffect(() => () => searchControllerRef.current?.abort(), []);
 
   const handleSearch = async () => {
+    const query = searchQuery.trim();
+    if (!query) return;
+
+    searchControllerRef.current?.abort();
+    const controller = new AbortController();
+    searchControllerRef.current = controller;
+
     setLoading(true);
     setError("");
     setResults([]);
     setSearchStatus("idle");
-    setSearchedFor(searchQuery.trim());
+    setSearchedFor(query);
 
     try {
       let url = "";
       const token = getAuthToken();
-      const smiles = encodeURIComponent(searchQuery);
-      
+      const smiles = encodeURIComponent(query);
+
       if (searchType === "exact") {
         url = API_CONFIG.buildUrl(`/tanimoto/v1/search/exact?smiles=${smiles}`);
       } else if (searchType === "similarity") {
@@ -51,167 +64,215 @@ export function DeepSimilarity() {
       } else if (searchType === "substructure") {
         url = API_CONFIG.buildUrl(`/tanimoto/v1/search/substructure?smiles=${smiles}`);
       }
-      
+
       const res = await fetch(url, {
         method: "GET",
+        signal: controller.signal,
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
-      // Tanimoto explains a bad query precisely — "Invalid SMILES: 'cco' could not
-      // be parsed by RDKit" — and the server now forwards that text. Show it instead
-      // of discarding it behind a generic "API error".
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         throw new Error(data?.error || `Search failed (HTTP ${res.status})`);
       }
+
       const rows = data?.results || [];
       setResults(rows);
       setSearchStatus(rows.length > 0 ? "ok" : "empty");
     } catch (err) {
+      if (err.name === "AbortError") return;
       setError(err.message);
       setSearchStatus("error");
     } finally {
-      setLoading(false);
+      if (searchControllerRef.current === controller) {
+        searchControllerRef.current = null;
+        setLoading(false);
+      }
     }
   };
 
   return (
-    <Card className="mt-6 w-full">
-      <CardHeader>
-        <Typography variant="h5">Deep Similarity Search</Typography>
-      </CardHeader>
-      <CardBody>
-        <div className="flex gap-4 mb-4">
-          <Input
-            label="Search Query (SMILES)"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="flex-1"
-          />
-          <select
-            value={searchType}
-            onChange={e => setSearchType(e.target.value)}
-            className="border border-blue-gray-300 rounded px-3 py-2 font-medium"
-          >
-            <option value="exact">Exact</option>
-            <option value="similarity">Similarity</option>
-            <option value="substructure">Substructure</option>
-          </select>
-          <Button onClick={handleSearch} disabled={loading || !searchQuery}>
-            {loading ? <Spinner size="sm" /> : "Search"}
-          </Button>
-        </div>
-        
-        {searchType === "similarity" && (
-          <div className="flex gap-4 mb-4 items-center flex-wrap">
-            <div className="flex flex-col gap-1">
-              <Typography variant="small" color="blue-gray" className="font-medium">
-                Threshold: {threshold}
-              </Typography>
-              <input
-                type="range"
-                min="0.1"
-                max="1.0"
-                step="0.1"
-                value={threshold}
-                onChange={(e) => setThreshold(parseFloat(e.target.value))}
-                className="w-32"
-              />
+    <div className="mx-auto w-full max-w-[1440px] py-2">
+      <Card shadow={false} className="w-full overflow-hidden rounded-2xl border border-blue-gray-100 bg-white dark:border-slate-800 dark:bg-slate-900">
+        <CardHeader
+          floated={false}
+          shadow={false}
+          className="m-0 rounded-none border-b border-blue-gray-100 bg-white px-6 py-5 dark:border-slate-800 dark:bg-slate-900"
+        >
+          <div className="flex items-start gap-4">
+            <div className="mt-0.5 rounded-xl bg-brand-100 p-2.5 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
+              <BeakerIcon className="h-6 w-6" aria-hidden="true" />
             </div>
-            
-            <div className="flex flex-col gap-1">
-              <Typography variant="small" color="blue-gray" className="font-medium">
-                Fingerprint
+            <div className="min-w-0">
+              <Typography variant="h5" color="blue-gray" className="text-xl font-semibold dark:text-slate-100">
+                Deep Similarity Search
               </Typography>
-              <select
-                value={fingerprintType}
-                onChange={e => setFingerprintType(e.target.value)}
-                className="border border-blue-gray-300 rounded px-2 py-1 text-sm"
-              >
-                <option value="morgan">Morgan (ECFP4)</option>
-                <option value="maccs">MACCS</option>
-                <option value="feat_morgan">Feature Morgan (FCFP4)</option>
-                <option value="atom_pair">Atom Pair</option>
-                <option value="torsion">Topological Torsion</option>
-                <option value="rdkit">RDKit</option>
-              </select>
-            </div>
-            
-            <div className="flex flex-col gap-1">
-              <Typography variant="small" color="blue-gray" className="font-medium">
-                Metric
+              <Typography variant="small" color="gray" className="mt-1 max-w-3xl font-normal leading-relaxed dark:text-slate-400">
+                Search the molecular corpus by exact match, structural similarity, or substructure.
               </Typography>
-              <select
-                value={similarityMetric}
-                onChange={e => setSimilarityMetric(e.target.value)}
-                className="border border-blue-gray-300 rounded px-2 py-1 text-sm"
-              >
-                <option value="tanimoto">Tanimoto</option>
-                <option value="dice">Dice</option>
-              </select>
             </div>
           </div>
-        )}
+        </CardHeader>
 
-        {error && <Alert color="red">{error}</Alert>}
-        {searchStatus === "ok" && (
-          <Typography variant="small" className="mb-4 text-blue-gray-600">
-            Found {results.length} result{results.length !== 1 ? 's' : ''}
-          </Typography>
-        )}
-        {searchStatus === "empty" && (
-          <Alert color="amber" className="mb-4">
-            No matches for <span className="font-mono font-semibold">{searchedFor}</span> in the
-            compound database. The query parsed fine — nothing in the catalogue met this search.
-            {searchType === "similarity" && " Try lowering the similarity threshold."}
-          </Alert>
-        )}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
-          {results.map((item, idx) => (
-            <Card key={idx} className="border border-blue-gray-100 p-4">
-              <div className="mb-3 flex justify-between items-start">
-                <Typography variant="small" color="blue-gray" className="font-semibold">
-                  ID: {item.molecule_id}
+        <CardBody className="space-y-5 p-5 sm:p-6">
+          <form
+            className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_10rem_auto]"
+            onSubmit={(event) => {
+              event.preventDefault();
+              handleSearch();
+            }}
+          >
+            <div className="min-w-0">
+              <Input
+                label="Search query (SMILES)"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                className="!border-blue-gray-200 dark:!border-slate-700"
+                labelProps={{ className: "dark:before:border-slate-700 dark:after:border-slate-700" }}
+              />
+            </div>
+            <label className="flex min-h-11 flex-col justify-center rounded-lg border border-blue-gray-200 px-3 dark:border-slate-700">
+              <span className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-gray-500 dark:text-slate-500">
+                Search mode
+              </span>
+              <select
+                aria-label="Search mode"
+                value={searchType}
+                onChange={(event) => setSearchType(event.target.value)}
+                className="w-full bg-transparent text-sm font-medium text-blue-gray-800 outline-none dark:text-slate-200"
+              >
+                <option value="exact">Exact</option>
+                <option value="similarity">Similarity</option>
+                <option value="substructure">Substructure</option>
+              </select>
+            </label>
+            <Button
+              type="submit"
+              disabled={loading || !searchQuery.trim()}
+              className="flex min-h-11 items-center justify-center gap-2 bg-brand-500 px-6 text-white hover:bg-brand-600"
+            >
+              {loading ? <Spinner className="h-4 w-4" /> : <MagnifyingGlassIcon className="h-4 w-4" />}
+              {loading ? "Searching" : "Search"}
+            </Button>
+          </form>
+
+          {searchType === "similarity" && (
+            <section className="rounded-xl border border-blue-gray-100 bg-blue-gray-50/60 p-4 dark:border-slate-800 dark:bg-slate-950/50" aria-label="Similarity options">
+              <div className="mb-3 flex items-center gap-2">
+                <AdjustmentsHorizontalIcon className="h-4 w-4 text-blue-gray-500 dark:text-slate-400" aria-hidden="true" />
+                <Typography variant="small" color="blue-gray" className="font-semibold dark:text-slate-200">
+                  Similarity options
                 </Typography>
-                {item.similarity && (
-                  <Typography variant="small" className="font-semibold text-brand-500">
-                    {(item.similarity * 100).toFixed(1)}%
-                  </Typography>
-                )}
               </div>
-              <Typography variant="small" className="mb-2 break-words text-xs font-mono">
-                {item.canonical_smiles}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_minmax(12rem,1fr)]">
+                <label className="block">
+                  <div className="mb-1 flex items-center justify-between text-xs font-medium text-blue-gray-600 dark:text-slate-400">
+                    <span>Threshold</span>
+                    <span className="rounded-md bg-white px-2 py-0.5 font-semibold text-blue-gray-800 dark:bg-slate-800 dark:text-slate-200">{threshold.toFixed(1)}</span>
+                  </div>
+                  <input
+                    aria-label="Similarity threshold"
+                    type="range"
+                    min="0.1"
+                    max="1.0"
+                    step="0.1"
+                    value={threshold}
+                    onChange={(event) => setThreshold(parseFloat(event.target.value))}
+                    className="h-2 w-full cursor-pointer accent-brand-500"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-blue-gray-600 dark:text-slate-400">Fingerprint</span>
+                  <select
+                    value={fingerprintType}
+                    onChange={(event) => setFingerprintType(event.target.value)}
+                    className="h-10 w-full rounded-lg border border-blue-gray-200 bg-white px-3 text-sm text-blue-gray-800 outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  >
+                    <option value="morgan">Morgan (ECFP4)</option>
+                    <option value="maccs">MACCS</option>
+                    <option value="feat_morgan">Feature Morgan (FCFP4)</option>
+                    <option value="atom_pair">Atom Pair</option>
+                    <option value="torsion">Topological Torsion</option>
+                    <option value="rdkit">RDKit</option>
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-blue-gray-600 dark:text-slate-400">Metric</span>
+                  <select
+                    value={similarityMetric}
+                    onChange={(event) => setSimilarityMetric(event.target.value)}
+                    className="h-10 w-full rounded-lg border border-blue-gray-200 bg-white px-3 text-sm text-blue-gray-800 outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                  >
+                    <option value="tanimoto">Tanimoto</option>
+                    <option value="dice">Dice</option>
+                  </select>
+                </label>
+              </div>
+            </section>
+          )}
+
+          {error && <Alert color="red" className="border border-red-200 dark:border-red-900/60">{error}</Alert>}
+
+          {searchStatus === "idle" && !loading && (
+            <div className="rounded-xl border border-dashed border-blue-gray-200 bg-blue-gray-50/40 px-5 py-10 text-center dark:border-slate-700 dark:bg-slate-950/30">
+              <SparklesIcon className="mx-auto h-8 w-8 text-blue-gray-400 dark:text-slate-500" aria-hidden="true" />
+              <Typography variant="h6" color="blue-gray" className="mt-3 dark:text-slate-200">Ready to search</Typography>
+              <Typography variant="small" color="gray" className="mt-1 dark:text-slate-400">
+                Enter a valid SMILES query above to explore the corpus.
               </Typography>
-              <hr className="my-2" />
-              <div className="text-xs space-y-1">
-                {item.metadata?.compound_id && (
-                  <Typography variant="small" color="blue-gray">
-                    <strong>Compound:</strong> {item.metadata.compound_id}
-                  </Typography>
-                )}
-                {item.metadata?.molecular_formula && (
-                  <Typography variant="small" color="blue-gray">
-                    <strong>Formula:</strong> {item.metadata.molecular_formula}
-                  </Typography>
-                )}
-                {item.metadata?.monoisotopic_mass && (
-                  <Typography variant="small" color="blue-gray">
-                    <strong>Mass:</strong> {item.metadata.monoisotopic_mass}
-                  </Typography>
-                )}
-                {item.metadata?.activity_score && (
-                  <Typography variant="small" color="blue-gray">
-                    <strong>Activity:</strong> {item.metadata.activity_score}
-                  </Typography>
-                )}
-              </div>
-            </Card>
-          ))}
-        </div>
-      </CardBody>
-    </Card>
+            </div>
+          )}
+
+          {searchStatus === "ok" && (
+            <div className="flex items-center justify-between border-b border-blue-gray-100 pb-3 dark:border-slate-800">
+              <Typography variant="small" color="blue-gray" className="font-medium dark:text-slate-300">
+                {results.length} result{results.length !== 1 ? "s" : ""}
+              </Typography>
+              <Typography variant="small" color="gray" className="dark:text-slate-500">Ranked by your selected search mode</Typography>
+            </div>
+          )}
+
+          {searchStatus === "empty" && (
+            <Alert color="amber" className="border border-amber-200 dark:border-amber-900/60">
+              No matches for <span className="font-mono font-semibold">{searchedFor}</span>. The query parsed successfully, but nothing in the catalogue matched it.
+              {searchType === "similarity" && " Try lowering the similarity threshold."}
+            </Alert>
+          )}
+
+          {results.length > 0 && (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {results.map((item, index) => (
+                <article key={`${item.molecule_id}-${index}`} className="min-w-0 rounded-xl border border-blue-gray-100 bg-white p-4 dark:border-slate-800 dark:bg-slate-950/40">
+                  <div className="flex items-start justify-between gap-3">
+                    <Typography variant="small" color="blue-gray" className="truncate font-semibold dark:text-slate-200">
+                      {item.molecule_id || "Molecule"}
+                    </Typography>
+                    {item.similarity !== undefined && item.similarity !== null && (
+                      <span className="shrink-0 rounded-full bg-brand-100 px-2.5 py-1 text-xs font-bold text-brand-800 dark:bg-brand-500/15 dark:text-brand-300">
+                        {(item.similarity * 100).toFixed(1)}%
+                      </span>
+                    )}
+                  </div>
+                  <code className="mt-3 block max-h-16 overflow-auto break-all rounded-lg bg-blue-gray-50 px-3 py-2 text-xs leading-relaxed text-blue-gray-700 dark:bg-slate-900 dark:text-slate-300">
+                    {item.canonical_smiles || "No canonical SMILES returned"}
+                  </code>
+                  {(item.metadata?.compound_id || item.metadata?.molecular_formula || item.metadata?.monoisotopic_mass || item.metadata?.activity_score) && (
+                    <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 border-t border-blue-gray-100 pt-3 text-xs dark:border-slate-800">
+                      {item.metadata?.compound_id && <div><dt className="text-blue-gray-500 dark:text-slate-500">Compound</dt><dd className="truncate font-medium text-blue-gray-800 dark:text-slate-300">{item.metadata.compound_id}</dd></div>}
+                      {item.metadata?.molecular_formula && <div><dt className="text-blue-gray-500 dark:text-slate-500">Formula</dt><dd className="truncate font-medium text-blue-gray-800 dark:text-slate-300">{item.metadata.molecular_formula}</dd></div>}
+                      {item.metadata?.monoisotopic_mass && <div><dt className="text-blue-gray-500 dark:text-slate-500">Mass</dt><dd className="truncate font-medium text-blue-gray-800 dark:text-slate-300">{item.metadata.monoisotopic_mass}</dd></div>}
+                      {item.metadata?.activity_score && <div><dt className="text-blue-gray-500 dark:text-slate-500">Activity</dt><dd className="truncate font-medium text-blue-gray-800 dark:text-slate-300">{item.metadata.activity_score}</dd></div>}
+                    </dl>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+        </CardBody>
+      </Card>
+    </div>
   );
 }
 

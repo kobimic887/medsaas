@@ -17,6 +17,38 @@ export const TOOLS = [
     request: () => ({ method: 'GET', path: '/api/platform/health' }),
   },
   {
+    name: 'platform_capabilities',
+    title: 'Platform capabilities',
+    description:
+      'List the scientific capabilities currently configured, deployed, hosted, queued, or not yet deployed on the Pyxis platform.',
+    inputSchema: {},
+    request: () => ({ method: 'GET', path: '/api/platform/capabilities' }),
+  },
+  {
+    name: 'list_jobs',
+    title: 'List jobs',
+    description:
+      'List the authenticated user’s recent normalized docking and ADMET jobs. This is read-only and tenant-scoped.',
+    inputSchema: {
+      kind: z.enum(['all', 'docking', 'admet']).optional().describe('Restrict results to one job kind.'),
+      limit: z.number().int().min(1).max(100).optional().describe('Maximum jobs to return (default 50).'),
+    },
+    request: ({ kind, limit }) => ({
+      method: 'GET',
+      path: '/api/jobs',
+      query: { kind, limit },
+    }),
+  },
+  {
+    name: 'get_job',
+    title: 'Get job',
+    description: 'Fetch one authenticated user’s normalized docking or ADMET job by its returned job id.',
+    inputSchema: {
+      job_id: z.string().describe('Job id returned by list_jobs, such as simulation:<key> or admet:<id>.'),
+    },
+    request: ({ job_id }) => ({ method: 'GET', path: `/api/jobs/${seg(job_id)}` }),
+  },
+  {
     name: 'list_datasets',
     title: 'List Tanimoto datasets',
     description: 'List the compound datasets available for Tanimoto similarity, exact, and substructure search.',

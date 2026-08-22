@@ -8,32 +8,14 @@ export function BlogProvider({ children }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Load blog posts from localStorage
-    const storedPosts = localStorage.getItem('blogPosts');
+    const storedPosts = localStorage.getItem("blogPosts");
     if (storedPosts) {
-      setPosts(JSON.parse(storedPosts));
-    } else {
-      // Initialize with some sample posts
-      const samplePosts = [
-        {
-          id: 1,
-          title: "Welcome to Our Blog",
-          content: "This is the first blog post. You can create, edit, and manage blog posts if you're logged in as an admin.",
-          author: "Admin",
-          date: new Date().toISOString(),
-          published: true
-        },
-        {
-          id: 2,
-          title: "Getting Started",
-          content: "Learn how to use our platform effectively. This post covers the basics of molecular visualization and analysis tools.",
-          author: "Admin", 
-          date: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-          published: true
-        }
-      ];
-      setPosts(samplePosts);
-      localStorage.setItem('blogPosts', JSON.stringify(samplePosts));
+      try {
+        const parsedPosts = JSON.parse(storedPosts);
+        setPosts(Array.isArray(parsedPosts) ? parsedPosts : []);
+      } catch {
+        setPosts([]);
+      }
     }
     setIsLoading(false);
   }, []);

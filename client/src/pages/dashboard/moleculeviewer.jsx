@@ -76,6 +76,8 @@ export function MoleculeViewer() {
   
   const viewerRef = useRef(null);
   const viewer3dRef = useRef(null);
+  const pendingMolDataRef = useRef(null);
+  const visualizationControllerRef = useRef(null);
   const rdkitRef = useRef(null);
   const [rdkitReady, setRdkitReady] = useState(false);
   const [rdkitStatus, setRdkitStatus] = useState('loading'); // 'loading', 'ready', 'error'
@@ -111,12 +113,37 @@ export function MoleculeViewer() {
   ];
 
   useEffect(() => {
-    // Initialize RDKit with improved error handling
+    let cancelled = false;
+
+    // 3Dmol and RDKit are independent. Waiting for RDKit before starting the
+    // viewer made the entire page inherit RDKit's load time and failure mode.
+    const initViewer = async () => {
+      try {
+        const threeDmol = await load3Dmol();
+        if (cancelled || !viewerRef.current) return;
+        viewer3dRef.current = threeDmol.createViewer(viewerRef.current, {
+          backgroundColor,
+          antialias: true,
+          width: "100%",
+          height: "100%",
+        });
+        if (pendingMolDataRef.current) {
+          const pending = pendingMolDataRef.current;
+          pendingMolDataRef.current = null;
+          renderStructure(pending.data, pending.formats);
+        }
+      } catch (viewerError) {
+        if (!cancelled) {
+          console.error('3D viewer unavailable:', viewerError);
+          setError('The 3D viewer could not load. Reload the page and try again.');
+        }
+      }
+    };
+
     const initRDKit = async () => {
       try {
         setRdkitStatus('loading');
-        console.log('Attempting to initialize RDKit...');
-        
+
         // window.loadRDKit is the loader in client/index.html. It used to be called
         // window.initRDKitModule — the same name RDKit_minimal.js assigns — so this
         // call resolved against the wrapper or the bundle depending on which script
@@ -124,27 +151,32 @@ export function MoleculeViewer() {
         const load = window.loadRDKit || window.initRDKitModule;
         if (typeof load === 'function') {
           const rdkit = await load();
+          if (cancelled) return;
           rdkitRef.current = rdkit;
           setRdkitReady(true);
           setRdkitStatus('ready');
-          console.log('RDKit initialized successfully');
         } else {
-          console.warn('RDKit module not available');
+          if (!cancelled) setRdkitStatus('error');
+        }
+      } catch (rdkitError) {
+        if (!cancelled) {
+          console.warn('RDKit unavailable; using remote structure fallback:', rdkitError);
+          setRdkitReady(false);
           setRdkitStatus('error');
         }
-      } catch (error) {
-        console.error('Failed to load RDKit:', error);
-        console.log('Will use PubChem fallback for molecular structure generation');
-        setRdkitReady(false);
-        setRdkitStatus('error');
-      } finally {
-        // Always initialize the 3D viewer regardless of RDKit status
-        setTimeout(initializeViewer, 500);
       }
     };
 
-    // Add delay to ensure DOM is ready
-    setTimeout(initRDKit, 1000);
+    initViewer();
+    initRDKit();
+
+    return () => {
+      cancelled = true;
+      visualizationControllerRef.current?.abort();
+      visualizationControllerRef.current = null;
+      viewer3dRef.current?.clear();
+      viewer3dRef.current = null;
+    };
   }, []);
 
   // Check for DiffDock results from localStorage
@@ -152,15 +184,10 @@ export function MoleculeViewer() {
     const checkDiffDockResult = () => {
       try {
         const diffDockResultStr = localStorage.getItem('diffdock_result');
-        const diffDockPdbId = localStorage.getItem('diffdock_pdb_id');
         const diffDockLigandId = localStorage.getItem('diffdock_ligand_id');
         
         if (diffDockResultStr) {
-          console.log('DiffDock result found in localStorage');
           const diffDockData = JSON.parse(diffDockResultStr);
-          console.log('DiffDock data:', diffDockData);
-          console.log('PDB ID:', diffDockPdbId);
-          console.log('Ligand ID:', diffDockLigandId);
           
           // Try multiple possible keys for structure data
           let structureData = null;
@@ -178,61 +205,14 @@ export function MoleculeViewer() {
           else if (diffDockData.ligand_smiles) smilesData = diffDockData.ligand_smiles;
           else if (diffDockData.ligand) smilesData = diffDockData.ligand;
           
-          console.log('Found structure data:', !!structureData);
-          console.log('Found SMILES data:', smilesData);
-          
           if (structureData) {
-            // If we have structure data, render it directly
-            console.log('Rendering structure data...');
             setCurrentSmiles(diffDockLigandId || 'DiffDock Result');
-            
-            setTimeout(() => {
-              if (viewer3dRef.current) {
-                try {
-                  viewer3dRef.current.clear();
-                  // Try different format types
-                  const formats = ['sdf', 'pdb', 'mol'];
-                  let rendered = false;
-                  
-                  for (const format of formats) {
-                    try {
-                      viewer3dRef.current.addModel(structureData, format);
-                      viewer3dRef.current.setStyle({}, getStyleConfig());
-                      viewer3dRef.current.zoomTo();
-                      viewer3dRef.current.render();
-                      rendered = true;
-                      console.log(`Successfully rendered as ${format}`);
-                      break;
-                    } catch (e) {
-                      console.log(`Failed to render as ${format}:`, e.message);
-                      viewer3dRef.current.clear();
-                    }
-                  }
-                  
-                  if (!rendered) {
-                    setError('Could not render DiffDock structure data');
-                  }
-                } catch (err) {
-                  console.error('Error rendering:', err);
-                  setError(`Failed to render DiffDock result: ${err.message}`);
-                }
-              } else {
-                console.error('Viewer not initialized');
-                setError('3D viewer not initialized');
-              }
-            }, 1500);
+            renderStructure(structureData, ['sdf', 'pdb', 'mol']);
           } else if (smilesData) {
-            // If we have SMILES, use the existing visualization function
-            console.log('Using SMILES:', smilesData);
             setSmilesInput(smilesData);
-            setTimeout(() => {
-              visualizeMolecule();
-            }, 1500);
+            visualizeMolecule(smilesData);
           } else {
-            // No recognizable data format
-            console.error('DiffDock result does not contain recognizable structure data');
-            console.log('Available keys:', Object.keys(diffDockData));
-            setError('DiffDock result does not contain structure data. Check console for details.');
+            setError('The saved DiffDock result does not contain recognizable structure data.');
           }
           
           // Clear the localStorage after loading
@@ -247,27 +227,8 @@ export function MoleculeViewer() {
       }
     };
     
-    // Check after a delay to ensure viewer is initialized
-    setTimeout(checkDiffDockResult, 2000);
+    checkDiffDockResult();
   }, []);
-
-  const initializeViewer = async () => {
-    if (!viewerRef.current) return;
-    try {
-      await load3Dmol();
-    } catch (error) {
-      console.error('3D viewer unavailable:', error);
-      return;
-    }
-    if (viewerRef.current && window.$3Dmol) {
-      viewer3dRef.current = window.$3Dmol.createViewer(viewerRef.current, {
-        backgroundColor: backgroundColor,
-        antialias: true,
-        width: "100%",
-        height: "100%",
-      });
-    }
-  };
 
   const getStyleConfig = () => {
     const baseStyle = {};
@@ -296,11 +257,44 @@ export function MoleculeViewer() {
     return baseStyle;
   };
 
-  const visualizeMolecule = async () => {
-    if (!smilesInput.trim()) {
+  const renderStructure = (molData, formats = ['sdf']) => {
+    if (!viewer3dRef.current) {
+      pendingMolDataRef.current = { data: molData, formats };
+      return false;
+    }
+    for (const format of formats) {
+      try {
+        viewer3dRef.current.clear();
+        viewer3dRef.current.addModel(molData, format);
+        viewer3dRef.current.setStyle({}, getStyleConfig());
+        viewer3dRef.current.zoomTo();
+        viewer3dRef.current.render();
+        return true;
+      } catch (renderError) {
+        console.warn(`Could not render molecular data as ${format}:`, renderError);
+      }
+    }
+    viewer3dRef.current.clear();
+    viewer3dRef.current.render();
+    setError('The molecular structure was returned but could not be rendered.');
+    return false;
+  };
+
+  const visualizeMolecule = async (requestedInput = smilesInput) => {
+    const requestedSmiles = typeof requestedInput === 'string'
+      ? requestedInput.trim()
+      : smilesInput.trim();
+    if (!requestedSmiles) {
       setError("Please enter a SMILES string");
       return;
     }
+
+    visualizationControllerRef.current?.abort();
+    const controller = new AbortController();
+    visualizationControllerRef.current = controller;
+    const timeoutId = window.setTimeout(() => {
+      controller.abort(new DOMException('Structure lookup timed out', 'TimeoutError'));
+    }, 15000);
 
     setIsLoading(true);
     setError("");
@@ -311,33 +305,25 @@ export function MoleculeViewer() {
       // Try RDKit.js first if available
       if (rdkitReady && rdkitRef.current) {
         try {
-          console.log('Processing SMILES with RDKit...');
-          const mol = rdkitRef.current.get_mol(smilesInput);
+          const mol = rdkitRef.current.get_mol(requestedSmiles);
           if (mol && mol.is_valid() !== 0) {
             molData = mol.get_molblock();
-            setCurrentSmiles(smilesInput);
             mol.delete();
-            console.log('Successfully processed with RDKit');
           } else {
-            console.log('RDKit could not process this SMILES, trying PubChem...');
             if (mol) mol.delete(); // Clean up invalid molecule
           }
         } catch (rdkitError) {
-          console.log('RDKit processing failed:', rdkitError.message);
-          console.log('Falling back to PubChem...');
+          console.warn('RDKit could not process this SMILES; trying PubChem:', rdkitError);
         }
-      } else {
-        console.log('RDKit not ready, using PubChem directly...');
       }
 
       // Fallback to PubChem if RDKit failed or unavailable
       if (!molData) {
-        console.log('Fetching structure from PubChem...');
-        
         try {
           // Try to get CID from SMILES
           const cidResponse = await fetch(
-            `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(smilesInput)}/cids/JSON`
+            `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(requestedSmiles)}/cids/JSON`,
+            { signal: controller.signal }
           );
           
           if (cidResponse.ok) {
@@ -346,40 +332,47 @@ export function MoleculeViewer() {
             
             // Try to get 3D structure
             const sdfResponse = await fetch(
-              `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/SDF?record_type=3d`
+              `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/SDF?record_type=3d`,
+              { signal: controller.signal }
             );
             
             if (sdfResponse.ok) {
               molData = await sdfResponse.text();
-              setCurrentSmiles(smilesInput);
-              console.log('Successfully fetched 3D structure from PubChem');
             } else {
               // Try 2D structure as fallback
               const sdf2dResponse = await fetch(
-                `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/SDF`
+                `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/SDF`,
+                { signal: controller.signal }
               );
               
               if (sdf2dResponse.ok) {
                 molData = await sdf2dResponse.text();
-                setCurrentSmiles(smilesInput);
-                console.log('Successfully fetched 2D structure from PubChem');
               }
             }
           }
         } catch (pubchemError) {
-          console.error('PubChem API error:', pubchemError);
-          // Try alternative approach using NCI CACTUS
+          if (pubchemError.name === 'AbortError' || pubchemError.name === 'TimeoutError') {
+            throw pubchemError;
+          }
+          console.warn('PubChem lookup failed; trying NCI CACTUS:', pubchemError);
+        }
+
+        // PubChem can return a normal non-2xx response for a valid molecule it
+        // does not contain, so CACTUS is a fallback for both HTTP and network failures.
+        if (!molData) {
           try {
             const response = await fetch(
-              `https://cactus.nci.nih.gov/chemical/structure/${encodeURIComponent(smilesInput)}/sdf`
+              `https://cactus.nci.nih.gov/chemical/structure/${encodeURIComponent(requestedSmiles)}/sdf`,
+              { signal: controller.signal }
             );
             if (response.ok) {
               molData = await response.text();
-              setCurrentSmiles(smilesInput);
-              console.log('Successfully fetched structure from NCI CACTUS');
             }
           } catch (cactusError) {
-            console.error('CACTUS API error:', cactusError);
+            if (cactusError.name === 'AbortError' || cactusError.name === 'TimeoutError') {
+              throw cactusError;
+            }
+            console.warn('NCI CACTUS lookup failed:', cactusError);
           }
         }
       }
@@ -388,20 +381,23 @@ export function MoleculeViewer() {
         throw new Error("Could not generate 3D structure for this molecule. Please check the SMILES string or try a different molecule.");
       }
 
-      // Render the molecule
-      if (viewer3dRef.current) {
-        viewer3dRef.current.clear();
-        viewer3dRef.current.addModel(molData, "sdf");
-        viewer3dRef.current.setStyle({}, getStyleConfig());
-        viewer3dRef.current.zoomTo();
-        viewer3dRef.current.render();
-      }
+      setCurrentSmiles(requestedSmiles);
+      renderStructure(molData);
 
     } catch (error) {
-      console.error('Visualization error:', error);
-      setError(`Failed to visualize molecule: ${error.message}`);
+      if (error.name === 'AbortError') return;
+      if (error.name === 'TimeoutError') {
+        setError('The structure lookup timed out. Check the SMILES and try again.');
+      } else {
+        console.error('Visualization error:', error);
+        setError(`Failed to visualize molecule: ${error.message}`);
+      }
     } finally {
-      setIsLoading(false);
+      window.clearTimeout(timeoutId);
+      if (visualizationControllerRef.current === controller) {
+        visualizationControllerRef.current = null;
+        setIsLoading(false);
+      }
     }
   };
 
@@ -461,6 +457,10 @@ export function MoleculeViewer() {
   };
 
   const clearViewer = () => {
+    visualizationControllerRef.current?.abort();
+    visualizationControllerRef.current = null;
+    pendingMolDataRef.current = null;
+    setIsLoading(false);
     setSmilesInput("");
     setCurrentSmiles("");
     setError("");
@@ -482,21 +482,33 @@ export function MoleculeViewer() {
 
   const setExampleMolecule = (smiles) => {
     setSmilesInput(smiles);
+    setActiveTab('visualizer');
+    visualizeMolecule(smiles);
   };
 
   return (
-    <div className="mt-12">
-      <div className="mb-12 grid gap-y-10 gap-x-6 md:grid-cols-1">
-        <Card>
-          <CardHeader variant="gradient" color="gray" className="mb-8 p-6">
-            <Typography variant="h6" color="white">
-              <BeakerIcon className="inline w-5 h-5 mr-2" />
-              Molecular Viewer - 3D Visualization Platform
+    <div className="mx-auto w-full max-w-[1440px] py-2">
+      <div className="w-full">
+        <Card
+          shadow={false}
+          className="overflow-hidden rounded-2xl border border-blue-gray-100 bg-white dark:border-slate-800 dark:bg-slate-900"
+        >
+          <CardHeader
+            floated={false}
+            shadow={false}
+            className="m-0 rounded-none border-b border-blue-gray-100 bg-white px-6 py-5 dark:border-slate-800 dark:bg-slate-900"
+          >
+            <Typography variant="h6" color="blue-gray" className="flex items-center gap-2 dark:text-slate-100">
+              <BeakerIcon className="h-5 w-5 text-brand-600 dark:text-brand-300" aria-hidden="true" />
+              Molecular Viewer
+            </Typography>
+            <Typography variant="small" color="gray" className="mt-1 dark:text-slate-400">
+              Generate and inspect an interactive 3D structure from a SMILES string.
             </Typography>
           </CardHeader>
-          <CardBody className="px-6 pt-0 pb-6">
+          <CardBody className="p-4 sm:p-5">
             <Tabs value={activeTab}>
-              <TabsHeader>
+              <TabsHeader className="rounded-lg bg-blue-gray-50/70 p-1 dark:bg-slate-800">
                 <Tab value="visualizer" onClick={() => setActiveTab("visualizer")}>
                   <EyeIcon className="w-5 h-5 mr-2" />
                   Visualizer
@@ -511,10 +523,10 @@ export function MoleculeViewer() {
                 </Tab>
               </TabsHeader>
               <TabsBody>
-                <TabPanel value="visualizer" className="p-0 pt-4">
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <TabPanel value="visualizer" className="p-0 pt-3">
+                  <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(16rem,0.8fr)_minmax(0,2fr)]">
                     {/* Input Panel */}
-                    <div className="lg:col-span-1 space-y-4">
+                    <div className="min-w-0 space-y-4">
                       <div>
                         <Typography variant="h6" className="mb-2" as="div">
                           SMILES Input
@@ -524,7 +536,7 @@ export function MoleculeViewer() {
                           label="Enter SMILES string"
                           value={smilesInput}
                           onChange={(e) => setSmilesInput(e.target.value)}
-                          onKeyPress={(e) => e.key === 'Enter' && visualizeMolecule()}
+                          onKeyDown={(e) => e.key === 'Enter' && visualizeMolecule()}
                         />
                         
                         {/* RDKit Status Indicator */}
@@ -554,7 +566,7 @@ export function MoleculeViewer() {
                         <Button
                           size="sm"
                           color="blue"
-                          onClick={visualizeMolecule}
+                          onClick={() => visualizeMolecule()}
                           disabled={isLoading}
                           className="flex items-center gap-2"
                         >
@@ -567,6 +579,7 @@ export function MoleculeViewer() {
                           variant="outlined"
                           onClick={clearViewer}
                           title="Clear viewer"
+                          aria-label="Clear viewer"
                         >
                           <TrashIcon className="w-4 h-4" />
                         </IconButton>
@@ -576,6 +589,7 @@ export function MoleculeViewer() {
                           variant="outlined"
                           onClick={toggleFullscreen}
                           title="Toggle fullscreen"
+                          aria-label="Toggle fullscreen"
                         >
                           <ArrowsPointingOutIcon className="w-4 h-4" />
                         </IconButton>
@@ -585,6 +599,7 @@ export function MoleculeViewer() {
                           variant="outlined"
                           onClick={() => exportMolecule("smiles")}
                           title="Export SMILES"
+                          aria-label="Export SMILES"
                         >
                           <ArrowDownTrayIcon className="w-4 h-4" />
                         </IconButton>
@@ -611,21 +626,21 @@ export function MoleculeViewer() {
                     </div>
 
                     {/* 3D Viewer Panel */}
-                    <div className="lg:col-span-2">
-                      <div 
+                    <div className="min-w-0">
+                      <div
                         ref={viewerRef}
-                        className="w-full h-96 lg:h-[500px] border border-gray-200 rounded-lg bg-white relative overflow-hidden"
+                        className="relative z-0 h-[clamp(22rem,48vh,31rem)] w-full overflow-hidden rounded-xl border border-blue-gray-200 bg-white dark:border-slate-700"
                         style={{ backgroundColor: backgroundColor }}
                       >
                         {!currentSmiles && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
-                            <div className="text-center">
-                              <BeakerIcon className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-                              <Typography variant="h6" color="gray" as="div">
-                                Enter a SMILES string to visualize
+                          <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-50/95 px-6 text-center dark:bg-slate-950/95">
+                            <div>
+                              <BeakerIcon className="mx-auto mb-4 h-12 w-12 text-blue-gray-300 dark:text-slate-600" aria-hidden="true" />
+                              <Typography variant="h6" color="blue-gray" as="div" className="dark:text-slate-200">
+                                Your molecular workspace is ready
                               </Typography>
-                              <Typography variant="small" color="gray" as="div">
-                                3D molecular structure will appear here
+                              <Typography variant="small" color="gray" as="div" className="mx-auto mt-1 max-w-sm dark:text-slate-400">
+                                Enter a SMILES string on the left and select Visualize to render its 3D structure here.
                               </Typography>
                             </div>
                           </div>
@@ -641,7 +656,13 @@ export function MoleculeViewer() {
                   </Typography>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {exampleMolecules.map((mol, index) => (
-                      <Card key={index} className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setExampleMolecule(mol.smiles)}>
+                      <button
+                        type="button"
+                        key={index}
+                        className="rounded-xl border border-blue-gray-100 bg-white text-left transition-colors hover:border-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-brand-500"
+                        onClick={() => setExampleMolecule(mol.smiles)}
+                        aria-label={`Visualize ${mol.name}`}
+                      >
                         <CardBody className="p-4">
                           <Typography variant="h6" className="mb-1" as="div">
                             {mol.name}
@@ -653,7 +674,7 @@ export function MoleculeViewer() {
                             {mol.smiles}
                           </Typography>
                         </CardBody>
-                      </Card>
+                      </button>
                     ))}
                   </div>
                 </TabPanel>
@@ -714,7 +735,7 @@ export function MoleculeViewer() {
                     </Typography>
                     <Typography variant="small" color="gray" as="div">
                       This molecular viewer uses 3Dmol.js for 3D visualization and RDKit.js for SMILES processing. 
-                      It supports various molecular representations and can export structures in multiple formats.
+                      It supports several molecular representations and exports the selected SMILES string.
                       For molecules not available through RDKit, we fallback to PubChem's 3D structure service.
                     </Typography>
                   </div>

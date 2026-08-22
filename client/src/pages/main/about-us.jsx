@@ -1,5 +1,3 @@
-
-
 export default function AboutUs() {
   return (
     <div className="about-us-page">
@@ -8,14 +6,14 @@ export default function AboutUs() {
         className="py-5 text-white d-flex align-items-center justify-content-center"
         style={{
           background:
-            "linear-gradient(135deg, #0d1b2a 0%, #1b4965 50%, #62b6cb 100%)",
+            "linear-gradient(rgba(0,0,0,0.5),rgba(0,0,0,0.5)), url('/img/pyxis-hero.jpg') center/cover no-repeat",
           minHeight: 350,
         }}
       >
         <div className="container text-center">
           <h1 className="display-3 fw-bold mb-3">About Pyxis Discovery</h1>
           <p className="lead mx-auto" style={{ maxWidth: 700 }}>
-            A platform for chemistry laboratories to showcase compounds and connect with customers
+            Chemistry-driven innovation for macrocyclic drug discovery
           </p>
         </div>
       </section>
@@ -24,16 +22,11 @@ export default function AboutUs() {
       <section className="container py-5">
         <div className="row align-items-center mb-5">
           <div className="col-lg-6 mb-4 mb-lg-0">
-            <div
-              role="img"
-              aria-label="Pyxis Discovery Team"
+            <img
+              src="/img/pyxis-team.jpeg"
+              alt="Pyxis Discovery Team"
               className="img-fluid rounded shadow"
-              style={{
-                height: 400,
-                width: "100%",
-                background:
-                  "linear-gradient(135deg, #0d1b2a 0%, #1b4965 50%, #62b6cb 100%)",
-              }}
+              style={{ maxHeight: 400, objectFit: "cover", width: "100%" }}
             />
           </div>
           <div className="col-lg-6">
@@ -41,33 +34,44 @@ export default function AboutUs() {
               Who We Are
             </h2>
             <p className="lead">
-              Pyxis Discovery is a platform that empowers chemistry laboratories to
-              create branded digital spaces where their customers can explore
-              compound libraries, run molecular simulations, and purchase
-              ligands — all in one place.
+              Pyxis Discovery is a chemistry-driven company specializing in the
+              design and synthesis of macrocyclic compound libraries for drug
+              discovery. Our mission is to accelerate the development of new
+              medicines by providing unique, high-quality chemical space and
+              innovative solutions for pharmaceutical research.
             </p>
             <ul className="list-unstyled">
-              <li>• Branded lab portals for compound showcasing</li>
-              <li>• Integrated Molstar 3D viewer and docking tools</li>
-              <li>• Streamlined purchasing and quote workflows</li>
+              <li>• Scaffold-based macrocycle libraries</li>
+              <li>• Molecular glues and diversity libraries</li>
+              <li>• AI-ready, drug-like chemical space for pharma and biotech</li>
             </ul>
           </div>
         </div>
 
-        {/* Our Mission & Values */}
+        {/* Vision, Mission & Values */}
         <div className="row mb-5">
-          <div className="col-md-6 mb-4 mb-md-0">
+          <div className="col-md-4 mb-4 mb-md-0">
             <div className="bg-light rounded p-4 h-100 shadow-sm">
-              <h3 className="fw-bold mb-3">Our Mission</h3>
-              <p>
-                To accelerate drug discovery by connecting chemistry labs with
-                their customers through an interactive, digital-first platform.
-                We empower labs with professional tools and help researchers find
-                the compounds they need faster.
+              <h3 className="fw-bold mb-3">Our Vision</h3>
+              <p className="mb-0">
+                Unlock the potential of macrocycles to create tomorrow&apos;s
+                breakthrough drugs — unique small molecules that interact with
+                novel biological targets, with the possibility of oral
+                bioavailability.
               </p>
             </div>
           </div>
-          <div className="col-md-6">
+          <div className="col-md-4 mb-4 mb-md-0">
+            <div className="bg-light rounded p-4 h-100 shadow-sm">
+              <h3 className="fw-bold mb-3">Our Mission</h3>
+              <p className="mb-0">
+                Enable the discovery of future medicines by unlocking the
+                potential of macrocyclic chemistry. We empower partners with
+                innovative libraries and expertise to accelerate drug discovery.
+              </p>
+            </div>
+          </div>
+          <div className="col-md-4">
             <div className="bg-light rounded p-4 h-100 shadow-sm">
               <h3 className="fw-bold mb-3">Our Values</h3>
               <ul className="mb-0">
@@ -83,16 +87,11 @@ export default function AboutUs() {
         {/* Our Team */}
         <div className="row align-items-center mb-5">
           <div className="col-lg-6 order-lg-2 mb-4 mb-lg-0">
-            <div
-              role="img"
-              aria-label="Pyxis Discovery Lab"
+            <img
+              src="/img/pyxis-lab.jpeg"
+              alt="Pyxis Discovery Lab"
               className="img-fluid rounded shadow"
-              style={{
-                height: 400,
-                width: "100%",
-                background:
-                  "linear-gradient(135deg, #0d1b2a 0%, #1b4965 50%, #62b6cb 100%)",
-              }}
+              style={{ maxHeight: 400, objectFit: "cover", width: "100%" }}
             />
           </div>
           <div className="col-lg-6 order-lg-1">
@@ -100,10 +99,10 @@ export default function AboutUs() {
               Our Team
             </h2>
             <p>
-              Pyxis Discovery was founded by a team of experienced scientists and
-              engineers with backgrounds in medicinal chemistry, computational
-              chemistry, and software development. We combine deep scientific
-              expertise with a passion for building great digital products.
+              Pyxis Discovery was founded by a group of experienced scientists
+              with backgrounds in medicinal chemistry, computational chemistry,
+              and chemical biology. Our team combines deep scientific expertise
+              with a passion for innovation and collaboration.
             </p>
           </div>
         </div>
@@ -115,11 +114,12 @@ export default function AboutUs() {
               Our Approach
             </h2>
             <p>
-              We provide chemistry labs with a turnkey platform to showcase their
-              compound libraries — from macrocycles to covalent inhibitors —
-              complete with interactive simulation tools, protein docking, and
-              integrated purchasing, so labs can focus on chemistry while we
-              handle the digital experience.
+              We embrace scaffold-based chemical space exploration, focusing on
+              drug-like, synthetically tractable macrocycles. Our libraries are
+              designed to be compatible with modern drug discovery workflows,
+              including AI-driven design, high-throughput screening, and
+              structure-based drug design — and the app workspace lets research
+              teams search catalogs, run docking, and inspect poses in 3D.
             </p>
           </div>
         </div>
@@ -131,10 +131,12 @@ export default function AboutUs() {
               Contact Us
             </h2>
             <p>
-              Interested in learning more about Pyxis Discovery or listing your lab?
+              Interested in learning more about Pyxis Discovery or collaborating
+              with us?
               <a
                 href="/main/contact-us"
                 className="btn btn-success ms-2"
+                role="button"
               >
                 Contact Us
               </a>

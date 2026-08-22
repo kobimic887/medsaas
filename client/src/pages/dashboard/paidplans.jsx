@@ -1,235 +1,125 @@
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Card,
   CardBody,
   Typography,
   Button,
-  Chip,
   Alert,
   Spinner,
 } from "@material-tailwind/react";
 import { CheckIcon, XMarkIcon, CheckCircleIcon } from "@heroicons/react/24/outline";
-import { API_CONFIG } from "@/utils/constants";
+import { API_CONFIG, getAuthToken } from "@/utils/constants";
+import { TOKEN_PLANS } from "@/utils/tokenPlans";
 
 export function PaidPlans() {
-  const [isYearly, setIsYearly] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loadingPlan, setLoadingPlan] = useState('');
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState(''); // 'success' or 'error'
-
-  // Check if Stripe is properly configured
-  const isStripeConfigured = !!import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
-
-  // Handle toggle change
-  const _handleToggleChange = () => {
-    const newValue = !isYearly;
-    console.log('Toggle changed from', isYearly, 'to', newValue);
-    setIsYearly(newValue);
-  };
+  const requestControllerRef = useRef(null);
 
   // Check for payment success/cancel from URL params
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('success')) {
-      setMessage('Payment received. Credits are granted by Stripe webhook after confirmation.');
+      setMessage('Checkout completed. Stripe is confirming the payment; credits appear after the signed webhook is received.');
       setMessageType('success');
     } else if (urlParams.get('canceled')) {
       setMessage('Payment was canceled. You can try again anytime.');
       setMessageType('error');
     }
+
+    if (urlParams.has('success') || urlParams.has('canceled') || urlParams.has('session_id')) {
+      urlParams.delete('success');
+      urlParams.delete('canceled');
+      urlParams.delete('session_id');
+      const remainingQuery = urlParams.toString();
+      window.history.replaceState(
+        {},
+        document.title,
+        `${window.location.pathname}${remainingQuery ? `?${remainingQuery}` : ''}`,
+      );
+    }
+
+    return () => requestControllerRef.current?.abort();
   }, []);
 
-  const plans = [
-     {
-      name: 'Trial',
-      subtitle: 'Affordable access for anyone to understand the concept',
-      popular: false,
-      description: 'Affordable access for anyone to understand the concept',
-      credits: 4,
-      features: [
-        'Trial',
-        '4 credits',        
-        'Low job priority',
-        'Most models & settings',
-        'Email Support',
-        'Guaranteed Confidentiality',
-      ],
-      buttonText: 'Get Tokens and Try',
-      buttonColor: 'gray'
-    },
-    {
-      name: 'Standard',
-      subtitle: 'Best for active research projects',
-      price: 20,
-      popular: false,
-      description: 'The best choice for active research projects needing more power.',
-      credits: 50,
-      features: [
-        '50 credits',
-        'Medium job priority',
-        'Most models & settings',
-        'Email Support',
-        'Guaranteed Confidentiality',
-        'Unlimited Data Storage',
-      ],
-      buttonText: 'Purchase',
-      buttonColor: 'blue'
-    },
-    {
-      name: 'Academic',
-      subtitle: 'For serious academic research with higher compute demands',
-      price: 40,
-      popular: false,
-      description: 'The best choice for active research projects needing more power.',
-      credits: 300,
-      features: [
-        '300 credits',
-        'Medium job priority',
-        'Most models & settings',
-        'Email Support',
-        'Guaranteed Confidentiality',
-        'Unlimited Data Storage',
-      ],
-      buttonText: 'Purchase',
-      buttonColor: 'blue'
-    },
-    
-    {
-      name: 'Professional',
-      subtitle: 'The powerhouse plan for professionals',
-      price: 80,
-      popular: false,
-      description: 'The powerhouse plan for professionals needing large-scale computation.',
-      credits: 720,
-      features: [
-        'Commercial Use',
-        '720 credits',
-        'High job priority',
-        'All models & settings',
-        'Priority Support',
-        'Guaranteed Confidentiality',
-        'Unlimited Data Storage',
-      ],
-      buttonText: 'Purchase',
-      buttonColor: 'purple'
-    }
-  ];  const handlePlanSelection = async (plan) => {
-    // Check if Stripe is configured
-    if (!isStripeConfigured) {
-      setMessage('Stripe is not configured. Please check the setup instructions.');
-      setMessageType('error');
-      return;
-    }
+  const plans = TOKEN_PLANS;
 
-    if (plan.name === 'Trial') {
-      await claimTrialTokens();
-      return;
-    }
-    if (plan.name === 'Enterprise') {
-      // Handle enterprise contact separately
-      window.open('mailto:sales@asinex.com?subject=Enterprise Plan Inquiry&body=I am interested in the Enterprise plan for molecular research tools.');
-      return;
-    }
-    setLoading(true);
+  const handlePlanSelection = async (plan) => {
+    const controller = new AbortController();
+    requestControllerRef.current?.abort();
+    requestControllerRef.current = controller;
+    setLoadingPlan(plan.name);
     setMessage('');
 
     try {
-      const result = await createCheckoutSession(plan, isYearly);
-      
-      if (result.error) {
-        throw new Error(result.error);
+      if (plan.name === 'Trial') {
+        await claimTrialTokens(controller.signal);
+        return;
       }
 
-      // Redirect to checkout
-      window.location.href = result.url;
-      
+      const result = await createCheckoutSession(plan, controller.signal);
+      if (!result.url) throw new Error('Checkout did not return a redirect URL');
+      window.location.assign(result.url);
     } catch (error) {
-      console.error('Error:', error);
+      if (error.name === 'AbortError') return;
       setMessage(`Failed to start checkout: ${error.message}`);
       setMessageType('error');
     } finally {
-      setLoading(false);
-    }
-  };
-
-  // Helper function to create checkout session
-  const createCheckoutSession = async (plan, _isYearly) => {
-    try {
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch(API_CONFIG.buildUrl('/create-checkout-session-onetime'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({
-          planName: plan.name,
-          price: plan.price,
-      
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create checkout session');
+      if (requestControllerRef.current === controller) {
+        requestControllerRef.current = null;
+        setLoadingPlan('');
       }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Error creating checkout session:', error);
-      return { error: error.message };
     }
   };
 
-  const claimTrialTokens = async () => {
-    setLoading(true);
-    setMessage('');
+  const createCheckoutSession = async (plan, signal) => {
+    const token = getAuthToken();
+    const response = await fetch(API_CONFIG.buildUrl('/create-checkout-session-onetime'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({ planName: plan.name }),
+      signal,
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.error || 'Failed to create checkout session');
+    }
+    return payload;
+  };
+
+  const claimTrialTokens = async (signal) => {
     try {
-      const token = localStorage.getItem('auth_token');
+      const token = getAuthToken();
       const response = await fetch(API_CONFIG.buildApiUrl('/billing/claim-trial'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        }
+        },
+        signal,
       });
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to claim trial tokens');
+        throw new Error(data.error || 'Failed to claim trial tokens');
       }
-      const data = await response.json();
       setMessage(`Trial activated. ${data.credits} simulation tokens were added.`);
       setMessageType('success');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
+      if (error.name === 'AbortError') throw error;
       setMessage(error.message);
       setMessageType('error');
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    } finally {
-      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4">
+    <div className="min-h-screen bg-gray-50 px-4 py-12 dark:bg-slate-950">
       <div className="max-w-7xl mx-auto">
-        {/* Stripe Configuration Error */}
-        {!isStripeConfigured && (
-          <div className="mb-8">
-            <Alert
-              color="red"
-              icon={<XMarkIcon className="h-5 w-5" />}
-            >
-              <div>
-                <Typography className="font-semibold mb-2">Stripe Not Configured</Typography>
-                <Typography className="text-sm">
-                  Stripe payment integration is not configured. Set VITE_STRIPE_PUBLISHABLE_KEY in the root .env file.
-                </Typography>
-              </div>
-            </Alert>
-          </div>
-        )}
-
         {/* Success/Error Messages */}
         {message && (
           <div className="mb-8">
@@ -258,41 +148,32 @@ export function PaidPlans() {
         </div>
 
         {/* Pricing Cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
-          {plans.map((plan, index) => (
-            <div key={index} className="relative">
-              {plan.popular && (
-                <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 z-10">
-                  <Chip
-                    value="Most Popular"
-                    className="bg-blue-600 text-white font-semibold px-4 py-2"
-                  />
-                </div>
-              )}
-              
-              <Card className={`h-full ${plan.popular ? 'ring-2 ring-blue-600 shadow-xl scale-105' : 'shadow-lg hover:shadow-xl'} transition-all duration-300`}>
+        <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+          {plans.map((plan) => (
+            <div key={plan.name} className="relative">
+              <Card className="h-full shadow-lg transition-all duration-300 hover:shadow-xl dark:border dark:border-slate-800 dark:bg-slate-900">
                 <CardBody className="p-8">
                   <div className="text-center mb-8">
-                    <Typography variant="h4" className="mb-2 font-bold text-gray-900">
+                    <Typography variant="h4" className="mb-2 font-bold text-gray-900 dark:text-slate-100">
                       {plan.name}
                     </Typography>
-                    <Typography className="text-gray-600 mb-6">
+                    <Typography className="mb-6 text-gray-600 dark:text-slate-300">
                       {plan.subtitle}
                     </Typography>
                     
                     <div className="mb-4">
                       <div className="flex items-baseline justify-center">
-                        <Typography variant="h2" className="text-4xl font-bold text-gray-900">
+                        <Typography variant="h2" className="text-4xl font-bold text-gray-900 dark:text-slate-100">
                           {plan.price ? `$${plan.price}` : 'Free'}
                         </Typography>
                         {plan.price ? (
-                          <Typography className="text-gray-500 ml-1">one-time</Typography>
+                          <Typography className="ml-1 text-gray-500 dark:text-slate-400">one-time</Typography>
                         ) : null}
                       </div>
 
                     </div>
                     
-                    <Typography className="text-gray-600 text-sm mb-6">
+                    <Typography className="mb-6 text-sm text-gray-600 dark:text-slate-300">
                       {plan.description}
                     </Typography>
                   </div>
@@ -301,20 +182,22 @@ export function PaidPlans() {
                     {plan.features.map((feature, idx) => (
                       <div key={idx} className="flex items-start gap-3">
                         <CheckIcon className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
-                        <Typography className="text-gray-700 text-sm">
+                        <Typography className="text-sm text-gray-700 dark:text-slate-200">
                           {feature}
                         </Typography>
                       </div>
                     ))}
-                  </div>                  <Button
+                  </div>
+                  <Button
                     onClick={() => handlePlanSelection(plan)}
+                    aria-label={plan.name === 'Trial' ? 'Claim Trial credits' : `Purchase ${plan.name} credit pack`}
                     color={plan.buttonColor}
                     size="lg"
                     className="w-full"
-                    variant={plan.popular ? "filled" : "outlined"}
-                    disabled={loading}
+                    variant="outlined"
+                    disabled={Boolean(loadingPlan)}
                   >
-                    {loading ? (
+                    {loadingPlan === plan.name ? (
                       <div className="flex items-center justify-center">
                         <Spinner className="h-4 w-4 mr-2" />
                         Processing...

@@ -4,29 +4,13 @@ import {
   Card,
   CardHeader,
   CardBody,
-  IconButton,
-  Menu,
-  MenuHandler,
-  MenuList,
-  MenuItem,
-  Avatar,
-  Tooltip,
-  Progress,
   Spinner,
   Alert,
 } from "@material-tailwind/react";
-import {
-  EllipsisVerticalIcon,
-  ArrowUpIcon,
-} from "@heroicons/react/24/outline";
+import { ArrowUpIcon } from "@heroicons/react/24/outline";
 import { StatisticsCard } from "@/widgets/cards";
-import { StatisticsChart } from "@/widgets/charts";
-import {
-  statisticsChartsData,
-} from "@/data";
-import { CheckCircleIcon, ClockIcon } from "@heroicons/react/24/solid";
-import { API_CONFIG } from "@/utils/constants";
-
+import { CheckCircleIcon } from "@heroicons/react/24/solid";
+import { API_CONFIG, getAuthToken } from "@/utils/constants";
 
 export function DashboardHome() {
   const [activityData, setActivityData] = React.useState(null);
@@ -36,72 +20,73 @@ export function DashboardHome() {
   const [molPriceStatsError, setMolPriceStatsError] = React.useState(null);
   const [molPriceStatsLoading, setMolPriceStatsLoading] = React.useState(false);
 
-  // Function to fetch activities from API
-  const fetchActivities = async () => {
+  const fetchActivities = async (signal) => {
     try {
       setLoading(true);
       setError(null);
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch(API_CONFIG.buildApiUrl('/activity'), {
+      const token = getAuthToken();
+      const response = await fetch(API_CONFIG.buildApiUrl("/activity"), {
+        signal,
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        }
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
       });
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
-      const data = await response.json();
-      setActivityData(data);
+
+      setActivityData(await response.json());
     } catch (err) {
-      console.error('Error fetching activities:', err);
+      if (err.name === "AbortError") return;
+      console.error("Error fetching activities:", err);
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   };
 
-  // Fetch activities on component mount
   React.useEffect(() => {
-    fetchActivities();
+    const controller = new AbortController();
+    fetchActivities(controller.signal);
+    return () => controller.abort();
   }, []);
 
-  // Fetch molecule price stats
   React.useEffect(() => {
+    const controller = new AbortController();
     const fetchMolPriceStats = async () => {
       setMolPriceStatsLoading(true);
       setMolPriceStatsError(null);
       try {
-        const response = await fetch(API_CONFIG.buildApiUrl('/mol-price-stats'), {
-          headers: { 'accept': 'application/json' }
+        const response = await fetch(API_CONFIG.buildApiUrl("/mol-price-stats"), {
+          signal: controller.signal,
+          headers: { accept: "application/json" },
         });
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const data = await response.json();
-        setMolPriceStats(data);
+        setMolPriceStats(await response.json());
       } catch (err) {
+        if (err.name === "AbortError") return;
         setMolPriceStatsError(err.message);
       } finally {
-        setMolPriceStatsLoading(false);
+        if (!controller.signal.aborted) setMolPriceStatsLoading(false);
       }
     };
     fetchMolPriceStats();
+    return () => controller.abort();
   }, []);
 
-  // Generate statistics from API data
   const generateStatistics = () => {
     if (!activityData) return [];
-    
-    const totalUsers = activityData.users ? activityData.users.length : 0;
-    const totalProjects = activityData.projects ? activityData.projects.length : 0;
-    const totalSimulations = activityData.simulations ? activityData.simulations.length : 0;
-    
-    // Calculate recent simulations (last 7 days)
+
+    const totalUsers = activityData.counts?.users ?? activityData.users?.length ?? 0;
+    const totalProjects = activityData.counts?.projects ?? activityData.projects?.length ?? 0;
+    const totalSimulations = activityData.counts?.simulations ?? activityData.simulations?.length ?? 0;
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-    const recentSimulations = activityData.simulations ? 
-      activityData.simulations.filter(sim => new Date(sim.timestamp) > oneWeekAgo).length : 0;
+    const recentSimulations = activityData.simulations
+      ? activityData.simulations.filter((sim) => new Date(sim.timestamp) > oneWeekAgo).length
+      : 0;
 
     return [
       {
@@ -109,371 +94,116 @@ export function DashboardHome() {
         icon: CheckCircleIcon,
         title: "Total Simulations",
         value: totalSimulations.toString(),
-        footer: {
-          color: "text-green-500",
-          value: `+${recentSimulations}`,
-          label: "this week"
-        }
-      },
-      {
-        color: "gray", 
-        icon: CheckCircleIcon,
-        title: "Active Projects",
-        value: totalProjects.toString(),
-        footer: {
-          color: "text-blue-500",
-          value: "100%",
-          label: "active"
-        }
+        footer: { color: "text-green-500", value: `+${recentSimulations}`, label: "this week" },
       },
       {
         color: "gray",
-        icon: CheckCircleIcon, 
+        icon: CheckCircleIcon,
         title: "Registered Users",
         value: totalUsers.toString(),
-        footer: {
-          color: "text-green-500",
-          value: "+3",
-          label: "this month"
-        }
+        footer: { color: "text-blue-gray-700 dark:text-slate-300", value: "Active", label: "workspace members" },
       },
       {
         color: "gray",
         icon: CheckCircleIcon,
-        title: "Success Rate",
-        value: "94%",
-        footer: {
-          color: "text-green-500",
-          value: "+2%",
-          label: "from last month"
-        }
-      }
+        title: "Projects",
+        value: totalProjects.toString(),
+        footer: { color: "text-blue-gray-700 dark:text-slate-300", value: "Saved", label: "in this workspace" },
+      },
     ];
   };
 
-  // Generate projects table data from API
-  const generateProjectsData = () => {
-    if (!activityData || !activityData.projects) return [];
-    
-    return activityData.projects.map((project, _index) => {
-      // Find simulations for this project
-      const projectSimulations = activityData.simulations ? 
-        activityData.simulations.filter(sim => sim.user?.username === project.userid) : [];
-      
-      // Calculate completion based on simulation count (mock logic)
-      const completion = Math.min(100, projectSimulations.length * 25);
-      
-      return {
-        img: "/img/logo-ct.png", // Default project image
-        name: project.name,
-        members: [
-          {
-            img: "/img/team-1.jpeg",
-            name: project.userid
-          }
-        ],
-        budget: `${projectSimulations.length} simulations`,
-        completion: completion
-      };
-    });
-  };
-
-  // Generate recent activities overview
   const generateOverviewData = () => {
-    if (!activityData) return [];
-    
-    const activities = [];
-    
-    // Add recent simulations
-    if (activityData.simulations) {
-      const recentSims = activityData.simulations.slice(0, 3);
-      recentSims.forEach(sim => {
-        activities.push({
-          icon: CheckCircleIcon,
-          color: "text-blue-500",
-          title: `Simulation by ${sim.user?.username || 'Unknown'}`,
-          description: `PDB: ${sim.pdbid} - ${new Date(sim.timestamp).toLocaleDateString()}`
-        });
-      });
-    }
-    
-    // Add recent projects
-    if (activityData.projects) {
-      const recentProjects = activityData.projects.slice(0, 2);
-      recentProjects.forEach(project => {
-        activities.push({
-          icon: CheckCircleIcon,
-          color: "text-green-500", 
-          title: `Project: ${project.name}`,
-          description: `Created by ${project.userid} - ${new Date(project.createdAt).toLocaleDateString()}`
-        });
-      });
-    }
-    
-    return activities.slice(0, 5); // Limit to 5 items
+    if (!activityData?.simulations) return [];
+
+    return activityData.simulations.slice(0, 5).map((simulation) => ({
+      icon: CheckCircleIcon,
+      color: "text-blue-500",
+      title: `Docking run · ${simulation.pdbid || "Unknown receptor"}`,
+      description: new Date(simulation.timestamp).toLocaleString(),
+    }));
   };
 
   const statisticsData = generateStatistics();
-  const projectsData = generateProjectsData();
   const overviewData = generateOverviewData();
+
   return (
     <div className="mt-12">
       {error && (
         <Alert color="red" className="mb-6">
-          <Typography variant="small">
-            Error loading dashboard data: {error}
-          </Typography>
+          <Typography variant="small">Error loading dashboard data: {error}</Typography>
         </Alert>
       )}
-      
+
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-12">
           <Spinner className="h-6 w-6" />
-          <Typography variant="small" color="gray">
-            Loading dashboard data...
-          </Typography>
+          <Typography variant="small" color="gray">Loading dashboard data...</Typography>
         </div>
       ) : (
         <>
-          <div className="mb-12 grid gap-y-10 gap-x-6 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mb-12 grid gap-x-6 gap-y-10 md:grid-cols-2 xl:grid-cols-3">
             {statisticsData.map(({ icon, title, footer, ...rest }) => (
               <StatisticsCard
                 key={title}
                 {...rest}
                 title={title}
-                icon={React.createElement(icon, {
-                  className: "w-6 h-6 text-white",
-                })}
-                footer={
+                icon={React.createElement(icon, { className: "h-6 w-6 text-white" })}
+                footer={(
                   <Typography className="font-normal text-blue-gray-600 dark:text-slate-400">
-                    <strong className={footer.color}>{footer.value}</strong>
-                    &nbsp;{footer.label}
+                    <strong className={footer.color}>{footer.value}</strong>&nbsp;{footer.label}
                   </Typography>
-                }
-              />
-            ))}
-          </div>
-          <div className="mb-6 grid grid-cols-1 gap-y-12 gap-x-6 md:grid-cols-2 xl:grid-cols-3">
-            {statisticsChartsData.map((props) => (
-              <StatisticsChart
-                key={props.title}
-                {...props}
-                footer={
-                  <Typography
-                    variant="small"
-                    className="flex items-center font-normal text-blue-gray-600 dark:text-slate-400"
-                  >
-                    <ClockIcon strokeWidth={2} className="h-4 w-4 text-blue-gray-400 dark:text-slate-500" />
-                    &nbsp;{props.footer}
-                  </Typography>
-                }
-              />
-            ))}
-          </div>
-          <div className="mb-4 grid grid-cols-1 gap-6 xl:grid-cols-3">
-            <Card className="overflow-hidden border border-blue-gray-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20 xl:col-span-2">
-              <CardHeader
-                floated={false}
-                shadow={false}
-                color="transparent"
-                className="m-0 flex items-center justify-between p-6"
-              >
-                <div>
-                  <Typography variant="h6" color="blue-gray" className="mb-1 dark:text-slate-50">
-                    Projects
-                  </Typography>
-                  <Typography
-                    variant="small"
-                    className="flex items-center gap-1 font-normal text-blue-gray-600 dark:text-slate-400"
-                  >
-                    <CheckCircleIcon strokeWidth={3} className="h-4 w-4 text-blue-gray-200 dark:text-slate-600" />
-                    <strong>{projectsData.length} active</strong> projects
-                  </Typography>
-                </div>
-                <Menu placement="left-start">
-                  <MenuHandler>
-                    <IconButton size="sm" variant="text" color="blue-gray" className="dark:text-slate-300">
-                      <EllipsisVerticalIcon
-                        strokeWidth={3}
-                        fill="currenColor"
-                        className="h-6 w-6"
-                      />
-                    </IconButton>
-                  </MenuHandler>
-                  <MenuList className="bg-white dark:border dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">
-                    <MenuItem className="dark:hover:bg-slate-800">Refresh</MenuItem>
-                    <MenuItem className="dark:hover:bg-slate-800">View All</MenuItem>
-                    <MenuItem className="dark:hover:bg-slate-800">Export Data</MenuItem>
-                  </MenuList>
-                </Menu>
-              </CardHeader>
-              <CardBody className="overflow-x-scroll px-0 pt-0 pb-2">
-                <table className="w-full min-w-[640px] table-auto">
-                  <thead>
-                    <tr>
-                      {["project", "owner", "simulations", "progress"].map(
-                        (el) => (
-                          <th
-                            key={el}
-                            className="border-b border-blue-gray-50 px-6 py-3 text-left dark:border-slate-800"
-                          >
-                            <Typography
-                              variant="small"
-                              className="text-[11px] font-medium uppercase text-blue-gray-400 dark:text-slate-500"
-                            >
-                              {el}
-                            </Typography>
-                          </th>
-                        )
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {projectsData.length === 0 ? (
-                      <tr>
-                        <td colSpan="4" className="py-8 text-center">
-                          <Typography variant="small" color="gray">
-                            No projects found
-                          </Typography>
-                        </td>
-                      </tr>
-                    ) : (
-                      projectsData.map(
-                        ({ img, name, members, budget, completion }, key) => {
-                          const className = `py-3 px-5 ${
-                            key === projectsData.length - 1
-                              ? ""
-                              : "border-b border-blue-gray-50"
-                          }`;
-
-                          return (
-                            <tr key={name} className="dark:hover:bg-slate-800/60">
-                              <td className={className}>
-                                <div className="flex items-center gap-4">
-                                  <Avatar src={img} alt={name} size="sm" />
-                                  <Typography
-                                    variant="small"
-                                    color="blue-gray"
-                                    className="font-bold dark:text-slate-100"
-                                  >
-                                    {name}
-                                  </Typography>
-                                </div>
-                              </td>
-                              <td className={className}>
-                                {members.map(({ img, name }, key) => (
-                                  <Tooltip key={name} content={name}>
-                                    <Avatar
-                                      src={img}
-                                      alt={name}
-                                      size="xs"
-                                      variant="circular"
-                                      className={`cursor-pointer border-2 border-white ${
-                                        key === 0 ? "" : "-ml-2.5"
-                                      }`}
-                                    />
-                                  </Tooltip>
-                                ))}
-                              </td>
-                              <td className={className}>
-                                <Typography
-                                  variant="small"
-                                  className="text-xs font-medium text-blue-gray-600 dark:text-slate-300"
-                                >
-                                  {budget}
-                                </Typography>
-                              </td>
-                              <td className={className}>
-                                <div className="w-10/12">
-                                  <Typography
-                                    variant="small"
-                                    className="mb-1 block text-xs font-medium text-blue-gray-600 dark:text-slate-300"
-                                  >
-                                    {completion}%
-                                  </Typography>
-                                  <Progress
-                                    value={completion}
-                                    variant="gradient"
-                                    color={completion === 100 ? "green" : "blue"}
-                                    className="h-1"
-                                  />
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        }
-                      )
-                    )}
-                  </tbody>
-                </table>
-              </CardBody>
-            </Card>
-            <Card className="border border-blue-gray-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
-              <CardHeader
-                floated={false}
-                shadow={false}
-                color="transparent"
-                className="m-0 p-6"
-              >
-                <Typography variant="h6" color="blue-gray" className="mb-2 dark:text-slate-50">
-                  Recent Activity
-                </Typography>
-                <Typography
-                  variant="small"
-                  className="flex items-center gap-1 font-normal text-blue-gray-600 dark:text-slate-400"
-                >
-                  <ArrowUpIcon
-                    strokeWidth={3}
-                    className="h-3.5 w-3.5 text-green-500"
-                  />
-                  <strong>{overviewData.length}</strong> recent activities
-                </Typography>
-              </CardHeader>
-              <CardBody className="pt-0">
-                {overviewData.length === 0 ? (
-                  <Typography variant="small" color="gray" className="text-center py-4">
-                    No recent activity
-                  </Typography>
-                ) : (
-                  overviewData.map(
-                    ({ icon, color, title, description }, key) => (
-                      <div key={title + key} className="flex items-start gap-4 py-3">
-                        <div
-                          className={`relative p-1 after:absolute after:-bottom-6 after:left-2/4 after:w-0.5 after:-translate-x-2/4 after:bg-blue-gray-50 after:content-[''] dark:after:bg-slate-800 ${
-                            key === overviewData.length - 1
-                              ? "after:h-0"
-                              : "after:h-4/6"
-                          }`}
-                        >
-                          {React.createElement(icon, {
-                            className: `!w-5 !h-5 ${color}`,
-                          })}
-                        </div>
-                        <div>
-                          <Typography
-                            variant="small"
-                            color="blue-gray"
-                            className="block font-medium dark:text-slate-100"
-                          >
-                            {title}
-                          </Typography>
-                          <Typography
-                            as="span"
-                            variant="small"
-                            className="text-xs font-medium text-blue-gray-500 dark:text-slate-400"
-                          >
-                            {description}
-                          </Typography>
-                        </div>
-                      </div>
-                    )
-                  )
                 )}
-              </CardBody>
-            </Card>
+              />
+            ))}
           </div>
+
+          <Card className="mb-8 border border-blue-gray-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
+            <CardHeader floated={false} shadow={false} color="transparent" className="m-0 p-6">
+              <Typography variant="h6" color="blue-gray" className="mb-2 dark:text-slate-50">
+                Recent Activity
+              </Typography>
+              <Typography
+                variant="small"
+                className="flex items-center gap-1 font-normal text-blue-gray-600 dark:text-slate-400"
+              >
+                <ArrowUpIcon strokeWidth={3} className="h-3.5 w-3.5 text-green-500" />
+                <strong>{overviewData.length}</strong> recent simulations
+              </Typography>
+            </CardHeader>
+            <CardBody className="pt-0">
+              {overviewData.length === 0 ? (
+                <Typography variant="small" color="gray" className="py-4 text-center">
+                  No recent simulation activity
+                </Typography>
+              ) : (
+                overviewData.map(({ icon, color, title, description }, key) => (
+                  <div key={title + key} className="flex items-start gap-4 py-3">
+                    <div
+                      className={`relative p-1 after:absolute after:-bottom-6 after:left-2/4 after:w-0.5 after:-translate-x-2/4 after:bg-blue-gray-50 after:content-[''] dark:after:bg-slate-800 ${
+                        key === overviewData.length - 1 ? "after:h-0" : "after:h-4/6"
+                      }`}
+                    >
+                      {React.createElement(icon, { className: `!h-5 !w-5 ${color}` })}
+                    </div>
+                    <div>
+                      <Typography variant="small" color="blue-gray" className="block font-medium dark:text-slate-100">
+                        {title}
+                      </Typography>
+                      <Typography as="span" variant="small" className="text-xs font-medium text-blue-gray-500 dark:text-slate-400">
+                        {description}
+                      </Typography>
+                    </div>
+                  </div>
+                ))
+              )}
+            </CardBody>
+          </Card>
+
           <div className="mb-8">
-            <Typography variant="h6" color="blue-gray" className="mb-2 dark:text-slate-50">Molecule Price Stats</Typography>
+            <Typography variant="h6" color="blue-gray" className="mb-2 dark:text-slate-50">
+              Molecule Price Stats
+            </Typography>
             {molPriceStatsLoading ? (
               <div className="flex items-center gap-2 py-2">
                 <Spinner className="h-5 w-5" />
@@ -483,9 +213,9 @@ export function DashboardHome() {
               <Alert color="red" className="mb-2">
                 <Typography variant="small">Error: {molPriceStatsError}</Typography>
               </Alert>
-            ) : molPriceStats ? (
+            ) : molPriceStats && Object.keys(molPriceStats).length > 0 ? (
               <Card className="mb-2 border border-blue-gray-100 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
                     <Typography variant="small" color="blue-gray"><strong>Total Molecules:</strong> {molPriceStats.totalMolecules}</Typography>
                     <Typography variant="small" color="blue-gray"><strong>Avg Price (1mg):</strong> ${molPriceStats.avgPrice1mg}</Typography>
@@ -500,7 +230,16 @@ export function DashboardHome() {
                   </div>
                 </div>
               </Card>
-            ) : null}
+            ) : (
+              <div className="rounded-xl border border-dashed border-blue-gray-200 bg-blue-gray-50/40 px-5 py-6 dark:border-slate-700 dark:bg-slate-950/30">
+                <Typography variant="small" color="blue-gray" className="font-medium dark:text-slate-300">
+                  Catalog statistics are unavailable in this environment.
+                </Typography>
+                <Typography variant="small" color="gray" className="mt-1 dark:text-slate-500">
+                  Molecule search and docking remain available; this summary appears when the local price collection has data.
+                </Typography>
+              </div>
+            )}
           </div>
         </>
       )}

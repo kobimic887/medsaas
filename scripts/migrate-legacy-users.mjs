@@ -238,12 +238,14 @@ async function main() {
 
   // ── Verify, do not assume ───────────────────────────────────────────────
   // This is the exact check runbook 0.10 gates the cutover on.
-  const remaining = await users.countDocuments({ companyId: { $exists: false } });
+  const remaining = await users.countDocuments({
+    $or: [{ companyId: { $exists: false } }, { companyId: null }],
+  });
   const badTokens = await users.countDocuments({
     $or: [{ simulationTokens: { $exists: false } }, { simulationTokens: { $type: 'string' } }]
   });
   console.log('');
-  console.log(`VERIFY users without companyId  : ${remaining}   (runbook 0.10 requires 0)`);
+  console.log(`VERIFY users without companyId  : ${remaining}   (runbook 0.10 requires 0; counts missing + null)`);
   console.log(`VERIFY users with bad tokens    : ${badTokens}   (requires 0)`);
   if (remaining !== 0 || badTokens !== 0) {
     console.error('\nVERIFICATION FAILED. Do not cut over. Investigate before re-running.');

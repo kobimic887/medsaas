@@ -46,7 +46,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 
 const argv = process.argv.slice(2);
-const flag = (n) => argv.includes(`--${n}`);
 const opt = (n, d) => {
   const i = argv.indexOf(`--${n}`);
   return i !== -1 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : d;
@@ -227,8 +226,8 @@ function checkSdf(sdf) {
   console.log(`  poses in       : ${rawBlocks.length}`);
 
   // The exact-string tag check, which is the whole point of this script.
-  const strictSmiles = (sdf.match(/^>  <smiles>/gm) || []).length;
-  const strictScore = (sdf.match(/^>  <SCORE>/gm) || []).length;
+  const strictSmiles = (sdf.match(/^> {2}<smiles>/gm) || []).length;
+  const strictScore = (sdf.match(/^> {2}<SCORE>/gm) || []).length;
   const looseSmiles = (sdf.match(/^>\s*<smiles>/gm) || []).length;
   const looseScore = (sdf.match(/^>\s*<SCORE>/gm) || []).length;
 

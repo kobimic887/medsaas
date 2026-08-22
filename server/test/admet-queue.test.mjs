@@ -142,11 +142,18 @@ await test('splits on the semicolon the client joins multiple ligands with', () 
 
 await test('enqueues a job in queued state', async () => {
   await reset();
-  const result = await createAdmetTask(db, { simulationKey: 'sim-a', smiles: 'CCO' });
+  const result = await createAdmetTask(db, {
+    simulationKey: 'sim-a',
+    smiles: 'CCO',
+    userId: 'researcher',
+    companyId: 'company-a',
+  });
   assert.equal(result.status, 'queued');
 
   const stored = await jobs.findOne({ simulationKey: 'sim-a' });
   assert.deepEqual(stored.smiles, ['CCO']);
+  assert.equal(stored.userId, 'researcher');
+  assert.equal(stored.companyId, 'company-a');
   assert.equal(stored.attempts, 0);
   assert.equal(stored.error, null);
 });

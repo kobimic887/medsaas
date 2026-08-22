@@ -26,8 +26,14 @@ export function MainNavbar() {
 
   const isLandingPage = page === "mainHome";
 
-  const navLinks = [];
-
+  const navLinks = [
+    { label: "Home", to: "/main/mainHome" },
+    { label: "Services", to: "/main/services" },
+    { label: "About", to: "/main/about-us" },
+    { label: "Insights", to: "/main/insights" },
+    { label: "Plans", to: "/main/paidplansdescription" },
+    { label: "Contact", to: "/main/contact-us" },
+  ];
 
   return (
     <nav
@@ -71,8 +77,29 @@ export function MainNavbar() {
           </span>
         </Link>
 
-        {/* Desktop Nav Links (Removed) */}
+        {/* Desktop navigation */}
         <div className="hidden xl:flex items-center gap-1">
+          {navLinks.map(({ label, to }) => {
+            const isActive = pathname === to;
+            return (
+              <Link
+                key={to}
+                to={to}
+                aria-current={isActive ? "page" : undefined}
+                className={`rounded-lg px-3 py-2 text-sm font-medium no-underline transition-colors ${
+                  isLandingPage
+                    ? isActive
+                      ? "bg-white/10 text-white"
+                      : "text-gray-300 hover:bg-white/5 hover:text-white"
+                    : isActive
+                      ? "bg-brand-50 text-brand-800 dark:bg-brand-900/50 dark:text-brand-200"
+                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                }`}
+              >
+                {label}
+              </Link>
+            );
+          })}
         </div>
 
         {/* Right Side */}
@@ -146,6 +173,9 @@ export function MainNavbar() {
           {/* Mobile Menu Toggle */}
           <button
             type="button"
+            aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
+            aria-expanded={mobileOpen}
+            aria-controls="main-mobile-navigation"
             className={`xl:hidden p-2 rounded-lg transition-colors ${
               isLandingPage ? "text-gray-300 hover:bg-white/5" : "text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-slate-800"
             }`}
@@ -158,29 +188,63 @@ export function MainNavbar() {
 
       {/* Mobile Menu */}
       {mobileOpen && (
-        <div className={`xl:hidden border-t px-4 py-3 space-y-1 ${
+        <div id="main-mobile-navigation" className={`xl:hidden border-t px-4 py-3 space-y-1 ${
           isLandingPage ? "border-white/5 bg-[#0a0a0f]/95" : "border-gray-200 bg-white dark:border-slate-800 dark:bg-slate-950"
         }`}>
-          {navLinks.map(({ label, to }) => (
-            <Link key={to} to={to} onClick={() => setMobileOpen(false)}>
-              <div
-                className={`block px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+          {navLinks.map(({ label, to }) => {
+            const isActive = pathname === to;
+            return (
+              <Link
+                key={to}
+                to={to}
+                onClick={() => setMobileOpen(false)}
+                aria-current={isActive ? "page" : undefined}
+                className={`block rounded-lg px-3 py-2 text-sm font-medium no-underline transition-colors ${
                     isLandingPage
-                      ? "text-gray-300 hover:text-white hover:bg-white/5"
-                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                      ? isActive
+                        ? "bg-white/10 text-white"
+                        : "text-gray-300 hover:bg-white/5 hover:text-white"
+                      : isActive
+                        ? "bg-brand-50 text-brand-800 dark:bg-brand-900/50 dark:text-brand-200"
+                        : "text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
                 }`}
               >
                 {label}
-              </div>
-            </Link>
-          ))}
-          {!isLoggedIn() && (
-            <Link to="/auth/sign-in" onClick={() => setMobileOpen(false)}>
-              <div className={`block px-3 py-2 rounded-lg text-sm font-semibold ${
+              </Link>
+            );
+          })}
+          {isLoggedIn() ? (
+            <>
+              <Link
+                to="/dashboard/controlpanel"
+                onClick={() => setMobileOpen(false)}
+                className={`block rounded-lg px-3 py-2 text-sm font-semibold no-underline ${
+                  isLandingPage ? "text-brand-300" : "text-brand-700 dark:text-brand-300"
+                }`}
+              >
+                Dashboard
+              </Link>
+              <button
+                type="button"
+                className={`block w-full rounded-lg px-3 py-2 text-left text-sm font-medium ${
+                  isLandingPage ? "text-gray-300" : "text-gray-600 dark:text-slate-300"
+                }`}
+                onClick={() => {
+                  setMobileOpen(false);
+                  logout();
+                }}
+              >
+                Sign Out
+              </button>
+            </>
+          ) : (
+            <Link
+              to="/auth/sign-in"
+              onClick={() => setMobileOpen(false)}
+              className={`block rounded-lg px-3 py-2 text-sm font-semibold no-underline ${
                 isLandingPage ? "text-brand-300" : "text-blue-600 dark:text-brand-300"
               }`}>
                 Sign In
-              </div>
             </Link>
           )}
         </div>

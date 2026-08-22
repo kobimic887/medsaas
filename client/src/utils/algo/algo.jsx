@@ -2,21 +2,35 @@
  * Utility functions for currency conversion and geolocation
  */
 
+const EXTERNAL_LOOKUP_TIMEOUT_MS = 5000;
+let exchangeRatePromise = null;
+let userCountryPromise = null;
+
 /**
  * Fetches the current USD to EUR exchange rate
  * @returns {Promise<number>} The exchange rate (EUR/USD)
  */
 export const fetchExchangeRate = async () => {
+  if (exchangeRatePromise) return exchangeRatePromise;
+
+  exchangeRatePromise = (async () => {
   try {
-    // Using a free exchange rate API
-    const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+    const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD', {
+      signal: AbortSignal.timeout(EXTERNAL_LOOKUP_TIMEOUT_MS),
+    });
+    if (!response.ok) throw new Error(`Exchange-rate service returned HTTP ${response.status}`);
     const data = await response.json();
-    return data.rates.EUR;
+    const rate = Number(data?.rates?.EUR);
+    if (!Number.isFinite(rate) || rate <= 0) throw new Error('Exchange-rate service returned an invalid EUR rate');
+    return rate;
   } catch (error) {
-    console.error('Failed to fetch exchange rate:', error);
+    console.warn('Using fallback USD/EUR exchange rate:', error);
     // Fallback to approximate rate if API fails
     return 0.92; // Approximate USD to EUR rate as fallback
   }
+  })();
+
+  return exchangeRatePromise;
 };
 
 /**
@@ -24,15 +38,25 @@ export const fetchExchangeRate = async () => {
  * @returns {Promise<string>} The country code (e.g., 'US', 'DE', 'FR')
  */
 export const fetchUserCountry = async () => {
+  if (userCountryPromise) return userCountryPromise;
+
+  userCountryPromise = (async () => {
   try {
-    // Using ipapi.co for IP geolocation (free tier available)
-    const response = await fetch('https://ipapi.co/json/');
+    const response = await fetch('https://ipapi.co/json/', {
+      signal: AbortSignal.timeout(EXTERNAL_LOOKUP_TIMEOUT_MS),
+    });
+    if (!response.ok) throw new Error(`Location service returned HTTP ${response.status}`);
     const data = await response.json();
-    return data.country_code;
+    const countryCode = typeof data?.country_code === 'string' ? data.country_code.toUpperCase() : '';
+    if (!/^[A-Z]{2}$/.test(countryCode)) throw new Error('Location service returned an invalid country code');
+    return countryCode;
   } catch (error) {
-    console.error('Failed to fetch user location:', error);
+    console.warn('Using default country for currency display:', error);
     return 'US'; // Default to US if API fails
   }
+  })();
+
+  return userCountryPromise;
 };
 
 /**

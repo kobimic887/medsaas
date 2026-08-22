@@ -6,7 +6,11 @@
 import {
   ASINEX_PRICE_TABLE,
   ASINEX_SHIPPING_USD,
+  MAX_MOLECULE_CART_ITEMS,
+  catalogRowsFromResponse,
+  normalizeMoleculeCartRequest,
   priceForCategory,
+  priceMoleculeCart,
   priceTableForCategory,
   normalizeShopCompound,
   normalizeShopSearchResponse
@@ -22,6 +26,15 @@ function check(label, condition, extra = '') {
   } else {
     console.log(`  FAIL ${label} ${extra}`);
     failed += 1;
+  }
+}
+
+function checkThrows(label, fn, expectedMessage) {
+  try {
+    fn();
+    check(label, false, '(did not throw)');
+  } catch (error) {
+    check(label, error.message.includes(expectedMessage), `(${error.message})`);
   }
 }
 
@@ -79,6 +92,66 @@ check('response found preserved', resp.found === 1);
 const unknown = { something: 'else' };
 check('unknown shape passes through unchanged', normalizeShopSearchResponse(unknown) === unknown);
 check('null passes through', normalizeShopSearchResponse(null) === null);
+
+// --- molecule checkout: browser totals/names are untrusted ---
+const requestedCart = normalizeMoleculeCartRequest([
+  { catalogId: 'BAS 00132206', amount: 5, totalPrice: 0.01, name: 'forged' },
+  { moleculeId: 17529, amount: '1', price: 0.01 },
+]);
+check('cart keeps only catalog identity and package size', JSON.stringify(requestedCart) === JSON.stringify([
+  { catalogId: 'BAS 00132206', amount: 5 },
+  { catalogId: '17529', amount: 1 },
+]));
+check('cart size is bounded', MAX_MOLECULE_CART_ITEMS === 100);
+checkThrows('empty molecule cart rejected', () => normalizeMoleculeCartRequest([]), 'empty');
+checkThrows('unsupported package size rejected', () => normalizeMoleculeCartRequest([{ catalogId: 'BAS 1', amount: 3 }]), 'unsupported');
+checkThrows('missing catalog ID rejected', () => normalizeMoleculeCartRequest([{ amount: 1 }]), 'catalog ID');
+
+const pricedOrder = priceMoleculeCart(requestedCart, [
+  { ASINEX_ID: 'BAS 00132206', BRUTTO_FORMULA: 'C10H12O', PRICE_5MG: 39.02 },
+  { id_number: 17529, brutto_formula: 'C2H6O', price_1mg: '13.00' },
+]);
+check('server catalog prices replace forged totals', pricedOrder.totalCents === 5202);
+check('checkout is itemized with server prices', pricedOrder.lineItems.length === 2 && pricedOrder.lineItems[0].price_data.unit_amount === 3902);
+check('checkout line carries catalog identity and amount', pricedOrder.lineItems[0].price_data.product_data.name === 'BAS 00132206 · 5 mg');
+check('checkout matches BAS_CODE response shapes', priceMoleculeCart(
+  [{ catalogId: 'BAS 00999999', amount: 1 }],
+  [{ BAS_CODE: 'BAS 00999999', PRICE_1MG: 12 }],
+).totalCents === 1200);
+const liveBasShape = {
+  id: 17529,
+  bas_code: 'BAS 00132206',
+  price_1mg: 170,
+  price_2mg: 194,
+  price_5mg: 218,
+  price_10mg: 242,
+  smiles_string: 'COc1cc(ncn1)N/N=C/c2ccccc2O',
+  brutto_formula: 'C12 H12 N4 O2',
+};
+const liveShapeOrder = priceMoleculeCart([{ catalogId: 'BAS 00132206', amount: 5 }], [liveBasShape]);
+check('checkout matches the measured lowercase ASINEX BAS shape', liveShapeOrder.totalCents === 21800);
+check('measured BAS checkout keeps the catalog code in Stripe', liveShapeOrder.lineItems[0].price_data.product_data.name === 'BAS 00132206 · 5 mg');
+const legacySmiles = liveBasShape.smiles_string;
+const legacyCart = normalizeMoleculeCartRequest([
+  { catalogId: '17529', amount: 5, smiles: legacySmiles, price: 0.01, totalPrice: 0.01 },
+]);
+check('legacy cart keeps bounded SMILES for authoritative re-resolution', JSON.stringify(legacyCart) === JSON.stringify([
+  { catalogId: '17529', amount: 5, smiles: legacySmiles },
+]));
+check('legacy numeric cart can be priced from its exact resolved structure', priceMoleculeCart(
+  legacyCart,
+  [liveBasShape],
+).totalCents === 21800);
+checkThrows('oversized legacy SMILES rejected', () => normalizeMoleculeCartRequest([
+  { catalogId: '17529', amount: 5, smiles: 'C'.repeat(5001) },
+]), 'invalid SMILES');
+check('catalog rows accept a direct ASINEX object', catalogRowsFromResponse(liveBasShape)[0] === liveBasShape);
+check('catalog rows accept an ASINEX array', catalogRowsFromResponse([liveBasShape])[0] === liveBasShape);
+check('catalog rows accept a data wrapper', catalogRowsFromResponse({ data: [liveBasShape] })[0] === liveBasShape);
+check('catalog rows accept a molecules wrapper', catalogRowsFromResponse({ molecules: [liveBasShape] })[0] === liveBasShape);
+check('catalog rows normalize empty and unknown payloads', catalogRowsFromResponse(null).length === 0 && catalogRowsFromResponse({ ok: true }).length === 0);
+checkThrows('missing catalog compound rejected', () => priceMoleculeCart([{ catalogId: 'missing', amount: 1 }], []), 'no longer in the catalog');
+checkThrows('missing authoritative price rejected', () => priceMoleculeCart([{ catalogId: 'BAS 1', amount: 10 }], [{ ASINEX_ID: 'BAS 1' }]), 'no valid 10 mg price');
 
 console.log('\n================================================');
 console.log(`Result: ${passed} passed, ${failed} failed`);

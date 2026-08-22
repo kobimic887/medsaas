@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, useEffect } from "react";
 import PropTypes from "prop-types";
+import { createContext, useContext, useEffect, useState } from "react";
+import { clearViewerStorage } from "@/utils/viewerStorage";
 
 const AuthContext = createContext();
 
@@ -32,6 +33,7 @@ export function AuthProvider({ children }) {
     if (storedUser && token) {
       setUser(storedUser);
     } else {
+      clearViewerStorage();
       localStorage.removeItem(USER_STORAGE_KEY);
       localStorage.removeItem(ACCESS_TOKEN_KEY);
       localStorage.removeItem(AUTH_TOKEN_KEY);
@@ -45,6 +47,15 @@ export function AuthProvider({ children }) {
       return { success: false, error: "Invalid login payload" };
     }
 
+    // Result files live in localStorage, so without this reset a newly signed-in
+    // account could inherit the previous account's simulation key and the Results
+    // page would try to fetch a file that does not belong to it. Preserve a result
+    // when the same account signs in again, but never carry it across accounts.
+    const storedUser = getStoredUser();
+    const accountChanged = !storedUser
+      || storedUser.username !== userData.username
+      || storedUser.companyId !== userData.companyId;
+    if (accountChanged) clearViewerStorage();
     setUser(userData);
     localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(userData));
     localStorage.setItem(ACCESS_TOKEN_KEY, token);
@@ -53,6 +64,7 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
+    clearViewerStorage();
     setUser(null);
     localStorage.removeItem(USER_STORAGE_KEY);
     localStorage.removeItem(ACCESS_TOKEN_KEY);

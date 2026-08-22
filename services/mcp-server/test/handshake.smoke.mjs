@@ -10,6 +10,8 @@ import http from 'node:http';
 const PROTOCOL_VERSION = '2025-11-25';
 const PLATFORM_TOKEN = 'test-token-abc';
 const HEALTH_PAYLOAD = { checks: { gromacs: { status: 'healthy' } }, ok: true };
+const CAPABILITIES_PAYLOAD = { capabilities: [{ id: 'docking', status: 'configured' }] };
+const JOBS_PAYLOAD = { jobs: [], total: 0, limit: 50, kind: 'all', hasMore: false };
 
 let failures = 0;
 function check(label, condition) {
@@ -23,9 +25,19 @@ function check(label, condition) {
 
 // 1. Stub ChemBench platform API — verifies the bearer token was forwarded.
 const stub = http.createServer((req, res) => {
-  if (req.url === '/api/platform/health' && req.headers.authorization === `Bearer ${PLATFORM_TOKEN}`) {
+  if (req.headers.authorization === `Bearer ${PLATFORM_TOKEN}` && req.url === '/api/platform/health') {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify(HEALTH_PAYLOAD));
+    return;
+  }
+  if (req.headers.authorization === `Bearer ${PLATFORM_TOKEN}` && req.url === '/api/platform/capabilities') {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(CAPABILITIES_PAYLOAD));
+    return;
+  }
+  if (req.headers.authorization === `Bearer ${PLATFORM_TOKEN}` && req.url.startsWith('/api/jobs')) {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(JOBS_PAYLOAD));
     return;
   }
   res.writeHead(401, { 'content-type': 'application/json' });
@@ -71,15 +83,30 @@ try {
   const list = await rpc('tools/list', {}, { id: 2 });
   const tools = list?.result?.tools || [];
   const names = tools.map((t) => t.name);
-  check('tools/list returns all 14 tools', tools.length === 14);
+  check('tools/list returns all 17 tools', tools.length === 17);
   check('tools/list includes platform_health', names.includes('platform_health'));
   check('tools/list includes generate_molecules', names.includes('generate_molecules'));
+  check('tools/list includes platform_capabilities', names.includes('platform_capabilities'));
+  check('tools/list includes list_jobs', names.includes('list_jobs'));
+  check('tools/list includes get_job', names.includes('get_job'));
 
   // 5. tools/call platform_health WITH token -> forwarded to stub -> canned payload
   const called = await rpc('tools/call', { name: 'platform_health', arguments: {} }, { token: PLATFORM_TOKEN, id: 3 });
   const text = called?.result?.content?.[0]?.text || '';
   check('tools/call platform_health is not an error', called?.result?.isError === false);
   check('tools/call forwards token and returns platform payload', text.includes('"ok": true'));
+
+  const capabilities = await rpc('tools/call', { name: 'platform_capabilities', arguments: {} }, { token: PLATFORM_TOKEN, id: 5 });
+  check(
+    'platform_capabilities returns a capability payload',
+    capabilities?.result?.isError === false && (capabilities?.result?.content?.[0]?.text || '').includes('docking'),
+  );
+
+  const jobs = await rpc('tools/call', { name: 'list_jobs', arguments: { kind: 'all', limit: 10 } }, { token: PLATFORM_TOKEN, id: 6 });
+  check(
+    'list_jobs returns a normalized job list',
+    jobs?.result?.isError === false && (jobs?.result?.content?.[0]?.text || '').includes('total'),
+  );
 
   // 6. tools/call WITHOUT token -> missing-token error surfaced as a tool result
   const noToken = await rpc('tools/call', { name: 'platform_health', arguments: {} }, { id: 4 });

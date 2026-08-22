@@ -1,4 +1,4 @@
-import { useLocation, Link, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Navbar,
   Typography,
@@ -11,9 +11,9 @@ import {
   MenuItem,
   Avatar,
   Chip,
+  Alert,
 } from "@material-tailwind/react";
 import {
-  UserCircleIcon,
   BellIcon,
   CreditCardIcon,
   Bars3Icon,
@@ -28,22 +28,93 @@ import {
   setOpenSidenav,
 } from "@/context";
 import { useThemeMode } from "@/context/theme";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
+
+const PAGE_DESTINATIONS = [
+  { label: "Dashboard", path: "/dashboard/dashboardHome" },
+  { label: "Control Panel", path: "/dashboard/controlpanel" },
+  { label: "Simulation", path: "/dashboard/simulation" },
+  { label: "Simulation Results", path: "/dashboard/molstar3d" },
+  { label: "Molecule Viewer", path: "/dashboard/moleculeviewer" },
+  { label: "Generate Molecules", path: "/dashboard/generate-molecules" },
+  { label: "Protein Folding", path: "/dashboard/protein-folding" },
+  { label: "Deep Similarity", path: "/dashboard/deep-similarity" },
+  { label: "Literature", path: "/dashboard/literature" },
+  { label: "Notifications", path: "/dashboard/notifications" },
+  { label: "Plans & Credits", path: "/dashboard/paid-plans" },
+];
+
+const getStoredNavbarUser = () => {
+  try {
+    const storedUser = JSON.parse(localStorage.getItem("user_info") || "null");
+    if (!storedUser) return { name: "", simulationTokens: 0 };
+    return {
+      name: storedUser.username || storedUser.email || "User",
+      simulationTokens: Number(storedUser.simulationTokens) || 0,
+    };
+  } catch {
+    return { name: "", simulationTokens: 0 };
+  }
+};
 
 export function DashboardNavbar() {
   const [controller, dispatch] = useMaterialTailwindController();
   const { openSidenav } = controller;
   const { isDark, toggleTheme } = useThemeMode();
   const { pathname } = useLocation();
-  const [_layout, page] = pathname.split("/").filter((el) => el !== "");
+  const routeSegments = pathname.split("/").filter(Boolean);
+  const page = routeSegments.length === 0 || (routeSegments.length === 1 && routeSegments[0] === "dashboard")
+    ? "dashboardHome"
+    : routeSegments[routeSegments.length - 1];
+  const pageLabels = {
+    dashboardHome: "Home",
+    controlpanel: "Control Panel",
+    companyadmin: "Company Admin",
+    "company-admin": "Company Admin",
+    simulation: "Simulation",
+    moleculeviewer: "Molecule Viewer",
+    molstar3d: "Molstar 3D",
+    literature: "Literature",
+    "generate-molecules": "Generate Molecules",
+    "protein-folding": "Protein Folding",
+    "gromacs-md": "GROMACS MD",
+    "glioblastoma-predict": "Glioblastoma Prediction",
+    "deep-similarity": "Deep Similarity",
+    notifications: "Notifications",
+    paidplans: "Plans & Credits",
+  };
+  const pageLabel = pageLabels[page] || page
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
   const [showMobileSearch, setShowMobileSearch] = useState(false);
+  const [pageQuery, setPageQuery] = useState("");
 
   // User info state
-  const [user, setUser] = useState({ name: "", simulationTokens: 0 });
+  const [user, setUser] = useState(getStoredNavbarUser);
   const [cartItems, setCartItems] = useState([]);
   const [cartTotal, setCartTotal] = useState(0);
+  const [cartAction, setCartAction] = useState(null);
+  const [actionMessage, setActionMessage] = useState("");
+  const [actionMessageType, setActionMessageType] = useState("success");
+  const actionMessageTimerRef = useRef(null);
+  const cartRequestControllerRef = useRef(null);
   const navigate = useNavigate();
+
+  const matchingPages = PAGE_DESTINATIONS.filter(({ label }) =>
+    label.toLowerCase().includes(pageQuery.trim().toLowerCase()),
+  );
+
+  const showActionMessage = (message, type = "success") => {
+    if (actionMessageTimerRef.current) window.clearTimeout(actionMessageTimerRef.current);
+    setActionMessage(message);
+    setActionMessageType(type);
+    actionMessageTimerRef.current = window.setTimeout(() => {
+      setActionMessage("");
+      actionMessageTimerRef.current = null;
+    }, 6000);
+  };
 
   useEffect(() => {
     // Load cart data from localStorage
@@ -69,14 +140,19 @@ export function DashboardNavbar() {
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('cartUpdated', handleCartUpdate);
+      if (actionMessageTimerRef.current) window.clearTimeout(actionMessageTimerRef.current);
+      cartRequestControllerRef.current?.abort();
+      cartRequestControllerRef.current = null;
     };
   }, []);
 
   useEffect(() => {
-    validateTokenAndLoadUser();
+    const controller = new AbortController();
+    validateTokenAndLoadUser(controller.signal);
+    return () => controller.abort();
   }, [pathname]);
 
-  const validateTokenAndLoadUser = async () => {
+  const validateTokenAndLoadUser = async (signal) => {
     const token = getAuthToken();
     const apiUrl = API_CONFIG.buildApiUrl("/validate-token");
     
@@ -85,59 +161,35 @@ export function DashboardNavbar() {
       return;
     }
     
-    fetch(apiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error("Invalid token");
-        return res.json();
-      })
-      .then((data) => {
-        // Add null check for data
-        if (!data) {
-          console.error("Received null/undefined data from validate-token API");
-          navigate("/auth/sign-in", { replace: true });
-          return;
-        }
-        
-        if (!data.valid) {
-          navigate("/auth/sign-in", { replace: true });
-        } else {
-          // If backend returns user info and tokens, update localStorage and state
-          if (data.user) {
-            localStorage.setItem("user_info", JSON.stringify(data.user));
-          }
-          if (data.user && typeof data.user.simulationTokens !== 'undefined') {
-            setUser({
-              name: data.user.username || data.user.email || "User",
-              simulationTokens: data.user.simulationTokens
-            });
-          } else {
-            // Fallback to localStorage user info
-            const storedUser = localStorage.getItem("user_info");
-            if (storedUser) {
-              try {
-                const parsedUser = JSON.parse(storedUser);
-                setUser({
-                  name: parsedUser.username || parsedUser.email || "User",
-                  simulationTokens: parsedUser.simulationTokens || 0
-                });
-              } catch (e) {
-                console.error("Error parsing stored user info:", e);
-                setUser({ name: "User", simulationTokens: 0 });
-              }
-            }
-          }
-        }
-      })
-      .catch((err) => {
-        console.error("Token validation failed:", err);
-        navigate("/auth/sign-in", { replace: true });
+    try {
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        signal,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
       });
+      if (!response.ok) throw new Error("Invalid token");
+      const data = await response.json();
+
+      if (!data?.valid) {
+        navigate("/auth/sign-in", { replace: true });
+        return;
+      }
+
+      if (data.user) localStorage.setItem("user_info", JSON.stringify(data.user));
+      setUser(data.user && typeof data.user.simulationTokens !== "undefined"
+        ? {
+            name: data.user.username || data.user.email || "User",
+            simulationTokens: data.user.simulationTokens,
+          }
+        : getStoredNavbarUser());
+    } catch (err) {
+      if (err.name === "AbortError") return;
+      console.error("Token validation failed:", err);
+      navigate("/auth/sign-in", { replace: true });
+    }
   };
 
   const loadCartFromStorage = () => {
@@ -211,6 +263,10 @@ export function DashboardNavbar() {
   };
 
   const handleSendEnquiry = async () => {
+    cartRequestControllerRef.current?.abort();
+    const controller = new AbortController();
+    cartRequestControllerRef.current = controller;
+    setCartAction("enquiry");
     try {
       // Get logged-in user email from localStorage
       const storedUser = localStorage.getItem("user_info");
@@ -268,6 +324,7 @@ Please contact the customer at ${userEmail} to process this order.
       const emailToken = getAuthToken();
       const response = await fetch(API_CONFIG.buildApiUrl('/send-email'), {
         method: 'POST',
+        signal: controller.signal,
         headers: {
           'Content-Type': 'application/json',
           ...(emailToken ? { Authorization: `Bearer ${emailToken}` } : {})
@@ -284,53 +341,56 @@ Please contact the customer at ${userEmail} to process this order.
         })
       });
 
-      const result = await response.json();
+      const result = await response.json().catch(() => null);
       
-      if (response.ok && result.success) {
-        alert('Enquiry sent successfully! We will contact you soon.');
+      if (response.ok && result?.success) {
+        showActionMessage('Enquiry sent. We will contact you soon.');
       } else {
-        throw new Error(result.error || 'Failed to send enquiry');
+        throw new Error(result?.error || `Failed to send enquiry (HTTP ${response.status})`);
       }
     } catch (error) {
+      if (error.name === "AbortError") return;
       console.error('Error sending enquiry:', error);
-      alert(`Failed to send enquiry: ${error.message}. Please try again.`);
+      showActionMessage(`Failed to send enquiry: ${error.message}. Please try again.`, 'error');
+    } finally {
+      if (cartRequestControllerRef.current === controller) {
+        cartRequestControllerRef.current = null;
+        setCartAction(null);
+      }
     }
   };
 
   const handleCheckout = async () => {
+    let controller = null;
     try {
       // Check if Stripe is configured
       if (!import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY) {
-        alert('Stripe is not configured. Please check the setup instructions.');
+        showActionMessage('Checkout is temporarily unavailable. Please send an enquiry instead.', 'error');
         return;
       }
 
       if (cartItems.length === 0) {
-        alert('Your cart is empty!');
+        showActionMessage('Your cart is empty.', 'error');
         return;
       }
 
-      // Calculate total
-      const total = cartItems.reduce((sum, item) => sum + (item.totalPrice || item.price || 0), 0);
+      cartRequestControllerRef.current?.abort();
+      controller = new AbortController();
+      cartRequestControllerRef.current = controller;
+      setCartAction("checkout");
 
-      // Create a description of cart items for Stripe
-      const itemsDescription = cartItems.map((item, index) => 
-        `${index + 1}. ${item.name || 'Molecule'} - ${item.amount}mg: $${(item.totalPrice || item.price || 0).toFixed(2)}`
-      ).join('; ');
-
-      const token = localStorage.getItem('auth_token');
+      const token = getAuthToken();
       
       // Create checkout session
       const response = await fetch(API_CONFIG.buildUrl('/create-checkout-session-onetime'), {
         method: 'POST',
+        signal: controller.signal,
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({
-          cartItems: cartItems,
-          totalAmount: total,
-          description: itemsDescription
+          cartItems,
         }),
       });
 
@@ -349,8 +409,14 @@ Please contact the customer at ${userEmail} to process this order.
       window.location.href = result.url;
       
     } catch (error) {
+      if (error.name === "AbortError") return;
       console.error('Error during checkout:', error);
-      alert(`Failed to start checkout: ${error.message}`);
+      showActionMessage(`Failed to start checkout: ${error.message}`, 'error');
+    } finally {
+      if (controller && cartRequestControllerRef.current === controller) {
+        cartRequestControllerRef.current = null;
+        setCartAction(null);
+      }
     }
   };
 
@@ -366,36 +432,46 @@ Please contact the customer at ${userEmail} to process this order.
     <Navbar
       id="top-navbar"
       color="white"
-      className="sticky top-0 z-40 rounded-none border-b border-blue-gray-100 bg-white/95 py-3 shadow-md shadow-blue-gray-500/5 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90 dark:shadow-black/20"
+      className="rounded-none border-b border-blue-gray-100 bg-white/95 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90"
       fullWidth
       blurred={true}
     >
-      <div id="navbar-content" className="flex items-center justify-between w-full px-4">
+      {actionMessage && (
+        <div className="fixed right-4 top-20 z-[70] w-[min(24rem,calc(100vw-2rem))]" role="status" aria-live="polite">
+          <Alert
+            color={actionMessageType === "error" ? "red" : "green"}
+            dismissible
+            onClose={() => setActionMessage("")}
+          >
+            {actionMessage}
+          </Alert>
+        </div>
+      )}
+      <div id="navbar-content" className="flex min-w-0 items-center justify-between gap-3 px-4">
         {/* Left Side - Mobile Menu Toggle and Breadcrumbs */}
-        <div id="navbar-left" className="flex items-center gap-4">
+        <div id="navbar-left" className="flex min-w-0 items-center gap-4">
           {/* Mobile Menu Toggle */}
           <IconButton
             id="mobile-menu-toggle"
             variant="text"
             color="blue-gray"
             className="grid dark:text-slate-300 xl:hidden"
+            aria-label={openSidenav ? "Close navigation menu" : "Open navigation menu"}
             onClick={() => setOpenSidenav(dispatch, !openSidenav)}
           >
             <Bars3Icon strokeWidth={3} className="h-6 w-6 text-blue-gray-500 dark:text-slate-300" />
           </IconButton>
 
-          {/* Breadcrumbs */}
-          <div id="breadcrumbs" className="hidden lg:block">
+          {/* Current page label. The old parent crumb exposed the internal route
+              layout name ("Dashboard") and raw slugs ("Deep-Similarity"). */}
+          <div id="breadcrumbs" className="hidden min-w-0 lg:block">
             <Breadcrumbs className="bg-transparent p-0">
-              <Link to="/dashboard/controlpanel" className="opacity-60 dark:text-slate-300">
-                Dashboard
-              </Link>
               <Typography
                 variant="small"
                 color="blue-gray"
-                className="font-normal capitalize opacity-100 dark:text-slate-100"
+                className="truncate font-medium opacity-100 dark:text-slate-100"
               >
-                {page || "Home"}
+                {pageLabel}
               </Typography>
             </Breadcrumbs>
           </div>
@@ -418,13 +494,15 @@ Please contact the customer at ${userEmail} to process this order.
         </div> */}
 
         {/* Right Side - Actions and User Menu */}
-        <div id="navbar-right" className="flex items-center gap-2">
+        <div id="navbar-right" className="flex shrink-0 items-center gap-2">
           {/* Mobile Search Toggle */}
           <IconButton
             id="mobile-search-toggle"
             variant="text"
             color="blue-gray"
             className="grid dark:text-slate-300 md:hidden"
+            aria-label={showMobileSearch ? "Close page finder" : "Open page finder"}
+            aria-expanded={showMobileSearch}
             onClick={() => setShowMobileSearch(!showMobileSearch)}
           >
             {showMobileSearch ? (
@@ -463,7 +541,7 @@ Please contact the customer at ${userEmail} to process this order.
           {/* Cart Menu */}
           <Menu>
             <MenuHandler>
-              <IconButton id="cart-menu-button" variant="text" color="blue-gray" className="dark:text-slate-300">
+              <IconButton id="cart-menu-button" variant="text" color="blue-gray" className="dark:text-slate-300" aria-label={`Open molecule cart with ${cartItems.length} items`}>
                 <div className="relative">
                   <CreditCardIcon className="h-5 w-5 text-blue-gray-500 dark:text-slate-300" />
                   {cartItems.length > 0 && (
@@ -522,6 +600,7 @@ Please contact the customer at ${userEmail} to process this order.
                         variant="text"
                         color="red"
                         size="sm"
+                        aria-label={`Remove ${item.name || `molecule ${index + 1}`} from cart`}
                         onClick={() => removeFromCart(index)}
                       >
                         <TrashIcon className="h-4 w-4" />
@@ -537,16 +616,18 @@ Please contact the customer at ${userEmail} to process this order.
                     color="blue" 
                     size="sm"
                     onClick={handleCheckout}
+                    disabled={cartAction !== null}
                   >
-                    Checkout with Stripe
+                    {cartAction === "checkout" ? "Opening checkout…" : "Checkout with Stripe"}
                   </Button>
                   <Button
                     fullWidth
                     size="sm"
                     onClick={handleSendEnquiry}
+                    disabled={cartAction !== null}
                     className="bg-brand-500 text-white shadow-md shadow-brand-500/20 hover:shadow-lg hover:shadow-brand-500/40 focus:opacity-[0.85] focus:shadow-none active:opacity-[0.85] active:shadow-none"
                   >
-                    Send Enquiry
+                    {cartAction === "enquiry" ? "Sending enquiry…" : "Send Enquiry"}
                   </Button>
                 </div>
               )}
@@ -556,7 +637,7 @@ Please contact the customer at ${userEmail} to process this order.
           {/* Notifications Menu */}
           <Menu>
             <MenuHandler>
-              <IconButton id="notifications-menu-button" variant="text" color="blue-gray" className="dark:text-slate-300">
+              <IconButton id="notifications-menu-button" variant="text" color="blue-gray" className="dark:text-slate-300" aria-label="Open notifications">
                 <BellIcon className="h-5 w-5 text-blue-gray-500 dark:text-slate-300" />
               </IconButton>
             </MenuHandler>
@@ -595,7 +676,7 @@ Please contact the customer at ${userEmail} to process this order.
                 <Typography variant="small" color="blue-gray" className="font-medium dark:text-slate-100">
                   {user.name}
                 </Typography>
-                <Typography variant="small" color="blue-gray" className="text-xs font-normal dark:text-slate-300">
+                <Typography variant="small" color="blue-gray" className="text-xs font-normal tabular-nums dark:text-slate-300">
                   Simulation Tokens: {user.simulationTokens}
                 </Typography>
               </div>
@@ -612,6 +693,40 @@ Please contact the customer at ${userEmail} to process this order.
           </Menu>
         </div>
       </div>
+      {showMobileSearch && (
+        <div className="mt-3 border-t border-blue-gray-100 px-4 pt-3 dark:border-slate-800 md:hidden">
+          <label htmlFor="dashboard-page-finder" className="sr-only">Find a dashboard page</label>
+          <div className="flex items-center gap-2 rounded-lg border border-blue-gray-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-900">
+            <MagnifyingGlassIcon className="h-5 w-5 shrink-0 text-blue-gray-400" aria-hidden="true" />
+            <input
+              id="dashboard-page-finder"
+              type="search"
+              value={pageQuery}
+              onChange={(event) => setPageQuery(event.target.value)}
+              placeholder="Find a dashboard page"
+              className="min-w-0 flex-1 bg-transparent py-2.5 text-sm text-blue-gray-900 outline-none placeholder:text-blue-gray-400 dark:text-slate-100"
+            />
+          </div>
+          <nav className="mt-2 grid max-h-56 gap-1 overflow-y-auto" aria-label="Matching dashboard pages">
+            {matchingPages.length > 0 ? matchingPages.map((destination) => (
+              <button
+                key={destination.path}
+                type="button"
+                className="rounded-md px-3 py-2 text-left text-sm text-blue-gray-800 hover:bg-blue-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 dark:text-slate-200 dark:hover:bg-slate-800"
+                onClick={() => {
+                  navigate(destination.path);
+                  setShowMobileSearch(false);
+                  setPageQuery("");
+                }}
+              >
+                {destination.label}
+              </button>
+            )) : (
+              <p className="px-3 py-2 text-sm text-blue-gray-500 dark:text-slate-400">No matching pages.</p>
+            )}
+          </nav>
+        </div>
+      )}
     </Navbar>
   );
 }

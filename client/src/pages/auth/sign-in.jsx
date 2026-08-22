@@ -1,9 +1,8 @@
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { AuthShell } from "@/components/AuthShell";
 import { useAuth } from "@/context/auth";
 import { API_CONFIG } from "@/utils/constants";
-import { getPlatformName } from "@/config/branding";
-import { PyxisLogo } from "@/components/PyxisLogo";
 
 const ErrorIcon = () => (
   <svg aria-hidden="true" className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -27,6 +26,7 @@ export function SignIn() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
+  const requestControllerRef = useRef(null);
   const navigate = useNavigate();
   const { login } = useAuth();
 
@@ -35,12 +35,15 @@ export function SignIn() {
   // shows one button fewer rather than one that errors when pressed.
   const [demoAvailable, setDemoAvailable] = useState(false);
   useEffect(() => {
-    let cancelled = false;
-    fetch(API_CONFIG.buildApiUrl('/demo-session'))
+    const controller = new AbortController();
+    fetch(API_CONFIG.buildApiUrl('/demo-session'), { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : { available: false }))
-      .then((d) => { if (!cancelled) setDemoAvailable(Boolean(d?.available)); })
+      .then((d) => setDemoAvailable(Boolean(d?.available)))
       .catch(() => { /* no demo button; sign-in still works */ });
-    return () => { cancelled = true; };
+    return () => {
+      controller.abort();
+      requestControllerRef.current?.abort();
+    };
   }, []);
 
   // Forgot-password request flow
@@ -57,17 +60,33 @@ export function SignIn() {
     setNotice("");
   };
 
+  const beginRequest = () => {
+    requestControllerRef.current?.abort();
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
+    setLoading(true);
+    return controller;
+  };
+
+  const finishRequest = (controller) => {
+    if (requestControllerRef.current !== controller) return;
+    requestControllerRef.current = null;
+    setLoading(false);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
     clearMessages();
-    setLoading(true);
+    const controller = beginRequest();
     try {
       const res = await fetch(API_CONFIG.buildApiUrl('/signin'), {
         method: "POST",
         headers: { "Content-Type": "application/json", accept: "*/*" },
         body: JSON.stringify({ username: username.trim(), password }),
+        signal: controller.signal,
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Signin failed");
       if (data.token) {
         const userPayload = data.user || {
@@ -84,9 +103,10 @@ export function SignIn() {
         setError("Invalid credentials");
       }
     } catch (err) {
+      if (err.name === 'AbortError') return;
       setError(err.message || "Login failed");
     } finally {
-      setLoading(false);
+      finishRequest(controller);
     }
   };
 
@@ -96,29 +116,33 @@ export function SignIn() {
   // could read off the server. Here the server looks the demo account up itself
   // and hands back an ordinary session, so no password is ever in the page.
   const handleDemoSession = async () => {
+    if (loading) return;
     clearMessages();
-    setLoading(true);
+    const controller = beginRequest();
     try {
       const res = await fetch(API_CONFIG.buildApiUrl('/demo-session'), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "The demo is unavailable right now");
       const loginResult = login(data.user, data.token);
       if (!loginResult.success) throw new Error(loginResult.error || "Login failed");
       navigate("/dashboard/controlpanel");
     } catch (err) {
+      if (err.name === 'AbortError') return;
       setError(err.message || "The demo is unavailable right now");
     } finally {
-      setLoading(false);
+      finishRequest(controller);
     }
   };
 
   const handleForgotSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
     clearMessages();
-    setLoading(true);
+    const controller = beginRequest();
     try {
       const identifier = resetIdentifier.trim();
       const res = await fetch(API_CONFIG.buildApiUrl('/password-reset/request'), {
@@ -126,33 +150,37 @@ export function SignIn() {
         headers: { "Content-Type": "application/json" },
         // The backend matches on email OR username, so send the identifier as both.
         body: JSON.stringify({ email: identifier, username: identifier }),
+        signal: controller.signal,
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Could not start password reset");
       // The endpoint never reveals whether the account exists.
       setNotice(data.message || "If the account exists, a reset email has been sent.");
     } catch (err) {
+      if (err.name === 'AbortError') return;
       setError(err.message || "Could not start password reset");
     } finally {
-      setLoading(false);
+      finishRequest(controller);
     }
   };
 
   const handleResetSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
     clearMessages();
     if (newPassword !== confirmPassword) {
       setError("Passwords do not match");
       return;
     }
-    setLoading(true);
+    const controller = beginRequest();
     try {
       const res = await fetch(API_CONFIG.buildApiUrl('/password-reset/confirm'), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: resetToken, password: newPassword }),
+        signal: controller.signal,
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Password reset failed");
       setResetComplete(true);
       setNotice("Password reset successful — you can now sign in.");
@@ -161,22 +189,27 @@ export function SignIn() {
       // Drop the token from the URL so a refresh returns to the sign-in form.
       setSearchParams({}, { replace: true });
     } catch (err) {
+      if (err.name === 'AbortError') return;
       setError(err.message || "Password reset failed");
     } finally {
-      setLoading(false);
+      finishRequest(controller);
     }
   };
 
   const messages = (
     <>
       {error && (
-        <div className="cb-auth-error">
+        <div className="cb-auth-error" role="alert">
           <ErrorIcon />
           {error}
         </div>
       )}
       {notice && (
-        <div className="cb-auth-error" style={{ color: "#15803d", borderColor: "#bbf7d0", background: "#f0fdf4" }}>
+        <div
+          className="cb-auth-error"
+          role="status"
+          style={{ color: "#15803d", borderColor: "#bbf7d0", background: "#f0fdf4" }}
+        >
           {notice}
         </div>
       )}
@@ -187,12 +220,14 @@ export function SignIn() {
   if (resetToken && !resetComplete) {
     return (
       <AuthShell title="Set a new password" subtitle="Choose a new password for your account">
-        <form onSubmit={handleResetSubmit} className="cb-auth-form">
+        <form onSubmit={handleResetSubmit} className="cb-auth-form" aria-busy={loading}>
           <div className="cb-auth-field">
             <label className="cb-auth-label" htmlFor="reset-new-password">New password</label>
             <input
               id="reset-new-password"
               type="password"
+              autoComplete="new-password"
+              minLength={8}
               placeholder="••••••••"
               value={newPassword}
               onChange={e => setNewPassword(e.target.value)}
@@ -208,6 +243,8 @@ export function SignIn() {
             <input
               id="reset-confirm-password"
               type="password"
+              autoComplete="new-password"
+              minLength={8}
               placeholder="••••••••"
               value={confirmPassword}
               onChange={e => setConfirmPassword(e.target.value)}
@@ -233,12 +270,13 @@ export function SignIn() {
   if (showForgot) {
     return (
       <AuthShell title="Reset your password" subtitle="We'll email you a link to set a new password">
-        <form onSubmit={handleForgotSubmit} className="cb-auth-form">
+        <form onSubmit={handleForgotSubmit} className="cb-auth-form" aria-busy={loading}>
           <div className="cb-auth-field">
             <label className="cb-auth-label" htmlFor="forgot-identifier">Email or username</label>
             <input
               id="forgot-identifier"
               type="text"
+              autoComplete="username"
               placeholder="you@lab.com"
               value={resetIdentifier}
               onChange={e => setResetIdentifier(e.target.value)}
@@ -257,6 +295,7 @@ export function SignIn() {
           <button
             type="button"
             className="cb-auth-link"
+            disabled={loading}
             onClick={() => { setShowForgot(false); clearMessages(); }}
           >
             Back to sign in
@@ -269,12 +308,13 @@ export function SignIn() {
   // --- Default sign-in view ---
   return (
     <AuthShell title="Welcome back" subtitle="Sign in to access your lab dashboard">
-      <form onSubmit={handleSubmit} className="cb-auth-form">
+      <form onSubmit={handleSubmit} className="cb-auth-form" aria-busy={loading}>
         <div className="cb-auth-field">
           <label className="cb-auth-label" htmlFor="signin-username">Username</label>
           <input
             id="signin-username"
             type="text"
+            autoComplete="username"
             placeholder="Enter your username"
             value={username}
             onChange={e => setUsername(e.target.value)}
@@ -289,6 +329,7 @@ export function SignIn() {
             <button
               type="button"
               className="cb-auth-link text-xs"
+              disabled={loading}
               onClick={() => { setShowForgot(true); clearMessages(); }}
             >
               Forgot password?
@@ -297,6 +338,7 @@ export function SignIn() {
           <input
             id="signin-password"
             type="password"
+            autoComplete="current-password"
             placeholder="••••••••"
             value={password}
             onChange={e => setPassword(e.target.value)}
@@ -340,47 +382,6 @@ export function SignIn() {
       </div>
     </AuthShell>
   );
-}
-
-function AuthShell({ title, subtitle, children }) {
-  return (
-    <div className="cb-auth-page">
-      {/* Animated background */}
-      <div className="cb-auth-bg">
-        <div className="cb-orb cb-orb-1" />
-        <div className="cb-orb cb-orb-2" />
-        <div className="cb-grid-bg" />
-      </div>
-
-      <div className="cb-auth-container">
-        {/* Brand. Not a link: there is no marketing home to go back to, and a
-            dead link on the one page every user sees is worse than plain text.
-            The wordmark is the real logo recovered from the legacy frontend —
-            production has always shown it here, and plain text was a visible
-            step backwards. getPlatformName() still supplies the accessible
-            name, so a rebrand does not leave the alt text lying. */}
-        <div className="cb-auth-brand">
-          <PyxisLogo className="cb-auth-logo-mark" title={getPlatformName()} />
-          <span className="cb-auth-badge">BETA</span>
-        </div>
-
-        {/* Card */}
-        <div className="cb-auth-card">
-          <div className="cb-auth-card-header">
-            <h1 className="cb-auth-title">{title}</h1>
-            <p className="cb-auth-subtitle">{subtitle}</p>
-          </div>
-
-          {children}
-        </div>
-
-      </div>
-    </div>
-  );
-}
-
-export function getAuthToken() {
-  return localStorage.getItem("auth_token");
 }
 
 export default SignIn;

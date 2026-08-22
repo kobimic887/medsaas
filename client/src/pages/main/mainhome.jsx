@@ -93,10 +93,9 @@ export function MainHome() {
 
           <Reveal delay={200}>
             <p className="cb-hero-subtitle">
-              Pyxis Discovery gives organic-research laboratories a branded digital space
-              where their customers can explore compounds, run Molstar simulations,
-              dock to protein targets, get binding scores — and purchase ligands —
-              all in one platform.
+              Pyxis Discovery gives research teams one workspace to search compound
+              catalogs, prepare molecular inputs, run configured docking workflows,
+              and inspect stored receptors and poses in 3D.
             </p>
           </Reveal>
 
@@ -111,14 +110,15 @@ export function MainHome() {
             </div>
           </Reveal>
 
-          {/* hero stats */}
+          {/* Product capabilities, deliberately qualitative until measured
+              customer/usage numbers can be sourced from production data. */}
           <Reveal delay={400}>
             <div className="cb-hero-stats">
-              <div><span className="cb-stat-number">10K+</span><span className="cb-stat-label">Compounds</span></div>
+              <div><span className="cb-stat-number">Search</span><span className="cb-stat-label">Compound catalogs</span></div>
               <div className="cb-stat-divider" />
-              <div><span className="cb-stat-number">50+</span><span className="cb-stat-label">Labs Onboarded</span></div>
+              <div><span className="cb-stat-number">Dock</span><span className="cb-stat-label">Tracked simulation results</span></div>
               <div className="cb-stat-divider" />
-              <div><span className="cb-stat-number">1M+</span><span className="cb-stat-label">Simulations Run</span></div>
+              <div><span className="cb-stat-number">Inspect</span><span className="cb-stat-label">Receptors and poses in 3D</span></div>
             </div>
           </Reveal>
         </div>
@@ -128,18 +128,18 @@ export function MainHome() {
       <section className="cb-section">
         <Reveal>
           <h2 className="cb-section-title">How <span className="cb-gradient-text">Pyxis Discovery</span> Works</h2>
-          <p className="cb-section-subtitle">Four simple steps from lab registration to ligand purchase</p>
+          <p className="cb-section-subtitle">From workspace setup to a reviewable docking result</p>
         </Reveal>
 
         <div className="flex flex-wrap gap-6 justify-center mt-12 max-w-6xl mx-auto">
-          <StepCard number="01" icon="🏢" title="Lab Registration" delay={0}
-            description="Your laboratory creates a branded space on Pyxis Discovery. Upload your compound libraries and define the targets you specialise in." />
-          <StepCard number="02" icon="🔬" title="Customer Exploration" delay={100}
-            description="Potential customers sign in to your lab space, browse your macrocycles, ligands, and molecular scaffolds interactively." />
-          <StepCard number="03" icon="🧬" title="Simulate & Score" delay={200}
-            description="Customers use built-in tools like Molstar to dock compounds to predefined protein chains and get real-time binding scores." />
-          <StepCard number="04" icon="🛒" title="Purchase or Quote" delay={300}
-            description="Once satisfied, customers can purchase ligands directly or request a custom quote — closing the loop from discovery to order." />
+          <StepCard number="01" icon="🏢" title="Create a Workspace" delay={0}
+            description="Register a company workspace, then manage its branding, team roles, and usage policy from the admin area." />
+          <StepCard number="02" icon="🔬" title="Choose Molecular Inputs" delay={100}
+            description="Search the configured compound catalog, sketch a structure, or provide the supported receptor and ligand inputs directly." />
+          <StepCard number="03" icon="🧬" title="Run a Docking Workflow" delay={200}
+            description="Submit a configured Vina or DiffDock job and keep its progress and result associated with your account." />
+          <StepCard number="04" icon="🔎" title="Review the Result" delay={300}
+            description="Open the authenticated receptor and pose files in Molstar, compare poses, and save the SDF when needed." />
         </div>
       </section>
 
@@ -152,17 +152,17 @@ export function MainHome() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-12 max-w-6xl mx-auto px-4">
           <FeatureCard icon="🧪" title="Compound Libraries" delay={0}
-            description="Host and manage off-the-shelf and synthesis-on-demand compound libraries — from 10K macrocycles to 1B enumerated molecules." />
-          <FeatureCard icon="🎯" title="Protein Docking" delay={80}
-            description="Let customers dock compounds against your predefined target proteins with automated scoring and visualization." />
+            description="Search and filter the configured catalog, review structures and package pricing, and keep selected compounds in a cart." />
+          <FeatureCard icon="🎯" title="Docking Workbench" delay={80}
+            description="Prepare Vina and DiffDock requests with validation, progress feedback, and account-scoped stored results." />
           <FeatureCard icon="🔮" title="Molstar 3D Viewer" delay={160}
             description="Interactive 3D molecular visualization powered by Molstar — inspect binding poses, surfaces, and electrostatics in real time." />
-          <FeatureCard icon="📊" title="Binding Scores & Analytics" delay={240}
-            description="Automated binding affinity scoring with detailed analytics dashboards for each simulation run." />
-          <FeatureCard icon="💳" title="Integrated Purchasing" delay={320}
-            description="Stripe-powered checkout and quote request system built right into the platform — no external tools needed." />
-          <FeatureCard icon="🔒" title="Lab-Branded Spaces" delay={400}
-            description="Each lab gets its own branded portal with custom branding, compound catalogs, and customer management." />
+          <FeatureCard icon="📊" title="Result History" delay={240}
+            description="Return to stored simulation runs, reopen their viewer handoff, and follow queued job state from the dashboard." />
+          <FeatureCard icon="📚" title="Research Utilities" delay={320}
+            description="Use literature search, molecular similarity, protein-folding, and molecular-editing routes from one dashboard." />
+          <FeatureCard icon="🔒" title="Company Controls" delay={400}
+            description="Manage workspace branding, member roles, credit policy, and tenant-scoped activity with authenticated controls." />
         </div>
       </section>
 
@@ -189,16 +189,14 @@ export function MainHome() {
             </h2>
             <p className="text-gray-400 leading-relaxed mb-6">
               Whether you specialise in macrocyclic research, covalent inhibitors, or
-              molecular glues — Pyxis Discovery lets you showcase your entire chemical
-              space to potential customers. They interact with your molecules using
-              professional-grade tools, and when they find what they need, the
-              purchase happens right here.
+              molecular glues, Pyxis Discovery keeps catalog exploration, molecular
+              tools, docking records, and company controls together in one workspace.
             </p>
             <ul className="space-y-3 text-gray-300">
-              {["Drag-and-drop compound upload (SDF, SMILES, PDB)",
-                "Customisable target protein library",
-                "Real-time customer activity dashboard",
-                "Revenue analytics & order management"
+              {["Company branding and role-based member management",
+                "Catalog search, package selection, and server-priced checkout",
+                "Tenant-scoped activity and simulation history",
+                "Configurable usage policy and credit balances"
               ].map((t, i) => (
                 <li key={i} className="flex items-start gap-2">
                   <span className="text-green-400 mt-0.5">✓</span> {t}
@@ -218,10 +216,10 @@ export function MainHome() {
                 <div className="flex flex-col items-center justify-center h-full gap-4">
                   <div className="text-6xl animate-pulse">🧬</div>
                   <div className="flex gap-2">
-                    <div className="cb-score-pill cb-score-good">Score: 9.2</div>
-                    <div className="cb-score-pill cb-score-mid">ΔG: −8.4</div>
+                    <div className="cb-score-pill cb-score-good">Receptor loaded</div>
+                    <div className="cb-score-pill cb-score-mid">Pose 1 selected</div>
                   </div>
-                  <div className="text-xs text-gray-500 font-mono">Docking complete • 3 conformers</div>
+                  <div className="text-xs text-gray-500 font-mono">Illustrative viewer state • 3 poses available</div>
                 </div>
               </div>
             </div>
@@ -232,17 +230,15 @@ export function MainHome() {
               Explore, Simulate,<br />Then Purchase
             </h2>
             <p className="text-gray-400 leading-relaxed mb-6">
-              Sign in to your partner lab's Pyxis Discovery space. Browse their compound
-              catalogue, tweak molecules with built-in editors, run docking
-              simulations against real protein targets, and — when you've found the
-              perfect ligand — buy it or request a custom quote, all without leaving
-              the platform.
+              Sign in to browse the configured compound catalog, sketch or paste a
+              molecular structure, submit an available docking workflow, and review
+              its stored receptor and poses without losing the run context.
             </p>
             <ul className="space-y-3 text-gray-300">
-              {["Browse & filter thousands of compounds interactively",
-                "3D visualization and binding-pose inspection",
-                "Automated affinity scoring against lab-defined targets",
-                "One-click purchase or custom quote request"
+              {["Catalog search with structure and price details",
+                "Ketcher molecular editing and direct SMILES input",
+                "Configured Vina and DiffDock submission paths",
+                "Authenticated 3D pose review and SDF download"
               ].map((t, i) => (
                 <li key={i} className="flex items-start gap-2">
                   <span className="text-blue-400 mt-0.5">✓</span> {t}
@@ -258,14 +254,13 @@ export function MainHome() {
         <div className="cb-orb cb-orb-4" />
         <Reveal>
           <h2 className="text-3xl lg:text-5xl font-bold text-white mb-4 text-center" style={{ fontFamily: "'Outfit', sans-serif" }}>
-            Ready to open your <span className="cb-gradient-text">lab's playground</span>?
+            Ready to try the <span className="cb-gradient-text">research workbench</span>?
           </h2>
         </Reveal>
         <Reveal delay={100}>
           <p className="text-gray-400 text-center max-w-xl mx-auto mb-8">
-            Join the growing network of organic-chemistry labs that use Pyxis Discovery to
-            showcase compounds, run simulations, and convert researchers into paying
-            customers.
+            Create a workspace to explore the available tools, or contact the team to
+            discuss your catalog and compute-service requirements.
           </p>
         </Reveal>
         <Reveal delay={200}>

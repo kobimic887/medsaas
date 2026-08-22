@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { API_CONFIG } from "@/utils/constants";
+import { useEffect, useRef, useState } from "react";
+import { API_CONFIG, getAuthToken } from "@/utils/constants";
 
 const ENTITY_COLORS = {
   protein: { border: "border-blue-400", bg: "bg-blue-50", label: "bg-blue-500", text: "Protein" },
@@ -28,13 +28,14 @@ const ProteinFolding = () => {
   const [outputFormat, setOutputFormat] = useState("pdb");
   const [entities, setEntities] = useState([
     createEntity("protein", "A"),
-    createEntity("dna", "B"),
-    createEntity("dna", "C"),
   ]);
   const [addType, setAddType] = useState("protein");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const requestControllerRef = useRef(null);
+
+  useEffect(() => () => requestControllerRef.current?.abort(), []);
 
   const updateEntity = (index, field, value) => {
     setEntities((prev) => prev.map((e, i) => (i === index ? { ...e, [field]: value } : e)));
@@ -98,10 +99,15 @@ const ProteinFolding = () => {
 
     const body = buildRequestBody();
 
+    requestControllerRef.current?.abort();
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
+
     try {
-      const token = localStorage.getItem("auth_token");
+      const token = getAuthToken();
       const response = await fetch(API_CONFIG.buildApiUrl("/openfold3/predict"), {
         method: "POST",
+        signal: controller.signal,
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -121,9 +127,10 @@ const ProteinFolding = () => {
       const data = await response.json();
       setResult(data);
     } catch (err) {
+      if (err.name === "AbortError") return;
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   };
 

@@ -11,8 +11,8 @@
       "server/**/*.{js,mjs,jsx}",
       "client/src/**/*.{js,mjs,jsx}",
       "scripts/**/*.{js,mjs}",
-      "!**/dist/**",
-      "!**/node_modules/**"
+      "!**/dist",
+      "!**/node_modules"
     ]
   },
   "formatter": {

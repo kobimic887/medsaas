@@ -16,8 +16,8 @@ export function Sidenav({ brandImg, brandName, routes }) {
   const [brandImageFailed, setBrandImageFailed] = useState(false);
   const { sidenavType, openSidenav } = controller;
   const sidenavTypes = {
-    dark: "bg-gradient-to-br from-slate-900 to-slate-950 shadow-lg shadow-black/20",
-    white: "bg-white shadow-sm dark:bg-slate-900/95 dark:shadow-black/20",
+    dark: "bg-gradient-to-br from-slate-900 to-slate-950",
+    white: "bg-white dark:bg-slate-900/95",
     transparent: "bg-transparent dark:bg-slate-900/60",
   };
 
@@ -31,7 +31,9 @@ export function Sidenav({ brandImg, brandName, routes }) {
     <>
       {/* Mobile Overlay */}
       {openSidenav && (
-        <div 
+        <button
+          type="button"
+          aria-label="Close navigation menu"
           id="mobile-overlay"
           className="fixed inset-0 z-40 bg-black bg-opacity-50 xl:hidden"
           onClick={() => setOpenSidenav(dispatch, false)}
@@ -63,6 +65,7 @@ export function Sidenav({ brandImg, brandName, routes }) {
             </Typography>
           </Link>
           <IconButton
+            aria-label="Close navigation menu"
             id="sidebar-close-button"
             variant="text"
             color={sidenavType === "dark" ? "white" : "blue-gray"}
