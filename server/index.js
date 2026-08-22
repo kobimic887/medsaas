@@ -103,6 +103,8 @@ const DEFAULT_LIGAND_SERVICE_CONFIG = Object.freeze({
   diffdockApiUrl: process.env.DIFFDOCK_API_URL || 'https://services.asinex.com:58000/molecular-docking/diffdock/generate'
 });
 
+// LANDMINE: "de-SaaS" is one-company Pyxis branding. Do not delete this catalog,
+// signup, Stripe billing, roles, companies, or credits to "simplify" the product.
 const PLAN_CATALOG = Object.freeze({
   Trial: { displayName: 'Trial', credits: 4, priceCents: 0 },
   Standard: { displayName: 'Standard', credits: 50, priceCents: 2000 },

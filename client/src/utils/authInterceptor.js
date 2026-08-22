@@ -1,16 +1,13 @@
-// Global 401 handler.
+// LANDMINE: same-origin 401 = dead session ONLY. This wrapper logs the user
+// out and hard-redirects to sign-in. Do not return 401 for authorization
+// (use 403), validation (400), or upstream credential failure (502).
 //
-// All API calls in this app use raw `fetch` with a manually-attached bearer
-// token. When a token expires the server replies 401 (authentication failure —
-// distinct from 403, which is a legitimate authorization failure the user
-// should stay logged in for). Rather than retrofit ~20 call sites, we wrap
-// window.fetch once at bootstrap: on a same-origin 401 we clear auth state and
-// hard-redirect to the sign-in page exactly once.
+// All API calls use raw `fetch` with a bearer token. Rather than retrofit
+// ~20 call sites, we wrap window.fetch once at bootstrap.
 //
-// Why a hard redirect (window.location) and not router navigate(): a full
-// reload tears down every mounted dashboard page in one shot, which stops the
-// retry/replaceState storm that an expired token triggers. A soft nav would
-// leave components mounted and racing.
+// Hard redirect (window.location), not router navigate(): a full reload
+// tears down every mounted dashboard page and stops the retry/replaceState
+// storm an expired token triggers. A soft nav would leave components racing.
 
 import { clearAuthStorage } from './constants';
 

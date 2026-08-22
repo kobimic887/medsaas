@@ -1,125 +1,105 @@
-# Pyxis Discovery working instructions
+# Pyxis Discovery
 
-## Mission and source of truth
+Repository name is `medsaas`. User-facing product is **Pyxis Discovery**.
 
-Read [`GOAL.md`](GOAL.md) only when the task is roadmap, priority, or unclear scope — not for
-narrow bugfixes or API slices. The owner wants the maintained frontend to remain recognizably
-Pyxis, deliver the best user experience, and make the Amsterdam compute-box cutover simple. Do
-not grow that goal into a general rewrite.
+The maintained frontend should stay recognizably Pyxis, deliver the best user
+experience, and keep the Amsterdam compute-box cutover simple. That is not a
+license to rewrite the product.
 
-Operational docs (trigger-only — read when the task is prod/deploy/continuation or box work):
+Git, Mac↔oracleOld sync, production approval, start mode, and token-conserve live in
+`~/.codex/AGENTS.md`. Do not create `LANDMINES.md` here — encode traps in code and
+keep this file updated **in the same change** when a path or trap moves.
 
-1. Resolve `app.pyxis-discovery.com` and inspect the working tree when identity matters.
-2. If DNS points at `oracleNew` (`84.13.81.51`), read
-   [`docs/POST-PROMOTION-HANDOFF.md`](docs/POST-PROMOTION-HANDOFF.md).
-3. Otherwise, for continuation of box/cutover work, read
-   [`docs/NEXT-SESSION.md`](docs/NEXT-SESSION.md).
-4. For box work, then [`docs/ARRIVAL-RUNBOOK.md`](docs/ARRIVAL-RUNBOOK.md) and
-   [`docs/BOX-ARCHITECTURE.md`](docs/BOX-ARCHITECTURE.md).
-5. [`docs/README.md`](docs/README.md) is an index only. Measure live state before trusting dated
-   status. After DNS → `84`, the handoff file above outranks older “`83` is production” prose.
+## Invariants
 
-Architecture/relationship questions: use global `graphify` skill when `graphify-out/` exists;
-confirm changed code and operational state directly (graph can be stale).
-
-## Product invariants
-
-- The product is **Pyxis Discovery**. `medsaas` is the repository name, not user-facing branding.
-- “De-SaaS” means one-company Pyxis branding. It does **not** mean deleting signup, plans,
-  purchasing, billing, roles, companies, credits, or other working product behavior.
-- Preserve controls and flows users recognize. Fix how they work; do not remove or relocate them
-  unless that is explicitly requested.
-- Keep the existing signup/billing surface and scientific workflows. Do not add new tenant or
-  billing features without a direct request.
-- Reserve API `401` for an invalid/dead session because the client logs out on any `401`.
-  Authorization failures are `403`, validation failures `400`, and upstream auth failures `502`.
+- **“De-SaaS” means one-company Pyxis branding.** It does **not** mean deleting
+  signup, plans, purchasing, billing, roles, companies, credits, or other working
+  product behavior. Preserve controls users recognize. Do not add tenant/billing
+  features without a direct request.
+- **`401` is a dead session only.** The client logs out on any same-origin `401`.
+  Authorization failures are `403`, validation `400`, upstream auth failures `502`.
 - Credits are granted server-side from the Stripe webhook, never from the client.
+- Company branding and role checks are server-owned. Do not trust client-only enforcement.
+- MongoDB Atlas is the production application database. Do not replace it with a local dump.
+  Pyxis and FinSrv use separate Atlas projects.
+- Folding and molecule generation stay hosted NVIDIA services. DiffDock replacement is
+  OSS DiffDock — do not re-propose NVIDIA NIM / AI Enterprise for DiffDock.
 
 ## Architecture
 
-- Bun workspace: `client/` is React 18 + Vite; `server/` is the Express/Bun API; `services/`
-  contains scientific services and the MCP server; `deploy/` contains host and box deployment.
-- Routes are primarily in `server/index.js`; scientific proxies also use
+- Bun workspace: `client/` React 18 + Vite; `server/` Express/Bun API; `services/`
+  scientific + MCP; `deploy/` host and box.
+- Routes primarily in `server/index.js`; scientific proxies also in
   `server/routes/scientificServices.js`.
-- Client routes live in `client/src/routes.jsx`. Use `API_CONFIG.buildApiUrl()` for `/api/*` and
-  `API_CONFIG.buildUrl()` for top-level routes.
-- Authentication state comes from `client/src/context/auth.jsx`. Company branding and role checks
-  are server-owned; do not trust client-only enforcement.
-- MongoDB Atlas remains the production application database. Do not replace it with a local dump.
-  Pyxis and FinSrv use separate Atlas projects.
-- The Amsterdam box is compute-only: docking, DiffDock, conversion, Tanimoto/Postgres, GROMACS,
-  ADMET, and glioblastoma. It does not receive the application API or MongoDB.
-- Folding and molecule generation remain hosted NVIDIA services. Do not re-propose NVIDIA NIM / AI
-  Enterprise for DiffDock; the selected replacement is OSS DiffDock.
-- `oracleOld` (`151.145.91.17`) is a distinct host and temporary Tanimoto source. `oracleNew`
-  (`84.13.81.51`) is the live application host (measure DNS). `83.229.87.94`: **scheduled for
-  imminent shutdown** (owner 2026-08-21) — do not treat as long-lived standby; still measured up
-  until teardown. Before-kill checklist and post-shutdown rollback question:
-  [`docs/POST-PROMOTION-HANDOFF.md`](docs/POST-PROMOTION-HANDOFF.md).
+- Client routes: `client/src/routes.jsx`. Use `API_CONFIG.buildApiUrl()` for `/api/*`
+  and `API_CONFIG.buildUrl()` for top-level routes.
+- Auth state: `client/src/context/auth.jsx`. Session logout interceptor:
+  `client/src/utils/authInterceptor.js`.
+- Amsterdam box is **compute-only** (docking, DiffDock, conversion, Tanimoto/Postgres,
+  GROMACS, ADMET, glioblastoma). It does not receive the application API or MongoDB.
+- `oracleOld` (`151.145.91.17`) is a distinct host and a temporary Tanimoto source.
+  `oracleNew` (`84.13.81.51`) is the **live** application host — measure DNS.
+  `83` (`83.229.87.94`) is scheduled for shutdown and is **not** production.
+- Root, `client/`, and `server/` keep both Bun and npm lockfiles. After a dependency
+  change run `bun run lockfiles:refresh` and commit both families.
 
-## Working method
+## Conditional docs
 
-Follow global `~/.codex/AGENTS.md`. Preserve unrelated dirty work in this often-dirty repo; verify
-the actual affected surface (a build alone does not prove a dashboard flow).
+Do not open these unless the task is prod, deploy, continuation, or box work.
 
-## Commands and focused verification
+1. Resolve `app.pyxis-discovery.com` and inspect the working tree when identity matters.
+2. If DNS points at oracleNew (`84.13.81.51`), read `docs/POST-PROMOTION-HANDOFF.md`.
+3. Otherwise, for box/cutover continuation, read `docs/NEXT-SESSION.md`.
+4. For box work, then `docs/ARRIVAL-RUNBOOK.md` and `docs/BOX-ARCHITECTURE.md`.
+5. `docs/README.md` is an index. Measure live state. After DNS → `84`, the
+   post-promotion handoff outranks older “`83` is production” prose.
+6. Roadmap / unclear priority only: `GOAL.md`. Not for a narrow bugfix or API slice.
+7. Architecture relationships: global `graphify` skill if `graphify-out/` exists
+   (confirm live facts in files). Docking contract: `docs/DOCKING-CONTRACT.md`.
 
-Use Bun by default. Root, `client/`, and `server/` intentionally keep Bun and npm lockfiles; after a
-dependency change run `bun run lockfiles:refresh` and commit both families.
+## Commands
 
 ```bash
 bun run dev               # API + Vite
-bun run check             # server compile check + client build
+bun run check             # server compile + client build
 bun run lint
 bun run test              # server suite
-bun run ci                # full repository gate
+bun run ci                # full gate
 ```
 
-Choose checks by changed boundary:
+Pick the smallest convincing check:
 
-- UI or routing: `bun run build` or `bun run check`, the nearest existing `test:*` lifecycle check,
-  and one real browser/user path when feasible.
-- Server/auth/billing: server compile check plus the nearest focused server test; use the full server
-  suite when shared middleware or route plumbing changes.
+- UI / routing: `build` or `check`, nearest `test:*` lifecycle, one real browser path when feasible.
+- Server / auth / billing: compile check + nearest focused server test; full server suite when shared middleware changes.
 - Branding: include `bun run test:brand`.
-- Docking/box code: use its service-level tests and the real contract verifier documented in
-  `docs/DOCKING-CONTRACT.md`; replay fixtures are not arrival evidence.
-- Shared configuration, dependency, or release boundary: run `bun run ci` when its broader coverage
-  is justified.
+- Docking / box: service-level tests plus the real contract verifier in `docs/DOCKING-CONTRACT.md`.
+  Replay fixtures are not arrival evidence.
+- Shared config / dependency / release boundary: `bun run ci` when justified.
 
-Do not stack several overlapping smoke tests around the same assertion. Inspect outputs critically;
-loose grep counts and mocked fixtures have produced false confidence here.
+Loose grep and mocked fixtures have produced false confidence here. A build alone
+does not prove a dashboard flow.
 
-## Git and release behavior
+## Release
 
-- **Git (identical everywhere):** When a meaningful unit of work looks done → commit (no secrets,
-  no half-done work, no unrelated dirty files). After that commit → push (non-force), including
-  `main`/`master`. Verified ≈ agent judgment; cheap/relevant tests if easy. Git push ≠ prod deploy:
-  pushes run CI and do not deploy production; still need explicit approval for oracleNew/84 live
-  mutations, billing, DNS/TLS. Never force-push; never commit `.env`/secrets. Plan-only /
-  "don't commit" / draft-discard in the user message overrides for that turn.
-- **Mac ↔ oracleOld sync:** Do not leave Mac-only (or oracleOld-only) drift on this repo or shared
-  agent config. Even before a commit is warranted, copy/rsync/patch touched files to the other
-  host; after commit+push, both sides pull/match. Never sync secrets. Not a prod deploy.
-- Production deployment is manual. Source upload, built `client/dist`, service restart, and deployed
-  identity are separate concerns; follow the current runbook rather than reconstructing commands.
-- Begin remote work with read-only identity, DNS, listener, service, build, and database checks.
-- Obtain explicit approval immediately before a production mutation, DNS/network change, manual
-  rollback, destructive cleanup, or removal of an old service/data source. Routine steps inside an
-  approved deployment and documented automatic rollback do not need repeated approval.
-- On shared hosts, never modify nginx, TLS, DNS, firewall, unrelated applications, or database
-  volumes unless the user names and authorizes that exact action.
-- Kill only measured PIDs or named units. Never use broad `pkill` patterns.
-- Never print, copy into Git, or expose `.env` contents or credentials.
+Production deploy is manual. Source upload, built `client/dist`, service restart, and
+deployed identity are separate — follow the current runbook; do not reconstruct
+commands from memory. Pushes run CI and do **not** deploy.
 
-## Available project helpers
+Begin remote work with read-only identity, DNS, listener, service, build, and database
+checks. On shared hosts, never modify nginx, TLS, DNS, firewall, unrelated apps, or
+database volumes unless the user names that action. Kill only measured PIDs or named
+units — never broad `pkill`.
 
-- Use the `pyxis-arrival` skill when the box arrives, when preparing its cutover, or when checking
-  arrival readiness.
-- Use `pyxis-api-route` when adding or changing Express `/api` routes, auth middleware, credit
-  metering, proxies, or 401/403/502 behavior.
-- Use `pyxis-feature-slice` when a product change needs client + server + the right test harness
-  (includes gen-test guidance for `server/test` vs lifecycle scripts).
-- Use the Pyxis operations custom agent (`pyxis_ops` in Codex, `pyxis-ops` in Claude) only for a
-  read-only topology, runbook, deployment-risk, or live identity audit. Do not spawn it for ordinary
-  one-file work.
+## Skills and subagents
+
+Use the named skill when the trigger fits. Few subagents. Cheap mode (user said
+conserve tokens / usage low): skip this table’s optional helpers.
+
+| Trigger | Use |
+|---|---|
+| Box arrival, cutover prep, arrival readiness | `pyxis-arrival` |
+| Express `/api` routes, auth middleware, credits, proxies, 401/403/502 | `pyxis-api-route` |
+| Product change that needs client + server + the right test harness | `pyxis-feature-slice` |
+| Read-only topology / runbook / deploy-risk / live-identity audit | `pyxis_ops` (Codex) / `pyxis-ops` (Claude) |
+
+Do not spawn `pyxis-ops` for ordinary one-file work.
