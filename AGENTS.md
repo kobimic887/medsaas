@@ -98,6 +98,9 @@ loose grep counts and mocked fixtures have produced false confidence here.
   pushes run CI and do not deploy production; still need explicit approval for oracleNew/84 live
   mutations, billing, DNS/TLS. Never force-push; never commit `.env`/secrets. Plan-only /
   "don't commit" / draft-discard in the user message overrides for that turn.
+- **Mac ↔ oracleOld sync:** Do not leave Mac-only (or oracleOld-only) drift on this repo or shared
+  agent config. Even before a commit is warranted, copy/rsync/patch touched files to the other
+  host; after commit+push, both sides pull/match. Never sync secrets. Not a prod deploy.
 - Production deployment is manual. Source upload, built `client/dist`, service restart, and deployed
   identity are separate concerns; follow the current runbook rather than reconstructing commands.
 - Begin remote work with read-only identity, DNS, listener, service, build, and database checks.
