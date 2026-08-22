@@ -1,6 +1,11 @@
 # The goal
 
-**Read this before proposing any plan for this repo.**
+Open this only for roadmap / unclear priority / “what should we build.”
+Not for a named-file bugfix or a narrow API slice. Start mode and product
+invariants live in `AGENTS.md` and `~/.codex/AGENTS.md`.
+
+**De-SaaS is branding only.** This file is not permission to retire signup,
+plans, Stripe, roles, companies, or credits.
 
 Stated by the owner, repeatedly, on 2026-07-29 — in their own words, kept verbatim because
 paraphrasing it is how the scope drifted in the first place:
@@ -75,5 +80,6 @@ answer changes what gets built; otherwise choose, say what you chose, and move.
 
 ---
 
-**Where things stand:** [`docs/NEXT-SESSION.md`](docs/NEXT-SESSION.md) — the pick-up-here note
-at the top is current.
+**Where things stand:** after DNS → `84`, [`docs/POST-PROMOTION-HANDOFF.md`](docs/POST-PROMOTION-HANDOFF.md)
+outranks older “`83` is production” / NEXT-SESSION pickup notes. Do not open runbooks
+unless this task is prod, deploy, continuation, or box work.

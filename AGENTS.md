@@ -40,6 +40,8 @@ keep this file updated **in the same change** when a path or trap moves.
 - `oracleOld` (`151.145.91.17`) is a distinct host and a temporary Tanimoto source.
   `oracleNew` (`84.13.81.51`) is the **live** application host — measure DNS.
   `83` (`83.229.87.94`) is scheduled for shutdown and is **not** production.
+  `SDF_CONVERTER_URL` still defaults to `83:8001` in `server/index.js` — leftover,
+  not proof `83` is live. Do not change that default without measuring env on `84`.
 - Root, `client/`, and `server/` keep both Bun and npm lockfiles. After a dependency
   change run `bun run lockfiles:refresh` and commit both families.
 
