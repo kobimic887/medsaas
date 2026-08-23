@@ -222,9 +222,8 @@ about it.
    It is the rollback and a different codebase from `client/`, not an older copy. Its start
    command is **`npm run dev-vite-only`** — never `npm run dev`, which also starts
    `stripe-server.cjs`, already holding `:3001`, and the loser dies on `EADDRINUSE`.
-   Local uncommitted deletes of Cloudflare/Docker/test junk in that tree are intentional; do
-   not restore them with a blind `git checkout .` — that would also wipe the live
-   `vite.config.js` / `stripe-server.cjs` hardening.
+   Those junk deletes plus the vite/stripe hardening are **in git** as of 2026-08-23
+   (`60072cb`). Do not hard-reset; host `.env` is still local-only.
 7. **Do not trust `grep -c` to prove a deploy landed.** It counts *lines*, and has produced a
    false "shipped" reading twice in this repo. Verify by fetching the live URL and matching a
    string that survives minification (property names do; local variable names do not).

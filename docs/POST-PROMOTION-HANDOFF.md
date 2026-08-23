@@ -21,8 +21,8 @@ and service identity with live checks at the start of every session.
 
 | Role | Path on `84` | Git remote / identity |
 |---|---|---|
-| Legacy rollback frontend | `/root/pyxis-ROLLBACK-frontend-5173` | `eitangenis/material-tailwind-dashboard-react` @ `58ad4cb` |
-| Legacy rollback API | `/root/pyxis-ROLLBACK-backend-3000` | `eitangenis/chem_beo` @ `3074d8d` |
+| Legacy rollback frontend | `/root/pyxis-ROLLBACK-frontend-5173` | `eitangenis/material-tailwind-dashboard-react` @ `60072cb` |
+| Legacy rollback API | `/root/pyxis-ROLLBACK-backend-3000` | `eitangenis/chem_beo` @ `8d1d921` |
 | Live maintained (public) | `/root/pyxis-LIVE-5174` | deploy tree (no `.git`); `DEPLOYED_SHA` stamped |
 | FinSrv | `/opt/finsrv` | nginx → `:4000` |
 
@@ -54,14 +54,12 @@ See also [`NEXT-SESSION.md`](./NEXT-SESSION.md) § “Owner decisions” and the
 - **PubMed:** maintained only; `:5174` 404 ≠ legacy deleting git.
 - **Bare Molstar:** empty visit with no handoff is intentional.
 
-### Local working-tree cleanup on the live legacy clones (fine)
+### Rollback trees are cleaned in git (2026-08-23)
 
-Both live trees track the GitHub remotes above but carry **uncommitted** local deletes of
-deploy/docs/test junk (Cloudflare/genezio/Docker/wrangler, alternate `server.js` stacks,
-one-off mongo/import/test scripts). Runtime still has `index.html` / `src/` / `vite` /
-`stripe-server.cjs` / `index.js` / `utils/`. Keep the local **security** edits in
-`vite.config.js` and `stripe-server.cjs` — do not `git checkout .` or hard-reset those
-trees without reviewing the diff first. GitHub itself was not emptied of those files.
+`:5173` / `:3000` junk deletes + `vite.config.js` / `stripe-server.cjs` hardening are
+**committed** on those remotes (`60072cb` / `8d1d921`). Host `.env` stays uncommitted.
+Do not `git checkout .` / hard-reset those trees — that would still be wrong if a later
+host-only edit appears.
 
 ## The role switch
 
