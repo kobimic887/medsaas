@@ -12,6 +12,8 @@ import { StatisticsCard } from "@/widgets/cards";
 import { CheckCircleIcon } from "@heroicons/react/24/solid";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 
+const DASHBOARD_FETCH_TIMEOUT_MS = 15_000;
+
 export function DashboardHome() {
   const [activityData, setActivityData] = React.useState(null);
   const [loading, setLoading] = React.useState(false);
@@ -20,7 +22,7 @@ export function DashboardHome() {
   const [molPriceStatsError, setMolPriceStatsError] = React.useState(null);
   const [molPriceStatsLoading, setMolPriceStatsLoading] = React.useState(false);
 
-  const fetchActivities = async (signal) => {
+  const fetchActivities = async (signal, didTimeout) => {
     try {
       setLoading(true);
       setError(null);
@@ -39,18 +41,29 @@ export function DashboardHome() {
 
       setActivityData(await response.json());
     } catch (err) {
-      if (err.name === "AbortError") return;
+      if (err.name === "AbortError") {
+        if (didTimeout?.()) setError("Request timed out");
+        return;
+      }
       console.error("Error fetching activities:", err);
       setError(err.message);
     } finally {
-      if (!signal?.aborted) setLoading(false);
+      if (!signal?.aborted || didTimeout?.()) setLoading(false);
     }
   };
 
   React.useEffect(() => {
     const controller = new AbortController();
-    fetchActivities(controller.signal);
-    return () => controller.abort();
+    let timedOut = false;
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, DASHBOARD_FETCH_TIMEOUT_MS);
+    fetchActivities(controller.signal, () => timedOut);
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
   }, []);
 
   React.useEffect(() => {

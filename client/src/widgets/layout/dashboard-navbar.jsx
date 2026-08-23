@@ -31,6 +31,8 @@ import { useThemeMode } from "@/context/theme";
 import { useState, useEffect, useRef } from "react";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 
+const NAVBAR_VALIDATE_TIMEOUT_MS = 15_000;
+
 const PAGE_DESTINATIONS = [
   { label: "Dashboard", path: "/dashboard/dashboardHome" },
   { label: "Control Panel", path: "/dashboard/controlpanel" },
@@ -148,8 +150,12 @@ export function DashboardNavbar() {
 
   useEffect(() => {
     const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), NAVBAR_VALIDATE_TIMEOUT_MS);
     validateTokenAndLoadUser(controller.signal);
-    return () => controller.abort();
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
   }, [pathname]);
 
   const validateTokenAndLoadUser = async (signal) => {

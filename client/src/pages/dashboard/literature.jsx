@@ -217,6 +217,7 @@ export function Literature() {
                 value={`${articles.length} shown of ${total.toLocaleString()}`}
                 size="sm"
                 variant="ghost"
+                className="cb-activity-chip"
               />
             </div>
           </CardHeader>
@@ -245,7 +246,7 @@ export function Literature() {
                   {[article.journal, article.pubdate].filter(Boolean).join(" · ")}
                 </Typography>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <Chip value={`PMID ${article.pmid}`} size="sm" variant="ghost" />
+                  <Chip value={`PMID ${article.pmid}`} size="sm" variant="ghost" className="cb-activity-chip" />
                   {article.doi && (
                     <a
                       href={`https://doi.org/${article.doi}`}

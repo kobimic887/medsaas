@@ -409,6 +409,7 @@ export function ControlPanel() {
                           variant="ghost"
                           color={computeConfig.usingDefaults?.[key] ? "blue-gray" : "green"}
                           value={computeConfig.usingDefaults?.[key] ? "Default" : "Custom"}
+                          className="cb-activity-chip"
                         />
                       </div>
                       <Typography

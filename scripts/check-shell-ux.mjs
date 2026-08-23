@@ -6,6 +6,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) => readFileSync(path.join(root, relativePath), 'utf8');
 const navbar = read('client/src/widgets/layout/dashboard-navbar.jsx');
 const dashboard = read('client/src/layouts/dashboard.jsx');
+const dashboardhome = read('client/src/pages/dashboard/dashboardhome.jsx');
+const controlpanel = read('client/src/pages/dashboard/controlpanel.jsx');
+const literature = read('client/src/pages/dashboard/literature.jsx');
 const contact = read('client/src/pages/main/contact-us.jsx');
 const currency = read('client/src/utils/algo/algo.jsx');
 const generation = read('client/src/pages/dashboard/generate-molecules.jsx');
@@ -14,8 +17,12 @@ const companyAdmin = read('client/src/pages/dashboard/company-admin.jsx');
 const checks = [
   ['dashboard exposes a skip link to main content', dashboard.includes('SkipLink') && dashboard.includes('id="main-content"')],
   ['navbar token balance uses tabular numerals', navbar.includes('tabular-nums') && navbar.includes('Simulation Tokens:')],
-  ['navbar validation requests are cancellable', navbar.includes('validateTokenAndLoadUser(controller.signal)') && navbar.includes('return () => controller.abort()')],
+  ['navbar validation requests are cancellable', navbar.includes('validateTokenAndLoadUser(controller.signal)') && navbar.includes('controller.abort()')],
   ['navbar validation fetch receives its signal', navbar.includes('method: "POST",\n        signal,')],
+  ['navbar validation has a hard timeout', navbar.includes('NAVBAR_VALIDATE_TIMEOUT_MS') && navbar.includes('window.setTimeout(() => controller.abort(), NAVBAR_VALIDATE_TIMEOUT_MS)')],
+  ['home activity fetch has a hard timeout', dashboardhome.includes('DASHBOARD_FETCH_TIMEOUT_MS') && dashboardhome.includes('controller.abort()')],
+  ['control panel ghost chips stay readable in dark mode', controlpanel.includes('variant="ghost"') && controlpanel.includes('cb-activity-chip')],
+  ['literature ghost chips stay readable in dark mode', literature.includes('variant="ghost"') && literature.includes('cb-activity-chip')],
   ['navbar initializes from the stored account', navbar.includes('useState(getStoredNavbarUser)')],
   ['mobile page finder has real destinations', navbar.includes('PAGE_DESTINATIONS') && navbar.includes('Find a dashboard page')],
   ['cart actions use non-blocking status UI', navbar.includes('showActionMessage') && !navbar.includes('alert(')],
