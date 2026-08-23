@@ -32,10 +32,11 @@ import { useState, useEffect, useRef } from "react";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 
 const NAVBAR_VALIDATE_TIMEOUT_MS = 15_000;
+const CART_FETCH_TIMEOUT_MS = 15_000;
 
 const PAGE_DESTINATIONS = [
   { label: "Dashboard", path: "/dashboard/dashboardHome" },
-  { label: "Control Panel", path: "/dashboard/controlpanel" },
+  { label: "Home", path: "/dashboard/controlpanel" },
   { label: "Simulation", path: "/dashboard/simulation" },
   { label: "Simulation Results", path: "/dashboard/molstar3d" },
   { label: "Molecule Viewer", path: "/dashboard/moleculeviewer" },
@@ -71,7 +72,7 @@ export function DashboardNavbar() {
     : routeSegments[routeSegments.length - 1];
   const pageLabels = {
     dashboardHome: "Home",
-    controlpanel: "Control Panel",
+    controlpanel: "Home",
     companyadmin: "Company Admin",
     "company-admin": "Company Admin",
     simulation: "Simulation",
@@ -102,6 +103,7 @@ export function DashboardNavbar() {
   const [actionMessageType, setActionMessageType] = useState("success");
   const actionMessageTimerRef = useRef(null);
   const cartRequestControllerRef = useRef(null);
+  const cartTimeoutRef = useRef(null);
   const navigate = useNavigate();
 
   const matchingPages = PAGE_DESTINATIONS.filter(({ label }) =>
@@ -143,6 +145,7 @@ export function DashboardNavbar() {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('cartUpdated', handleCartUpdate);
       if (actionMessageTimerRef.current) window.clearTimeout(actionMessageTimerRef.current);
+      window.clearTimeout(cartTimeoutRef.current);
       cartRequestControllerRef.current?.abort();
       cartRequestControllerRef.current = null;
     };
@@ -270,8 +273,14 @@ export function DashboardNavbar() {
 
   const handleSendEnquiry = async () => {
     cartRequestControllerRef.current?.abort();
+    window.clearTimeout(cartTimeoutRef.current);
     const controller = new AbortController();
     cartRequestControllerRef.current = controller;
+    let timedOut = false;
+    cartTimeoutRef.current = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, CART_FETCH_TIMEOUT_MS);
     setCartAction("enquiry");
     try {
       // Get logged-in user email from localStorage
@@ -355,10 +364,14 @@ Please contact the customer at ${userEmail} to process this order.
         throw new Error(result?.error || `Failed to send enquiry (HTTP ${response.status})`);
       }
     } catch (error) {
-      if (error.name === "AbortError") return;
+      if (error.name === "AbortError") {
+        if (timedOut) showActionMessage('Enquiry timed out. Please try again.', 'error');
+        return;
+      }
       console.error('Error sending enquiry:', error);
       showActionMessage(`Failed to send enquiry: ${error.message}. Please try again.`, 'error');
     } finally {
+      window.clearTimeout(cartTimeoutRef.current);
       if (cartRequestControllerRef.current === controller) {
         cartRequestControllerRef.current = null;
         setCartAction(null);
@@ -368,6 +381,7 @@ Please contact the customer at ${userEmail} to process this order.
 
   const handleCheckout = async () => {
     let controller = null;
+    let timedOut = false;
     try {
       // Check if Stripe is configured
       if (!import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY) {
@@ -381,8 +395,14 @@ Please contact the customer at ${userEmail} to process this order.
       }
 
       cartRequestControllerRef.current?.abort();
+      window.clearTimeout(cartTimeoutRef.current);
       controller = new AbortController();
       cartRequestControllerRef.current = controller;
+      timedOut = false;
+      cartTimeoutRef.current = window.setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, CART_FETCH_TIMEOUT_MS);
       setCartAction("checkout");
 
       const token = getAuthToken();
@@ -415,10 +435,14 @@ Please contact the customer at ${userEmail} to process this order.
       window.location.href = result.url;
       
     } catch (error) {
-      if (error.name === "AbortError") return;
+      if (error.name === "AbortError") {
+        if (timedOut) showActionMessage('Checkout timed out. Please try again.', 'error');
+        return;
+      }
       console.error('Error during checkout:', error);
       showActionMessage(`Failed to start checkout: ${error.message}`, 'error');
     } finally {
+      window.clearTimeout(cartTimeoutRef.current);
       if (controller && cartRequestControllerRef.current === controller) {
         cartRequestControllerRef.current = null;
         setCartAction(null);

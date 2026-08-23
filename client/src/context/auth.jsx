@@ -74,6 +74,9 @@ export function AuthProvider({ children }) {
   };
 
   const isAdmin = () => {
+    // Demo sessions keep the account's real role in the JWT, but they must not
+    // open company-admin chrome. Members and the public demo are the same path.
+    if (user?.demo) return false;
     const role = user?.role;
     return role === "owner" || role === "admin";
   };

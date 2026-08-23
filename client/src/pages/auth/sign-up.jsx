@@ -5,6 +5,8 @@ import { useAuth } from "@/context/auth";
 import { useBranding } from "@/hooks/useBranding";
 import { API_CONFIG } from "@/utils/constants";
 
+const AUTH_FETCH_TIMEOUT_MS = 15_000;
+
 const Spinner = () => (
   <svg aria-hidden="true" className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
@@ -21,11 +23,15 @@ export function SignUp() {
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const requestControllerRef = useRef(null);
+  const requestTimeoutRef = useRef(null);
   const { brandName, platformName } = useBranding(organization);
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  useEffect(() => () => requestControllerRef.current?.abort(), []);
+  useEffect(() => () => {
+    requestControllerRef.current?.abort();
+    window.clearTimeout(requestTimeoutRef.current);
+  }, []);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -40,8 +46,14 @@ export function SignUp() {
     }
 
     requestControllerRef.current?.abort();
+    window.clearTimeout(requestTimeoutRef.current);
     const controller = new AbortController();
     requestControllerRef.current = controller;
+    let timedOut = false;
+    requestTimeoutRef.current = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, AUTH_FETCH_TIMEOUT_MS);
     setLoading(true);
 
     try {
@@ -70,9 +82,13 @@ export function SignUp() {
 
       setSuccess(true);
     } catch (err) {
-      if (err.name === "AbortError") return;
+      if (err.name === "AbortError") {
+        if (timedOut) setError("Request timed out. Please try again.");
+        return;
+      }
       setError(err.message || "Signup failed");
     } finally {
+      window.clearTimeout(requestTimeoutRef.current);
       if (requestControllerRef.current === controller) {
         requestControllerRef.current = null;
         setLoading(false);

@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 
 const ENTITY_COLORS = {
-  protein: { border: "border-blue-400", bg: "bg-blue-50", label: "bg-blue-500", text: "Protein" },
-  dna: { border: "border-green-400", bg: "bg-green-50", label: "bg-green-500", text: "DNA" },
-  rna: { border: "border-orange-400", bg: "bg-orange-50", label: "bg-orange-500", text: "RNA" },
-  ligand: { border: "border-purple-400", bg: "bg-purple-50", label: "bg-purple-500", text: "Ligand" },
+  protein: { border: "border-blue-400", bg: "bg-blue-50 dark:bg-blue-950/40", label: "bg-blue-500", text: "Protein" },
+  dna: { border: "border-green-400", bg: "bg-green-50 dark:bg-green-950/40", label: "bg-green-500", text: "DNA" },
+  rna: { border: "border-orange-400", bg: "bg-orange-50 dark:bg-orange-950/40", label: "bg-orange-500", text: "RNA" },
+  ligand: { border: "border-purple-400", bg: "bg-purple-50 dark:bg-purple-950/40", label: "bg-purple-500", text: "Ligand" },
 };
 
 const CHAIN_IDS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
@@ -162,12 +162,12 @@ const ProteinFolding = () => {
   };
 
   return (
-    <div className="p-6 w-full bg-white rounded shadow">
+    <div className="p-6 w-full rounded bg-white shadow dark:bg-slate-900 dark:text-slate-100">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Left Column - Input Form */}
         <div>
           <h2 className="text-2xl font-bold mb-2">Protein Folding - OpenFold3</h2>
-          <p className="text-sm text-gray-600 mb-6">
+          <p className="mb-6 text-sm text-gray-600 dark:text-slate-400 dark:text-slate-300">
             Predict 3D structures of biomolecular complexes (proteins, DNA, RNA, ligands) using
             NVIDIA NIM OpenFold3. OpenFold3 is a third-generation biomolecular foundation model
             and a PyTorch re-implementation of AlphaFold3.
@@ -183,7 +183,7 @@ const ProteinFolding = () => {
                   type="text"
                   value={requestId}
                   onChange={(e) => setRequestId(e.target.value)}
-                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  className="w-full border border-gray-300 rounded dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                   placeholder="e.g. 5GNJ"
                   required
                 />
@@ -194,7 +194,7 @@ const ProteinFolding = () => {
                   id="pf-output-format"
                   value={outputFormat}
                   onChange={(e) => setOutputFormat(e.target.value)}
-                  className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                  className="w-full border border-gray-300 rounded dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
                 >
                   <option value="pdb">PDB</option>
                   <option value="mmcif">mmCIF</option>
@@ -225,7 +225,7 @@ const ProteinFolding = () => {
                         </span>
                         <div className="flex items-center gap-3">
                           <div className="flex items-center gap-1">
-                            <label className="text-xs font-medium text-gray-600" htmlFor={`pf-chain-${idx}`}>Chain ID:</label>
+                            <label className="text-xs font-medium text-gray-600 dark:text-slate-400" htmlFor={`pf-chain-${idx}`}>Chain ID:</label>
                             <input
                               id={`pf-chain-${idx}`}
                               type="text"
@@ -233,7 +233,7 @@ const ProteinFolding = () => {
                               onChange={(e) =>
                                 updateEntity(idx, "id", e.target.value.toUpperCase().slice(0, 1))
                               }
-                              className="w-10 border border-gray-300 rounded px-2 py-1 text-sm text-center font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
+                              className="w-10 border border-gray-300 rounded dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 px-2 py-1 text-sm text-center font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
                               maxLength={1}
                             />
                           </div>
@@ -265,21 +265,21 @@ const ProteinFolding = () => {
                       {entity.type === "protein" && (
                         <>
                           <div className="mb-3">
-                            <label className="block text-xs font-medium text-gray-600 mb-1" htmlFor={`pf-aa-seq-${idx}`}>
+                            <label className="block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1" htmlFor={`pf-aa-seq-${idx}`}>
                               Amino Acid Sequence
                             </label>
                             <textarea
                               id={`pf-aa-seq-${idx}`}
                               value={entity.sequence}
                               onChange={(e) => updateEntity(idx, "sequence", e.target.value.replace(/\s/g, ""))}
-                              className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-400"
+                              className="w-full border border-gray-300 rounded dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-400"
                               rows={3}
                               placeholder="e.g. MGREEPLNHVEAERQRREKLNQRFYALRAVVPNVSKMDKASLLGDAI..."
                               required
                             />
                           </div>
                           <div className="mb-2">
-                            <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                            <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-slate-400 cursor-pointer">
                               <input
                                 type="checkbox"
                                 checked={entity.msaEnabled}
@@ -291,14 +291,14 @@ const ProteinFolding = () => {
                           </div>
                           {entity.msaEnabled && (
                             <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1" htmlFor={`pf-msa-${idx}`}>
+                              <label className="block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1" htmlFor={`pf-msa-${idx}`}>
                                 MSA Alignment (CSV format)
                               </label>
                               <textarea
                                 id={`pf-msa-${idx}`}
                                 value={entity.msaCsv}
                                 onChange={(e) => updateEntity(idx, "msaCsv", e.target.value)}
-                                className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-400"
+                                className="w-full border border-gray-300 rounded dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-400"
                                 rows={3}
                                 placeholder={"key,sequence\n-1,MGREEPLNHVEAERQR..."}
                               />
@@ -310,14 +310,14 @@ const ProteinFolding = () => {
                       {/* DNA / RNA fields */}
                       {(entity.type === "dna" || entity.type === "rna") && (
                         <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1" htmlFor={`pf-na-seq-${idx}`}>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1" htmlFor={`pf-na-seq-${idx}`}>
                             {entity.type === "dna" ? "DNA" : "RNA"} Sequence
                           </label>
                           <textarea
                             id={`pf-na-seq-${idx}`}
                             value={entity.sequence}
                             onChange={(e) => updateEntity(idx, "sequence", e.target.value.replace(/\s/g, ""))}
-                            className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-400"
+                            className="w-full border border-gray-300 rounded dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-400"
                             rows={2}
                             placeholder={
                               entity.type === "dna"
@@ -340,7 +340,7 @@ const ProteinFolding = () => {
                                 checked={entity.ligandMode === "ccd"}
                                 onChange={() => updateEntity(idx, "ligandMode", "ccd")}
                               />
-                              <span className="font-medium text-gray-600">CCD Code</span>
+                              <span className="font-medium text-gray-600 dark:text-slate-400">CCD Code</span>
                             </label>
                             <label className="flex items-center gap-1 text-xs cursor-pointer">
                               <input
@@ -349,12 +349,12 @@ const ProteinFolding = () => {
                                 checked={entity.ligandMode === "smiles"}
                                 onChange={() => updateEntity(idx, "ligandMode", "smiles")}
                               />
-                              <span className="font-medium text-gray-600">SMILES</span>
+                              <span className="font-medium text-gray-600 dark:text-slate-400">SMILES</span>
                             </label>
                           </div>
                           {entity.ligandMode === "ccd" ? (
                             <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1" htmlFor={`pf-ccd-${idx}`}>
+                              <label className="block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1" htmlFor={`pf-ccd-${idx}`}>
                                 CCD Code
                               </label>
                               <input
@@ -362,14 +362,14 @@ const ProteinFolding = () => {
                                 type="text"
                                 value={entity.ccdCode}
                                 onChange={(e) => updateEntity(idx, "ccdCode", e.target.value.toUpperCase())}
-                                className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-400"
+                                className="w-full border border-gray-300 rounded dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-400"
                                 placeholder="e.g. ATP"
                                 required
                               />
                             </div>
                           ) : (
                             <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1" htmlFor={`pf-smiles-${idx}`}>
+                              <label className="block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1" htmlFor={`pf-smiles-${idx}`}>
                                 SMILES String
                               </label>
                               <input
@@ -377,7 +377,7 @@ const ProteinFolding = () => {
                                 type="text"
                                 value={entity.smiles}
                                 onChange={(e) => updateEntity(idx, "smiles", e.target.value)}
-                                className="w-full border border-gray-300 rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-400"
+                                className="w-full border border-gray-300 rounded dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-400"
                                 placeholder="e.g. CC(=O)Oc1ccccc1C(=O)O"
                                 required
                               />
@@ -396,7 +396,7 @@ const ProteinFolding = () => {
                   <select
                     value={addType}
                     onChange={(e) => setAddType(e.target.value)}
-                    className="border border-gray-300 rounded px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    className="border border-gray-300 rounded dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
                   >
                     <option value="protein">Protein</option>
                     <option value="dna">DNA</option>
@@ -406,7 +406,7 @@ const ProteinFolding = () => {
                   <button
                     type="button"
                     onClick={addEntity}
-                    className="flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded text-sm font-medium transition-colors"
+                    className="flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded text-sm font-medium transition-colors dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                   >
                     <svg aria-hidden="true"
                       xmlns="http://www.w3.org/2000/svg"
@@ -463,9 +463,9 @@ const ProteinFolding = () => {
           </form>
 
           {error && (
-            <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-3">
-              <p className="text-sm text-red-700 font-medium">Error</p>
-              <p className="text-sm text-red-600 mt-1">{error}</p>
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950/40">
+              <p className="text-sm font-medium text-red-700 dark:text-red-300">Error</p>
+              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{error}</p>
             </div>
           )}
         </div>
@@ -475,7 +475,7 @@ const ProteinFolding = () => {
           <h3 className="text-lg font-semibold mb-3">Prediction Results</h3>
 
           {!loading && !result && !error && (
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center text-gray-400">
+            <div className="rounded-lg border-2 border-dashed border-gray-300 p-8 text-center text-gray-400 dark:border-slate-700 dark:text-slate-500">
               <svg aria-hidden="true"
                 xmlns="http://www.w3.org/2000/svg"
                 className="h-12 w-12 mx-auto mb-3 opacity-50"
@@ -500,7 +500,7 @@ const ProteinFolding = () => {
           )}
 
           {loading && (
-            <div className="border border-blue-200 bg-blue-50 rounded-lg p-8 text-center">
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-8 text-center dark:border-blue-900 dark:bg-blue-950/40">
               <svg aria-hidden="true"
                 className="animate-spin h-10 w-10 text-blue-500 mx-auto mb-3"
                 xmlns="http://www.w3.org/2000/svg"
@@ -521,8 +521,8 @@ const ProteinFolding = () => {
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                 />
               </svg>
-              <p className="text-sm font-medium text-blue-700">Predicting structure...</p>
-              <p className="text-xs text-blue-500 mt-1">
+              <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Predicting structure...</p>
+              <p className="mt-1 text-xs text-blue-500 dark:text-blue-400">
                 This may take several minutes. The model is running on NVIDIA DGX Cloud.
               </p>
             </div>

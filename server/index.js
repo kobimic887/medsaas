@@ -1495,6 +1495,11 @@ async function recordAuditEvent(req, action, details = {}, status = 'success') {
 
 async function requireCompanyAdmin(req, res, next) {
   try {
+    // Demo JWTs carry demo:true even when the backing user is an owner.
+    // Keep 403 (not 401) so the client does not treat this as a dead session.
+    if (req.user?.demo === true) {
+      return res.status(403).json({ error: 'Demo sessions cannot manage company settings' });
+    }
     if (!req.user?.companyId || !req.user?.username) {
       return res.status(403).json({ error: 'Company admin access required' });
     }

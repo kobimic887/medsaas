@@ -13,6 +13,11 @@ const contact = read('client/src/pages/main/contact-us.jsx');
 const currency = read('client/src/utils/algo/algo.jsx');
 const generation = read('client/src/pages/dashboard/generate-molecules.jsx');
 const companyAdmin = read('client/src/pages/dashboard/company-admin.jsx');
+const notifications = read('client/src/pages/dashboard/notifications.jsx');
+const routes = read('client/src/routes.jsx');
+const folding = read('client/src/pages/dashboard/protein-folding.jsx');
+const gromacs = read('client/src/pages/dashboard/gromacs-md.jsx');
+const glioblastoma = read('client/src/pages/dashboard/glioblastoma-predict.jsx');
 
 const checks = [
   ['dashboard exposes a skip link to main content', dashboard.includes('SkipLink') && dashboard.includes('id="main-content"')],
@@ -22,7 +27,15 @@ const checks = [
   ['navbar validation has a hard timeout', navbar.includes('NAVBAR_VALIDATE_TIMEOUT_MS') && navbar.includes('window.setTimeout(() => controller.abort(), NAVBAR_VALIDATE_TIMEOUT_MS)')],
   ['home activity fetch has a hard timeout', dashboardhome.includes('DASHBOARD_FETCH_TIMEOUT_MS') && dashboardhome.includes('controller.abort()')],
   ['control panel activity fetch has a hard timeout', controlpanel.includes('CONTROL_PANEL_FETCH_TIMEOUT_MS') && controlpanel.includes('startPanelFetches')],
-  ['control panel ghost chips stay readable in dark mode', controlpanel.includes('variant="ghost"') && controlpanel.includes('cb-activity-chip')],
+  ['signed-in landing is labeled Home, not Control Panel', routes.includes('name: "home"') && navbar.includes('controlpanel: "Home"') && !navbar.includes('Control Panel')],
+  ['home page does not show compute-admin URLs', !controlpanel.includes('Compute services') && !controlpanel.includes('fetchComputeEndpoints')],
+  ['notifications activity fetch has a hard timeout', notifications.includes('NOTIFICATIONS_FETCH_TIMEOUT_MS') && notifications.includes('controller.abort()')],
+  ['cart enquiry and checkout have a hard timeout', navbar.includes('CART_FETCH_TIMEOUT_MS') && navbar.includes('Enquiry timed out') && navbar.includes('Checkout timed out')],
+  ['dashboard home uses company wording, not workspace', dashboardhome.includes('company members') && dashboardhome.includes('in this company') && !dashboardhome.includes('workspace members')],
+  ['protein folding stays readable in dark mode', folding.includes('dark:bg-slate-900') && folding.includes('dark:text-slate-100')],
+  ['gromacs page stays readable in dark mode', gromacs.includes('dark:bg-slate-900') && gromacs.includes('dark:text-slate-100')],
+  ['glioblastoma page stays readable in dark mode', glioblastoma.includes('dark:bg-slate-900') && glioblastoma.includes('dark:text-slate-100')],
+  ['gromacs and glioblastoma requests abort on route exit', gromacs.includes('requestControllerRef.current?.abort()') && glioblastoma.includes('requestControllerRef.current?.abort()')],
   ['literature ghost chips stay readable in dark mode', literature.includes('variant="ghost"') && literature.includes('cb-activity-chip')],
   ['navbar initializes from the stored account', navbar.includes('useState(getStoredNavbarUser)')],
   ['mobile page finder has real destinations', navbar.includes('PAGE_DESTINATIONS') && navbar.includes('Find a dashboard page')],

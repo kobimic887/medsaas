@@ -258,7 +258,7 @@ export function CompanyAdmin() {
   }
 
   if (!canManageCompany) {
-    return <Navigate to="/dashboard/dashboardHome" replace />;
+    return <Navigate to="/dashboard/controlpanel" replace />;
   }
 
   const replacePendingLogoPreview = (file) => {
@@ -564,18 +564,18 @@ export function CompanyAdmin() {
   ];
 
   return (
-    <div className="mt-8 space-y-6">
+    <div className="mt-8 space-y-6 dark:text-slate-100">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <Typography variant="h3" color="blue-gray">
+          <Typography variant="h3" color="blue-gray" className="dark:text-slate-50">
             Admin Panel
           </Typography>
-          <Typography variant="small" className="mt-1 font-normal text-blue-gray-600">
+          <Typography variant="small" className="mt-1 font-normal text-blue-gray-600 dark:text-slate-400">
             {company?.name || "Company"}
           </Typography>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex rounded-lg border border-blue-gray-100 bg-white p-1">
+          <div className="flex rounded-lg border border-blue-gray-100 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
             {tabs.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
@@ -584,7 +584,7 @@ export function CompanyAdmin() {
                 className={`flex min-h-[40px] items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors ${
                   activeTab === key
                     ? "bg-brand-500 text-white"
-                    : "text-blue-gray-700 hover:bg-blue-gray-50"
+                    : "text-blue-gray-700 hover:bg-blue-gray-50 dark:text-slate-300 dark:hover:bg-slate-800"
                 }`}
               >
                 <Icon className="h-4 w-4" />

@@ -11,6 +11,8 @@ import {
 import { InformationCircleIcon } from "@heroicons/react/24/outline";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 
+const NOTIFICATIONS_FETCH_TIMEOUT_MS = 15_000;
+
 export function Notifications() {
   const [_showAlerts, _setShowAlerts] = React.useState({
     blue: true,
@@ -28,6 +30,7 @@ export function Notifications() {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState(null);
   const activityControllerRef = React.useRef(null);
+  const activityTimeoutRef = React.useRef(null);
   
   const _alerts = ["gray", "green", "orange", "red"];
   
@@ -42,8 +45,14 @@ export function Notifications() {
   // Function to fetch activities from API
   const fetchActivities = async () => {
     activityControllerRef.current?.abort();
+    window.clearTimeout(activityTimeoutRef.current);
     const controller = new AbortController();
     activityControllerRef.current = controller;
+    let timedOut = false;
+    activityTimeoutRef.current = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, NOTIFICATIONS_FETCH_TIMEOUT_MS);
     try {
       setLoading(true);
       setError(null);
@@ -52,7 +61,6 @@ export function Notifications() {
         signal: controller.signal,
         headers: {
           "Content-Type": "application/json",
-          // If you have a token variable, include it; otherwise, remove this line
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         }
       });
@@ -106,10 +114,14 @@ export function Notifications() {
       
       setActivities(activitiesArray);
     } catch (err) {
-      if (err.name === 'AbortError') return;
+      if (err.name === 'AbortError') {
+        if (timedOut) setError('Request timed out');
+        return;
+      }
       console.error('Error fetching activities:', err);
       setError(err.message);
     } finally {
+      window.clearTimeout(activityTimeoutRef.current);
       if (activityControllerRef.current === controller) {
         activityControllerRef.current = null;
         setLoading(false);
@@ -120,7 +132,10 @@ export function Notifications() {
   // Fetch activities on component mount
   React.useEffect(() => {
     fetchActivities();
-    return () => activityControllerRef.current?.abort();
+    return () => {
+      activityControllerRef.current?.abort();
+      window.clearTimeout(activityTimeoutRef.current);
+    };
   }, []);
 
   // Function to get chip color based on activity type or status

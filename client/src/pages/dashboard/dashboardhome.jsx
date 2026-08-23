@@ -114,14 +114,14 @@ export function DashboardHome() {
         icon: CheckCircleIcon,
         title: "Registered Users",
         value: totalUsers.toString(),
-        footer: { color: "text-blue-gray-700 dark:text-slate-300", value: "Active", label: "workspace members" },
+        footer: { color: "text-blue-gray-700 dark:text-slate-300", value: "Active", label: "company members" },
       },
       {
         color: "gray",
         icon: CheckCircleIcon,
         title: "Projects",
         value: totalProjects.toString(),
-        footer: { color: "text-blue-gray-700 dark:text-slate-300", value: "Saved", label: "in this workspace" },
+        footer: { color: "text-blue-gray-700 dark:text-slate-300", value: "Saved", label: "in this company" },
       },
     ];
   };

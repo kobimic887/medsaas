@@ -4,6 +4,8 @@ import { AuthShell } from "@/components/AuthShell";
 import { useAuth } from "@/context/auth";
 import { API_CONFIG } from "@/utils/constants";
 
+const AUTH_FETCH_TIMEOUT_MS = 15_000;
+
 const ErrorIcon = () => (
   <svg aria-hidden="true" className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
@@ -27,6 +29,8 @@ export function SignIn() {
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const requestControllerRef = useRef(null);
+  const requestTimeoutRef = useRef(null);
+  const requestTimedOutRef = useRef(false);
   const navigate = useNavigate();
   const { login } = useAuth();
 
@@ -36,13 +40,16 @@ export function SignIn() {
   const [demoAvailable, setDemoAvailable] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), AUTH_FETCH_TIMEOUT_MS);
     fetch(API_CONFIG.buildApiUrl('/demo-session'), { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : { available: false }))
       .then((d) => setDemoAvailable(Boolean(d?.available)))
       .catch(() => { /* no demo button; sign-in still works */ });
     return () => {
+      window.clearTimeout(timeoutId);
       controller.abort();
       requestControllerRef.current?.abort();
+      window.clearTimeout(requestTimeoutRef.current);
     };
   }, []);
 
@@ -62,14 +69,21 @@ export function SignIn() {
 
   const beginRequest = () => {
     requestControllerRef.current?.abort();
+    window.clearTimeout(requestTimeoutRef.current);
     const controller = new AbortController();
     requestControllerRef.current = controller;
+    requestTimedOutRef.current = false;
+    requestTimeoutRef.current = window.setTimeout(() => {
+      requestTimedOutRef.current = true;
+      controller.abort();
+    }, AUTH_FETCH_TIMEOUT_MS);
     setLoading(true);
     return controller;
   };
 
   const finishRequest = (controller) => {
     if (requestControllerRef.current !== controller) return;
+    window.clearTimeout(requestTimeoutRef.current);
     requestControllerRef.current = null;
     setLoading(false);
   };
@@ -103,7 +117,10 @@ export function SignIn() {
         setError("Invalid credentials");
       }
     } catch (err) {
-      if (err.name === 'AbortError') return;
+      if (err.name === 'AbortError') {
+        if (requestTimedOutRef.current) setError("Request timed out. Please try again.");
+        return;
+      }
       setError(err.message || "Login failed");
     } finally {
       finishRequest(controller);
@@ -131,7 +148,10 @@ export function SignIn() {
       if (!loginResult.success) throw new Error(loginResult.error || "Login failed");
       navigate("/dashboard/controlpanel");
     } catch (err) {
-      if (err.name === 'AbortError') return;
+      if (err.name === 'AbortError') {
+        if (requestTimedOutRef.current) setError("Request timed out. Please try again.");
+        return;
+      }
       setError(err.message || "The demo is unavailable right now");
     } finally {
       finishRequest(controller);
@@ -157,7 +177,10 @@ export function SignIn() {
       // The endpoint never reveals whether the account exists.
       setNotice(data.message || "If the account exists, a reset email has been sent.");
     } catch (err) {
-      if (err.name === 'AbortError') return;
+      if (err.name === 'AbortError') {
+        if (requestTimedOutRef.current) setError("Request timed out. Please try again.");
+        return;
+      }
       setError(err.message || "Could not start password reset");
     } finally {
       finishRequest(controller);
@@ -189,7 +212,10 @@ export function SignIn() {
       // Drop the token from the URL so a refresh returns to the sign-in form.
       setSearchParams({}, { replace: true });
     } catch (err) {
-      if (err.name === 'AbortError') return;
+      if (err.name === 'AbortError') {
+        if (requestTimedOutRef.current) setError("Request timed out. Please try again.");
+        return;
+      }
       setError(err.message || "Password reset failed");
     } finally {
       finishRequest(controller);

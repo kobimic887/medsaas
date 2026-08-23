@@ -53,9 +53,6 @@ export function ControlPanel() {
   const [admetLoading, setAdmetLoading] = React.useState(false);
   const [currentSimulationId, setCurrentSimulationId] = React.useState('');
 
-  // Compute endpoints panel (read-only for members)
-  const [computeConfig, setComputeConfig] = React.useState(null);
-
   // Function to fetch activities from API
   const fetchActivities = async (signal, didTimeout) => {
     try {
@@ -114,27 +111,6 @@ export function ControlPanel() {
     }
   };
 
-  // Which compute endpoints answered this company's docking. Readable by every
-  // member, editable only by owner/admin in the Admin Panel — so on the day docking
-  // moves to the box, anyone can confirm it moved without needing admin rights.
-  const fetchComputeEndpoints = async (signal) => {
-    try {
-      const token = getAuthToken();
-      const response = await fetch(API_CONFIG.buildApiUrl('/company/ligand-service-config'), {
-        signal,
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        }
-      });
-      if (!response.ok) return; // Informational panel; a failure here hides it, nothing more.
-      setComputeConfig(await response.json());
-    } catch (err) {
-      if (err.name === 'AbortError') return;
-      console.error('Error fetching compute endpoints:', err);
-    }
-  };
-
   const startPanelFetches = () => {
     panelFetchControllerRef.current?.abort();
     window.clearTimeout(panelFetchTimeoutRef.current);
@@ -147,7 +123,6 @@ export function ControlPanel() {
     }, CONTROL_PANEL_FETCH_TIMEOUT_MS);
     fetchActivities(controller.signal, () => timedOut);
     fetchUserSimulationLogs(controller.signal);
-    fetchComputeEndpoints(controller.signal);
   };
 
   // Fetch activities and simulation logs on component mount
@@ -380,71 +355,11 @@ export function ControlPanel() {
         <div className="flex items-center justify-center gap-2 py-12">
           <Spinner className="h-8 w-8" />
           <Typography variant="small" color="gray">
-            Loading control panel data...
+            Loading your activity...
           </Typography>
         </div>
       ) : activityData ? (
         <div className="space-y-8">
-          {/* Which compute services answered this company's docking. Read-only for
-              everyone; owner/admin change it in the Admin Panel. Four URLs, no
-              credentials, so there is nothing here a member should not see. */}
-          {computeConfig?.ligandServiceConfig && (
-            <Card className="border border-blue-gray-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
-              <CardHeader
-                floated={false}
-                shadow={false}
-                color="transparent"
-                className="m-0 flex items-center justify-between p-6"
-              >
-                <div>
-                  <Typography variant="h6" color="blue-gray" className="dark:text-slate-100">
-                    Compute services
-                  </Typography>
-                  <Typography variant="small" className="mt-1 font-normal text-blue-gray-600 dark:text-slate-400">
-                    Where docking, catalog and stock requests are sent.
-                    {computeConfig.editable
-                      ? " Change these in the Admin Panel."
-                      : " Read-only — an owner or admin can change them."}
-                  </Typography>
-                </div>
-              </CardHeader>
-              <CardBody className="px-6 pt-0 pb-6">
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  {[
-                    ["Docking", "dockingApiUrl"],
-                    ["DiffDock", "diffdockApiUrl"],
-                    ["Compound catalog", "catalogApiBase"],
-                    ["Stock", "stockApiUrl"],
-                  ].map(([label, key]) => (
-                    <div
-                      key={key}
-                      className="rounded-lg border border-blue-gray-100 p-3 dark:border-slate-800"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <Typography variant="small" className="font-semibold text-blue-gray-700 dark:text-slate-200">
-                          {label}
-                        </Typography>
-                        <Chip
-                          size="sm"
-                          variant="ghost"
-                          color={computeConfig.usingDefaults?.[key] ? "blue-gray" : "green"}
-                          value={computeConfig.usingDefaults?.[key] ? "Default" : "Custom"}
-                          className="cb-activity-chip"
-                        />
-                      </div>
-                      <Typography
-                        variant="small"
-                        className="mt-1 break-all font-mono text-xs text-blue-gray-600 dark:text-slate-400"
-                      >
-                        {computeConfig.ligandServiceConfig[key]}
-                      </Typography>
-                    </div>
-                  ))}
-                </div>
-              </CardBody>
-            </Card>
-          )}
-
           {/* User Simulation Logs Table */}
           <Card className="border border-blue-gray-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20">
             <CardHeader
@@ -664,7 +579,7 @@ export function ControlPanel() {
           </Typography>
           <Typography variant="small" color="gray" className="mt-2">
             {error === 'Request timed out'
-              ? 'The workspace feed did not answer in time. Retry to load it.'
+              ? 'The activity feed did not answer in time. Retry to load it.'
               : 'Please ensure your API is running and accessible.'}
           </Typography>
           <Button variant="outlined" className="mt-4" onClick={startPanelFetches}>

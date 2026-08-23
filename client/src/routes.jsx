@@ -2,7 +2,6 @@ import {
   HomeIcon,
   InformationCircleIcon,
   ServerStackIcon,
-  CogIcon,
   BeakerIcon,
   Square2StackIcon,
   CubeTransparentIcon,
@@ -115,8 +114,8 @@ export const routes = [
   {
     layout: "dashboard",
     pages: [      {
-        icon: <CogIcon {...icon} />,
-        name: "control panel",
+        icon: <HomeIcon {...icon} />,
+        name: "home",
         path: "/controlpanel",
         element: <ControlPanel />,
       },
@@ -134,7 +133,7 @@ export const routes = [
       },
       
       {
-        icon: <HomeIcon {...icon} />,
+        icon: <Square2StackIcon {...icon} />,
         name: "dashboard",
         path: "/dashboardHome",
         element: <DashboardHome />,
