@@ -57,13 +57,14 @@ no GOAL dump. Do not ban caveman; do not require every article. Cavecrew
 Do not open these unless the task is prod, deploy, continuation, or box work.
 
 1. Resolve `app.pyxis-discovery.com` and inspect the working tree when identity matters.
-2. If DNS points at oracleNew (`84.13.81.51`), read `docs/POST-PROMOTION-HANDOFF.md`.
-3. Otherwise, for box/cutover continuation, read `docs/NEXT-SESSION.md`.
-4. For box work, then `docs/ARRIVAL-RUNBOOK.md` and `docs/BOX-ARCHITECTURE.md`.
-5. `docs/README.md` is an index. Measure live state. After DNS → `84`, the
+2. **Where is X / leftover copies:** [`docs/WHERE.md`](docs/WHERE.md) first.
+3. If DNS points at oracleNew (`84.13.81.51`), read `docs/POST-PROMOTION-HANDOFF.md`.
+4. Otherwise, for box/cutover continuation, read `docs/NEXT-SESSION.md`.
+5. For box work, then `docs/ARRIVAL-RUNBOOK.md` and `docs/BOX-ARCHITECTURE.md`.
+6. `docs/README.md` is an index. Measure live state. After DNS → `84`, the
    post-promotion handoff outranks older “`83` is production” prose.
-6. Roadmap / unclear priority only: `GOAL.md`. Not for a narrow bugfix or API slice.
-7. Architecture relationships: global `graphify` skill if `graphify-out/` exists
+7. Roadmap / unclear priority only: `GOAL.md`. Not for a narrow bugfix or API slice.
+8. Architecture relationships: global `graphify` skill if `graphify-out/` exists
    (confirm live facts in files). Docking contract: `docs/DOCKING-CONTRACT.md`.
 
 ## Commands

@@ -1,5 +1,7 @@
 # Combined repository map
 
+Host / leftover copies (84, 151, 83, laptop): [`docs/WHERE.md`](./docs/WHERE.md).
+
 This monorepo unifies the following GitHub projects into one runnable platform.
 
 | Path | Upstream | Role |

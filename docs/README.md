@@ -12,6 +12,7 @@ Longer-form reference for Pyxis Discovery. Shared agent instructions:
 
 | Situation | Read |
 |---|---|
+| **Where is this copy / leftover?** | [WHERE.md](./WHERE.md) |
 | **Any ops / fresh agent** | [POST-PROMOTION-HANDOFF.md](./POST-PROMOTION-HANDOFF.md) |
 | **What to do while waiting / owner decisions** | [NEXT-SESSION.md](./NEXT-SESSION.md) |
 | **Public flip (executed) / rollback / Stripe-after** | [PYXIS-WEB-FLIP.md](./PYXIS-WEB-FLIP.md) |
@@ -36,6 +37,7 @@ Full table in [NEXT-SESSION.md](./NEXT-SESSION.md) § Owner decisions. Short for
 
 | Document | Role |
 |---|---|
+| [WHERE.md](./WHERE.md) | **Authority** — every measured copy (Mac / 84 / 151 / 83 / GitHub / leftovers) |
 | [POST-PROMOTION-HANDOFF.md](./POST-PROMOTION-HANDOFF.md) | **Authority** — host roles, `84` paths, before-kill `83`, arrival prompt |
 | [NEXT-SESSION.md](./NEXT-SESSION.md) | **Authority** — backlog, owner decisions, do-nots, deploy to `:5174` |
 | [PYXIS-WEB-FLIP.md](./PYXIS-WEB-FLIP.md) | **Flip executed 2026-08-23** — rollback + Stripe-after remaining |
@@ -69,7 +71,6 @@ Also: `planning-archive`, `saas-surface-v1`.
 
 ## Hosts outside this tree
 
-- **`84.13.81.51` (`oracleNew`)** — live app host (measure DNS).
-- **`83.229.87.94`** — imminent shutdown; read-only until owner kills.
-- **`151.145.91.17` (`oracleOld`)** — temporary Tanimoto; ops notes in `~/projects/oracle`.
-- Amsterdam GPU box — compute only; access via ARRIVAL §1c probe.
+Canonical list: [WHERE.md](./WHERE.md). Short form: `84` live app, `151` Tanimoto +
+dev clone, `83` leftover not DNS, Amsterdam not delivered. Host notes:
+`~/projects/oracleNew`, `~/projects/oracleOld`.
