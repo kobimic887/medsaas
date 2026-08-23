@@ -88,7 +88,7 @@ Do not mutate toward shutdown. Owner kills 83 out of band.
 | 151 `~/archive/medsaas-stale-not-git-20260822T184704Z` | old tree + compose, **no git** | Do not treat as source |
 | 151 docker `medsaas-app-1`, `medsaas-mongo-1`, `medsaas-mcp-server-1` | **removed 2026-08-23** (`docker rm`, no `-v`) | Do **not** start. Volume `medsaas_mongo-data` left. Local mongo ≠ Atlas |
 | 151 `…/STALE.txt` | marker in the no-git archive | Do not treat as source |
-| 84 `/var/www/app.pyxis-discovery.com` | empty | nginx does not serve this |
+| 84 `/var/www/app.pyxis-discovery.com` | **rmdir 2026-08-23** (was empty; nginx never served it) | gone. Rollback: `sudo mkdir` only if something expects the path |
 | Cursor/Claude project caches | Mac `Users-kobigenis-projects-medsaas`; 151 `~/.claude/projects/-home-ubuntu-projects-medsaas` | Chat metadata, not a deploy |
 
 ## GitHub
