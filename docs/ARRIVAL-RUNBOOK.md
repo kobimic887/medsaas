@@ -429,8 +429,8 @@ Today (soft flip 2026-08-23; table below is **current**, not the 2026-07-31 roll
 
 | Port | Unit | What | Reachable |
 |---|---|---|---|
-| **5173** | `pyxis-vite-legacy` | original Pyxis (`/root/pyxis-OLD-LIVE-frontend-5173`, Vite) → `chem_beo` `:3000` | **rollback only** (kept running) |
-| **5174** | `pyxis-web` | this repo (`/root/pyxis-new-standby-5174`, Bun + `client/dist`) | **the public site**, via nginx `:443` |
+| **5173** | `pyxis-vite-legacy` | original Pyxis (`/root/pyxis-ROLLBACK-frontend-5173`, Vite) → `chem_beo` `:3000` | **rollback only** (kept running) |
+| **5174** | `pyxis-web` | this repo (`/root/pyxis-LIVE-5174`, Bun + `client/dist`) | **the public site**, via nginx `:443` |
 
 Both units are `enabled`, so both survive a reboot. `Conflicts=` was removed — they are on
 different ports and must be able to run together.

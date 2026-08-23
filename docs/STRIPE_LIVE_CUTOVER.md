@@ -14,7 +14,7 @@ need prior conversation context.
 > - Public site is this repo’s `pyxis-web` on **`84.13.81.51`** (`:443` → `:5174`). HTTPS
 >   exists; Step 1 (public URL) is moot for DNS/TLS.
 > - Webhook path is `POST https://app.pyxis-discovery.com/stripe/webhook` into the
->   **maintained** server env on `84` (`/root/pyxis-new-standby-5174/server/.env`) —
+>   **maintained** server env on `84` (`/root/pyxis-LIVE-5174/server/.env`) —
 >   **not** `~/medsaas/.env` on `oracleOld`, and **not** an assumed `/root/pyxis/`.
 > - Run `stripe webhook_endpoints list` first — do not create a duplicate.
 > - Body text below still describes 2026-06 Oracle/Docker topology; treat §0 facts as

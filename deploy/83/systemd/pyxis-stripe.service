@@ -18,7 +18,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/material-tailwind-dashboard-react
+WorkingDirectory=/root/pyxis-ROLLBACK-frontend-5173
 # Secrets live OUTSIDE the webroot. That directory is the root of a Vite dev server bound
 # 0.0.0.0:5173 and proxied by nginx, and its vite.config.js sets server.fs.deny — which
 # REPLACES Vite's defaults rather than extending them, taking the built-in .env protection

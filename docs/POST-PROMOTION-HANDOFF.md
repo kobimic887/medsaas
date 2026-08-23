@@ -17,17 +17,17 @@ and service identity with live checks at the start of every session.
 | Side door | nginx **`:8443`** also → `:5174`. Checklist / rollback: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md) |
 | Host `83` (`83.229.87.94`) | **Imminent shutdown** (owner 2026-08-21 — not long-lived standby). **Measured:** SSH OK, hostname `chem`, up ~50d, nginx active, listeners `:443`/`:80`, `:5173`, `127.0.0.1:5174`, `:3000`, `:3001`, `:4000`. **Not** on public DNS. Agents: read-only only; do not kill. See § “Before killing `83`”. |
 
-### Paths on `84` (renamed; do not expect the old `/root/chem_beo` names)
+### Paths on `84` (renamed 2026-08-23; do not expect `standby` / `OLD-LIVE` / `chem_beo`)
 
 | Role | Path on `84` | Git remote / identity |
 |---|---|---|
-| Legacy rollback frontend | `/root/pyxis-OLD-LIVE-frontend-5173` | `eitangenis/material-tailwind-dashboard-react` @ `58ad4cb` |
-| Legacy rollback API | `/root/pyxis-OLD-LIVE-backend-3000` | `eitangenis/chem_beo` @ `3074d8d` |
-| Live maintained (public) | `/root/pyxis-new-standby-5174` | deploy tree (no `.git`); `DEPLOYED_SHA` stamped |
+| Legacy rollback frontend | `/root/pyxis-ROLLBACK-frontend-5173` | `eitangenis/material-tailwind-dashboard-react` @ `58ad4cb` |
+| Legacy rollback API | `/root/pyxis-ROLLBACK-backend-3000` | `eitangenis/chem_beo` @ `3074d8d` |
+| Live maintained (public) | `/root/pyxis-LIVE-5174` | deploy tree (no `.git`); `DEPLOYED_SHA` stamped |
 | FinSrv | `/opt/finsrv` | nginx → `:4000` |
 
-`/home/ubuntu` exposes those trees as symlinks (`~/pyxis-OLD-LIVE-frontend-5173`,
-`~/pyxis-OLD-LIVE-backend-3000`, `~/pyxis-new-standby-5174`, `~/finsrv-4000`). On `83` (until
+`/home/ubuntu` exposes those trees as symlinks (`~/pyxis-ROLLBACK-frontend-5173`,
+`~/pyxis-ROLLBACK-backend-3000`, `~/pyxis-LIVE-5174`, `~/finsrv-4000`). On `83` (until
 kill) the legacy trees may still use older names (`/root/chem_beo`,
 `/root/pyxis-OLD-LIVE-5173`); measure read-only only — do not mutate toward shutdown.
 

@@ -3,8 +3,8 @@
 > ⚠ **Snapshot taken 2026-07-28 on `83`; roles and path names have moved since.**
 > As of **2026-08-23**, public DNS for Pyxis and FinSrv points at **`84.13.81.51`**. Public
 > product is maintained `:5174` (`pyxis-web`). Legacy Vite → `chem_beo` is **rollback only**.
-> On `84` the trees were renamed to `pyxis-OLD-LIVE-frontend-5173` /
-> `pyxis-OLD-LIVE-backend-3000` / `pyxis-new-standby-5174` (also linked from `~ubuntu`).
+> On `84` the trees are `pyxis-LIVE-5174` / `pyxis-ROLLBACK-frontend-5173` /
+> `pyxis-ROLLBACK-backend-3000` (also linked from `~ubuntu`).
 > **`83` is scheduled for imminent shutdown** — this file remains a historical inventory of
 > the legacy stack, not a live standby guide. Use
 > [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md) for current host roles and the

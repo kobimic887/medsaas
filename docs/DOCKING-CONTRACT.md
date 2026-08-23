@@ -82,11 +82,11 @@ against the same receptor should not. Caching those is where the box beats Mosco
 raw GPU speed — see §2's note that this is an improvement over the reference, not parity.
 
 ⚠ **§0 is this repo's server — and that is now production.** Confirm it on **`84` `pyxis-web`**
-(`/root/pyxis-new-standby-5174`). `chem_beo` is rollback-only; do not treat `83` as the live
+(`/root/pyxis-LIVE-5174`). `chem_beo` is rollback-only; do not treat `83` as the live
 host.
 
 ```bash
-grep -n 'pdbID\|docking' /root/pyxis-new-standby-5174/server/index.js
+grep -n 'pdbID\|docking' /root/pyxis-LIVE-5174/server/index.js
 ```
 
 ---

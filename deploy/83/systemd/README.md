@@ -114,7 +114,7 @@ frontend's `/api` proxy, so stopping that frontend already orphans it.
 ⚠ Stages 2 and 3 stop a *process*. **Do not remove `/root/material-tailwind-dashboard-react`
 at any stage** — that directory is what makes them reversible.
 
-**Leave the rollback tree alone.** On `84` that is `/root/pyxis-OLD-LIVE-frontend-5173`
+**Leave the rollback tree alone.** On `84` that is `/root/pyxis-ROLLBACK-frontend-5173`
 (older `83` name may still be `/root/material-tailwind-dashboard-react`). It is a *different
 codebase* from this repo's `client/` — Creative Tim template lineage, not an older version.
 

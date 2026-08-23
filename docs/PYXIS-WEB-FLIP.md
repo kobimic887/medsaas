@@ -118,7 +118,7 @@ nginx stays on `:5173`; processes swap.
 ssh ubuntu@84.13.81.51   # or ssh oracleNew / ssh 84
 systemctl is-active pyxis-web pyxis-vite-legacy pyxis-api-legacy pyxis-stripe
 ss -ltnp | grep -E ':(80|443|3000|3001|5173|5174)\s'
-sudo cat /root/pyxis-new-standby-5174/DEPLOYED_SHA
+sudo cat /root/pyxis-LIVE-5174/DEPLOYED_SHA
 curl -sS -m 5 http://127.0.0.1:5174/api/health
 curl -sS -m 5 -o /dev/null -w '%{http_code}\n' http://127.0.0.1:5174/dashboard/literature
 curl -sS -m 5 -o /dev/null -w '%{http_code}\n' http://127.0.0.1:5174/api/simulation-logs
@@ -132,7 +132,7 @@ Abort if Atlas fails, `pyxis-web` inactive, or `DEPLOYED_SHA` is missing/unexpec
 ### 1. JWT_SECRET rotation plan (Q13=A)
 
 - Generate a **new** secret (≥32 chars), distinct from both current hashes.
-- Write only into `/root/pyxis-new-standby-5174/server/.env` (`JWT_SECRET=…`).
+- Write only into `/root/pyxis-LIVE-5174/server/.env` (`JWT_SECRET=…`).
 - Restart `pyxis-web` in the same flip window (after or with nginx/port change).
 - **Effect:** every session invalid; all users (and demo) must **sign in again**.
 - Do **not** copy the new secret into `chem_beo` (legacy rollback keeps its own secret).

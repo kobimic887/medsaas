@@ -12,7 +12,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/chem_beo
+WorkingDirectory=/root/pyxis-ROLLBACK-backend-3000
 ExecStart=/usr/bin/node index.js
 Restart=always
 RestartSec=5

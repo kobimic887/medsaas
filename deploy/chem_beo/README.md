@@ -1,7 +1,7 @@
 # Patches for `chem_beo`
 
 `chem_beo` (`eitangenis/chem_beo`) is the **rollback** API behind legacy Vite — on live
-**`84`** as `/root/pyxis-OLD-LIVE-backend-3000` (historically `/root/chem_beo` on `83`).
+**`84`** as `/root/pyxis-ROLLBACK-backend-3000` (historically `/root/chem_beo` on `83`).
 Public API is this repo's `pyxis-web` on `:5174` (soft flip 2026-08-23).
 
 > ## ⛔ SETTLED 2026-08-01: this patch will NEVER be applied. Do not re-raise it.

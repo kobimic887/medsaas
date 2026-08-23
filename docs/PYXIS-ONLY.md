@@ -294,7 +294,7 @@ change, not two.
   rename. Not blocking; it is a small, isolated route.
 - **Who gets `admin`** — operational, decide before inviting people. Not a code change.
 - ~~**What is answering the production API on 83 today?**~~ **ANSWERED 2026-07-28** — `chem_beo`
-  on `:3000`. Live path on **`84`** is `/root/pyxis-OLD-LIVE-backend-3000`. See
+  on `:3000`. Live path on **`84`** is `/root/pyxis-ROLLBACK-backend-3000`. See
   PRODUCTION-83-INVENTORY.md + POST-PROMOTION-HANDOFF.md.
 - ~~**Will there be a public marketing site at all** (`pyxis-discovery.com` as opposed to
   `app.`)?~~ **ANSWERED 2026-07-29: there already is one, and it is live.**

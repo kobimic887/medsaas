@@ -22,7 +22,7 @@
 >
 > **2026-08-23:** Interim SMILES→SDF converter live on `84`: docker `pyxis-convertstr`
 > (loopback `127.0.0.1:8001`, healthy), `SDF_CONVERTER_URL=http://127.0.0.1:8001/convertSTR`
-> in `/root/pyxis-new-standby-5174/server/.env`, image source kept at
+> in `/root/pyxis-LIVE-5174/server/.env`, image source kept at
 > `/root/pyxis-convertstr-src`. Now serves **public** maintained stack (post soft flip).
 > Replace with the Amsterdam box ingress (`https://<box-domain>/convertSTR`) when the box
 > arrives. Rollback: stop+rm the container, remove the env line, restart `pyxis-web`.
@@ -83,9 +83,9 @@ Checklist / rollback: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md).
 
 | Port | Unit | What on `84` | Reachable |
 |---|---|---|---|
-| **5173** | `pyxis-vite-legacy` | `/root/pyxis-OLD-LIVE-frontend-5173` (`material-tailwind-dashboard-react`, Vite dev) → legacy API on `:3000` | **rollback only** (kept running; not public) |
-| **5174** | `pyxis-web` | `/root/pyxis-new-standby-5174` (this repo, Bun + `client/dist`) → **MongoDB Atlas** | **public** via nginx `:443`; also `:8443` side door; process `0.0.0.0:5174` |
-| 3000 | `pyxis-api-legacy` | `/root/pyxis-OLD-LIVE-backend-3000` (`chem_beo`) | serves 5173; also its own HTTPS listener |
+| **5173** | `pyxis-vite-legacy` | `/root/pyxis-ROLLBACK-frontend-5173` (`material-tailwind-dashboard-react`, Vite dev) → legacy API on `:3000` | **rollback only** (kept running; not public) |
+| **5174** | `pyxis-web` | `/root/pyxis-LIVE-5174` (this repo, Bun + `client/dist`) → **MongoDB Atlas** | **public** via nginx `:443`; also `:8443` side door; process `0.0.0.0:5174` |
+| 3000 | `pyxis-api-legacy` | `/root/pyxis-ROLLBACK-backend-3000` (`chem_beo`) | serves 5173; also its own HTTPS listener |
 | 3001 | `pyxis-stripe` | `stripe-server.cjs` (from the legacy frontend tree) | part of the rollback path — **do not kill it** |
 
 `/home/ubuntu` on `84` has symlinks to those four trees (plus `~/finsrv-4000` → `/opt/finsrv`).
@@ -128,12 +128,12 @@ and the **current** tree name (`83` is imminent shutdown — do not plan new dep
 
 ```bash
 # example: refresh standby product on live host 84
-git archive HEAD | ssh ubuntu@84.13.81.51 'sudo tar -x -C /root/pyxis-new-standby-5174'
-tar -C client -cf - dist | ssh ubuntu@84.13.81.51 'sudo tar -x -C /root/pyxis-new-standby-5174/client'
-ssh ubuntu@84.13.81.51 'sudo bash -lc "cd /root/pyxis-new-standby-5174/server && bun install; systemctl restart pyxis-web"'
+git archive HEAD | ssh ubuntu@84.13.81.51 'sudo tar -x -C /root/pyxis-LIVE-5174'
+tar -C client -cf - dist | ssh ubuntu@84.13.81.51 'sudo tar -x -C /root/pyxis-LIVE-5174/client'
+ssh ubuntu@84.13.81.51 'sudo bash -lc "cd /root/pyxis-LIVE-5174/server && bun install; systemctl restart pyxis-web"'
 ```
 
-Then stamp `/root/pyxis-new-standby-5174/DEPLOYED_SHA` and verify with a real request, not with
+Then stamp `/root/pyxis-LIVE-5174/DEPLOYED_SHA` and verify with a real request, not with
 an exit code. **Always read `DEPLOYED_SHA` before assuming what is running** — it is written by
 hand and has been wrong before.
 
@@ -190,8 +190,8 @@ Do not re-flip without a new owner ask. Rollback: [`PYXIS-WEB-FLIP.md`](./PYXIS-
 
 **Rotate the mail password** for `contact@pyxis-discovery.com` at **yourhosting.nl**. It was
 served publicly on 2026-07-29 and still authenticates. After changing it, update `EMAIL_PASS`
-in **both** the legacy API env (`/root/pyxis-OLD-LIVE-backend-3000/.env` on `84`) and the
-maintained server env (`/root/pyxis-new-standby-5174/server/.env` on `84`).
+in **both** the legacy API env (`/root/pyxis-ROLLBACK-backend-3000/.env` on `84`) and the
+maintained server env (`/root/pyxis-LIVE-5174/server/.env` on `84`).
 
 Checked 2026-07-31: **not yet rotated.** Whether the current string is the same one that was
 exposed cannot be determined from the box — the exposed value was never recorded — so treat it
@@ -217,7 +217,7 @@ about it.
    process. Kill rigs by PID.
 5. **Do NOT modify nginx, TLS, DNS or the firewall on `83` or `84`** unless the owner names
    that exact action. Shared hosts.
-6. **Do NOT delete the live legacy frontend tree** (`/root/pyxis-OLD-LIVE-frontend-5173` on
+6. **Do NOT delete the live legacy frontend tree** (`/root/pyxis-ROLLBACK-frontend-5173` on
    `84`, or the older `/root/material-tailwind-dashboard-react` name if still present on `83`).
    It is the rollback and a different codebase from `client/`, not an older copy. Its start
    command is **`npm run dev-vite-only`** — never `npm run dev`, which also starts
@@ -263,7 +263,7 @@ dashboard.
 
 ```bash
 # on 84:
-grep -nE 'stripe|webhook|checkout' /root/pyxis-OLD-LIVE-backend-3000/index.js | head
+grep -nE 'stripe|webhook|checkout' /root/pyxis-ROLLBACK-backend-3000/index.js | head
 # on 83 the path may still be /root/chem_beo/index.js
 stripe webhook_endpoints list          # needs the Stripe login
 ```
@@ -366,7 +366,7 @@ Tanimoto, GROMACS, ADMET and glioblastoma move **after** docking is proven, not 
 - **Parity between the two servers needs no rig.** `chem_beo` still listens on `:3000`, so the
   live server is its own right-hand side:
   ```bash
-  cd /root/pyxis-new-standby-5174/server && RIG_URL=http://127.0.0.1:5174 node .parity/verify-server-swap-parity.mjs tester123
+  cd /root/pyxis-LIVE-5174/server && RIG_URL=http://127.0.0.1:5174 node .parity/verify-server-swap-parity.mjs tester123
   ```
   Copy the script under `server/` first — ESM resolves `jsonwebtoken`/`mongodb` from the file's
   own directory upward, and they live in `server/node_modules`.
