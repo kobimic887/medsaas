@@ -7,6 +7,7 @@ const parent = readFileSync(path.join(root, 'client/src/pages/dashboard/molstar3
 const simulation = readFileSync(path.join(root, 'client/src/pages/dashboard/simulation.jsx'), 'utf8');
 const storage = readFileSync(path.join(root, 'client/src/utils/viewerStorage.js'), 'utf8');
 const frame = readFileSync(path.join(root, 'client/public/molstar/index.html'), 'utf8');
+const server = readFileSync(path.join(root, 'server/index.js'), 'utf8');
 
 const memory = new Map();
 globalThis.localStorage = {
@@ -87,6 +88,17 @@ const checks = [
     parent.includes('const sdfSpecUrl = API_CONFIG.buildApiUrl(`/sanitizedspecificsdf/')
       && parent.includes('encodeURIComponent(smiles)}`);')
       && parent.includes('const response = await authedFetch(sdfSpecUrl)')],
+  ['SDF downloads set private Cache-Control',
+    ['/api/sanitizedsdf/:simulationKey', '/api/sanitizedminimalsdf/:simulationKey', '/api/sanitizedspecificsdf/:simulationKey/:smiles']
+      .every((route) => {
+        const start = server.indexOf(`app.get('${route}'`);
+        if (start < 0) return false;
+        const nextRoute = server.indexOf('\napp.get(', start + 1);
+        const handler = server.slice(start, nextRoute > 0 ? nextRoute : undefined);
+        return handler.includes("res.setHeader('Cache-Control', 'private, max-age=300')")
+          && handler.includes('authenticateToken')
+          && handler.includes('requireActiveUser');
+      })],
   ['automatic viewer load remains receptor-only until a SMILES is selected',
     parent.includes("proteinName: localStorage.getItem('molstar_pdb_name')")
       && !parent.includes('sdfText: resultText')],

@@ -3543,6 +3543,7 @@ app.get('/api/sanitizedsdf/:simulationKey', ensureMongoConnected, authenticateTo
       const sdfCRLF = existing.result.sdf.replace(/\n/g, '\r\n');
       res.setHeader('Content-Disposition', `attachment; filename="${existing.simulationKey || 'simulation'}.sdf"`);
       res.setHeader('Content-Type', 'chemical/x-sdf');
+      res.setHeader('Cache-Control', 'private, max-age=300');
       return res.send(sdfCRLF);
     }
     res.status(404).json({ error: 'Simulation result not found' });
@@ -3613,6 +3614,7 @@ app.get('/api/sanitizedminimalsdf/:simulationKey', ensureMongoConnected, authent
       const sdfCRLF = reducedSDF.replace(/\n/g, '\r\n');
       res.setHeader('Content-Disposition', `attachment; filename="${existing.simulationKey || 'simulation'}.sdf"`);
       res.setHeader('Content-Type', 'chemical/x-sdf');
+      res.setHeader('Cache-Control', 'private, max-age=300');
       return res.send(sdfCRLF);
     }
     res.status(404).json({ error: 'Simulation result not found' });
@@ -3684,6 +3686,7 @@ app.get('/api/sanitizedspecificsdf/:simulationKey/:smiles', ensureMongoConnected
         const sdfCRLF = foundBlock.replace(/\n/g, '\r\n') + '\r\n$$$$\r\n';
         res.setHeader('Content-Disposition', `attachment; filename="${existing.simulationKey || 'simulation'}_${smiles}.sdf"`);
         res.setHeader('Content-Type', 'chemical/x-sdf');
+        res.setHeader('Cache-Control', 'private, max-age=300');
         return res.send(sdfCRLF);
       } else {
         return res.status(404).json({ error: 'SMILES not found in SDF' });
