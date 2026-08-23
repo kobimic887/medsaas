@@ -118,11 +118,12 @@ function buildConfigs() {
 
   // Last resort, and only if it is not already the configured host. This is the host
   // production actually sends through, verified against the live credentials on 2026-07-29.
-  // It is a legacy default in the same sense as the Asinex URLs in the chem_beo patch: an env
-  // var defaulting to today's value. It is deliberately NOT smtp.titan.email — every comment
-  // in this repo used to say Titan, Titan answers `535 authentication failed` for this
-  // account, and falling back to it would turn "EMAIL_HOST unset" into total, silent mail
-  // failure rather than a degraded send with a loud log line.
+  // Leftover default (same idea as old Asinex URL env fallbacks on the retired chem_beo
+  // `:3000` tree — not the live `pyxis-web` API): an env var defaulting to today's value.
+  // It is deliberately NOT smtp.titan.email — every comment in this repo used to say Titan,
+  // Titan answers `535 authentication failed` for this account, and falling back to it
+  // would turn "EMAIL_HOST unset" into total, silent mail failure rather than a degraded
+  // send with a loud log line.
   if (host !== 'server028.yourhosting.nl') {
     configs.push({
       name: 'server028.yourhosting.nl:587 (legacy default — set EMAIL_HOST)',
