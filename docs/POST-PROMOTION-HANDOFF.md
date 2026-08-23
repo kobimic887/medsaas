@@ -111,14 +111,15 @@ banners updated — prefer this handoff over those sections):
   on `84` (and historically on `83` until shutdown) intentionally use the same Atlas database.
   Fix `simulation_logs` dual-shape in the **reader** in parallel with the maintained stack
   (owner, 2026-08-21).
-- **FinSrv MongoDB is separate.** Validate its own Atlas project/cluster on both application
-  hosts; never substitute the Pyxis URI.
+- **FinSrv MongoDB is separate.** Validate its own Atlas project/cluster on the one
+  application host (`84`); `83` is leftover and not DNS. Never substitute the Pyxis URI.
 - **Tanimoto Postgres is different again.** It is the 2,951,975-molecule production index
   currently sourced from `oracleOld`. Restore it to Amsterdam and verify it before retiring
   the old Oracle stack.
-- **`oracleOld`'s local `mongo:7` / `medsaas` database is non-production side-project data.**
-  Never restore it over Pyxis Atlas. It is removed only in the explicit, approved cleanup
-  phase after all migration gates pass.
+- **`oracleOld`'s local `mongo:7` / `medsaas` database was non-production side-project data.**
+  Never restore it over Pyxis Atlas. Measured 2026-08-23: no `medsaas`/`mongo` containers,
+  no `:27017`; leftover volume only — do **not** start. Volume removal is only in the
+  explicit, approved cleanup phase after all migration gates pass.
 
 ## What a fresh agent should do
 
@@ -158,13 +159,14 @@ and confirms that `84` is already production, the agent should:
    standby. With imminent shutdown, apply Amsterdam service-link env only on **`84`**. Avoid
    double-PATCHing shared Atlas `ligandServiceConfig`. ⚠ Any remaining “mirror to `83`”
    instruction is stale pending owner confirmation of the post-kill rollback target.
-9. **Restore Tanimoto and verify it from both application hosts through the real Pyxis path.**
-   Check dataset count, similarity search and the Deep Similarity page before considering the
-   old Oracle removable.
+9. **Restore Tanimoto and verify it from the one application host (`84`) through the real Pyxis path.**
+   `83` is leftover and not DNS. Check dataset count, similarity search and the Deep Similarity
+   page before considering the old Oracle removable.
 10. **Leave `oracleOld` intact** until every gate in runbook §12 is green and the owner gives a
     fresh, explicit approval for the exact cleanup. Do not remove its Tanimoto containers,
-    local Mongo, volumes or source during arrival setup. Leave CLIProxyAPI, Crafty and all
-    unrelated owner tooling alone forever.
+    leftover Mongo volume, or source during arrival setup. Measured 2026-08-23: no
+    `medsaas`/`mongo` containers and no `:27017` — do **not** start Mongo. Leave CLIProxyAPI,
+    Crafty and all unrelated owner tooling alone forever.
 
 ## Stop conditions
 
@@ -173,7 +175,8 @@ Stop and report the measurement instead of improvising if:
 - DNS still points a production hostname at `83` or points different application hostnames at
   different machines unexpectedly;
 - `84` cannot reach Pyxis Atlas or FinSrv cannot complete its own authenticated DB-backed check;
-- either application host has a different production build/env fingerprint than expected;
+- `84` (the one application host) has a different production build/env fingerprint than
+  expected; `83` is leftover and not DNS;
 - Amsterdam's GPU, ingress, architecture or service health does not match the acceptance test;
 - a Tanimoto restore does not return the expected dataset/row count;
 - a proposed action would delete data, remove a container/volume, disable a service, alter DNS,
