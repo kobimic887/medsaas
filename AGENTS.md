@@ -94,8 +94,12 @@ units — never broad `pkill`.
 
 ## Skills and subagents
 
-Use the named skill when the trigger fits. Few subagents. Cheap mode (user said
-conserve tokens / usage low): skip this table’s optional helpers.
+**Use subagents.** Do not do the whole job inline alone. Prefer **1**. Usual
+tasks: **maximum 2**. Hard max **3** if really needed. **Never 4–5 / fleets /
+“explore everything” swarms.** Cheap / “usage is low” / conserve tokens: still
+prefer **1**, not a swarm. Measure/plan is not an excuse for 5 — still **1–2**.
+
+Use the named skill when the trigger fits.
 
 | Trigger | Use |
 |---|---|
