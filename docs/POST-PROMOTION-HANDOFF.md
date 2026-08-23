@@ -4,7 +4,8 @@
 production by changing DNS.** It is the authority for the period after that promotion.
 
 This document does **not** change DNS or authorize any destructive action. Re-confirm DNS
-and service identity with live checks at the start of every session.
+and service identity with live checks at the start of every session. Every copy
+(Mac / 84 / 151 / 83 / GitHub): [`WHERE.md`](./WHERE.md).
 
 ## Measured 2026-08-21 evening; re-checked 2026-08-23 (re-check before acting)
 
