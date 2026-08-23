@@ -6,11 +6,13 @@ The maintained frontend should stay recognizably Pyxis, deliver the best user
 experience, and keep the Amsterdam compute-box cutover simple. That is not a
 license to rewrite the product.
 
-Git, Mac↔oracleOld sync, production approval, start mode, and token-conserve live in
-`~/.codex/AGENTS.md`. Do not create `LANDMINES.md` here — encode traps in code and
-keep this file updated **in the same change** when a path or trap moves.
+Git, Mac↔oracleOld sync, production approval, start mode, voice, and
+diagnose-vs-execute live in `~/.codex/AGENTS.md`. Do not create `LANDMINES.md`
+here — encode traps in code and keep this file updated **in the same change**
+when a path or trap moves.
 
-**Voice:** `~/.codex/AGENTS.md` (minimal compressed). Pretty English only if asked.
+**Voice:** `~/.codex/AGENTS.md` — normal readable English. Diagnose fully;
+execute the small slice.
 
 ## Invariants
 
