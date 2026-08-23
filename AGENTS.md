@@ -10,9 +10,9 @@ Git, Mac↔oracleOld sync, production approval, start mode, and token-conserve l
 `~/.codex/AGENTS.md`. Do not create `LANDMINES.md` here — encode traps in code and
 keep this file updated **in the same change** when a path or trap moves.
 
-**Voice:** normal English to the user (full sentences, articles). Not telegram,
-not caveman. Cavecrew / compressed formats are internal receipts only. Short by
-default; no audit novels unless asked. Do not write “Say word.”
+**Voice:** minimal compressed — facts + next step. No audit novels, no “Say word.”,
+no GOAL dump. Do not ban caveman; do not require every article. Cavecrew
+`path:line: emoji` only if that skill ran. Pretty English only if asked.
 
 ## Invariants
 
