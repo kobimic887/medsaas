@@ -100,9 +100,9 @@ Do not mutate toward shutdown. Owner kills 83 out of band.
 | `kobimic887/medsaas` | This monorepo (`client/` + `server/` + `services/`) |
 | `kobimic887/admet`, `gromacs-api`, `glioblastoma-predictor` | Vendored under `services/` |
 | `kobimic887/tonomitosql` | Tanimoto service source (not the app host) |
-| `eitangenis/material-tailwind-dashboard-react` | **84 rollback FE** (the tree that is actually running on `:5173`) |
+| `eitangenis/material-tailwind-dashboard-react` | **84 rollback FE** (`:5173` tree; unit **stopped**, enabled) |
 | `eitangenis/chem_beo` | **84 rollback API** |
-| `kobimic887/material-tailwind-dashboard-react`, `kobimic887/chem_beo` | Extra forks — **not** what 84 rollback uses |
+| `kobimic887/material-tailwind-dashboard-react`, `kobimic887/chem_beo` | Extra forks — **diverged decoys**, do not clone. 84 rollback uses the eitangenis remotes |
 | `eitangenis/eShop` | ASINEX contract reference only |
 | `kobimic887/rdkitapi` | Unrelated leftover name; not the live Tanimoto path |
 

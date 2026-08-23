@@ -41,7 +41,9 @@ keep this file updated **in the same change** when a path or trap moves.
   GROMACS, ADMET, glioblastoma). It does not receive the application API or MongoDB.
 - `oracleOld` (`151.145.91.17`) is a distinct host and a temporary Tanimoto source.
   `oracleNew` (`84.13.81.51`) is the **live** application host — measure DNS.
-  `83` (`83.229.87.94`) is scheduled for shutdown and is **not** production.
+  Public Pyxis is systemd + Bun **`pyxis-web` `:5174`** (nginx `:443` → `127.0.0.1:5174`).
+  Legacy Vite `:5173` / `chem_beo` `:3000` = rollback on disk (units **stopped**, still
+  **enabled**). `83` (`83.229.87.94`) is leftover, **not DNS**, and is **not** production.
   `SDF_CONVERTER_URL` code default is dead `83:8001` (boot warns when unset). Live on
   `84` since 2026-08-23 via interim loopback container `pyxis-convertstr`
   (`http://127.0.0.1:8001/convertSTR`); replace with `https://<box-domain>/convertSTR`

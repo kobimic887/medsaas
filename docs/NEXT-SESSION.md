@@ -270,7 +270,7 @@ about it.
 | 1 | ~~Back up the Tanimoto dump~~ | — | ⛔ **Declined 2026-08-01. Do not re-raise.** The dump lives only at `~/backups/tanimoto/` on the owner's Mac, but **Oracle's Postgres is live and is the authoritative source**, so losing the laptop costs a re-dump, not the data. Integrity verified 2026-08-01 (sha256, `PGDMP`/`tonomitosql`/`17.5` header, tail intact). ⚠ The residual risk is stated once below and is not a task |
 | 2 | **Tenant-isolation and perf findings** | no | [SECURITY-FINDINGS.md](./SECURITY-FINDINGS.md) §A1–A3 and [IMPROVEMENTS.md](./IMPROVEMENTS.md) P1–P6 |
 | 4 | ~~Stripe webhook registration~~ | — | ✅ **Done 2026-08-23** on maintained (`we_1U7Z6vAlVdO1Ab8fuM6HWROx`). Optional owner Step 4: Standard $20 checkout + refund. |
-| 5 | ~~`chem_beo` hardening patch~~ | — | ⛔ **SETTLED 2026-08-01: it will never be applied.** Owner's decision — `chem_beo` is going away at the port swap, so patching it is work on a component with a known end date. **Do not re-raise this.** See the exposure note below, which does not go away with the decision |
+| 5 | ~~`chem_beo` hardening patch~~ | — | ⛔ **SETTLED 2026-08-01: it will never be applied.** `chem_beo` is rollback-only (off public since the 2026-08-23 flip). Patching it is work on a dead public path. **Do not re-raise this.** See the exposure note below |
 | 6 | **Subresource Integrity on external tags** | no | Three external hosts left: jsdelivr (Bootstrap CSS), Google Fonts, unpkg/jsdelivr (RDKit, lazy). None carry SRI |
 | 7 | **Bundle code-splitting** | no | Resolved for the current home page: the 515 KB `vendor-charts` chunk only powered fictional template charts and has been removed from the build |
 | 8 | **Arrival day** | yes | [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) |
@@ -311,7 +311,7 @@ resolving to Oracle ([ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §10).
 ### ⚠ The consequence of never patching `chem_beo`
 
 The decision is reasonable — but it has a shape worth stating plainly, because it changes what
-the port swap is worth.
+the public flip was worth.
 
 **Those ~60 unauthenticated `chem_beo` routes are public only on rollback** to `:5173`/`:3000`.
 `/api/sanitizedminimalsdf/<key>` returns real customer docking results with no token,
@@ -369,9 +369,8 @@ Tanimoto, GROMACS, ADMET and glioblastoma move **after** docking is proven, not 
 3. **The code and config** — `deploy/83/systemd/*.service`, `deploy/box/compose.yml`,
    `server/index.js` — beat **all** prose. Every doc here has been wrong about the code at
    least once. Check the unit file, not the sentence about the unit file.
-4. **`deploy/chem_beo/README.md` is stale on sequencing** — it predates the port-swap decision
-   and gives direct HTTP box URLs. Its *patch* will never be applied (settled 2026-08-01);
-   it is now a record of `chem_beo`'s defects, not a plan.
+4. **`deploy/chem_beo/README.md` is a defect record** — patch never applied (settled
+   2026-08-01). Public is already `pyxis-web`. Do not treat it as a plan to improve rollback.
 
 ## Method notes that saved real time
 
@@ -386,8 +385,8 @@ Tanimoto, GROMACS, ADMET and glioblastoma move **after** docking is proven, not 
 - **`bun run ci` locally is weaker than CI.** The runtime smoke test sees the repo `.env`, so a
   dev machine supplies `FRONTEND_URL`/`BASE_URL` that CI does not have. Set anything a test
   depends on in `childEnvFinal`, not `.env`.
-- **Parity between the two servers needs no rig.** `chem_beo` still listens on `:3000`, so the
-  live server is its own right-hand side:
+- **Parity vs rollback needs no extra host.** `chem_beo` is **stopped** on `84` (enabled).
+  Public is `pyxis-web` `:5174`. If you start rollback `:3000` for a comparison:
   ```bash
   cd /root/pyxis-LIVE-5174/server && RIG_URL=http://127.0.0.1:5174 node .parity/verify-server-swap-parity.mjs tester123
   ```

@@ -28,7 +28,7 @@ paraphrasing it is how the scope drifted in the first place:
 
 2. **There are two frontends and the improved one wins.** On live `84`, public
    `app.pyxis-discovery.com` is this repo on **`:5174`** (soft flip 2026-08-23). Legacy
-   `:5173` stays installed for **rollback only**.
+   `:5173` stays installed for **rollback only** (units **stopped**, still **enabled**).
 
 3. **De-SaaS it back to Pyxis-only,** and point it at the future box URL. One product, one
    company. ✅ Applied — see [`docs/PYXIS-ONLY.md`](docs/PYXIS-ONLY.md).
@@ -81,5 +81,6 @@ answer changes what gets built; otherwise choose, say what you chose, and move.
 ---
 
 **Where things stand:** after DNS → `84`, [`docs/POST-PROMOTION-HANDOFF.md`](docs/POST-PROMOTION-HANDOFF.md)
-outranks older “`83` is production” / NEXT-SESSION pickup notes. Do not open runbooks
-unless this task is prod, deploy, continuation, or box work.
+outranks older “`83` is production” / NEXT-SESSION pickup notes. Public Pyxis is
+`pyxis-web` `:5174`. Rollback units are **stopped** (still **enabled**). `83` is leftover,
+not DNS. Do not open runbooks unless this task is prod, deploy, continuation, or box work.

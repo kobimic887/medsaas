@@ -265,7 +265,7 @@ not "never". So this is a **retirement, not a demolition**:
 This work and the box migration touch the same files, so ordering matters.
 
 **Do first, before the box arrives — it needs no new hardware.** ✅ **Steps 1–5 applied
-2026-07-29; see the status table at the top of this file. Step 6 is open.**
+2026-07-29; see the status table at the top of this file. Step 6 is DONE (2026-07-31).**
 
 1. Tag `saas-surface-v1`.
 2. Close public signup. Security win, one route, immediate.
@@ -293,8 +293,9 @@ change, not two.
 - **`/api/issueSimulationTokens`** — rename, change to `$inc`, or drop? See §3b. Recommend
   rename. Not blocking; it is a small, isolated route.
 - **Who gets `admin`** — operational, decide before inviting people. Not a code change.
-- ~~**What is answering the production API on 83 today?**~~ **ANSWERED 2026-07-28** — `chem_beo`
-  on `:3000`. Live path on **`84`** is `/root/pyxis-ROLLBACK-backend-3000`. See
+- ~~**What is answering the production API on 83 today?**~~ **ANSWERED 2026-07-28** — then
+  `chem_beo` on `:3000`. **Current public API (2026-08-23):** `84` `/root/pyxis-LIVE-5174`
+  via `pyxis-web`. Rollback backend `/root/pyxis-ROLLBACK-backend-3000` is **stopped**. See
   PRODUCTION-83-INVENTORY.md + POST-PROMOTION-HANDOFF.md.
 - ~~**Will there be a public marketing site at all** (`pyxis-discovery.com` as opposed to
   `app.`)?~~ **ANSWERED 2026-07-29: there already is one, and it is live.**

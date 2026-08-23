@@ -71,8 +71,9 @@ chosen around it.
 
 - **API on the box** → box dies → nobody logs in, sees past results, browses the catalog, or
   buys credits. The product is gone for three weeks.
-- **API on 83** → box dies → docking stops. Everything else works, and you repoint
-  `ligandServiceConfig` back at Asinex while the box is away.
+- **API on the live app host** (now `84`; this record said `83`) → box dies → docking
+  stops. Everything else works, and you repoint `ligandServiceConfig` back at Asinex while
+  the box is away.
 
 The whole point of spending €24,727 was to stop having one machine in one place decide whether
 the product works. Moving everything onto one uninsured chassis in Amsterdam rebuilds that,
@@ -118,7 +119,8 @@ is the worst available outcome.
 tenant isolation, credit enforcement that cannot be called from the browser, audit logging,
 rate limiting, `ligandServiceConfig`, the NVIDIA key pool with 429 rotation and a circuit
 breaker, and `upstreamProxyStatus()`. It is written and CI is green on it. **None of that
-reaches production until Release A ships.**
+reaches production until Release A ships.** ⛔ **Shipped 2026-08-23** via nginx →
+`pyxis-web` `:5174` on `84`. The sentence above is the 2026-07-28 record.
 
 ### The patch is the fallback, and it is worth applying either way
 
@@ -128,6 +130,10 @@ database: charge-then-refund proven end to end, `99999 → 99999` on a failed do
 service address into an env var **defaulting to today's value**, makes the credit charge atomic
 and refundable, closes the five routes above that reach money or data, and makes signup produce
 a usable account.
+
+⛔ **SETTLED 2026-08-01: never apply this patch.** `chem_beo` is rollback-only (units
+**stopped** on `84`, still enabled). The “apply it now” paragraph below is the 2026-07-28
+record — do not re-raise.
 
 Apply it **now**, regardless of when Release A ships. Three reasons:
 
@@ -141,6 +147,9 @@ It deliberately leaves the other ~60 routes open, because closing them risks bre
 deployed frontend in ways only testing reveals. Release A closes them properly.
 
 ## 3. Release A — one process on 83, not three. And it needs no nginx change.
+
+> Historical 2026-07-28 record. Live public is `84` + `pyxis-web` `:5174` (soft flip
+> 2026-08-23). Do not treat the “today 83 runs Vite” paragraph as current topology.
 
 Today 83 runs a Vite **dev server** on `:5173` proxied by nginx, a Stripe server on `:3001`, and
 a second HTTPS server on `:3000` that terminates TLS itself and bypasses nginx — all started by

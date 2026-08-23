@@ -6,21 +6,20 @@ Public API is this repo's `pyxis-web` on `:5174` (soft flip 2026-08-23).
 
 > ## ⛔ SETTLED 2026-08-01: this patch will NEVER be applied. Do not re-raise it.
 >
-> Owner's decision. `chem_beo` is going away at the port swap
-> ([ARRIVAL-RUNBOOK.md](../../docs/ARRIVAL-RUNBOOK.md) §8), so patching it is work on a
-> component with a known end date. **The port swap is the remediation instead**, and it has no
-> dependency on the box.
+> Owner's decision. `chem_beo` is already off public (soft flip 2026-08-23: `pyxis-web`
+> `:5174`). Patching it is work on a dead public path. **The flip was the remediation
+> instead.** Classic ARRIVAL §8 port swap is unused history.
 >
 > Everything below is kept as a **record of what is wrong with `chem_beo`**. Those routes
 > are public **only on rollback** to `:3000`. It is documentation now, not a plan.
 >
 > ## ⚠ The arrival-day narrative below is ALSO stale.
 >
-> Corrected 2026-08-01. This file says `chem_beo` "stays the API through arrival day" and that
-> swapping in this repo's server is "weeks later". **That is no longer the plan.** Arrival day
-> now does the **port swap first** (this repo takes 5173), and the docking cutover then happens
-> through `ligandServiceConfig` — a hot settings change — not through the env vars below.
-> See [ARRIVAL-RUNBOOK.md](../../docs/ARRIVAL-RUNBOOK.md) §8 and §9.
+> Corrected 2026-08-01, again 2026-08-23. This file said `chem_beo` "stays the API through
+> arrival day" and that swapping in this repo's server is "weeks later". **Public is already
+> `pyxis-web`.** Box day is compute cutover via `ligandServiceConfig` — not these env vars,
+> and not a re-run of the unused §8 port swap. See
+> [ARRIVAL-RUNBOOK.md](../../docs/ARRIVAL-RUNBOOK.md) §9.
 >
 > It was once described as an arrival-day *prerequisite*. It is not, and it is not going to be
 > applied at all — see the box above. The env vars it adds would only ever have been the
@@ -31,9 +30,8 @@ The goal is
 to the box.** These patches are that work, prepared ahead of arrival day so the maintenance
 window is short.
 
-They live here rather than in `chem_beo` because this repo is where the migration is planned
-and reviewed. **Apply them as a real commit in `chem_beo`** — do not run the product from a
-patch file.
+They live here rather than in `chem_beo` because this repo is where the migration was planned
+and reviewed. ⛔ **Do not apply.** The apply recipe below is the unused 2026-07-28 record.
 
 ```bash
 cd /path/to/chem_beo
