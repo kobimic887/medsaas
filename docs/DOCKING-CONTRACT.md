@@ -81,12 +81,12 @@ The first dock against a receptor pays for preparation and `autogrid` maps; subs
 against the same receptor should not. Caching those is where the box beats Moscow by more than
 raw GPU speed — see §2's note that this is an improvement over the reference, not parity.
 
-⚠ **Unverified against `chem_beo`.** §0 is read from *this repo's* server. Production runs
-`chem_beo`, and its request shape was not re-checked in the session that wrote this. §1–§5 come
-from production data and are unaffected. **Before building against §0, confirm it on 83:**
+⚠ **§0 is this repo's server — and that is now production.** Confirm it on **`84` `pyxis-web`**
+(`/root/pyxis-new-standby-5174`). `chem_beo` is rollback-only; do not treat `83` as the live
+host.
 
 ```bash
-grep -n 'pdbID\|docking' /root/chem_beo/index.js
+grep -n 'pdbID\|docking' /root/pyxis-new-standby-5174/server/index.js
 ```
 
 ---

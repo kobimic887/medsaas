@@ -40,13 +40,12 @@ There are **two different Oracle machines** in this plan. A fresh clone must kee
 | Name | Address | Role before Amsterdam arrival | Role after the verified arrival cutover |
 |---|---|---|---|
 | **`oracleOld`** | `151.145.91.17` | Old Oracle: live Tanimoto/Postgres + non-production medsaas containers + unrelated owner tooling | Tanimoto and **all medsaas containers are removed only after the Amsterdam migration is verified**; CLIProxyAPI/Crafty and other unrelated tooling are left alone |
-| **`oracleNew`** | `84.13.81.51` | **Was** intended 1:1 standby of `83`. **If DNS already points here (measured 2026-08-21+), it is live production** — see [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md); ignore the “standby” column for ops. Dual stack: legacy `:5173` public, this repo `:5174` dress rehearsal. | After box cutover: same Amsterdam service links; port swap on this host (not on shut-down `83`). Not the Tanimoto source. |
+| **`oracleNew`** | `84.13.81.51` | **Live production** (DNS measured 2026-08-21+; public product `:5174` since 2026-08-23). See [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md). Dual stack: this repo `:5174` public, legacy `:5173` rollback. | After box cutover: same Amsterdam service links on this host (not on shut-down `83`). Not the Tanimoto source. |
 
 `oracleOld` is the source for the Tanimoto migration. `oracleNew` is **not** the Tanimoto
 source and is **not** the Amsterdam compute box. Never use a bare label such as “Oracle” in
 commands or notes: say `oracleOld` (`151.145.91.17`) or `oracleNew` (`84.13.81.51`).
-Before the Amsterdam cutover, `oracleNew` must remain a legacy clone; do not switch it to
-`pyxis-web` early.
+`oracleNew` already serves `pyxis-web` publicly — do not undo that for box day.
 
 The Amsterdam machine is a third, separate host: the **GPU/compute box**. It receives
 Tanimoto and the scientific services, but not the API server or the production Mongo database.
@@ -408,11 +407,10 @@ not delegate the plumbing check — run the script.
 
 > **2026-08-22 supersession (product / soft flip):** Boss approved switching public Pyxis to
 > `pyxis-web` **without waiting for the Amsterdam box**. That product cutover is documented in
-> [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md) (nginx soft flip preferred on `84`; JWT rotate;
-> Stripe after; STOP until “do the flip now”). The 2026-08-01 “keep this on arrival day / do
-> not re-raise early flip” decision is **superseded for the product flip only**. Box day still
-> owns compute cutover (§9+). Do **not** run §8 on shut-down-bound `83`. Prefer the flip doc
-> when the owner asks to make maintained public before the box arrives.
+> [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md) (nginx `:443` → `:5174` on `84`; JWT rotated;
+> Stripe still after). Soft flip **executed 2026-08-23**. Do not re-flip without a new ask.
+> Box day still owns compute cutover (§9+). Do **not** run §8 on shut-down-bound `83`.
+> Classic port-swap steps below are unused; public already is `pyxis-web`.
 
 **Owner's call, 2026-08-01: same day as the cutover, and it stays on arrival day.** It was put
 to the owner that this step has no dependency on the box and could ship earlier — it is the
@@ -427,20 +425,20 @@ those routes open, so a botched swap now costs more than a delayed one.
 Before touching either host, verify that the Pyxis API env and Atlas access are present on both
 `83` and `oracleNew`; a copied source tree without `.env` is not a runnable standby.
 
-Today (deliberately, since 2026-07-31):
+Today (soft flip 2026-08-23; table below is **current**, not the 2026-07-31 rollback):
 
 | Port | Unit | What | Reachable |
 |---|---|---|---|
-| **5173** | `pyxis-vite-legacy` | the original Pyxis (`/root/material-tailwind-dashboard-react`, Vite dev) talking to `chem_beo` on `:3000` | **the public site**, via nginx |
-| **5174** | `pyxis-web` | this repo (`/root/pyxis`, Bun + `client/dist`) | loopback only |
+| **5173** | `pyxis-vite-legacy` | original Pyxis (`/root/pyxis-OLD-LIVE-frontend-5173`, Vite) → `chem_beo` `:3000` | **rollback only** (kept running) |
+| **5174** | `pyxis-web` | this repo (`/root/pyxis-new-standby-5174`, Bun + `client/dist`) | **the public site**, via nginx `:443` |
 
 Both units are `enabled`, so both survive a reboot. `Conflicts=` was removed — they are on
 different ports and must be able to run together.
 
-**Swap the ports on both application hosts. Do not enable or disable anything:**
+**Unused classic recipe** (soft flip already used nginx → `:5174` on `84` only):
 
-Perform the following once on `83.229.87.94` and once on `oracleNew` (`84.13.81.51`). Do not
-change `oracleOld` for this step; it is the separate Tanimoto/old-Oracle host.
+Do **not** run this on `83`. If an owner ever asks for the classic swap, do it on `84` only.
+Do not change `oracleOld` for this step; it is the separate Tanimoto/old-Oracle host.
 
 1. `pyxis-web`: set `Environment=PORT=5173` and **delete the `Environment=BIND_HOST=127.0.0.1`
    line** — it must bind every interface again to be served by nginx.
@@ -449,8 +447,8 @@ change `oracleOld` for this step; it is the separate Tanimoto/old-Oracle host.
 3. `systemctl daemon-reload && systemctl restart pyxis-web pyxis-vite-legacy`
 4. Confirm on **each host**: `ss -ltnp | grep -E ':5173|:5174'` shows **bun on 5173** and
    **node on 5174**.
-5. Confirm the two hosts have the same post-swap service state before changing DNS. `83` is
-   the live host; `oracleNew` is the standby/failover clone.
+5. Confirm service state on **`84`** before changing anything. Live host is `84`; do **not**
+   run this swap on `83`. DNS already points at `84`.
 
 nginx already proxies `/ → localhost:5173` on both hosts and never learns anything changed.
 **No nginx, TLS, DNS or Stripe change.** DNS remains unchanged until both hosts pass validation.
@@ -511,16 +509,15 @@ is expected, not a regression.
 
 ## 9. Cut docking over — one URL at a time
 
-With §8 done on **both `83` and `oracleNew`**, production on `83` and the synchronized
-standby on `oracleNew` are this repo's server. **Two of the four knobs are hot; two are not.**
-Do not describe the whole cutover as "no restart" — that is true only of the first two.
+§8 product flip is already done on **`84`** (nginx → `:5174`). Do not re-run it for box day.
+**Two of the four knobs are hot; two are not.** Do not describe the whole compute cutover as
+"no restart" — that is true only of the first two.
 
-Apply the Amsterdam service-link configuration to both application hosts. Change and verify
-`83` first; then make the host-local changes on `oracleNew` and verify it independently. The
-four `ligandServiceConfig` values live in the shared Atlas company document: PATCH them **once**
-through the production API, then confirm the same values are visible from both hosts. Do not
-PATCH the shared document twice. Do not point either host at `oracleOld` after the Tanimoto
-migration is complete.
+Apply the Amsterdam service-link configuration on **`84` only**. `83` is non-DNS / shutdown-bound
+— do not plan a fresh mirror. The four `ligandServiceConfig` values live in the shared Atlas
+company document: PATCH them **once** through the production API. Do not PATCH the shared
+document twice. Do not point the live host at `oracleOld` after the Tanimoto migration is
+complete.
 
 `getRequestLigandServiceConfig()` resolves the company's **four** `ligandServiceConfig` fields
 on every docking request, so those change with **no restart and no redeploy**:

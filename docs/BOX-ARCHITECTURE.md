@@ -6,10 +6,11 @@
 > [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md) before applying any execution
 > sequence. This document preserves the architecture decision and historical pre-promotion
 > release record; it does not authorize a second DNS change or an automatic port swap. In the
-> post-promotion state, `84` is production, **`83` is imminent shutdown (not long-lived
-> standby)**, `oracleOld` remains the temporary Tanimoto source, and Amsterdam remains
-> compute-only. ⚠ Topology lines that still describe `83` as the live app host or as failover
-> are historical; rollback-to-`83` / mirror-to-`83` language needs owner confirmation after kill.
+> post-promotion state, `84` is production (public Pyxis = `:5174` since 2026-08-23),
+> **`83` is imminent shutdown (not long-lived standby)**, `oracleOld` remains the temporary
+> Tanimoto source, and Amsterdam remains compute-only. ⚠ Topology lines that still describe
+> `83` as the live app host or as failover are historical; rollback-to-`83` / mirror-to-`83`
+> language needs owner confirmation after kill.
 >
 > > ## ⚠ §2–§3 sequencing is SUPERSEDED. Read this first.
 >
@@ -17,7 +18,9 @@
 > ship weeks before delivery. **That happened** — Release A went live 2026-07-29 — **and was
 > then deliberately rolled back** on 2026-07-31. The owner's decision, 2026-08-01, is that
 > arrival day does the **port swap and the docking cutover together**, in that order, with the
-> port swap gated on the box services passing validation first.
+> port swap gated on the box services passing validation first. **Superseded again 2026-08-23:**
+> the product/soft flip already ran (nginx → `:5174`); box day is compute cutover only. Do not
+> re-swap ports.
 >
 > **For execution order, [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) wins over this file.**
 > What remains authoritative here is the *topology* — what runs where and why — which is

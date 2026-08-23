@@ -62,11 +62,11 @@ Concise product/ops answers — do not re-litigate unless the owner changes them
 
 | Topic | Decision |
 |---|---|
-| **Dual stack** | Public `app.pyxis-discovery.com` → legacy **`:5173`**. Maintained this-repo product on **`:5174`** = dress rehearsal + future live. |
-| **Primary during transition (Q6=B → superseded 2026-08-21 night)** | **Legacy public stack is intentionally not improved.** Do not patch ipify, Configurator, Safari tip, titles, or other small UX on live `:5173` — leave it a bit worse so the boss prefers switching to `:5174`. All product energy on `:5174`. Emergencies that keep public login/docking alive are still allowed; polish is not. |
+| **Dual stack** | Public `app.pyxis-discovery.com` → maintained **`:5174`** (soft flip 2026-08-23). Legacy **`:5173`** = rollback only. |
+| **Primary during transition (Q6=B → superseded 2026-08-23)** | **Do not polish rollback `:5173`.** Product energy stays on public `:5174`. Emergencies that keep public login/docking alive are still allowed; polish on the rollback tree is not. |
 | **When to flip (Q17=A, Q22=A+B)** | Public flip on **boss sign-off (click-test)** **or** box arrival. Boss click-test **may include broad scientific paths**, not marketing-only. |
 | **Flip (2026-08-23)** | Soft flip **executed**: nginx `:443` → `127.0.0.1:5174`. JWT rotated on maintained. Stripe webhook still **after**. Rollback + notes: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md). |
-| **Atlas** | Keep sharing one Pyxis Atlas. Fix `simulation_logs` dual-shape in the **reader** — engineering in parallel with dress rehearsal. |
+| **Atlas** | Keep sharing one Pyxis Atlas. Fix `simulation_logs` dual-shape in the **reader** — engineering in parallel with the maintained stack. |
 | **JWT (Q13=A)** | Rotate JWT secret **on public flip**. |
 | **Stripe (Q14=A, Q18=B)** | Register Stripe webhook **after** public flip. Stripe is **not critical near-term**. |
 | **Legacy teardown (Q15≈D)** | Boss-driven / flexible; **no hard N** days/users required. |
@@ -116,12 +116,10 @@ ssh -N -L 5174:127.0.0.1:5174 ubuntu@84.13.81.51
 # if 83 is still up and you need its loopback copy:
 # ssh -N -L 5174:127.0.0.1:5174 root@83.229.87.94
 ```
-**What the live product does not have while on legacy** — expected, not bugs to
-re-investigate: mail of any kind (invites, password resets, contact form — legacy `.env` and
-`stripe-server.cjs` both have empty `EMAIL_*`), response compression, asset caching, the PubMed
-literature page (maintained-only; a `:5174` 404 is deploy/route presence, not legacy deleting
-git), the docked-pose overlay, the wrong-protein fix, and the RDKit loader fix. All of those
-exist only in the 5174 version.
+**What legacy lacked (historical):** mail, response compression, asset caching, PubMed,
+the docked-pose overlay, the wrong-protein fix, and the RDKit loader fix. Those exist on
+public `:5174`. Do not re-open them as live bugs. A literature 404 is deploy/route presence,
+not leftover Vite deleting git.
 
 ### Deploying the 5174 version
 
@@ -165,14 +163,14 @@ Readers that must stay dual-shape: `/api/simulation-logs`, docking cache lookup,
 PDB/SDF, `/api/activity` (Notifications). Activity projection includes both top-level
 `username` and nested `user.username` so maintained-only rows do not render as “Unknown”.
 
-Manual soak on `:5174` after deploy: sign in as a legacy-shaped user → Control Panel shows
-old nested rows **and** a new dock → Notifications lists both → re-dock of a prior pair hits
-cache (no second credit charge).
+Manual soak on public `:5174` after deploy: sign in as a legacy-shaped user → Control Panel
+shows old nested rows **and** a new dock → Notifications lists both → re-dock of a prior pair
+hits cache (no second credit charge).
 
 ### Boss click-test checklist (owner / boss — not automated)
 
-Tunnel first: `ssh -N -L 5174:127.0.0.1:5174 ubuntu@84.13.81.51` then open
-`http://127.0.0.1:5174`.
+Public is already `https://app.pyxis-discovery.com` (soft flip executed 2026-08-23). Tunnel
+only if checking the process off-nginx: `ssh -N -L 5174:127.0.0.1:5174 ubuntu@84.13.81.51`.
 
 1. Sign in (or demo) — JWT / account menu shows a session; no surprise logout.
 2. Dashboard home loads counts without hanging.
@@ -180,12 +178,11 @@ Tunnel first: `ssh -N -L 5174:127.0.0.1:5174 ubuntu@84.13.81.51` then open
 4. Control Panel: historical run opens; legacy + new rows both visible for the same user.
 5. Literature: example query returns results; empty query and a nonsense query show honest empty/error.
 6. Deep Similarity: one similarity search returns rows or an honest empty state.
-7. Plans & Credits: page renders catalog; **do not** complete a live Stripe purchase on dress rehearsal.
+7. Plans & Credits: page renders catalog; **do not** complete a live Stripe purchase until the webhook is registered.
 8. Dark mode smoke: sidebar + one results page readable.
 
-Sign-off = boss OK to flip public to maintained. **2026-08-22: boss approved; flip not
-executed.** Execute only via [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md) after owner says
-**“do the flip now”** (box arrival is no longer required for the product flip).
+Leftover after flip: Stripe webhook ([`STRIPE_LIVE_CUTOVER.md`](./STRIPE_LIVE_CUTOVER.md)).
+Do not re-flip without a new owner ask. Rollback: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md).
 
 ---
 
@@ -243,7 +240,7 @@ about it.
 | 0 | **AutoDock-GPU is not implemented — but it is NOT a blocker** | no | `engines/autodock_gpu.py` raises `DockingUnavailable` unconditionally and a test asserts the 503. **The bug was the documentation, and it is fixed:** the runbook called it "the workhorse" and `.env.example` defaulted to the stub, so following both gave 503 on every dock. Default is now `vina`. ⚠ **Arrival day should ship on CPU Vina and that fully achieves the goal** — the box exists so docking stops depending on Moscow ([BOX-SPEC.md](./BOX-SPEC.md) §1: *"Not throughput, not cost"*), and 32 cores of Vina does that. AutoDock-GPU is a **follow-up optimization**, buildable on the box at leisure |
 | 1 | ~~Back up the Tanimoto dump~~ | — | ⛔ **Declined 2026-08-01. Do not re-raise.** The dump lives only at `~/backups/tanimoto/` on the owner's Mac, but **Oracle's Postgres is live and is the authoritative source**, so losing the laptop costs a re-dump, not the data. Integrity verified 2026-08-01 (sha256, `PGDMP`/`tonomitosql`/`17.5` header, tail intact). ⚠ The residual risk is stated once below and is not a task |
 | 2 | **Tenant-isolation and perf findings** | no | [SECURITY-FINDINGS.md](./SECURITY-FINDINGS.md) §A1–A3 and [IMPROVEMENTS.md](./IMPROVEMENTS.md) P1–P6 |
-| 4 | **Stripe webhook registration** | ⚠ **after public flip** | Confirmed 2026-08-21 (Q14=A): register **after** maintained owns public. Stripe not critical near-term (Q18=B). Flip itself: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md) (approved 2026-08-22, not executed). `STRIPE_WEBHOOK_SECRET` guards this repo's handler on **:5174**, which is not what `app.pyxis-discovery.com` `:443` resolves to today. Run `stripe webhook_endpoints list` first — do not create a duplicate. |
+| 4 | **Stripe webhook registration** | ⚠ **after public flip (flip done)** | Confirmed 2026-08-21 (Q14=A): register into maintained. Stripe not critical near-term (Q18=B). Soft flip executed 2026-08-23 — `:443` → `:5174`. Still needs an explicit owner yes. Run `stripe webhook_endpoints list` first — do not create a duplicate. |
 | 5 | ~~`chem_beo` hardening patch~~ | — | ⛔ **SETTLED 2026-08-01: it will never be applied.** Owner's decision — `chem_beo` is going away at the port swap, so patching it is work on a component with a known end date. **Do not re-raise this.** See the exposure note below, which does not go away with the decision |
 | 6 | **Subresource Integrity on external tags** | no | Three external hosts left: jsdelivr (Bootstrap CSS), Google Fonts, unpkg/jsdelivr (RDKit, lazy). None carry SRI |
 | 7 | **Bundle code-splitting** | no | Resolved for the current home page: the 515 KB `vendor-charts` chunk only powered fictional template charts and has been removed from the build |
@@ -256,12 +253,11 @@ warns at boot when `STRIPE_WEBHOOK_SECRET` is unset (`server/index.js:88`) — *
 be granted"* — and its buy path is `/create-checkout-session-onetime` (`paidplans.jsx:159`,
 `dashboard-navbar.jsx:324`).
 
-But **this repo is not what serves the public site.** Production is the legacy stack, and
-whether a purchase is even reachable there, and whether `chem_beo` grants credits on a
-`checkout.session.completed`, lives in code this repository cannot see
-(`eitangenis/chem_beo` on the live application host). **Do not repeat the flat claim that
-"real purchases grant no credits"** — it was written about this repo's server and has never
-been checked against the live one.
+**This repo is the public site** (`pyxis-web` on `:5174`). Credits still will not grant
+until `STRIPE_WEBHOOK_SECRET` is set and the live webhook is registered
+([`STRIPE_LIVE_CUTOVER.md`](./STRIPE_LIVE_CUTOVER.md)). **Do not claim “real purchases grant
+no credits” as a chem_beo mystery** — settle it against this repo’s handler + Stripe
+dashboard.
 
 **How to settle it**, from a shell on `84` (read-only on `83` only if still up pre-kill):
 
@@ -272,9 +268,8 @@ grep -nE 'stripe|webhook|checkout' /root/pyxis-OLD-LIVE-backend-3000/index.js | 
 stripe webhook_endpoints list          # needs the Stripe login
 ```
 
-If legacy exposes no buy path, this is moot until the port swap and item 4 above is correctly
-deferred. If it does, it is a live money bug — a customer paying and receiving nothing — and it
-jumps the queue.
+Soft flip is done; settle the buy path on maintained + item 4 (webhook). If a customer can
+pay and receive nothing, that is a live money bug and it jumps the queue.
 
 ### The one residual risk on the Tanimoto index — stated once, not a task
 
@@ -295,25 +290,19 @@ resolving to Oracle ([ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §10).
 The decision is reasonable — but it has a shape worth stating plainly, because it changes what
 the port swap is worth.
 
-**Until the port swap, ~60 unauthenticated `chem_beo` routes are live on the public site.**
-`/api/sanitizedminimalsdf/<key>` returns real customer docking results to anyone with no token,
-`/api/generate-molecules` reaches the NVIDIA key (and is the rate-limit cause), and there is a
-credit-minting hole at `chem_beo:3343`. None of that will now be fixed in place.
+**Those ~60 unauthenticated `chem_beo` routes are public only on rollback** to `:5173`/`:3000`.
+`/api/sanitizedminimalsdf/<key>` returns real customer docking results with no token,
+`/api/generate-molecules` reaches the NVIDIA key, and there is a credit-minting hole at
+`chem_beo:3343`. None of that will be fixed in place.
 
-**So the port swap is the remediation.** Two consequences, and the first was put to the owner
-directly:
+**Soft flip 2026-08-23 is the remediation.** Two leftovers:
 
-1. **It stayed on arrival day until 2026-08-22.** §8 has no dependency on the box, so it
-   *could* have moved earlier — the owner was asked on 2026-08-01 and chose to keep it with
-   box day. **2026-08-22 owner update:** boss approved a **soft/product flip without waiting
-   for Amsterdam** — that earlier “do not re-raise” constraint is **superseded** for the
-   product cutover. Follow [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md). The
-   `chem_beo` exposure until the flip executes remains knowingly accepted until go-time.
+1. **Historical:** the swap stayed on arrival day until 2026-08-22, then the boss approved a
+   product flip without Amsterdam. Executed 2026-08-23 via
+   [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md).
 2. **⚠ Rolling back re-opens all of it.** [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §8 /
    [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md) rollback returns to `chem_beo`, permanently
-   unpatched. That makes it an emergency measure with a real security cost, not a comfortable
-   resting state — and it raises the value of getting dress-rehearsal validation right
-   *before* touching public `:443`, because a botched swap now costs more than a delayed one.
+   unpatched. Emergency measure, not a resting state.
 
 ---
 

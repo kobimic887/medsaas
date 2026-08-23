@@ -3,8 +3,8 @@
 Prioritized, do-later plan. Effort is rough; risk is "chance of breaking something live."
 
 > **Not critical-path.** Owner decisions and current backlog:
-> [`NEXT-SESSION.md`](./NEXT-SESSION.md). Live host is **`84`**; public product is legacy
-> `:5173` (do not polish). Apply improvements to maintained `:5174` / this repo only.
+> [`NEXT-SESSION.md`](./NEXT-SESSION.md). Live host is **`84`**; public product is this repo
+> on `:5174`. Do **not** polish rollback `:5173`. Apply improvements here only.
 > Hardware notes below that say “2 cores / 1 GB” describe historical **`83`**, which is
 > imminent shutdown — not a reason to tune live `84` the same way.
 

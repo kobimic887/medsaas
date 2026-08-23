@@ -1,9 +1,8 @@
 # Patches for `chem_beo`
 
-`chem_beo` (`eitangenis/chem_beo`) is still the **public** API behind legacy Vite — on live
+`chem_beo` (`eitangenis/chem_beo`) is the **rollback** API behind legacy Vite — on live
 **`84`** as `/root/pyxis-OLD-LIVE-backend-3000` (historically `/root/chem_beo` on `83`).
-Owner rolled the *product* back to original Pyxis on 2026-07-31; DNS later moved the *host*
-to `84`.
+Public API is this repo's `pyxis-web` on `:5174` (soft flip 2026-08-23).
 
 > ## ⛔ SETTLED 2026-08-01: this patch will NEVER be applied. Do not re-raise it.
 >
@@ -12,9 +11,8 @@ to `84`.
 > component with a known end date. **The port swap is the remediation instead**, and it has no
 > dependency on the box.
 >
-> Everything below is kept as a **record of what is wrong with `chem_beo`**, because that is
-> still live until the swap and still re-opened by any rollback to `:3000`. It is documentation
-> now, not a plan.
+> Everything below is kept as a **record of what is wrong with `chem_beo`**. Those routes
+> are public **only on rollback** to `:3000`. It is documentation now, not a plan.
 >
 > ## ⚠ The arrival-day narrative below is ALSO stale.
 >

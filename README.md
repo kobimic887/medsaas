@@ -12,9 +12,9 @@ chemistry API, ADMET worker, GROMACS MD, and glioblastoma prediction. See
 > deliberately exempt.
 
 **Where this actually runs (measure DNS):** `app.pyxis-discovery.com` → **`84.13.81.51`**
-(`oracleNew`). Public product is still **legacy Vite on `:5173`** → `chem_beo` on `:3000`.
-This repo (`pyxis-web` / `client/dist`) is the **`:5174` dress rehearsal** (loopback) until
-public flip. Shared MongoDB Atlas. **Not** deployed by CI or Docker.
+(`oracleNew`). Public product is this repo (`pyxis-web` / `client/dist`) on **`:5174`**
+(nginx `:443` → `127.0.0.1:5174`, soft flip 2026-08-23). Legacy Vite `:5173` → `chem_beo`
+`:3000` is **rollback only**. Shared MongoDB Atlas. **Not** deployed by CI or Docker.
 `83.229.87.94` is **imminent shutdown** — not the live DNS target. Start at
 [docs/POST-PROMOTION-HANDOFF.md](./docs/POST-PROMOTION-HANDOFF.md); never modify nginx, TLS,
 DNS or firewall without explicit owner approval.
@@ -218,8 +218,9 @@ ships a source archive to the Oracle VPS, and builds the Docker image there.
 
 **`deploy.yml` does not reach production.** It is `workflow_dispatch`-only and points
 at a non-production Oracle path. Live deploys are manual to **`84`**: refresh
-`/root/pyxis-new-standby-5174` (or the live legacy trees) via `git archive` / `tar`, then
-`systemctl restart` the relevant unit — see [docs/NEXT-SESSION.md](./docs/NEXT-SESSION.md).
+`/root/pyxis-new-standby-5174` via `git archive` / `tar`, then `systemctl restart pyxis-web`
+— see [docs/NEXT-SESSION.md](./docs/NEXT-SESSION.md). Do not deploy new work to the rollback
+trees.
 Pushing runs CI and deploys nothing.
 
 The current deploy does not use GitHub Packages/GHCR. See

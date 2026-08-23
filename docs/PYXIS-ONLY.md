@@ -2,8 +2,9 @@
 
 > ## Branding record — not a live-host runbook
 >
-> Host roles: [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md). Public is still
-> legacy `:5173` on **`84`**; this rebrand lives on **`:5174`** until flip.
+> Host roles: [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md). Public is this
+> repo on **`:5174`** (soft flip 2026-08-23). This file is the branding record, not a
+> “not live yet” flag.
 >
 > ## ⚠ REVERSED IN PART, 2026-07-30
 >
@@ -21,9 +22,9 @@
 is DONE (2026-07-31).** This is no longer a plan for the code half. Steps 7–8 belong to the box
 migration and are untouched.
 
-⚠ **Everything here is in this repo / `:5174` but not public.** Product rolled back to original
-Pyxis on 2026-07-31; DNS later moved the host to `84`. Flip = boss click-test **or** box
-arrival ([`NEXT-SESSION.md`](./NEXT-SESSION.md)).
+⚠ **Applied and public as of the 2026-08-23 soft flip.** Product had been rolled back to
+original Pyxis on 2026-07-31; DNS later moved the host to `84`; nginx `:443` now serves this
+repo on `:5174`. See [`NEXT-SESSION.md`](./NEXT-SESSION.md).
 
 | §5 step | State | Commit |
 |---|---|---|
@@ -50,11 +51,9 @@ verified.
 > Read-only held throughout: `tester123` stayed at 99,997 credits and `simulation_logs` stayed
 > at 7.
 >
-> ⚠ **But the thing it was verifying is no longer live.** The owner rolled production **back**
-> to the original Pyxis on 2026-07-31. This repo's rebranded frontend runs on `:5174`,
-> loopback only, and becomes the public site again at the port swap on box day
-> ([ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §8). Everything in this document describes code
-> that is deployed but **not currently in the request path.**
+> Historical note: the owner rolled production **back** to original Pyxis on 2026-07-31, so
+> this rebrand sat on `:5174` loopback until the 2026-08-23 soft flip. It is **now in the
+> public request path** via nginx → `:5174`.
 
 **What did NOT change, and must not be assumed to have:** the Stripe webhook, `PLAN_CATALOG`,
 `consumeSimulationToken`, `simulationTokens`, `billing_events`, the companies collection,
@@ -277,9 +276,9 @@ This work and the box migration touch the same files, so ordering matters.
 
 **Then, as part of the migration** ([ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md)):
 
-7. On public flip, put this repo on **`84`** port **5173** (ARRIVAL §8 / measured nginx swap).
-   Keep the old legacy tree on disk — that is the rollback. Do not plan a fresh deploy to `83`
-   (`83` is imminent shutdown).
+7. Soft flip **executed 2026-08-23**: nginx `:443` → `:5174` on **`84`**. Classic ARRIVAL §8
+   port swap was unused. Keep the old legacy tree on disk — that is the rollback. Do not plan
+   a fresh deploy to `83` (`83` is imminent shutdown).
 8. CORS for `app.pyxis-discovery.com` is already a production concern on the live API host;
    verify on **`84`** after flip, do not invent a second origin story.
 

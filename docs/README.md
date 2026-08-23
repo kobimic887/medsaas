@@ -44,9 +44,9 @@ Full table in [NEXT-SESSION.md](./NEXT-SESSION.md) § Owner decisions. Short for
 | [BOX-SPEC.md](./BOX-SPEC.md) | Ordered hardware (4× RTX PRO 4000) + VAT checklist |
 | [PRODUCTION-83-INVENTORY.md](./PRODUCTION-83-INVENTORY.md) | Historical legacy-stack inventory (2026-07-28 on `83`) |
 | [DOCKING-CONTRACT.md](./DOCKING-CONTRACT.md) | 1-click docking request/response ground truth |
-| [SECURITY-FINDINGS.md](./SECURITY-FINDINGS.md) | Findings; “fixed” = this repo, not necessarily public `:5173` |
+| [SECURITY-FINDINGS.md](./SECURITY-FINDINGS.md) | Findings; “fixed” = this repo = public `:5174`; chem_beo never patched |
 | [KNOWN-BROWSER-ISSUES.md](./KNOWN-BROWSER-ISSUES.md) | Safari/Molstar WebGL; workarounds |
-| [PYXIS-ONLY.md](./PYXIS-ONLY.md) | De-SaaS branding record (applied on `:5174`, not public yet) |
+| [PYXIS-ONLY.md](./PYXIS-ONLY.md) | De-SaaS branding record (applied and public on `:5174`) |
 | [CLAUDE-LIFE-SCIENCES.md](./CLAUDE-LIFE-SCIENCES.md) | MCP tools |
 | [CI-CD.md](./CI-CD.md) | Repo workflows; deploy.yml ≠ production |
 | [STRIPE_LIVE_CUTOVER.md](./STRIPE_LIVE_CUTOVER.md) | Webhook registration — **after** public flip |

@@ -4,8 +4,8 @@
 > long-lived standby). These unit files are the pattern used on **`84`**; do not install or
 > mutate them on `83` toward kill. Before-kill checklist:
 > [`docs/POST-PROMOTION-HANDOFF.md`](../../docs/POST-PROMOTION-HANDOFF.md).
-> Public = legacy `:5173`; this repo = `:5174` dress rehearsal. Port swap on flip runs on
-> **`84`**.
+> Public = `pyxis-web` `:5174` (soft flip 2026-08-23). Legacy `:5173` = rollback only.
+> Units on **`84`**; directory name is historical.
 
 ## Why
 
@@ -26,10 +26,10 @@ All four units are installed and **enabled**, so all four survive a reboot.
 
 | Unit | Port | What | On live `84` |
 |---|---|---|---|
-| `pyxis-vite-legacy` | **5173** | the original Pyxis, a Vite dev server | **yes — public site** (via nginx) |
-| `pyxis-api-legacy` | 3000 | `chem_beo`, the legacy API | yes — serves 5173 |
-| `pyxis-stripe` | 3001 | `stripe-server.cjs` — the contact form's backend | yes |
-| `pyxis-web` | **5174** | this repo's server + `client/dist`, on Bun | yes, **loopback only** (dress rehearsal) |
+| `pyxis-vite-legacy` | **5173** | the original Pyxis, a Vite dev server | yes — **rollback only** |
+| `pyxis-api-legacy` | 3000 | `chem_beo`, the legacy API | yes — serves rollback `:5173` |
+| `pyxis-stripe` | 3001 | `stripe-server.cjs` — the contact form's backend | yes — rollback path |
+| `pyxis-web` | **5174** | this repo's server + `client/dist`, on Bun | **yes — public site** (nginx `:443`) |
 
 ⚠ **Corrected 2026-08-01.** This table used to say `pyxis-web` was on 5173 and disabled, that
 enabling it *was* the cutover, and that it declared `Conflicts=pyxis-vite-legacy.service`.
@@ -37,9 +37,10 @@ All three were true for two days in July and are false now. The owner deliberate
 production back to the original Pyxis on **2026-07-31**; `Conflicts=` was **removed** so both
 frontends can run side by side on different ports.
 
-`pyxis-web` also carries `Environment=BIND_HOST=127.0.0.1`, because 5174 is not behind nginx
-and shares the **production Atlas** database — bound to `0.0.0.0` it published a second live
-copy of the app over plain HTTP. Reach it with:
+Historical note: the unit file still mentions `BIND_HOST=127.0.0.1`. **Measured 2026-08-22:**
+live `pyxis-web` has no `BIND_HOST`; `server/index.js` listens `0.0.0.0`. Public traffic is
+nginx `:443` → `127.0.0.1:5174`. Open cleartext `:5174` is hygiene, not the public path.
+Tunnel if you need the process off-nginx:
 
 ```bash
 ssh -N -L 5174:127.0.0.1:5174 ubuntu@84.13.81.51
@@ -70,7 +71,10 @@ systemctl status pyxis-stripe --no-pager
 
 ⚠ **Never `pkill -f "bun index.js"`** — it matches production's own process. Kill by PID.
 
-## The port swap — arrival day, and the only cutover mechanism
+## The port swap — unused classic recipe (soft flip already ran)
+
+**Public flip used nginx `:443` → `:5174` on 2026-08-23**, not this swap. Keep the steps as
+rollback/audit history. Do not re-run them without a new owner ask.
 
 **It is a port swap, not an enable/disable.** Neither unit gets disabled.
 
@@ -110,14 +114,13 @@ frontend's `/api` proxy, so stopping that frontend already orphans it.
 ⚠ Stages 2 and 3 stop a *process*. **Do not remove `/root/material-tailwind-dashboard-react`
 at any stage** — that directory is what makes them reversible.
 
-**Leave `/root/material-tailwind-dashboard-react` alone, forever.** It is the live site's code
-right now, and it is a *different codebase* from this repo's `client/` — Creative Tim template
-lineage, not an older version.
+**Leave the rollback tree alone.** On `84` that is `/root/pyxis-OLD-LIVE-frontend-5173`
+(older `83` name may still be `/root/material-tailwind-dashboard-react`). It is a *different
+codebase* from this repo's `client/` — Creative Tim template lineage, not an older version.
 
-**Leave `:3001` running.** The legacy Vite server proxies `/api` to it, so it is the contact
-form's backend for the live site. Every route it serves also exists in `server/index.js`
-behind authentication and rate limiting, so it becomes redundant *after* the port swap — but
-retire it as a separate, deliberate step.
+**Leave `:3001` running** while the rollback Vite tree is kept. Every route it serves also
+exists in `server/index.js` behind authentication and rate limiting; retire it as a separate,
+deliberate step when the owner stops the rollback frontend.
 
 ## Logs
 

@@ -8,14 +8,13 @@ need prior conversation context.
 
 > ## ⚠ Timing and hosts (owner 2026-08-21) — read before acting
 >
-> - **Register the Stripe webhook only after the public flip** to maintained `:5174`/`5173`
->   (grill Q14=A). Stripe is **not** critical near-term (Q18=B). Do not treat this file as
->   “do now on live legacy.”
-> - Public site today is **legacy** on **`84.13.81.51`** (`:5173` → `chem_beo`), not this
->   repo’s `pyxis-web`. HTTPS exists; Step 1 (public URL) is moot for DNS/TLS.
-> - After flip, webhook path is `POST https://app.pyxis-discovery.com/stripe/webhook` into
->   the **maintained** server env on `84`
->   (`/root/pyxis-new-standby-5174/server/.env` until paths rename on flip) —
+> - Soft flip **executed 2026-08-23**. Register the Stripe webhook into maintained `:5174`
+>   (grill Q14=A). Stripe is **not** critical near-term (Q18=B). Still needs an explicit
+>   owner yes this turn — do not register unprompted.
+> - Public site is this repo’s `pyxis-web` on **`84.13.81.51`** (`:443` → `:5174`). HTTPS
+>   exists; Step 1 (public URL) is moot for DNS/TLS.
+> - Webhook path is `POST https://app.pyxis-discovery.com/stripe/webhook` into the
+>   **maintained** server env on `84` (`/root/pyxis-new-standby-5174/server/.env`) —
 >   **not** `~/medsaas/.env` on `oracleOld`, and **not** an assumed `/root/pyxis/`.
 > - Run `stripe webhook_endpoints list` first — do not create a duplicate.
 > - Body text below still describes 2026-06 Oracle/Docker topology; treat §0 facts as

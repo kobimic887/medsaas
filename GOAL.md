@@ -26,9 +26,9 @@ paraphrasing it is how the scope drifted in the first place:
    deployed fast and the frontend just repoints at it. Anything that turns arrival day into a
    multi-step migration is working against the goal.
 
-2. **There are two frontends and the improved one wins.** On live `84`, public legacy is
-   `:5173` and this repo's maintained product is `:5174` (dress rehearsal → future live).
-   This repo's `client/` is the superset; it becomes `app.pyxis-discovery.com` on flip.
+2. **There are two frontends and the improved one wins.** On live `84`, public
+   `app.pyxis-discovery.com` is this repo on **`:5174`** (soft flip 2026-08-23). Legacy
+   `:5173` stays installed for **rollback only**.
 
 3. **De-SaaS it back to Pyxis-only,** and point it at the future box URL. One product, one
    company. ✅ Applied — see [`docs/PYXIS-ONLY.md`](docs/PYXIS-ONLY.md).

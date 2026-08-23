@@ -7,34 +7,28 @@ concrete fix guidance.
 _Last updated: 2026-08-03 (host banner 2026-08-22). Line numbers drift as the file changes —
 search by symbol/route, not by number._
 
-> **Hosts:** public DNS → **`84`**; public product still legacy `:5173` → `chem_beo`. Fixes
-> below are in this repo / `:5174` until public flip (boss click-test **or** box arrival).
-> See [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md).
+> **Hosts:** public DNS → **`84`**; public product is this repo on `:5174` (soft flip
+> 2026-08-23). The findings table is the live server. `chem_beo` is rollback-only and was
+> never patched. See [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md).
 
 ---
 
-## ✅ Already fixed — but ⚠ NOT currently live
+## ✅ Already fixed — **live on public `:5174` as of 2026-08-23**
 
 These were applied to **this repo's** `server/index.js`. They were live on
-`app.pyxis-discovery.com` from 2026-07-29 to 2026-07-31.
-
-⚠ **Corrected 2026-08-01: they are not in effect on the public site.** The owner deliberately
-rolled the product back to the **original Pyxis** on 2026-07-31, which is served by `chem_beo`
-on `:3000` (now on live host **`84`**). This repo's server runs alongside on `:5174`,
-loopback only. So every fix in the table below is *written and deployed but not in the public
-request path* until the port swap ([ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §8 on `84`).
+`app.pyxis-discovery.com` from 2026-07-29 to 2026-07-31, then sat off-public while the owner
+rolled back to original Pyxis / `chem_beo`. Soft flip 2026-08-23 put this repo back on
+`:443` → `:5174`, so the table below is **in the public request path**.
 
 Two caveats that are not in the table:
 
-- **`chem_beo` is serving the public site and has none of these fixes.** Its `'secret'` JWT
-  hole is closed (verified by forging a token and getting `403`), but roughly **60
-  unauthenticated routes are open right now** — `/api/sanitizedminimalsdf/<key>` returns real
-  customer results with no token from the public internet, and `/api/generate-molecules`
-  reaches the NVIDIA key. This is the single largest live exposure in the project.
-  ⛔ **Settled 2026-08-01: `deploy/chem_beo/01-fixes-and-config.patch` will never be applied** —
-  `chem_beo` is going away at the port swap, so **the port swap is the remediation**, and it
-  has no dependency on the box. ⚠ Any rollback to `:3000` re-opens all of it, which makes a
-  rollback an emergency measure with a security cost rather than a comfortable resting state.
+- **`chem_beo` has none of these fixes and is rollback-only.** Its `'secret'` JWT hole is
+  closed (verified by forging a token and getting `403`), but roughly **60 unauthenticated
+  routes become public again if nginx returns to `:5173`** — `/api/sanitizedminimalsdf/<key>`
+  returns real customer results with no token, and `/api/generate-molecules` reaches the
+  NVIDIA key. ⛔ **Settled 2026-08-01: `deploy/chem_beo/01-fixes-and-config.patch` will never
+  be applied.** ⚠ Rollback to `:3000` re-opens all of it — emergency measure, not a resting
+  state.
 - **`assertConfiguredUrlsArePublic` has exactly one call site** (`server/index.js`, the
   admin-UI `ligandServiceConfig` PATCH). The env vars that carry the box cutover —
   `TANIMOTO_API_BASE`, `SDF_CONVERTER_URL`, `ASINEX_DOCKING_API_URL`, `DIFFDOCK_API_URL`

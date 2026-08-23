@@ -6,13 +6,13 @@ production by changing DNS.** It is the authority for the period after that prom
 This document does **not** change DNS or authorize any destructive action. Re-confirm DNS
 and service identity with live checks at the start of every session.
 
-## Measured 2026-08-21 evening (re-check before acting)
+## Measured 2026-08-21 evening; re-checked 2026-08-23 (re-check before acting)
 
 | Check | Result |
 |---|---|
 | `app.pyxis-discovery.com` A | **`84.13.81.51`** (`oracleNew`) |
 | `app.fin-srv.com` A | **`84.13.81.51`** |
-| Public Pyxis product | **Maintained `pyxis-web`** on `:5174` (soft flip 2026-08-23) — title `Pyxis Discovery`, `DEPLOYED_SHA` `b0ea769…` |
+| Public Pyxis product | **Maintained `pyxis-web`** on `:5174` (soft flip 2026-08-23) — title `Pyxis Discovery` (re-fetched 2026-08-23), `DEPLOYED_SHA` `b0ea769…` |
 | nginx on `84` | `proxy_pass http://127.0.0.1:5174` on `:443` (legacy `:5173` kept for rollback) |
 | Side door | nginx **`:8443`** also → `:5174`. Checklist / rollback: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md) |
 | Host `83` (`83.229.87.94`) | **Imminent shutdown** (owner 2026-08-21 — not long-lived standby). **Measured:** SSH OK, hostname `chem`, up ~50d, nginx active, listeners `:443`/`:80`, `:5173`, `127.0.0.1:5174`, `:3000`, `:3001`, `:4000`. **Not** on public DNS. Agents: read-only only; do not kill. See § “Before killing `83`”. |
@@ -67,7 +67,7 @@ trees without reviewing the diff first. GitHub itself was not emptied of those f
 
 | Host | Post-promotion role | What it must not be confused with |
 |---|---|---|
-| **`oracleNew` — `84.13.81.51`** | **Live production application host** for every hostname the operator has deliberately pointed at it. Validate this host first. Dual stack: public legacy `:5173`, maintained `:5174` dress rehearsal. | `oracleOld`; it is not the Tanimoto source and is not the Amsterdam box |
+| **`oracleNew` — `84.13.81.51`** | **Live production application host** for every hostname the operator has deliberately pointed at it. Validate this host first. Dual stack: public maintained `:5174`, legacy `:5173` rollback only. | `oracleOld`; it is not the Tanimoto source and is not the Amsterdam box |
 | **`83.229.87.94`** | **Imminent shutdown** (owner 2026-08-21). Still measured up as a non-DNS host (nginx + Pyxis/FinSrv listeners) until teardown — **not** a long-lived standby. Keep inventory/runbooks as historical record; agents do not power it off. | The Amsterdam compute box; public production (DNS is on `84`); long-lived failover |
 | **`oracleOld` — `151.145.91.17`** | Temporary source for the live Tanimoto/Postgres data and old non-production medsaas stack. | `oracleNew`; this is a different Oracle tenancy, key, workload and data role |
 | **Amsterdam GPU box** | Compute-only host for docking, DiffDock, convertSTR, Tanimoto + Postgres/RDKit, GROMACS, ADMET and glioblastoma. Access method chosen from §1c probe on arrival — not Tailscale-by-default. | Neither application host; it does not receive the API or MongoDB Atlas |
@@ -89,7 +89,7 @@ Agents do **not** shut down or mutate `83`. Owner confirms these on **`84` first
 | Gate | Must be true | Notes (2026-08-21 measure) |
 |---|---|---|
 | **DNS** | `app.pyxis-discovery.com` and `app.fin-srv.com` A → **`84.13.81.51` only** | Already true for both |
-| **Pyxis sole home** | Public + dress-rehearsal stacks healthy on `84` (`:5173` legacy live, `:5174` loopback) | Already true — Pyxis is live on `84` |
+| **Pyxis sole home** | Public + rollback stacks healthy on `84` (`:5174` public, `:5173` kept running for rollback) | Already true — Pyxis is live on `84` |
 | **FinSrv sole home** | `app.fin-srv.com` serves from `84` (`/opt/finsrv` → `:4000`); authenticated/DB-backed check OK **without** needing `83` | DNS on `84`; confirm FinSrv is not still depending on anything only on `83` |
 | **Mirrors / rollback story** | Owner decides post-kill rollback target | After kill there is **no** host-level mirror on `83`. Likely: on-disk trees + timestamped snapshots on **`84` only**. Docs that still say “mirror/`sync`/`rollback` to `83`” need confirmation — see flags below |
 | **Backups** | Env/secrets, nginx TLS material if not elsewhere, any FinSrv/Pyxis data that exists only as files on `83` (not Atlas) are copied or confirmed present on `84` / backup store | Atlas stays; host-local files do not |
@@ -110,7 +110,7 @@ banners updated — prefer this handoff over those sections):
 - **Pyxis MongoDB Atlas stays exactly where it is.** Users, credits, billing, companies and
   simulation history are not dumped, moved or replaced during this work. The Pyxis services
   on `84` (and historically on `83` until shutdown) intentionally use the same Atlas database.
-  Fix `simulation_logs` dual-shape in the **reader** in parallel with dress rehearsal
+  Fix `simulation_logs` dual-shape in the **reader** in parallel with the maintained stack
   (owner, 2026-08-21).
 - **FinSrv MongoDB is separate.** Validate its own Atlas project/cluster on both application
   hosts; never substitute the Pyxis URI.
@@ -196,8 +196,7 @@ Paste this into a fresh agent session after supplying connection information:
 > blindly execute the pre-promotion §8 port swap: measure `84` listeners first. Validate `84`
 > only for application cutovers. Build and verify Amsterdam's compute services, repoint
 > docking/DiffDock/convertSTR/Tanimoto one at a time, and keep Asinex URLs as rollback values.
-> MongoDB Atlas for Pyxis stays in place; FinSrv uses a separate Atlas project. On public flip:
-> rotate JWT; register Stripe webhook after flip. Soft/product flip may precede Amsterdam
-> (2026-08-22) — see `docs/PYXIS-WEB-FLIP.md`; do not flip until owner says go. Do not remove
-> anything from `oracleOld` until all migration checks pass and I explicitly approve the exact
-> cleanup commands.
+> MongoDB Atlas for Pyxis stays in place; FinSrv uses a separate Atlas project. Soft flip
+> executed 2026-08-23 — see `docs/PYXIS-WEB-FLIP.md`; do not re-flip without a new ask.
+> Stripe webhook still pending. Do not remove anything from `oracleOld` until all migration
+> checks pass and I explicitly approve the exact cleanup commands.
