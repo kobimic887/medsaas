@@ -30,10 +30,12 @@ polish the rollback stack.
   replay fixtures alone are insufficient.
 - Repoint one production path at a time and retain the previous Asinex/host value as rollback.
 - Verify credit consumption/refund behavior and the actual user path after each relevant cutover.
-- Change shared Atlas company configuration once. Apply host-local environment configuration to
-  each application host separately.
-- Keep `oracleOld`, old services, source, containers, and data intact until all documented gates are
-  green and the owner explicitly authorizes the exact cleanup.
+- Change shared Atlas company configuration once. Apply host-local environment configuration on
+  the one application host (`84`). `83` is leftover and not DNS.
+- Keep `oracleOld` Tanimoto containers, leftover Mongo volume `medsaas_mongo-data`, and source
+  intact until all documented gates are green and the owner explicitly authorizes the exact
+  cleanup. Measured 2026-08-23: no `medsaas` / `mongo` containers and no `:27017` — do **not**
+  start Mongo.
 
 ## Stop instead of improvising
 

@@ -85,16 +85,18 @@ session broken. Nothing in §1–§11 is irreversible; §12 is, and happens week
 3. **Do not run the §8 port swap.** Public is already `pyxis-web` `:5174` on `84`. The
    classic dual-host swap text below is unused. Box day is compute cutover on `84` only.
 4. **On `oracleOld` (`151.145.91.17`): do not touch CLIProxyAPI (`:8317`), Crafty (`:8443`),
-   or `~/.cli-proxy-api/auths/`.** Those are the owner's separate tooling. Tanimoto and the
-   medsaas containers are removed only in the explicit post-migration cleanup in §12.
+   or `~/.cli-proxy-api/auths/`.** Those are the owner's separate tooling. Tanimoto stays
+   until the explicit post-migration cleanup in §12. Measured 2026-08-23: no `medsaas` /
+   `mongo` containers and no `:27017` — leftover volume `medsaas_mongo-data` only. Do **not**
+   start Mongo. Volume removal stays in §12.
 5. **Three Mongo/Postgres situations, three different answers. Never let them collapse into one rule.**
 
    | Database | Where | What happens |
    |---|---|---|
-   | Pyxis production Mongo — users, credits, billing, docking history | **MongoDB Atlas** | **stays.** `chem_beo :3000` and `pyxis-web :5174`/`:5173` intentionally use this same Atlas database; never dump or replace it |
-   | FinSrv Mongo | **a separate MongoDB Atlas project/cluster** | Stays separate from Pyxis and from both Oracle hosts; verify both FinSrv hosts independently |
+   | Pyxis production Mongo — users, credits, billing, docking history | **MongoDB Atlas** | **stays.** Public `pyxis-web :5174` uses it. Rollback `:5173` / `chem_beo :3000` trees, if started, use the same Atlas — never dump or replace it |
+   | FinSrv Mongo | **a separate MongoDB Atlas project/cluster** | Stays separate from Pyxis and from both Oracle hosts; verify FinSrv on live `84` (`83` is leftover, not DNS) |
    | Tanimoto Postgres — 2,951,975 molecules | **`oracleOld` (`151.145.91.17`)** | **copied to the Amsterdam box** (§10). It is production data and the only live copy until the migration is verified |
-   | `oracleOld`'s local Mongo | **`oracleOld` Docker (`mongo:7`, `medsaas` DB)** | Non-production side-project data; never restore it over Atlas; remove the old medsaas stack only in §12 after explicit approval |
+   | `oracleOld`'s leftover Mongo volume | **`medsaas_mongo-data` only** (containers removed 2026-08-23; no `:27017`) | Non-production side-project data; never restore it over Atlas; do **not** start Mongo. Volume removal only in §12 after explicit approval |
 
    Refusing to copy the Postgres loses three million molecules. Copying `oracleOld`'s local
    Mongo over Atlas would overwrite production with a side project. The two Pyxis services
@@ -576,8 +578,9 @@ is consolidation.
 `oracleOld`'s Postgres still answers live Tanimoto today:
 `browser → nginx → pyxis-web :5174 → oracleOld (151.145.91.17):8000 tonomitosql → Postgres/RDKit`,
 from the Deep Similarity page (not leftover `:3000` `chem_beo`). It is **production data and the only copy** — 2,951,975 molecules,
-built from `molsd4.csv`, indexed 2026-03-12. `oracleOld`'s separate local Mongo (`mongo:7`,
- database `medsaas`) is not this production database and must not be copied into the box.
+built from `molsd4.csv`, indexed 2026-03-12. `oracleOld`'s leftover Mongo volume
+(`medsaas_mongo-data`; containers removed 2026-08-23, no `:27017`) is not this production
+database and must not be copied into the box. Do **not** start Mongo.
 
 The dump exists (§2.2) — ⚠ **but only on the owner's Mac, not in git and not on 83.** See §1b;
 get it transferred and verify the sha256 after the copy. Restore it on the box and **assert the
@@ -661,13 +664,13 @@ The reason to do it eventually is consolidation and one less dependency, not tha
 is inadequate. It is also still free-tier, so it is not costing anything to leave running.
 
 On `oracleOld`, `tonomitosql-api-1` and `tonomitosql-db-1` serve the production Tanimoto
-path today. The separate `medsaas` compose project currently has `medsaas-app-1`,
-`medsaas-mcp-server-1`, and `medsaas-mongo-1` stopped; its Mongo is local `mongo:7`, database
-`medsaas`, and is **not** the production Pyxis Atlas database. After Amsterdam Tanimoto has
-been verified, remove **all medsaas stack artifacts** from `oracleOld`—its containers, local
-Mongo volume/data, medsaas images, compose project/source files, and related medsaas-only
-artifacts—plus both tonomitosql containers/data, as one explicitly approved cleanup. Do not
-remove CLIProxyAPI, Crafty, their data, or any unrelated owner tooling.
+path today. Measured 2026-08-23: no `medsaas` / `mongo` containers and no `:27017`. Leftover
+volume `medsaas_mongo-data` stays until §12 — do **not** start Mongo. That volume is **not**
+the production Pyxis Atlas database. After Amsterdam Tanimoto has been verified, remove
+**remaining medsaas stack artifacts** from `oracleOld`—leftover volume/data, any leftover
+images, compose project/source files, and related medsaas-only artifacts—plus both
+tonomitosql containers/data, as one explicitly approved cleanup. Do not remove CLIProxyAPI,
+Crafty, their data, or any unrelated owner tooling.
 
 Confirm every one of these with the human, explicitly, before starting:
 

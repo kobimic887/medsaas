@@ -151,7 +151,7 @@ deployed frontend in ways only testing reveals. Release A closes them properly.
 > Historical 2026-07-28 record. Live public is `84` + `pyxis-web` `:5174` (soft flip
 > 2026-08-23). Do not treat the “today 83 runs Vite” paragraph as current topology.
 
-Today 83 runs a Vite **dev server** on `:5173` proxied by nginx, a Stripe server on `:3001`, and
+In July 2026, leftover `83` (not DNS) ran a Vite **dev server** on `:5173` proxied by nginx, a Stripe server on `:3001`, and
 a second HTTPS server on `:3000` that terminates TLS itself and bypasses nginx — all started by
 hand in `screen` sessions with no restart policy.
 
