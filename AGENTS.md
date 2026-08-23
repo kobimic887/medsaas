@@ -95,7 +95,9 @@ does not prove a dashboard flow.
 
 Production deploy is manual. Source upload, built `client/dist`, service restart, and
 deployed identity are separate — follow the current runbook; do not reconstruct
-commands from memory. Pushes run CI and do **not** deploy.
+commands from memory. Pushes run CI and do **not** deploy. After a finished
+shippable change, **ask** whether to put it on 84. Do not silently skip; wait for
+yes this turn.
 
 Begin remote work with read-only identity, DNS, listener, service, build, and database
 checks. On shared hosts, never modify nginx, TLS, DNS, firewall, unrelated apps, or
