@@ -19,26 +19,38 @@ import { join, relative } from 'node:path';
 const ROOT = new URL('..', import.meta.url).pathname;
 const SCAN_DIRS = ['client/src'];
 
-// Routes that genuinely answer without a token. Verified against production on
-// 2026-07-30 — each returns 200 unauthenticated. Adding a route here is a claim
-// that the server does NOT put authenticateToken in front of it; check first.
+// Routes that genuinely answer without authenticateToken in THIS repo
+// (server/index.js). chem_beo left many of these open; do not copy that
+// inventory. Adding a route here is a claim that the live handler has no
+// authenticateToken — check first.
+//
+// Not public here: /company/branding (authenticateToken + requireActiveUser).
+// A bare fetch 401s and the interceptor logs the user out.
+// /health is the probe only — not /tanimoto/health or /asinex/health.
 const PUBLIC_ROUTES = [
   '/mol-price-stats',
   '/mol-price/search',
   '/signin',
-  // Public registration. `POST /api/signup` has no authenticateToken in front of it — the
-  // caller has no account yet, which is the point. Gated by ALLOW_PUBLIC_SIGNUP (default on).
+  // Public registration when ALLOW_PUBLIC_SIGNUP=true (default off). The
+  // route still has no authenticateToken — closed installs return 403.
   '/signup',
-  // The contact form. `POST /api/send-email` is rate-limited but unauthenticated —
-  // server/index.js:6037 has publicEmailRateLimit and no authenticateToken.
+  // Contact form: publicEmailRateLimit, no authenticateToken.
   '/send-email',
   '/demo-session',
   '/password-reset/request',
   '/password-reset/confirm',
   '/validate-token',
-  '/company/branding',
   '/health',
 ];
+
+function mentionsPublicRoute(expr) {
+  return PUBLIC_ROUTES.some((route) => {
+    const escaped = route.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Path must start at a quote or /api, not as a suffix of another path
+    // (so /health does not match /tanimoto/health).
+    return new RegExp(`(?:["'\`](?:/api)?|/api)${escaped}(?=["'\`/?#)]|$)`).test(expr);
+  });
+}
 
 function* walk(dir) {
   for (const entry of readdirSync(dir)) {
@@ -81,7 +93,7 @@ for (const dir of SCAN_DIRS) {
       const targetsOurApi = /buildApiUrl|buildUrl|["'`]\/api\//.test(expr);
       if (!targetsOurApi) continue;
       if (/Authorization/i.test(expr)) continue;
-      if (PUBLIC_ROUTES.some((route) => expr.includes(route))) continue;
+      if (mentionsPublicRoute(expr)) continue;
 
       const line = source.slice(0, match.index).split('\n').length;
       failures.push(`${rel}:${line}  fetch() to our API with no Authorization header`);
