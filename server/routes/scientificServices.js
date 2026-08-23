@@ -6,6 +6,13 @@ const router = express.Router();
 const GROMACS_API_BASE = (process.env.GROMACS_API_BASE || 'http://localhost:8001').replace(/\/$/, '');
 const GLIOBLASTOMA_API_BASE = (process.env.GLIOBLASTOMA_API_BASE || 'http://localhost:5000').replace(/\/$/, '');
 
+// Same contract as server/index.js: these proxies already ran authenticateToken,
+// so an upstream 401 is the service's credentials failing — never a user session.
+// Forwarding 401 would trip the SPA interceptor and log the caller out.
+export function relayUpstreamStatus(status) {
+  return status === 401 ? 502 : status;
+}
+
 async function proxyJson(req, res, targetUrl, options = {}) {
   try {
     const response = await fetch(targetUrl, {
@@ -22,11 +29,7 @@ async function proxyJson(req, res, targetUrl, options = {}) {
       ? await response.json()
       : await response.text();
 
-    // Remap an upstream 401 to 502: the caller already passed our auth, so a
-    // 401 here means the SERVICE's credentials failed, not the user's session.
-    // Forwarding 401 verbatim would trip the client's auth interceptor and log
-    // the user out for an upstream problem.
-    return res.status(response.status === 401 ? 502 : response.status).send(payload);
+    return res.status(relayUpstreamStatus(response.status)).send(payload);
   } catch (error) {
     console.error(`Proxy error for ${targetUrl}:`, error);
     return res.status(502).json({
