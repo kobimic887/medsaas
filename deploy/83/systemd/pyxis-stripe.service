@@ -1,6 +1,6 @@
-# stripe-server.cjs on :3001. Undocumented until 2026-07-29 and load-bearing: the legacy
-# Vite dev server proxies /api here, so this is what answers the marketing site's contact
-# form. It is also part of the rollback path — do not stop it when cutting over.
+# stripe-server.cjs on :3001. Rollback-only now (public is pyxis-web :5174).
+# Stopped on 84 (2026-08-23); unit stays enabled; tree stays.
+# Start only if rolling nginx back to :5173 (legacy Vite proxies /api here).
 #
 # Hardened 2026-07-29: the destination of /api/send-email is server-controlled rather than
 # taken from the request body (it was an open relay through the company mailbox), both
@@ -8,8 +8,7 @@
 # to localhost, and the transport reads EMAIL_HOST/EMAIL_PORT instead of hardcoding a
 # provider this account does not use.
 #
-# Release A makes this redundant: every route it serves exists in server/index.js behind
-# authentication and rate limiting. Retire it then, not before.
+# Redundant while public is pyxis-web. Stopped; do not start unless rolling back.
 [Unit]
 Description=Pyxis legacy Stripe/contact server (port 3001)
 After=network-online.target
@@ -19,11 +18,9 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=/root/pyxis-ROLLBACK-frontend-5173
-# Secrets live OUTSIDE the webroot. That directory is the root of a Vite dev server bound
-# 0.0.0.0:5173 and proxied by nginx, and its vite.config.js sets server.fs.deny — which
-# REPLACES Vite's defaults rather than extending them, taking the built-in .env protection
-# with it. So https://app.pyxis-discovery.com/.env served the file, in full, to anyone.
-# Only VITE_* may live in that .env; those end up in the public bundle anyway.
+# Secrets live OUTSIDE the webroot. Historical: when this Vite tree was public,
+# server.fs.deny replaced Vite defaults and https://app.pyxis-discovery.com/.env
+# leaked. Public is pyxis-web :5174 now. Only VITE_* may live in that tree's .env.
 EnvironmentFile=/root/pyxis-secrets/stripe-server.env
 ExecStart=/usr/bin/node stripe-server.cjs
 Restart=always

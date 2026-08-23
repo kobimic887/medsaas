@@ -13,7 +13,7 @@ and service identity with live checks at the start of every session. Every copy
 |---|---|
 | `app.pyxis-discovery.com` A | **`84.13.81.51`** (`oracleNew`) |
 | `app.fin-srv.com` A | **`84.13.81.51`** |
-| Public Pyxis product | **Maintained `pyxis-web`** on `:5174` (soft flip 2026-08-23) — title `Pyxis Discovery` (re-fetched 2026-08-23), `DEPLOYED_SHA` `b0ea769…` |
+| Public Pyxis product | **Maintained `pyxis-web`** on `:5174` (soft flip 2026-08-23) — title `Pyxis Discovery` (re-fetched 2026-08-23), `DEPLOYED_SHA` `ecaab02…+viewer-ttl-20260823T103226Z` |
 | nginx on `84` | `proxy_pass http://127.0.0.1:5174` on `:443` (legacy `:5173` kept for rollback) |
 | Side door | nginx **`:8443`** also → `:5174`. Checklist / rollback: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md) |
 | Host `83` (`83.229.87.94`) | **Imminent shutdown** (owner 2026-08-21 — not long-lived standby). **Measured:** SSH OK, hostname `chem`, up ~50d, nginx active, listeners `:443`/`:80`, `:5173`, `127.0.0.1:5174`, `:3000`, `:3001`, `:4000`. **Not** on public DNS. Agents: read-only only; do not kill. See § “Before killing `83`”. |
@@ -38,10 +38,10 @@ See also [`NEXT-SESSION.md`](./NEXT-SESSION.md) § “Owner decisions” and the
 [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md). Short form for agents landing here first:
 
 - **Public product (2026-08-23):** maintained `:5174` via nginx soft flip. Legacy `:5173`
-  remains installed/running for **rollback only**.
+  trees stay; rollback units **stopped** (still **enabled**) 2026-08-23.
 - **Do not polish legacy** — product energy stays on maintained. Emergencies on legacy only
   if rolling back.
-- **Flip status:** **executed** (soft flip A + JWT rotate). Stripe webhook still pending.
+- **Flip status:** **executed** (soft flip A + JWT rotate). Stripe webhook **registered** 2026-08-23; checkout smoke open.
   Details: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md).
 - **Flip triggers (historical grill):** boss click-test (may include broad scientific paths)
   **or** box arrival (Q17=A, Q22=A+B) — boss path is now the active path.
@@ -88,7 +88,7 @@ Agents do **not** shut down or mutate `83`. Owner confirms these on **`84` first
 | Gate | Must be true | Notes (2026-08-21 measure) |
 |---|---|---|
 | **DNS** | `app.pyxis-discovery.com` and `app.fin-srv.com` A → **`84.13.81.51` only** | Already true for both |
-| **Pyxis sole home** | Public + rollback stacks healthy on `84` (`:5174` public, `:5173` kept running for rollback) | Already true — Pyxis is live on `84` |
+| **Pyxis sole home** | Public `:5174` healthy on `84`; rollback trees on disk; units enabled but **stopped** (2026-08-23) | Already true — Pyxis is live on `84` |
 | **FinSrv sole home** | `app.fin-srv.com` serves from `84` (`/opt/finsrv` → `:4000`); authenticated/DB-backed check OK **without** needing `83` | DNS on `84`; confirm FinSrv is not still depending on anything only on `83` |
 | **Mirrors / rollback story** | Owner decides post-kill rollback target | After kill there is **no** host-level mirror on `83`. Likely: on-disk trees + timestamped snapshots on **`84` only**. Docs that still say “mirror/`sync`/`rollback` to `83`” need confirmation — see flags below |
 | **Backups** | Env/secrets, nginx TLS material if not elsewhere, any FinSrv/Pyxis data that exists only as files on `83` (not Atlas) are copied or confirmed present on `84` / backup store | Atlas stays; host-local files do not |
@@ -197,5 +197,5 @@ Paste this into a fresh agent session after supplying connection information:
 > docking/DiffDock/convertSTR/Tanimoto one at a time, and keep Asinex URLs as rollback values.
 > MongoDB Atlas for Pyxis stays in place; FinSrv uses a separate Atlas project. Soft flip
 > executed 2026-08-23 — see `docs/PYXIS-WEB-FLIP.md`; do not re-flip without a new ask.
-> Stripe webhook still pending. Do not remove anything from `oracleOld` until all migration
+> Stripe webhook registered 2026-08-23. Do not remove anything from `oracleOld` until all migration
 > checks pass and I explicitly approve the exact cleanup commands.

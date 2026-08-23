@@ -26,10 +26,10 @@ All four units are installed and **enabled**, so all four survive a reboot.
 
 | Unit | Port | What | On live `84` |
 |---|---|---|---|
-| `pyxis-vite-legacy` | **5173** | the original Pyxis, a Vite dev server | yes — **rollback only** |
-| `pyxis-api-legacy` | 3000 | `chem_beo`, the legacy API | yes — serves rollback `:5173` |
-| `pyxis-stripe` | 3001 | `stripe-server.cjs` — the contact form's backend | yes — rollback path |
-| `pyxis-web` | **5174** | this repo's server + `client/dist`, on Bun | **yes — public site** (nginx `:443`) |
+| `pyxis-vite-legacy` | **5173** | original Pyxis (Vite) | **stopped** 2026-08-23; enabled; rollback only |
+| `pyxis-api-legacy` | 3000 | `chem_beo` | **stopped** 2026-08-23; enabled; rollback only |
+| `pyxis-stripe` | 3001 | `stripe-server.cjs` | **stopped** 2026-08-23; enabled; rollback only |
+| `pyxis-web` | **5174** | this repo's server + `client/dist`, on Bun | **public site** (nginx `:443`) |
 
 ⚠ **Corrected 2026-08-01.** This table used to say `pyxis-web` was on 5173 and disabled, that
 enabling it *was* the cutover, and that it declared `Conflicts=pyxis-vite-legacy.service`.
@@ -88,8 +88,8 @@ rollback/audit history. Do not re-run them without a new owner ask.
 Rollback is the same swap in reverse. Full context in
 [`docs/ARRIVAL-RUNBOOK.md`](../../../docs/ARRIVAL-RUNBOOK.md) §8.
 
-Nothing in nginx, TLS, DNS or Stripe is touched either way: nginx proxies to `localhost:5173`
-and never learns which process is behind it.
+**Unused recipe.** After the 2026-08-23 soft flip, nginx on `84` proxies to
+`127.0.0.1:5174`. Do not point `:443` back at `:5173` unless rolling back.
 
 ## After the swap: retire the legacy stack in stages
 

@@ -6,11 +6,22 @@
 commands on the production box. This document is self-contained — you do not
 need prior conversation context.
 
-> ## ⚠ Timing and hosts (owner 2026-08-21) — read before acting
+> ## Status (2026-08-23) — webhook registered
 >
-> - Soft flip **executed 2026-08-23**. Register the Stripe webhook into maintained `:5174`
->   (grill Q14=A). Stripe is **not** critical near-term (Q18=B). Still needs an explicit
->   owner yes this turn — do not register unprompted.
+> Soft flip was already live. Owner-approved Stripe cutover **executed** on `84`:
+> - Endpoint **`we_1U7Z6vAlVdO1Ab8fuM6HWROx`** →
+>   `POST https://app.pyxis-discovery.com/stripe/webhook`
+>   (`checkout.session.completed` only; single endpoint, no duplicate).
+> - `STRIPE_WEBHOOK_SECRET` set in `/root/pyxis-LIVE-5174/server/.env` only
+>   (never in git). `pyxis-web` restarted in-place; `/health` OK.
+> - Unsigned POST → HTTP 400 (`No stripe-signature…`) = route wired + secret loaded.
+> - **Still open:** live paid checkout + refund smoke (Step 4) — needs owner card;
+>   agents must not charge without a clear yes.
+>
+> ## ⚠ Timing and hosts (owner 2026-08-21) — historical gate notes
+>
+> - Soft flip **executed 2026-08-23**. Register webhook into maintained `:5174`
+>   (grill Q14=A). Stripe not critical near-term (Q18=B). Required explicit owner yes.
 > - Public site is this repo’s `pyxis-web` on **`84.13.81.51`** (`:443` → `:5174`). HTTPS
 >   exists; Step 1 (public URL) is moot for DNS/TLS.
 > - Webhook path is `POST https://app.pyxis-discovery.com/stripe/webhook` into the
@@ -21,11 +32,11 @@ need prior conversation context.
 >   historical. Authority: [`NEXT-SESSION.md`](./NEXT-SESSION.md),
 >   [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md).
 
-> **TL;DR of the original problem:** Checkout *creation* already works (the live key is
-> valid and charges-enabled). Payments failed to grant credits because **no Stripe
-> webhook is registered**, the production box had **no HTTPS** (Stripe refuses
-> plain HTTP for live webhooks), and the box's `STRIPE_WEBHOOK_SECRET` was the
-> placeholder. Only the first and third are still true.
+> **TL;DR of the original problem:** Checkout *creation* already worked (live key
+> valid, charges-enabled). Credits failed because no webhook was registered, the
+> box lacked HTTPS, and `STRIPE_WEBHOOK_SECRET` was missing/placeholder. HTTPS +
+> soft flip landed earlier; **webhook + secret on maintained are done 2026-08-23**.
+> Remaining proof is Step 4 (real Standard checkout + refund).
 
 ---
 

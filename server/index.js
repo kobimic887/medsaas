@@ -97,9 +97,10 @@ const TANIMOTO_API_BASE = (process.env.TANIMOTO_API_BASE || 'http://151.145.91.1
 // LANDMINE: the fallback below is the retired 83 host. Port 8001 there has been dead
 // since 2026-06-04 (docs/PRODUCTION-83-INVENTORY.md), so an unset SDF_CONVERTER_URL
 // means every SMILES ligand in /api/diffdock/generate fails. The working converter is
-// the Amsterdam box ingress — SDF_CONVERTER_URL=https://<BOX_DOMAIN>/convertSTR
-// (deploy/box/ingress/Caddyfile) — set in host-local .env. Module-scope const:
-// cutover needs a restart, not just an edit.
+// Live on 84 since 2026-08-23 is loopback docker `pyxis-convertstr`
+// (`http://127.0.0.1:8001/convertSTR` in host .env). Amsterdam box ingress
+// later: SDF_CONVERTER_URL=https://<BOX_DOMAIN>/convertSTR
+// (deploy/box/ingress/Caddyfile). Module-scope const: cutover needs a restart.
 const SDF_CONVERTER_URL = process.env.SDF_CONVERTER_URL || 'http://83.229.87.94:8001/convertSTR';
 if (!process.env.SDF_CONVERTER_URL) {
   console.warn('[diffdock] SDF_CONVERTER_URL is not set — falling back to the retired 83:8001 default, which is DOWN. SMILES ligands in /api/diffdock/generate will fail until this points at a live converter (Amsterdam box: https://<BOX_DOMAIN>/convertSTR).');
@@ -207,7 +208,7 @@ app.use((_req, res, next) => {
 /**
  * The address to rate-limit against.
  *
- * In production this server sits behind nginx (`proxy_pass http://localhost:5173`), so every
+ * In production this server sits behind nginx (`proxy_pass http://127.0.0.1:5174`), so every
  * request arrives from 127.0.0.1 and `req.ip` is the same value for all 50 users. Keying the
  * limiters on it means **30 failed logins from one person locks every account out** —
  * `authRateLimit` is 30 per 15 minutes — and five contact-form submissions close the form for

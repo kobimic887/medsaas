@@ -16,9 +16,11 @@
 > [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md) § “Before killing `83`”.
 >
 > **Current as of 2026-08-23:** Soft flip **executed** — public `:443` → maintained
-> `:5174` (`pyxis-web`). JWT rotated on maintained. Legacy `:5173` kept for rollback.
-> Stripe webhook **still pending**. Checklist / rollback:
-> [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md).
+> `:5174` (`pyxis-web`). JWT rotated on maintained. Rollback units **stopped**
+> (still **enabled**; trees stay). Stripe webhook **registered**
+> (`we_1U7Z6vAlVdO1Ab8fuM6HWROx`); secret on maintained only. Live checkout smoke
+> still owner-only ([`STRIPE_LIVE_CUTOVER.md`](./STRIPE_LIVE_CUTOVER.md) Step 4).
+> Checklist / rollback: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md).
 >
 > **2026-08-23:** Interim SMILES→SDF converter live on `84`: docker `pyxis-convertstr`
 > (loopback `127.0.0.1:8001`, healthy), `SDF_CONVERTER_URL=http://127.0.0.1:8001/convertSTR`
@@ -65,10 +67,10 @@ Concise product/ops answers — do not re-litigate unless the owner changes them
 | **Dual stack** | Public `app.pyxis-discovery.com` → maintained **`:5174`** (soft flip 2026-08-23). Legacy **`:5173`** = rollback only. |
 | **Primary during transition (Q6=B → superseded 2026-08-23)** | **Do not polish rollback `:5173`.** Product energy stays on public `:5174`. Emergencies that keep public login/docking alive are still allowed; polish on the rollback tree is not. |
 | **When to flip (Q17=A, Q22=A+B)** | Public flip on **boss sign-off (click-test)** **or** box arrival. Boss click-test **may include broad scientific paths**, not marketing-only. |
-| **Flip (2026-08-23)** | Soft flip **executed**: nginx `:443` → `127.0.0.1:5174`. JWT rotated on maintained. Stripe webhook still **after**. Rollback + notes: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md). |
+| **Flip (2026-08-23)** | Soft flip **executed**: nginx `:443` → `127.0.0.1:5174`. JWT rotated on maintained. Stripe webhook **registered**; checkout smoke open. Rollback + notes: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md). |
 | **Atlas** | Keep sharing one Pyxis Atlas. Fix `simulation_logs` dual-shape in the **reader** — engineering in parallel with the maintained stack. |
 | **JWT (Q13=A)** | Rotate JWT secret **on public flip**. |
-| **Stripe (Q14=A, Q18=B)** | Register Stripe webhook **after** public flip. Stripe is **not critical near-term**. |
+| **Stripe (Q14=A, Q18=B)** | Webhook **registered** 2026-08-23 on maintained. Checkout smoke still owner-only. |
 | **Legacy teardown (Q15≈D)** | Boss-driven / flexible; **no hard N** days/users required. |
 | **Box access (Q11=D, Q21)** | Decide on arrival from runbook **§1c probe**. Tailscale is **not** the default; owner may use a *separate* Tailscale account later **only if** the probe needs mesh. **Do not mandate buying Tailscale Pro now** (Q21 unsettled → wait). |
 | **First-shell buyer 1-pager (Q12)** | **Parked** until Amsterdam IP/user are known. |
@@ -78,15 +80,16 @@ Concise product/ops answers — do not re-litigate unless the owner changes them
 ## State of production
 
 `app.pyxis-discovery.com` → **`84.13.81.51`**, public product = **maintained `pyxis-web`
-on `:5174`** (soft flip 2026-08-23). Legacy Vite remains on `:5173` for rollback only.
+on `:5174`** (soft flip 2026-08-23). Energy stays on this stack. Rollback trees stay
+on disk; units **stopped** (still **enabled**) 2026-08-23.
 Checklist / rollback: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md).
 
 | Port | Unit | What on `84` | Reachable |
 |---|---|---|---|
-| **5173** | `pyxis-vite-legacy` | `/root/pyxis-ROLLBACK-frontend-5173` (`material-tailwind-dashboard-react`, Vite dev) → legacy API on `:3000` | **rollback only** (kept running; not public) |
-| **5174** | `pyxis-web` | `/root/pyxis-LIVE-5174` (this repo, Bun + `client/dist`) → **MongoDB Atlas** | **public** via nginx `:443`; also `:8443` side door; process `0.0.0.0:5174` |
-| 3000 | `pyxis-api-legacy` | `/root/pyxis-ROLLBACK-backend-3000` (`chem_beo`) | serves 5173; also its own HTTPS listener |
-| 3001 | `pyxis-stripe` | `stripe-server.cjs` (from the legacy frontend tree) | part of the rollback path — **do not kill it** |
+| **5173** | `pyxis-vite-legacy` | `/root/pyxis-ROLLBACK-frontend-5173` (`material-tailwind-dashboard-react`, Vite) → legacy API on `:3000` | **stopped** (enabled; start only for nginx rollback) |
+| **5174** | `pyxis-web` | `/root/pyxis-LIVE-5174` (this repo, Bun + `client/dist`) → **MongoDB Atlas** | **public** via nginx `:443`; also `:8443` side door |
+| 3000 | `pyxis-api-legacy` | `/root/pyxis-ROLLBACK-backend-3000` (`chem_beo`) | **stopped** (enabled; rollback only) |
+| 3001 | `pyxis-stripe` | `stripe-server.cjs` (from the legacy frontend tree) | **stopped** (enabled; rollback only) |
 
 `/home/ubuntu` on `84` has symlinks to those four trees (plus `~/finsrv-4000` → `/opt/finsrv`).
 On `83` (still reachable until imminent shutdown; **not** a long-lived standby), older path
@@ -94,12 +97,13 @@ names (`/root/chem_beo`, `/root/material-tailwind-dashboard-react` or
 `/root/pyxis-OLD-LIVE-5173`) may still appear — measure before editing; do not mutate `83`
 toward kill.
 
-All four Pyxis units are under systemd (`deploy/83/systemd/`) and `enabled`, so a reboot no
-longer ends production. Both frontends run together; `Conflicts=` was removed from `pyxis-web`
-because they are on different ports now.
+All four Pyxis units are under systemd (`deploy/83/systemd/`) and `enabled`.
+Public after reboot is **`pyxis-web`**. Rollback units stay enabled so
+`systemctl start` is enough; they do **not** need to be running for public
+`:5174`. `Conflicts=` was removed because the ports differ.
 
 **Public flip** — soft flip **executed 2026-08-23** on `84` (nginx `:443` → `:5174`, JWT
-rotated). Stripe webhook still pending ([`STRIPE_LIVE_CUTOVER.md`](./STRIPE_LIVE_CUTOVER.md)).
+rotated). Stripe webhook **registered** ([`STRIPE_LIVE_CUTOVER.md`](./STRIPE_LIVE_CUTOVER.md)); checkout smoke open.
 Rollback + residual checklist: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md). ⚠ Older lines
 that say “mirror config to `83`” need **owner confirmation after shutdown** — there will be no
 long-lived `83` rollback host; confirm the post-kill rollback target (likely on-disk /
@@ -203,11 +207,12 @@ only if checking the process off-nginx: `ssh -N -L 5174:127.0.0.1:5174 ubuntu@84
 4. Control Panel: historical run opens; legacy + new rows both visible for the same user.
 5. Literature: example query returns results; empty query and a nonsense query show honest empty/error.
 6. Deep Similarity: one similarity search returns rows or an honest empty state.
-7. Plans & Credits: page renders catalog; **do not** complete a live Stripe purchase until the webhook is registered.
+7. Plans & Credits: page renders catalog; optional owner Standard checkout + refund after webhook (Step 4).
 8. Dark mode smoke: sidebar + one results page readable.
 
-Leftover after flip: Stripe webhook ([`STRIPE_LIVE_CUTOVER.md`](./STRIPE_LIVE_CUTOVER.md)).
-Do not re-flip without a new owner ask. Rollback: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md).
+Stripe webhook registered 2026-08-23. Leftover: owner live checkout smoke if desired
+([`STRIPE_LIVE_CUTOVER.md`](./STRIPE_LIVE_CUTOVER.md) Step 4). Do not re-flip without
+a new owner ask. Rollback: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md).
 
 ---
 
@@ -264,7 +269,7 @@ about it.
 | 0 | **AutoDock-GPU is not implemented — but it is NOT a blocker** | no | `engines/autodock_gpu.py` raises `DockingUnavailable` unconditionally and a test asserts the 503. **The bug was the documentation, and it is fixed:** the runbook called it "the workhorse" and `.env.example` defaulted to the stub, so following both gave 503 on every dock. Default is now `vina`. ⚠ **Arrival day should ship on CPU Vina and that fully achieves the goal** — the box exists so docking stops depending on Moscow ([BOX-SPEC.md](./BOX-SPEC.md) §1: *"Not throughput, not cost"*), and 32 cores of Vina does that. AutoDock-GPU is a **follow-up optimization**, buildable on the box at leisure |
 | 1 | ~~Back up the Tanimoto dump~~ | — | ⛔ **Declined 2026-08-01. Do not re-raise.** The dump lives only at `~/backups/tanimoto/` on the owner's Mac, but **Oracle's Postgres is live and is the authoritative source**, so losing the laptop costs a re-dump, not the data. Integrity verified 2026-08-01 (sha256, `PGDMP`/`tonomitosql`/`17.5` header, tail intact). ⚠ The residual risk is stated once below and is not a task |
 | 2 | **Tenant-isolation and perf findings** | no | [SECURITY-FINDINGS.md](./SECURITY-FINDINGS.md) §A1–A3 and [IMPROVEMENTS.md](./IMPROVEMENTS.md) P1–P6 |
-| 4 | **Stripe webhook registration** | ⚠ **after public flip (flip done)** | Confirmed 2026-08-21 (Q14=A): register into maintained. Stripe not critical near-term (Q18=B). Soft flip executed 2026-08-23 — `:443` → `:5174`. Still needs an explicit owner yes. Run `stripe webhook_endpoints list` first — do not create a duplicate. |
+| 4 | ~~Stripe webhook registration~~ | — | ✅ **Done 2026-08-23** on maintained (`we_1U7Z6vAlVdO1Ab8fuM6HWROx`). Optional owner Step 4: Standard $20 checkout + refund. |
 | 5 | ~~`chem_beo` hardening patch~~ | — | ⛔ **SETTLED 2026-08-01: it will never be applied.** Owner's decision — `chem_beo` is going away at the port swap, so patching it is work on a component with a known end date. **Do not re-raise this.** See the exposure note below, which does not go away with the decision |
 | 6 | **Subresource Integrity on external tags** | no | Three external hosts left: jsdelivr (Bootstrap CSS), Google Fonts, unpkg/jsdelivr (RDKit, lazy). None carry SRI |
 | 7 | **Bundle code-splitting** | no | Resolved for the current home page: the 515 KB `vendor-charts` chunk only powered fictional template charts and has been removed from the build |

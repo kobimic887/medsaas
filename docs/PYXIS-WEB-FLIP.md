@@ -2,11 +2,16 @@
 
 **Status (2026-08-23):** Soft flip **executed** on `84` (nginx `:443` →
 `127.0.0.1:5174`, procedure **A**). JWT rotated on maintained only. Public title =
-**Pyxis Discovery**. `DEPLOYED_SHA` =
-`b0ea769…+dress-rehearsal-20260822T192154Z`. Legacy `:5173` / `chem_beo` /
-`pyxis-stripe` left running for rollback. Stripe webhook **not** registered yet
-(§4). Rollback = restore `proxy_pass http://localhost:5173` + `nginx -t &&
-reload` (backup under `/root/pyxis-flip-backups-20260823T095238Z/`).
+**Pyxis Discovery**. Live `DEPLOYED_SHA` =
+`ecaab02…+viewer-ttl-20260823T103226Z`. Rollback units **stopped** (still
+**enabled**; trees stay — start before nginx rollback). Stripe webhook
+**registered** (§4): `we_1U7Z6vAlVdO1Ab8fuM6HWROx` →
+`https://app.pyxis-discovery.com/stripe/webhook`; secret only in maintained
+`.env`. Owner live checkout + refund smoke still open
+([`STRIPE_LIVE_CUTOVER.md`](./STRIPE_LIVE_CUTOVER.md) Step 4). Rollback =
+start the three rollback units, then restore
+`proxy_pass http://localhost:5173` + `nginx -t && reload`
+(backup under `/root/pyxis-flip-backups-20260823T095238Z/`).
 
 **Authority / related:** [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md),
 [`NEXT-SESSION.md`](./NEXT-SESSION.md), [`ARRIVAL-RUNBOOK.md`](./ARRIVAL-RUNBOOK.md) §8
@@ -31,7 +36,8 @@ on the arrival runbook and does not block this checklist.
 ```
 Flip mutation window closed 2026-08-23 (soft flip A executed).
 Do not re-flip or rotate JWT again without a new owner ask.
-Stripe webhook remains §4 (after). Rollback = nginx → localhost:5173.
+Stripe webhook §4 **done** 2026-08-23 (endpoint registered + secret on maintained).
+Rollback = nginx → localhost:5173 (ensure legacy units are running first).
 ```
 
 Preparation language below is retained for rollback / audit.
@@ -101,11 +107,11 @@ nginx stays on `:5173`; processes swap.
 | Component | Soft flip (A or B stage 1) | Later |
 |---|---|---|
 | Public UX + API | **Maintained `pyxis-web`** | — |
-| `pyxis-vite-legacy` | Keep installed/running off-public for rollback | Stop when smoke holds (ARRIVAL §8 stage 2) |
-| `chem_beo` `:3000` | Keep running for legacy rollback path | Retire only when legacy frontend is retired |
-| `pyxis-stripe` `:3001` | Keep; unused once public UI is maintained | Stage 4 in ARRIVAL §8 when deliberate |
+| `pyxis-vite-legacy` | **Stopped** 2026-08-23 (enabled; tree stays) | Start only for nginx rollback |
+| `chem_beo` `:3000` | **Stopped** 2026-08-23 (enabled; tree stays) | Same |
+| `pyxis-stripe` `:3001` | **Stopped** 2026-08-23 (enabled; tree stays) | Same |
 | Scientific backends | Unchanged (Moscow/Asinex/etc. as already configured) | Amsterdam cutover on box day |
-| Stripe webhook | **Not** registered yet | After flip — [`STRIPE_LIVE_CUTOVER.md`](./STRIPE_LIVE_CUTOVER.md) |
+| Stripe webhook | **Registered** 2026-08-23 (`we_1U7Z6vAlVdO1Ab8fuM6HWROx`) | Owner live checkout smoke still open — [`STRIPE_LIVE_CUTOVER.md`](./STRIPE_LIVE_CUTOVER.md) Step 4 |
 | FinSrv | Untouched | Untouched |
 
 ---
@@ -153,22 +159,25 @@ Owner picks A or B at go-time. Record which in the session notes.
 7. Plans & Credits page renders (no live purchase required for smoke).
 8. Hard refresh / one private-window sign-in after JWT rotate.
 
-### 4. Stripe webhook **after** flip (Q14=A)
+### 4. Stripe webhook **after** flip (Q14=A) — **done 2026-08-23**
 
-- Follow [`STRIPE_LIVE_CUTOVER.md`](./STRIPE_LIVE_CUTOVER.md).
-- `stripe webhook_endpoints list` first — no duplicates.
-- Endpoint: `POST https://app.pyxis-discovery.com/stripe/webhook` into **maintained** env
-  (`STRIPE_WEBHOOK_SECRET`). Restart `pyxis-web` after setting secret.
-- Stripe not critical near-term (Q18=B) — can be minutes/hours after smoke, not before cutover.
+- Followed [`STRIPE_LIVE_CUTOVER.md`](./STRIPE_LIVE_CUTOVER.md).
+- Listed first — no duplicate; created
+  `we_1U7Z6vAlVdO1Ab8fuM6HWROx` → `POST https://app.pyxis-discovery.com/stripe/webhook`.
+- `STRIPE_WEBHOOK_SECRET` in maintained `/root/pyxis-LIVE-5174/server/.env`; restarted
+  `pyxis-web` only.
+- Remaining: optional owner Standard ($20) checkout + refund to prove live delivery.
 
 ### 5. Rollback
 
 **If soft flip A (nginx):**
 
-1. Restore `proxy_pass http://localhost:5173` on `:443`.
-2. `nginx -t && systemctl reload nginx`.
-3. Public is legacy again (Creative Tim). JWT on maintained is irrelevant to public.
-4. ⚠ Rollback **re-opens** ~60 unauthenticated `chem_beo` routes on the public path.
+1. `systemctl start pyxis-vite-legacy pyxis-api-legacy pyxis-stripe` (units are
+   enabled but **stopped** since 2026-08-23). Wait until `:5173`/`:3000`/`:3001` listen.
+2. Restore `proxy_pass http://localhost:5173` on `:443`.
+3. `nginx -t && systemctl reload nginx`.
+4. Public is legacy again (Creative Tim). JWT on maintained is irrelevant to public.
+5. ⚠ Rollback **re-opens** ~60 unauthenticated `chem_beo` routes on the public path.
 
 **If port swap B:**
 

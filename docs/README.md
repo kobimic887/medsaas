@@ -4,9 +4,9 @@ Longer-form reference for Pyxis Discovery. Shared agent instructions:
 [`../AGENTS.md`](../AGENTS.md). Product intent: [`../GOAL.md`](../GOAL.md).
 
 > **Current state (2026-08-23):** DNS → **`84.13.81.51`**. Public product = maintained
-> **`:5174`** (`pyxis-web`, soft flip executed). Legacy `:5173` = rollback only. Stripe
-> webhook still pending — [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md). **`83`** = imminent
-> shutdown. Box ordered, not delivered. Atlas shared. Details: the three files below.
+> **`:5174`** (`pyxis-web`). Rollback units **stopped** (enabled; trees stay). Stripe
+> webhook **registered** (checkout smoke still open) — [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md). **`83`** = leftover,
+> not DNS. Box ordered, not delivered. Atlas shared. Map: [WHERE.md](./WHERE.md).
 
 ## Where to start (pick one)
 
@@ -26,7 +26,7 @@ Topology *why*: [BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md). What was ordered:
 Full table in [NEXT-SESSION.md](./NEXT-SESSION.md) § Owner decisions. Short form:
 
 - Public = maintained `:5174`; legacy `:5173` = rollback only.
-- **2026-08-23:** soft flip executed (JWT rotated). Stripe webhook **after** — still open.
+- **2026-08-23:** soft flip executed (JWT rotated). Stripe webhook **registered**; checkout smoke still open.
 - Do **not** polish legacy unless rolling back.
 - Shared Atlas; `simulation_logs` dual-shape in the **reader**; ensure-on-login `companyId`.
 - Box access from runbook §1c probe — no Tailscale Pro mandate.

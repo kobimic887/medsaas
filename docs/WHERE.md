@@ -34,8 +34,8 @@ DNS `app.pyxis-discovery.com` A → **`84.13.81.51`**. Apex/www `pyxis-discovery
 
 | Place | Path | SHA (2026-08-23) |
 |---|---|---|
-| Mac | `/Users/kobigenis/projects/medsaas` | `ecaab02` `main` = `origin/main` |
-| 151 | `~/projects/medsaas` | same `ecaab02` |
+| Mac | `/Users/kobigenis/projects/medsaas` | `main` = `origin/main` (re-check SHA) |
+| 151 | `~/projects/medsaas` | same `main` |
 
 Mac ↔ 151: keep these two clones matched. Push is not a prod deploy.
 
@@ -43,7 +43,8 @@ No second Mac worktree. No Mac Docker Pyxis. No LaunchAgent for Pyxis.
 
 ## Rollback (keep on disk; not public)
 
-On **84 only** (cleaned in git 2026-08-23; processes may still be running):
+On **84 only** (cleaned in git 2026-08-23; **units stopped 2026-08-23**, still
+**enabled**, trees stay — start only if nginx rolls back to `:5173`):
 
 | Tree | Unit / port | Git |
 |---|---|---|
@@ -85,7 +86,8 @@ Do not mutate toward shutdown. Owner kills 83 out of band.
 | Place | What | Rule |
 |---|---|---|
 | 151 `~/archive/medsaas-stale-not-git-20260822T184704Z` | old tree + compose, **no git** | Do not treat as source |
-| 151 docker `medsaas-app-1`, `medsaas-mongo-1`, `medsaas-mcp-server-1` | **exited ~3w** | Do **not** start. Local mongo ≠ Atlas |
+| 151 docker `medsaas-app-1`, `medsaas-mongo-1`, `medsaas-mcp-server-1` | **removed 2026-08-23** (`docker rm`, no `-v`) | Do **not** start. Volume `medsaas_mongo-data` left. Local mongo ≠ Atlas |
+| 151 `…/STALE.txt` | marker in the no-git archive | Do not treat as source |
 | 84 `/var/www/app.pyxis-discovery.com` | empty | nginx does not serve this |
 | Cursor/Claude project caches | Mac `Users-kobigenis-projects-medsaas`; 151 `~/.claude/projects/-home-ubuntu-projects-medsaas` | Chat metadata, not a deploy |
 

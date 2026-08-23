@@ -125,7 +125,7 @@ plausible-looking address you find in a document.
 | `<BOX_IP>` / `<BOX_USER>` | the box's address on the Science Park network, and an SSH account | §4 |
 | ~~`<IPMI_*>`~~ | ⛔ **Do not expect it.** The hosting company controls access and we cannot ask. See **§1c** | — |
 | `<83_HOST>` / `<83_USER>` | SSH to `83.229.87.94` | §8 |
-| `<ORACLE_NEW_HOST>` / `<ORACLE_NEW_USER>` | SSH to the synchronized Oracle standby `84.13.81.51`; it receives the same port swap as `83` | §8 |
+| `<ORACLE_NEW_HOST>` / `<ORACLE_NEW_USER>` | SSH to live app host `84.13.81.51` (`oracleNew`). Do **not** treat as standby. Soft flip already public on `:5174`; do not re-run §8 without a new ask | §8 |
 | `<BOX_DOMAIN>` | the DNS name the Amsterdam box answers on, for its Let's Encrypt certificate | §6 |
 | `<ORACLE_OLD_HOST>` / `<ORACLE_OLD_USER>` | SSH to `oracleOld` (`151.145.91.17`); its Postgres is the only **live** Tanimoto source until §10 completes | §10, §12 |
 | **the Tanimoto dump** | 1.2 GB, **not in git** — see §1b | §10 |
@@ -429,7 +429,7 @@ Today (soft flip 2026-08-23; table below is **current**, not the 2026-07-31 roll
 
 | Port | Unit | What | Reachable |
 |---|---|---|---|
-| **5173** | `pyxis-vite-legacy` | original Pyxis (`/root/pyxis-ROLLBACK-frontend-5173`, Vite) → `chem_beo` `:3000` | **rollback only** (kept running) |
+| **5173** | `pyxis-vite-legacy` | original Pyxis (`/root/pyxis-ROLLBACK-frontend-5173`, Vite) → `chem_beo` `:3000` | **rollback only** (stopped 2026-08-23; unit enabled; start before nginx → `:5173`) |
 | **5174** | `pyxis-web` | this repo (`/root/pyxis-LIVE-5174`, Bun + `client/dist`) | **the public site**, via nginx `:443` |
 
 Both units are `enabled`, so both survive a reboot. `Conflicts=` was removed — they are on
@@ -450,8 +450,9 @@ Do not change `oracleOld` for this step; it is the separate Tanimoto/old-Oracle 
 5. Confirm service state on **`84`** before changing anything. Live host is `84`; do **not**
    run this swap on `83`. DNS already points at `84`.
 
-nginx already proxies `/ → localhost:5173` on both hosts and never learns anything changed.
-**No nginx, TLS, DNS or Stripe change.** DNS remains unchanged until both hosts pass validation.
+**Historical recipe only.** After the 2026-08-23 soft flip, nginx on `84` proxies
+`/ → 127.0.0.1:5174`. Do not change nginx back to `:5173` as part of box day.
+**No nginx, TLS, DNS or Stripe change** unless the owner asks for rollback.
 
 **Rollback is the same swap in reverse**, and the legacy stack stays installed on 5174. Never
 delete `/root/material-tailwind-dashboard-react` — it is a different codebase from this repo's

@@ -1,4 +1,5 @@
-# Rollback frontend (Vite :5173). Not the public site after the 2026-08-23 soft flip.
+# Rollback frontend (Vite :5173). Not public. Stopped on 84 (2026-08-23);
+# unit stays enabled; tree stays. Start only for nginx rollback to :5173.
 # `dev-vite-only`, NOT `npm run dev` (that also starts stripe-server.cjs → EADDRINUSE).
 # Tree on 84: /root/pyxis-ROLLBACK-frontend-5173.
 [Unit]
