@@ -20,7 +20,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { convertPriceToEuro, formatPrice } from '@/utils/algo/algo';
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
-import { clearViewerStorage, markViewerHandoff } from '@/utils/viewerStorage';
+import { clearViewerStorage, markViewerHandoff, normalizePdbId, rcsbPdbDownloadUrl } from '@/utils/viewerStorage';
 
 // Copy text to the clipboard, with a fallback for non-secure contexts.
 // navigator.clipboard only exists over HTTPS or on localhost, so on a plain
@@ -764,11 +764,16 @@ export function Simulation() {
   // Redirect to Molstar3D when simulation results are available
   useEffect(() => {
     if (simResult && simResult.simulationKey) {
-      const pdbUrl = API_CONFIG.buildApiUrl(`/sanitizedpdb/${simResult.simulationKey}`);
+      const pdbLabel = normalizePdbId(simPdbId);
+      // Show the public RCSB entry (waters, crystal ligands, default assembly)
+      // in Molstar. Docking still used the stripped receptor; Download Sanitized
+      // PDB remains the prepared file from /api/sanitizedpdb.
+      const pdbUrl = rcsbPdbDownloadUrl(pdbLabel)
+        || API_CONFIG.buildApiUrl(`/sanitizedpdb/${simResult.simulationKey}`);
       // Match the legacy result handoff: the reduced SDF supplies the clickable
       // SMILES/score rows, while the selected pose is fetched separately below.
       const sdfUrl = API_CONFIG.buildApiUrl(`/sanitizedminimalsdf/${simResult.simulationKey}`);
-      const pdbName = `PDB ${String(simPdbId).trim().toUpperCase()} · Simulation result`;
+      const pdbName = `PDB ${pdbLabel || String(simPdbId).trim().toUpperCase()} · Simulation result`;
       
       // Store URLs, navigate, and only THEN look up the IP.
       //
@@ -783,6 +788,11 @@ export function Simulation() {
         localStorage.setItem('molstar_pdb_name', pdbName);
         localStorage.setItem('molstar_sdf_url', sdfUrl);
         localStorage.setItem('molstar_simulation_key', simResult.simulationKey);
+        if (pdbLabel) {
+          localStorage.setItem('molstar_display_pdb_id', pdbLabel);
+        } else {
+          localStorage.removeItem('molstar_display_pdb_id');
+        }
         // Drop any protein left over from opening a share link (`?pdb=…`). That key
         // outlives the view that set it, and the viewer used to prefer it over this
         // run's own protein — so every simulation after one such link rendered the
@@ -878,6 +888,7 @@ export function Simulation() {
       // DiffDock owns this view; drop AutoDock share-link sticky codes so a prior
       // ?pdb=1cx7 cannot outrank the receptor that was just docked.
       localStorage.removeItem('molstar_pdb_code');
+      localStorage.removeItem('molstar_display_pdb_id');
       localStorage.removeItem('molstar_pdb_url');
       localStorage.removeItem('molstar_sdf_url');
       localStorage.removeItem('molstar_simulation_key');

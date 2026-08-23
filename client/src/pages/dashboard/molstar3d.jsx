@@ -5,7 +5,10 @@ import { API_CONFIG, getAuthToken } from "@/utils/constants";
 import {
   clearViewerStorage,
   clearViewerHandoffFlag,
+  normalizePdbId,
   peekViewerLoadIntent,
+  rcsbPdbDownloadUrl,
+  readDisplayPdbId,
   stampViewerResultSaved,
 } from "@/utils/viewerStorage";
 
@@ -529,19 +532,22 @@ export function Molstar3D() {
         localStorage.removeItem('molstar_simulation_key');
         localStorage.removeItem('molstar_simulation_pairs');
       }
-      const pdbUrl = simulationParam
-        ? API_CONFIG.buildApiUrl(`/sanitizedpdb/${simulationParam}`)
-        : `https://files.rcsb.org/download/${pdbParam}.pdb`;
-      // Store the URLs for the single shared loader below. A simulation uses its
-      // authenticated stored receptor, not a second RCSB copy.
+      // Display the public RCSB entry for both share links and simulation
+      // results. Docking still strips waters/HETATM for the engine; showing
+      // that prepared file made 1CX7 lose HED/waters and made 44HP look like
+      // two bare dimers. Do not write molstar_pdb_code: that sticky override
+      // caused the 1cx7 bug when a later run already had molstar_pdb_url.
       //
       // Name the tree/sequence entry after the PDB id (e.g. 44HP), never the
       // truncated simulation key. Control-panel Open uses ?pdb=&simulation= and
       // used to overwrite the handoff label with `Simulation result · 3arc4wi…`.
-      // Do not write molstar_pdb_code here: that sticky RCSB override caused the
-      // 1cx7 bug when a later run already had molstar_pdb_url.
-      const pdbLabel = String(pdbParam).trim().toUpperCase();
-      localStorage.setItem('molstar_pdb_url', pdbUrl);
+      const pdbLabel = normalizePdbId(pdbParam) || String(pdbParam).trim().toUpperCase();
+      const pdbUrl = rcsbPdbDownloadUrl(pdbParam)
+        || (simulationParam ? API_CONFIG.buildApiUrl(`/sanitizedpdb/${simulationParam}`) : '');
+      if (pdbUrl) localStorage.setItem('molstar_pdb_url', pdbUrl);
+      if (normalizePdbId(pdbParam)) {
+        localStorage.setItem('molstar_display_pdb_id', normalizePdbId(pdbParam));
+      }
       localStorage.setItem(
         'molstar_pdb_name',
         simulationParam
@@ -566,13 +572,15 @@ export function Molstar3D() {
     let pdbUrl = localStorage.getItem('molstar_pdb_url');
     const sdfUrl = localStorage.getItem('molstar_sdf_url');
     let simulationKey = localStorage.getItem('molstar_simulation_key');
+    let displayPdbId = readDisplayPdbId(window.location.search);
     // A share link can legitimately provide only a public PDB URL. Only clear an
     // incomplete authenticated simulation bundle; never treat a PDB-only share link
     // as a broken result.
-    if (simulationKey && !pdbUrl) {
+    if (simulationKey && !pdbUrl && !displayPdbId) {
       clearViewerStorage();
       pdbUrl = null;
       simulationKey = null;
+      displayPdbId = '';
       setIsLoading(false);
       setResultChromeVisible(false);
     }
@@ -606,14 +614,18 @@ export function Molstar3D() {
     // It also hid the ligand. A run's pose is in its own protein's coordinate frame,
     // so drawing it against an unrelated structure puts it far outside the box and
     // out of view. Same protein, and it lands in the binding site as it should.
-    if (pdbCode && !pdbUrl) {
-      const newPdbUrl = `https://files.rcsb.org/download/${pdbCode}.pdb`;
-      localStorage.setItem('molstar_pdb_url', newPdbUrl);
-      pdbUrl = newPdbUrl;
+    if (pdbCode && !pdbUrl && !displayPdbId) {
+      const newPdbUrl = rcsbPdbDownloadUrl(pdbCode);
+      if (newPdbUrl) {
+        localStorage.setItem('molstar_pdb_url', newPdbUrl);
+        localStorage.setItem('molstar_display_pdb_id', normalizePdbId(pdbCode));
+        pdbUrl = newPdbUrl;
+        displayPdbId = normalizePdbId(pdbCode);
+      }
     }
 
     const protectedPdb = Boolean(pdbUrl?.includes('/api/sanitized'));
-    const pdbTextPromise = protectedPdb
+    const pdbTextPromise = (!displayPdbId && protectedPdb)
       ? authedFetch(pdbUrl, { signal: resultRequestController.signal })
         .then(async (response) => {
           if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -668,7 +680,20 @@ export function Molstar3D() {
     };
 
     const loadDefaultStructures = async () => {
-      if (viewerClearedRef.current || !molstarRef.current || !pdbUrl) return;
+      if (viewerClearedRef.current || !molstarRef.current || (!pdbUrl && !displayPdbId)) return;
+      if (displayPdbId) {
+        if (!viewerClearedRef.current && resultRequestEpoch === resultRequestEpochRef.current) {
+          setIsLoading(false);
+        }
+        // Same RCSB entry as "Load from PDB Database" — waters, crystal ligands,
+        // and the default biological assembly. Docked poses overlay afterwards.
+        postToViewer({
+          type: 'loadDockingResult',
+          proteinPdbId: displayPdbId,
+          proteinName: localStorage.getItem('molstar_pdb_name') || 'Simulation PDB',
+        }, iframeOrigin);
+        return;
+      }
       const [proteinText] = await Promise.all([pdbLoadPromise]);
       if (viewerClearedRef.current || resultRequestEpoch !== resultRequestEpochRef.current || !molstarRef.current) return;
 
@@ -687,7 +712,7 @@ export function Molstar3D() {
       structuresLoaded = true;
       if (diffdockProtein || diffdockLigandPosition) {
         loadDiffDockStructures();
-      } else if (pdbUrl) {
+      } else if (pdbUrl || displayPdbId) {
         loadDefaultStructures();
       }
     };
@@ -700,7 +725,7 @@ export function Molstar3D() {
         return false;
       }
     })();
-    if (alreadyLoaded && (diffdockProtein || diffdockLigandPosition || pdbUrl)) {
+    if (alreadyLoaded && (diffdockProtein || diffdockLigandPosition || pdbUrl || displayPdbId)) {
       handleIframeLoad();
     }
 
@@ -724,6 +749,11 @@ export function Molstar3D() {
   };
 
   const getProteinPayload = async () => {
+    const displayPdbId = readDisplayPdbId(window.location.search);
+    if (displayPdbId) {
+      return { proteinPdbId: displayPdbId, proteinText: null, proteinUrl: null };
+    }
+
     let pdbUrl = localStorage.getItem('molstar_pdb_url');
     const pdbCode = localStorage.getItem('molstar_pdb_code');
 
@@ -731,9 +761,11 @@ export function Molstar3D() {
     // A previous share link can leave this key in localStorage; preferring it here
     // would replace the current simulation receptor and hide its pose again.
     if (pdbCode && !pdbUrl) {
-      const newPdbUrl = `https://files.rcsb.org/download/${pdbCode}.pdb`;
-      localStorage.setItem('molstar_pdb_url', newPdbUrl);
-      pdbUrl = newPdbUrl;
+      const newPdbUrl = rcsbPdbDownloadUrl(pdbCode);
+      if (newPdbUrl) {
+        localStorage.setItem('molstar_pdb_url', newPdbUrl);
+        pdbUrl = newPdbUrl;
+      }
     }
 
     if (!pdbUrl || !molstarRef.current) return null;
@@ -758,7 +790,7 @@ export function Molstar3D() {
   };    // Manually retry the authenticated result PDB without loading the ligand/SDF.
 
   const reloadPdbStructure = async () => {
-    if (!localStorage.getItem('molstar_pdb_url') || !molstarRef.current) return;
+    if ((!localStorage.getItem('molstar_pdb_url') && !readDisplayPdbId(window.location.search)) || !molstarRef.current) return;
 
     viewerClearedRef.current = false;
     setResultChromeVisible(true);

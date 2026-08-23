@@ -27,7 +27,10 @@ const {
   markViewerHandoff,
   clearViewerStorage,
   clearViewerHandoffFlag,
+  normalizePdbId,
   peekViewerLoadIntent,
+  rcsbPdbDownloadUrl,
+  readDisplayPdbId,
   stampViewerResultSaved,
   purgeExpiredViewerStorage,
 } = await import(pathToFileURL(path.join(root, 'client/src/utils/viewerStorage.js')).href);
@@ -62,7 +65,7 @@ const checks = [
   ['simulation handoff names the PDB',
     parent.includes("'molstar_pdb_name'")
       && frame.includes('proteinName')
-      && simulation.includes('PDB ${String(simPdbId).trim().toUpperCase()} · Simulation result')
+      && simulation.includes('PDB ${pdbLabel || String(simPdbId).trim().toUpperCase()} · Simulation result')
       && parent.includes('PDB ${pdbLabel} · Simulation result')
       && !parent.includes('Simulation result · ${simulationParam}')],
   ['DiffDock handoff names protein and ligand',
@@ -163,6 +166,27 @@ const checks = [
       && simulation.includes('simulation: simResult.simulationKey')
       && simulation.includes("navigate(`/dashboard/molstar3d?${handoffParams.toString()}`)")
       && simulation.includes("navigate('/dashboard/molstar3d?diffdock=1')")],
+  ['RCSB PDB ids normalize and reject junk',
+    normalizePdbId('44hp') === '44HP'
+      && normalizePdbId('1cx7') === '1CX7'
+      && normalizePdbId('not-a-pdb') === ''
+      && rcsbPdbDownloadUrl('1cx7') === 'https://files.rcsb.org/download/1CX7.pdb'],
+  ['display PDB id prefers the current URL over a leftover stored id',
+    (() => {
+      memory.clear();
+      localStorage.setItem('molstar_display_pdb_id', '1CX7');
+      return readDisplayPdbId('?pdb=44hp&simulation=abc') === '44HP'
+        && readDisplayPdbId('') === '1CX7';
+    })()],
+  ['simulation results display the RCSB entry, not the stripped receptor',
+    parent.includes('proteinPdbId: displayPdbId')
+      && parent.includes('readDisplayPdbId')
+      && frame.includes('function loadRcsbPdbEntry')
+      && frame.includes('viewer.loadPdb')
+      && simulation.includes('rcsbPdbDownloadUrl')
+      && simulation.includes("molstar_display_pdb_id")
+      && storage.includes("'molstar_display_pdb_id'")
+      && parent.includes('rcsbPdbDownloadUrl(pdbParam)')],
 ];
 
 const failures = checks.filter(([, passed]) => !passed).map(([label]) => label);

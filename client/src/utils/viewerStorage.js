@@ -4,6 +4,7 @@ export const VIEWER_STORAGE_KEYS = [
   'molstar_sdf_url',
   'molstar_simulation_key',
   'molstar_pdb_code',
+  'molstar_display_pdb_id',
   'molstar_simulation_pairs',
   'diffdock_result',
   'diffdock_pdb_id',
@@ -16,6 +17,32 @@ export const VIEWER_STORAGE_KEYS = [
   'diffdock_confidence_score',
   'molstar_result_saved_at',
 ];
+
+/** Legacy 4-character PDB IDs (1CX7, 44HP). Docking still requires this shape. */
+const RCSB_PDB_ID_RE = /^[0-9][A-Z0-9]{3}$/;
+
+export function normalizePdbId(value) {
+  const id = String(value || '').trim().toUpperCase();
+  return RCSB_PDB_ID_RE.test(id) ? id : '';
+}
+
+/** Public RCSB coordinate file used by "Load from PDB Database". */
+export function rcsbPdbDownloadUrl(pdbId) {
+  const id = normalizePdbId(pdbId);
+  return id ? `https://files.rcsb.org/download/${id}.pdb` : '';
+}
+
+/** Prefer the current URL pdb= value, then the id stored for this result. */
+export function readDisplayPdbId(search = typeof window !== 'undefined' ? window.location.search : '') {
+  const params = new URLSearchParams(search);
+  let stored = '';
+  try {
+    stored = localStorage.getItem('molstar_display_pdb_id') || '';
+  } catch {
+    stored = '';
+  }
+  return normalizePdbId(params.get('pdb') || stored);
+}
 
 /** One-shot flag: simulation.jsx sets this immediately before navigating to molstar3d. */
 export const VIEWER_HANDOFF_FLAG = 'molstar_pending_handoff';

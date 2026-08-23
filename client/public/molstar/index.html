@@ -320,27 +320,46 @@
             }
         }
         
+        // RCSB entry: prefer Molstar's provider (mmCIF + default biological
+        // assembly, waters, crystal ligands) so this matches rcsb.org/structure
+        // and the simulation-result handoff. Fall back to the legacy .pdb AU file.
+        async function loadRcsbPdbEntry(pdbId, label) {
+            const id = String(pdbId || '').trim().toUpperCase();
+            if (!id || !viewer) throw new Error('Missing PDB id');
+            const pdbLabel = label || `PDB ${id}`;
+            if (typeof viewer.loadPdb === 'function') {
+                await viewer.loadPdb(id);
+                return;
+            }
+            await viewer.loadStructureFromUrl(
+                `https://files.rcsb.org/download/${id}.pdb`,
+                'pdb',
+                false,
+                { label: pdbLabel }
+            );
+        }
+
         // Load PDB structure
         async function loadPDB() {
             const pdbId = document.getElementById('pdb-input').value.trim();
             if (!pdbId || !viewer) return;
             const pdbLabel = `PDB ${pdbId.toUpperCase()}`;
+            const loadGeneration = ++dockingLoadGeneration;
             
             showLoading(true);
             
             try {
-                await viewer.loadStructureFromUrl(
-                    `https://files.rcsb.org/download/${pdbId.toUpperCase()}.pdb`,
-                    'pdb',
-                    false,
-                    { label: pdbLabel }
-                );
+                await viewer.plugin.clear();
+                if (loadGeneration !== dockingLoadGeneration) return;
+                await loadRcsbPdbEntry(pdbId, pdbLabel);
+                if (loadGeneration !== dockingLoadGeneration) return;
                 showStatus(`Successfully loaded PDB structure: ${pdbId.toUpperCase()}`, 'success');
             } catch (error) {
+                if (loadGeneration !== dockingLoadGeneration) return;
                 console.error('Failed to load PDB:', error);
                 showStatus(`Failed to load PDB structure: ${pdbId}`, 'error');
             } finally {
-                showLoading(false);
+                if (loadGeneration === dockingLoadGeneration) showLoading(false);
             }
         }
         
@@ -478,6 +497,7 @@
                 }
 
                 const {
+                    proteinPdbId,
                     proteinText,
                     proteinUrl,
                     proteinName = 'Protein structure',
@@ -491,7 +511,9 @@
                 try {
                     await viewer.plugin.clear();
                     if (loadGeneration !== dockingLoadGeneration) return;
-                    if (proteinText) {
+                    if (proteinPdbId) {
+                        await loadRcsbPdbEntry(proteinPdbId, proteinName);
+                    } else if (proteinText) {
                         await loadStructureText(proteinText, 'pdb', proteinName);
                     } else if (proteinUrl) {
                         await viewer.loadStructureFromUrl(proteinUrl, 'pdb', false, { label: proteinName });

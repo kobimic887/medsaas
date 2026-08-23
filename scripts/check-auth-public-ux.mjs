@@ -62,9 +62,9 @@ const checks = [
   ["demo JWTs cannot call company-admin APIs", signupServer.includes("Demo sessions cannot manage company settings")],
   ["sign-in requests have a hard timeout", signIn.includes("AUTH_FETCH_TIMEOUT_MS") && signIn.includes("Request timed out. Please try again.")],
   ["sign-up requests have a hard timeout", signUp.includes("AUTH_FETCH_TIMEOUT_MS") && signUp.includes("Request timed out. Please try again.")],
-  ["viewer storage includes every result key", viewerStorage.includes("'molstar_simulation_pairs'") && viewerStorage.includes("'diffdock_ligand_input'")],
+  ["viewer storage includes every result key", viewerStorage.includes("'molstar_simulation_pairs'") && viewerStorage.includes("'diffdock_ligand_input'") && viewerStorage.includes("'molstar_display_pdb_id'")],
   ["account changes clear stale result files", authContext.includes("if (accountChanged) clearViewerStorage()") && authContext.includes("clearViewerStorage();\n    setUser(null)")],
-  ["simulation results require a PDB, not an SDF bundle", resultsPage.includes("if (simulationKey && !pdbUrl)") && resultsPage.includes("clearViewerStorage()")],
+  ["simulation results require a PDB, not an SDF bundle", resultsPage.includes("if (simulationKey && !pdbUrl && !displayPdbId)") && resultsPage.includes("clearViewerStorage()")],
   ["PDB share links clear old authenticated result keys", resultsPage.includes("if (!simulationParam)") && resultsPage.includes("localStorage.removeItem('molstar_simulation_key')")],
   ["empty results explain how to start", resultsPage.includes('No docking results yet. Run a simulation to see poses here.')],
 ];
