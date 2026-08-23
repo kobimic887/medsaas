@@ -539,9 +539,10 @@ on every docking request, so those change with **no restart and no redeploy**:
 PATCH /api/company/ligand-service-config      (owner/admin)
 ```
 
-`GET` on the same path is readable by any signed-in member, and the Control Panel shows the
-four values read-only with a Default/Custom chip each — so anyone can confirm the box is live
-without admin rights.
+There is **no** `GET` on that path. Members do not see compute URLs on Home
+(`/dashboard/controlpanel`). Owner/admin read and edit the four fields on Admin Panel
+(`/dashboard/company-admin`). Confirm the box is live by a real dock from 84, not by a
+member-visible URL list.
 
 ⚠ **`TANIMOTO_API_BASE` and `SDF_CONVERTER_URL` are NOT in `ligandServiceConfig`.** They are
 module-scope constants read once at boot (`server/index.js:106-107`), so changing either means
