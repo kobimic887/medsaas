@@ -29,8 +29,8 @@ MAX_ATTEMPTS = 3
 #
 # Without it, `fail()` requeues and `run_once` returns True, so the loop skips its poll wait
 # and re-claims the very same job immediately: a 20-second `systemctl restart pyxis-web` on
-# 83 would burn all three attempts — and three complete GPU predictions — inside one restart
-# window, then park the job in `error`.
+# 84 (live app host; leftover 83 is not public) would burn all three attempts — and three
+# complete GPU predictions — inside one restart window, then park the job in `error`.
 RETRY_BACKOFF_SECONDS = [30, 300, 900]
 STALE_AFTER_SECONDS = 15 * 60
 

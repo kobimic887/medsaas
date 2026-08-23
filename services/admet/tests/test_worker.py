@@ -144,7 +144,7 @@ def test_a_job_abandoned_by_a_previous_worker_is_picked_up(collection) -> None:
 
 
 def test_a_failed_job_is_not_re_claimed_immediately(collection) -> None:
-    """A 20-second restart on 83 must not burn all three attempts.
+    """A 20-second restart on 84 must not burn all three attempts.
 
     `fail` requeues and `run_once` returns True, so the loop skips its poll wait and comes
     straight back round. Without a backoff the same job — and the same full GPU prediction —
