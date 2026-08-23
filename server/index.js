@@ -4544,9 +4544,10 @@ app.get('/api/id/:id_number', ensureMongoConnected, authenticateToken, requireAc
  *         description: Asinex API response
  */
 app.post('/api/api4/bas', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-  const upstreamUrl = `${catalogApiBase}/api4/bas`;
+  let upstreamUrl;
   try {
+    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
+    upstreamUrl = `${catalogApiBase}/api4/bas`;
     const response = await fetchAsinexUpstream(upstreamUrl, {
       method: 'POST',
       headers: {
@@ -4618,9 +4619,10 @@ app.post('/api/api4/bas', ensureMongoConnected, authenticateToken, requireActive
  *         description: Asinex API response
  */
 app.post('/api/api4/structure', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-  const upstreamUrl = `${catalogApiBase}/api4/structure`;
+  let upstreamUrl;
   try {
+    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
+    upstreamUrl = `${catalogApiBase}/api4/structure`;
     const response = await fetchAsinexUpstream(upstreamUrl, {
       method: 'POST',
       headers: {
@@ -4692,9 +4694,10 @@ app.post('/api/api4/structure', ensureMongoConnected, authenticateToken, require
  *         description: Asinex API response
  */
 app.post('/api/api4/substructure', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-  const upstreamUrl = `${catalogApiBase}/api4/substructure`;
+  let upstreamUrl;
   try {
+    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
+    upstreamUrl = `${catalogApiBase}/api4/substructure`;
     const response = await fetchAsinexUpstream(upstreamUrl, {
       method: 'POST',
       headers: {
@@ -4766,9 +4769,10 @@ app.post('/api/api4/substructure', ensureMongoConnected, authenticateToken, requ
  *         description: Asinex API response
  */
 app.post('/api/api4/similarity', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-  const upstreamUrl = `${catalogApiBase}/api4/similarity`;
+  let upstreamUrl;
   try {
+    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
+    upstreamUrl = `${catalogApiBase}/api4/similarity`;
     const response = await fetchAsinexUpstream(upstreamUrl, {
       method: 'POST',
       headers: {
@@ -4840,9 +4844,10 @@ app.post('/api/api4/similarity', ensureMongoConnected, authenticateToken, requir
  *         description: Asinex API response
  */
 app.post('/api/api4/mw', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-  const upstreamUrl = `${catalogApiBase}/api4/mw`;
+  let upstreamUrl;
   try {
+    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
+    upstreamUrl = `${catalogApiBase}/api4/mw`;
     const response = await fetchAsinexUpstream(upstreamUrl, {
       method: 'POST',
       headers: {
@@ -5229,14 +5234,15 @@ app.post('/api/diffdock/generate_file', ensureMongoConnected, authenticateToken,
  */
 app.get('/api/asinex/all/:id_:pageSize', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   const { id_, pageSize } = req.params;
-  const { catalogApiBase } = await getRequestLigandServiceConfig(req);
+  let upstreamUrl;
 
   if (!id_ || !pageSize ) {
     return res.status(400).json({ error: '_id, pageSize are all required' });
   }
 
-  const upstreamUrl = `${catalogApiBase}/api/all/${id_}_${pageSize.replace('_', '')}`;
   try {
+    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
+    upstreamUrl = `${catalogApiBase}/api/all/${id_}_${pageSize.replace('_', '')}`;
     const response = await fetchAsinexUpstream(upstreamUrl, {
       method: 'GET'
     });
