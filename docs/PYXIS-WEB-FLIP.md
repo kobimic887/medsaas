@@ -3,7 +3,7 @@
 **Status (2026-08-23):** Soft flip **executed** on `84` (nginx `:443` →
 `127.0.0.1:5174`, procedure **A**). JWT rotated on maintained only. Public title =
 **Pyxis Discovery**. Live `DEPLOYED_SHA` =
-`ecaab02…+viewer-ttl-20260823T103226Z`. Rollback units **stopped** (still
+`c162b15…`. Rollback units **stopped** (still
 **enabled**; trees stay — start before nginx rollback). Stripe webhook
 **registered** (§4): `we_1U7Z6vAlVdO1Ab8fuM6HWROx` →
 `https://app.pyxis-discovery.com/stripe/webhook`; secret only in maintained

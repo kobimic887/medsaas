@@ -24,7 +24,7 @@ DNS `app.pyxis-discovery.com` A → **`84.13.81.51`**. Apex/www `pyxis-discovery
 
 | What | Where | Identity |
 |---|---|---|
-| Public UI + API | `84` systemd `pyxis-web` → `/root/pyxis-LIVE-5174` | nginx `:443` / `:8443` → `127.0.0.1:5174`. **systemd + Bun, not Docker.** `DEPLOYED_SHA` `ecaab02…+viewer-ttl-20260823T103226Z` (gitless deploy tree) |
+| Public UI + API | `84` systemd `pyxis-web` → `/root/pyxis-LIVE-5174` | nginx `:443` / `:8443` → `127.0.0.1:5174`. **systemd + Bun, not Docker.** `DEPLOYED_SHA` `c162b15…` (gitless deploy tree; origin/main UX refresh 2026-08-23) |
 | Mongo | **MongoDB Atlas** (Pyxis project) | Do not replace with a dump. FinSrv uses a **different** Atlas project |
 | convertSTR | `84` docker `pyxis-convertstr` | `127.0.0.1:8001`. Source `/root/pyxis-convertstr-src` |
 | Ubuntu shortcuts | `84` `~/pyxis-LIVE-5174` etc. | Symlinks to `/root/…` |
@@ -87,6 +87,7 @@ Do not mutate toward shutdown. Owner kills 83 out of band.
 |---|---|---|
 | 151 `~/archive/medsaas-stale-not-git-20260822T184704Z` | old tree + compose, **no git** | Do not treat as source |
 | 151 docker `medsaas-app-1`, `medsaas-mongo-1`, `medsaas-mcp-server-1` | **removed 2026-08-23** (`docker rm`, no `-v`) | Do **not** start. Volume `medsaas_mongo-data` left. Local mongo ≠ Atlas |
+| 151 image `medsaas:local` + unused network `medsaas_default` | **removed 2026-08-23** (image unused; network had no containers) | Do not recreate. Volume `medsaas_mongo-data` stays |
 | 151 `…/STALE.txt` | marker in the no-git archive | Do not treat as source |
 | 84 `/var/www/app.pyxis-discovery.com` | **rmdir 2026-08-23** (was empty; nginx never served it) | gone. Rollback: `sudo mkdir` only if something expects the path |
 | Cursor/Claude project caches | Mac `Users-kobigenis-projects-medsaas`; 151 `~/.claude/projects/-home-ubuntu-projects-medsaas` | Chat metadata, not a deploy |
@@ -119,7 +120,7 @@ CI does **not** deploy. Live deploy = `git archive` / `tar` onto `/root/pyxis-LI
 
 1. **Both 84 and 83 are hostname `chem`.** Measure DNS, not hostname.
 2. Same systemd unit *names* on 83 and 84. Only 84 is public.
-3. Two gitless `:5174` trees: 84 live `ecaab02…` vs 83 `b5962da`.
+3. Two gitless `:5174` trees: 84 live `c162b15…` vs 83 `b5962da`.
 4. `:8000` is not one service.
 5. `~/projects/oracleNew` and `~/projects/oracleOld` are **host docs**, not app clones.
 
