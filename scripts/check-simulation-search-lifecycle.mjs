@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -33,7 +33,45 @@ const checks = [
   ['selection fallbacks stay stable across renders', simulation.includes('const moleculeId = moleculeSelectionId(mol, index)') && simulation.includes('handleCheckboxChange(mol, idx, e.target.checked)')],
   ['structure preview never mutates SMILES for fallback images', !simulation.includes("replace(/[^\\w")],
   ['retired API playground state is absent', !simulation.includes("'/api/hello'") && !simulation.includes('_fetchApiData')],
+  ['SMILES copy uses the shared clipboard helper', simulation.includes("import { copyToClipboard } from '@/utils/copyToClipboard'")],
 ];
+
+const { copyToClipboard } = await import(
+  pathToFileURL(path.join(root, 'client/src/utils/copyToClipboard.js')).href
+);
+
+const copied = [];
+const removed = [];
+const fakeTextarea = {
+  value: '',
+  style: {},
+  focus: () => {},
+  select: () => {},
+  setSelectionRange: () => {},
+  setAttribute: () => {},
+  remove: () => { removed.push(true); },
+};
+const fakeDocument = {
+  body: { appendChild: (node) => { copied.push(node.value); } },
+  createElement: () => fakeTextarea,
+  execCommand: (command) => command === 'copy',
+};
+const firstClickDenied = {
+  navigator: {
+    clipboard: {
+      writeText: async () => {
+        throw Object.assign(new Error('Document is not focused.'), { name: 'NotAllowedError' });
+      },
+    },
+  },
+  window: { isSecureContext: true, focus() {} },
+  document: fakeDocument,
+};
+
+await copyToClipboard('CCO', firstClickDenied);
+const firstClickRecovers = copied.includes('CCO') && removed.length === 1;
+
+checks.push(['first-click Clipboard API rejection still copies via execCommand', firstClickRecovers]);
 
 const failures = checks.filter(([, passed]) => !passed).map(([label]) => label);
 if (failures.length) {

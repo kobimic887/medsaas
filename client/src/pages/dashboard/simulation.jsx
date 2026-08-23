@@ -20,29 +20,8 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { convertPriceToEuro, formatPrice } from '@/utils/algo/algo';
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
+import { copyToClipboard } from '@/utils/copyToClipboard';
 import { clearViewerStorage, markViewerHandoff, normalizePdbId, rcsbPdbDownloadUrl } from '@/utils/viewerStorage';
-
-// Copy text to the clipboard, with a fallback for non-secure contexts.
-// navigator.clipboard only exists over HTTPS or on localhost, so on a plain
-// HTTP deployment it is undefined — fall back to a hidden-textarea + execCommand.
-async function copyToClipboard(text) {
-  if (navigator.clipboard && window.isSecureContext) {
-    return navigator.clipboard.writeText(text);
-  }
-  const textarea = document.createElement('textarea');
-  textarea.value = text;
-  textarea.setAttribute('readonly', '');
-  textarea.style.position = 'fixed';
-  textarea.style.opacity = '0';
-  document.body.appendChild(textarea);
-  textarea.select();
-  try {
-    const ok = document.execCommand('copy');
-    if (!ok) throw new Error('execCommand copy failed');
-  } finally {
-    document.body.removeChild(textarea);
-  }
-}
 
 function catalogRowsFromResponse(result) {
   if (Array.isArray(result)) return result;
@@ -1866,6 +1845,7 @@ export function Simulation() {
                             onClick={async () => {
                               const smiles = mol.SMILES_STRING || mol.SMILES || mol.smiles || "";
                               setSearchCode(smiles);
+                              if (!smiles) return;
                               try {
                                 await copyToClipboard(smiles);
                                 showClipboardConfirmation();
@@ -1890,6 +1870,7 @@ export function Simulation() {
                             onClick={async () => {
                               const inchi = mol.INCHI || "";
                               setSearchCode(inchi);
+                              if (!inchi || inchi === "N/A") return;
                               try {
                                 await copyToClipboard(inchi);
                                 showClipboardConfirmation();
