@@ -153,6 +153,27 @@ function describe(config) {
   return `${config.name} (host ${config.host}, port ${config.port}, secure ${config.secure})`;
 }
 
+// Contact-form fields are user supplied. Keep the text version as-is, but escape
+// the default HTML alternative so a message cannot inject markup into a support
+// inbox (or make a convincing-looking phishing link in the received email).
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+export function buildDefaultEmailHtml({ subject, message, platformName = 'Pyxis Discovery' }) {
+  return `<div style="font-family: Arial, sans-serif; padding: 20px;">
+          <h2>${escapeHtml(subject)}</h2>
+          <p>${escapeHtml(message).replace(/\n/g, '<br>')}</p>
+          <hr>
+          <p><small>Sent from ${escapeHtml(platformName)}</small></p>
+        </div>`;
+}
+
 export async function sendTitanEmail({ subject, message, recipientEmail, htmlContent = null }) {
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     throw new Error('EMAIL_USER and EMAIL_PASS environment variables must be set');
@@ -171,12 +192,11 @@ export async function sendTitanEmail({ subject, message, recipientEmail, htmlCon
         to: recipientEmail,
         subject,
         text: message,
-        html: htmlContent || `<div style="font-family: Arial, sans-serif; padding: 20px;">
-          <h2>${subject}</h2>
-          <p>${message.replace(/\n/g, '<br>')}</p>
-          <hr>
-          <p><small>Sent from ${process.env.PLATFORM_NAME || 'Pyxis Discovery'}</small></p>
-        </div>`
+        html: htmlContent || buildDefaultEmailHtml({
+          subject,
+          message,
+          platformName: process.env.PLATFORM_NAME || 'Pyxis Discovery',
+        })
       });
 
       // Only on the fallback path, so a working setup stays quiet but a degraded one is

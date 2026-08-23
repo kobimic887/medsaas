@@ -8,6 +8,7 @@ import {
   generatePasswordResetEmailHTML,
   generateInviteEmailHTML,
 } from '../utils/emailTemplates.js';
+import { buildDefaultEmailHtml } from '../utils/emailService.js';
 import { DEFAULT_BRAND_PALETTE } from '../utils/companyBranding.js';
 
 let passed = 0;
@@ -139,6 +140,23 @@ for (const [name, html] of INJECTION_RENDERS) {
     !html.includes('<img src=x') && !html.includes('onerror="alert(1)"') && html.includes('&lt;img src=x')
   );
 }
+console.log('');
+
+console.log('Contact-email HTML escaping:');
+const contactHtml = buildDefaultEmailHtml({
+  subject: 'Support <img src=x onerror="alert(1)">',
+  message: 'First line\n<a href="https://attacker.example">Open portal</a>',
+  platformName: 'Pyxis <script>alert(1)</script>',
+});
+check(
+  'default contact HTML escapes caller-supplied markup while preserving line breaks',
+  !contactHtml.includes('<img src=x')
+    && !contactHtml.includes('<a href=')
+    && !contactHtml.includes('<script>')
+    && contactHtml.includes('&lt;img src=x')
+    && contactHtml.includes('&lt;a href=')
+    && contactHtml.includes('First line<br>'),
+);
 console.log('');
 
 console.log('='.repeat(48));
