@@ -277,28 +277,22 @@ about it.
 
 ### ⚠ Can a customer buy credits right now and receive nothing?
 
-**Unresolved, and worth five minutes before anyone assumes either way.** This repo's server
-warns at boot when `STRIPE_WEBHOOK_SECRET` is unset (`server/index.js:88`) — *"credits will NOT
-be granted"* — and its buy path is `/create-checkout-session-onetime` (`paidplans.jsx:159`,
-`dashboard-navbar.jsx:324`).
+**Webhook path settled 2026-08-23.** Maintained `pyxis-web` has live endpoint
+`we_1U7Z6vAlVdO1Ab8fuM6HWROx` and `STRIPE_WEBHOOK_SECRET` in
+`/root/pyxis-LIVE-5174/server/.env`. Unsigned POST returns 400 (signature required),
+not “not configured”. Buy path remains `/create-checkout-session-onetime`.
 
-**This repo is the public site** (`pyxis-web` on `:5174`). Credits still will not grant
-until `STRIPE_WEBHOOK_SECRET` is set and the live webhook is registered
-([`STRIPE_LIVE_CUTOVER.md`](./STRIPE_LIVE_CUTOVER.md)). **Do not claim “real purchases grant
-no credits” as a chem_beo mystery** — settle it against this repo’s handler + Stripe
-dashboard.
-
-**How to settle it**, from a shell on `84` (read-only on `83` only if still up pre-kill):
+**Still unproved end-to-end:** a real Standard ($20) checkout + refund
+([`STRIPE_LIVE_CUTOVER.md`](./STRIPE_LIVE_CUTOVER.md) Step 4) — owner card only;
+agents must not charge without an explicit yes. Until that smoke, treat live credit
+grant as **configured but not payment-verified**.
 
 ```bash
-# on 84:
-grep -nE 'stripe|webhook|checkout' /root/pyxis-ROLLBACK-backend-3000/index.js | head
-# on 83 the path may still be /root/chem_beo/index.js
-stripe webhook_endpoints list          # needs the Stripe login
+# on 84 / from Mac with Stripe CLI:
+curl -sS https://api.stripe.com/v1/webhook_endpoints -u "$SK:"   # expect one URL
+curl -sS -X POST https://app.pyxis-discovery.com/stripe/webhook -H 'Content-Type: application/json' -d '{}'
+# expect HTTP 400 No stripe-signature (not 500 not-configured)
 ```
-
-Soft flip is done; settle the buy path on maintained + item 4 (webhook). If a customer can
-pay and receive nothing, that is a live money bug and it jumps the queue.
 
 ### The one residual risk on the Tanimoto index — stated once, not a task
 
