@@ -160,6 +160,7 @@ the existing `vite build` script in `client/package.json`.
 
 - `bun run install:all` installs root, client, and server dependencies with Bun.
 - `bun run dev` starts the API with `bun --watch index.js` and the Vite client unchanged.
+- `bun run start:web` / `start:web:bun` / `start:web:node` start local Vite on :5173 only — not live public `pyxis-web` :5174.
 - `bun run build` runs the retained Vite production build through Bun's package runner.
 - `bun run start` builds the client, then runs `FRONTEND_DIST=../client/dist bun index.js`.
 

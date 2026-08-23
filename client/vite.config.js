@@ -76,9 +76,10 @@ export default defineConfig(({ command }) => {
   },
   server: {
     host:'0.0.0.0',
-    // Vite 5.4+/6+/8 block unknown Host headers (DNS-rebinding guard). Public
-    // legacy and local `vite`/`preview` both need the production hostname here;
-    // without it some clients get "Blocked request. This host is not allowed."
+    // Vite 5.4+/6+/8 block unknown Host headers (DNS-rebinding guard). allowedHosts
+    // is for local `vite`/`preview` and rollback Vite Host headers — not because
+    // Vite is public. Live public is pyxis-web :5174 (Bun + client/dist).
+    // Without this some clients get "Blocked request. This host is not allowed."
     allowedHosts: ['app.pyxis-discovery.com', 'localhost', '127.0.0.1'],
     https: false,
     port: 5173,

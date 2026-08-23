@@ -1,9 +1,14 @@
 #!/usr/bin/env node
 /**
- * Runbook 5.0 step 5 — response-shape parity, route by route, while BOTH servers are live.
+ * HISTORICAL Release A script (runbook 5.0 step 5) — response-shape parity while BOTH
+ * servers were live. Unused history; do not treat its ports/paths as current public.
  *
- * This is the Release A gate that cannot be run after the fact: once port 5173 changes hands
- * there is only one server left to ask. Run it on 83, from a rehearsal rig, before cutting over.
+ * Live public today: systemd pyxis-web on :5174 (https://app.pyxis-discovery.com).
+ * :5173 is local Vite (`bun run dev`) or rollback on 84 (stopped).
+ *
+ * This was the Release A gate that could not be run after the fact: once port 5173
+ * changed hands there was only one server left to ask. Ran on 83, from a rehearsal
+ * rig, before cutting over.
  *
  *   Left  : chem_beo,          https://127.0.0.1:3000  (self-signed cert — verification off)
  *   Right : this repo's server, http://127.0.0.1:5199  (the rig)
@@ -41,10 +46,9 @@ import { MongoClient } from 'mongodb';
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // chem_beo terminates TLS with a cert for another name
 
-// The rehearsal rig is wherever it was staged this time. It was /root/pyxis-release-a
-// on the first run and that directory was deleted afterwards, so the path is an
-// argument now rather than a constant — the deploy itself (/root/pyxis) works as its
-// own rig, since nothing serves it until pyxis-web is enabled.
+// The rehearsal rig is wherever it was staged this time. Default path is Release A
+// history (`/root/pyxis/server/.env`) — stale. Live 84 env is
+// `/root/pyxis-LIVE-5174/server/.env`. Override with RIG_ENV_PATH.
 const RIG_ENV_PATH = process.env.RIG_ENV_PATH || '/root/pyxis/server/.env';
 const RIG_ENV = Object.fromEntries(
   fs.readFileSync(RIG_ENV_PATH, 'utf8')
@@ -53,10 +57,9 @@ const RIG_ENV = Object.fromEntries(
 );
 
 const LEGACY = 'https://127.0.0.1:3000';
-// Was hardcoded to the rehearsal rig's port. After the Release A cutover there is no rig —
-// this repo's server IS what serves 5173 — but chem_beo is still listening on 3000, so both
-// sides of the comparison are still live and the script still has something to say. Point it
-// at the live server with RIG_URL=http://127.0.0.1:5173 and no rig needs standing up.
+// Default RIG_URL stays the unused-history rehearsal port (5199). After Release A the
+// script claimed this repo served :5173 — that is not current public. Live public is
+// pyxis-web :5174. Override with RIG_URL if you ever rerun this.
 const RIG = process.env.RIG_URL || 'http://127.0.0.1:5199';
 
 // chem_beo:1049 is `jwt.sign({username}, process.env.JWT_SECRET || 'secret', {expiresIn:'1d'})`

@@ -28,10 +28,13 @@ This monorepo unifies the following GitHub projects into one runnable platform.
 
 ## Service ports (local Docker)
 
+Live public on 84 is systemd `pyxis-web` **:5174** (Bun + `client/dist`), not this local table.
+
 | Service | Port |
 |---------|------|
 | Pyxis Discovery API / unified app | 3000 |
-| Vite dev client | 5173 |
+| Vite client (local `bun run dev`, or rollback on 84) | 5173 |
+| Live public (`pyxis-web` on 84) | 5174 |
 | MongoDB | 27017 |
 | RabbitMQ | 5672 (AMQP), 15672 (UI) |
 | GROMACS API | 8001 → container 8000 |
