@@ -1,10 +1,7 @@
 name: Build & Deploy (non-prod)
 
 on:
-  # Manual-only for now: run from the Actions tab via "Run workflow".
-  # Uncomment to auto-deploy on every push to main.
-  # push:
-  #   branches: [main]
+  # Manual-only. Push to main must not deploy — do not add a push trigger.
   workflow_dispatch: {}
 
 permissions:

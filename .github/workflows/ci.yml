@@ -96,9 +96,8 @@ jobs:
     # can be exercised before the hardware exists:
     #
     #   - the dev Macs are arm64 and have no Docker;
-    #   - 83 has Docker but 2 GB of RAM, no swap and 8.6 GB free, and is production
-    #     shared with an unrelated tenant. rdkit + openmm + vina would OOM pip or fill
-    #     the disk, and a full disk on 83 is an outage.
+    #   - legacy 83 is not production (shutdown path) and is too small (2 GB RAM,
+    #     no swap) to build rdkit + openmm + vina without OOM or filling the disk.
     #
     # An ubuntu-latest runner is the right architecture, is free, and risks nothing.
     # Deliberately NOT wired into deploy.yml's gate: deploy.yml ships the API, and
