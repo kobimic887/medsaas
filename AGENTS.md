@@ -111,6 +111,6 @@ Subagent limits: `~/.codex/AGENTS.md` (Skills, subagents, cheap mode). Use the n
 | Product change that needs client + server + the right test harness | `pyxis-feature-slice` |
 | Session start / bun missing / lockfile or local-mongo confusion | `pyxis-dev-ready` (user-only) |
 | Read-only topology / runbook / deploy-risk / live-identity audit | `pyxis_ops` (Codex) / `pyxis-ops` (Claude) |
-| Improvements everywhere / vibe coding / agent setup (in this repo) | `claude-automation-recommender` + `mac-oracleold-sync`. Product leftovers **and** AGENTS.md / skills / hooks **and** Mac+151 files that serve medsaas. Not FinSrv, Hermes, or 83-kill. A product-only ask stays product-only. Recommend 1–2 per type, then implement. How: `~/.codex/AGENTS.md`. |
+| Improvements everywhere / vibe coding / agent setup (in this repo) | `claude-automation-recommender` + `mac-oracleold-sync`. Usual: this repo’s product leftovers **and** AGENTS.md / skills / hooks **and** Mac+151 files that serve medsaas. Not FinSrv product, Hermes, or 83-kill. “Agent setups for everything” also covers globals + `finbs` agent files — how in `~/.codex/AGENTS.md`. A product-only ask stays product-only. Recommend 1–2 per type, then implement. |
 
 Do not spawn `pyxis-ops` for ordinary one-file work.
