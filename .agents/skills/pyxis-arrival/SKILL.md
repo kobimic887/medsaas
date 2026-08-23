@@ -5,6 +5,10 @@ description: Prepare, audit, execute, or resume the Pyxis Amsterdam GPU-box arri
 
 # Pyxis arrival
 
+**Current public Pyxis:** `84` + systemd `pyxis-web` `:5174`. Legacy `:5173` / `chem_beo` =
+rollback on disk (**stopped**, still enabled — not public). `83` is leftover, not DNS. Do not
+polish the rollback stack.
+
 ## Establish the mode
 
 1. Read `GOAL.md` and inspect `git status`.
