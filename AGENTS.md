@@ -109,6 +109,7 @@ Subagent limits: `~/.codex/AGENTS.md` (Skills, subagents, cheap mode). Use the n
 | Box arrival, cutover prep, arrival readiness | `pyxis-arrival` |
 | Express `/api` routes, auth middleware, credits, proxies, 401/403/502 | `pyxis-api-route` |
 | Product change that needs client + server + the right test harness | `pyxis-feature-slice` |
+| Session start / bun missing / lockfile or local-mongo confusion | `pyxis-dev-ready` (user-only) |
 | Read-only topology / runbook / deploy-risk / live-identity audit | `pyxis_ops` (Codex) / `pyxis-ops` (Claude) |
 
 Do not spawn `pyxis-ops` for ordinary one-file work.
