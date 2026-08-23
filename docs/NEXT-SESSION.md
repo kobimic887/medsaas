@@ -123,19 +123,44 @@ not leftover Vite deleting git.
 
 ### Deploying the 5174 version
 
-Three steps, and the second is easy to forget because it is not in git. Target **`84` (live)**
-and the **current** tree name (`83` is imminent shutdown — do not plan new deploys there):
+Live tree on **`84`** is **`/root/pyxis-LIVE-5174`** (rename from `pyxis-new-standby-5174`
+is permanent — that old path is gone). `83` is imminent shutdown — do not plan new deploys
+there.
+
+**Do not rename or move the live tree under public traffic.** A `mv` + `systemctl restart`
+leaves nginx `:443` with nothing on `:5174` → public **502** (catalog looked like ASINEX
+failure at 2026-08-23 ~10:19 UTC; it was the restart gap). Extract **in place**, restart
+once, then wait for health before calling the deploy done.
 
 ```bash
-# example: refresh standby product on live host 84
+# In-place refresh on 84 (never mv/rename /root/pyxis-LIVE-5174 while public)
 git archive HEAD | ssh ubuntu@84.13.81.51 'sudo tar -x -C /root/pyxis-LIVE-5174'
+# only if client changed:
 tar -C client -cf - dist | ssh ubuntu@84.13.81.51 'sudo tar -x -C /root/pyxis-LIVE-5174/client'
-ssh ubuntu@84.13.81.51 'sudo bash -lc "cd /root/pyxis-LIVE-5174/server && bun install; systemctl restart pyxis-web"'
+ssh ubuntu@84.13.81.51 'sudo bash -lc "
+  set -e
+  cd /root/pyxis-LIVE-5174/server && bun install
+  systemctl restart pyxis-web
+  # bun is down for a few seconds — poll loopback health, not nginx, until ready
+  for i in \$(seq 1 30); do
+    code=\$(curl -sS -m 2 -o /dev/null -w \"%{http_code}\" http://127.0.0.1:5174/health || echo 000)
+    [ \"\$code\" = \"200\" ] && exit 0
+    sleep 1
+  done
+  echo \"pyxis-web failed to answer /health after restart\" >&2
+  exit 1
+"'
+git rev-parse HEAD | ssh ubuntu@84.13.81.51 'sudo tee /root/pyxis-LIVE-5174/DEPLOYED_SHA >/dev/null'
 ```
 
-Then stamp `/root/pyxis-LIVE-5174/DEPLOYED_SHA` and verify with a real request, not with
-an exit code. **Always read `DEPLOYED_SHA` before assuming what is running** — it is written by
-hand and has been wrong before.
+Stamp `/root/pyxis-LIVE-5174/DEPLOYED_SHA` and verify with a real request, not only an exit
+code. **Always read `DEPLOYED_SHA` before assuming what is running** — it is written by hand
+and has been wrong before.
+
+Nginx notes (do **not** change without owner yes): default `proxy_pass` to a single upstream
+has no retry while the sole backend is restarting. Prefer the health-wait above over editing
+nginx. If ever adding an upstream block, `fail_timeout=0` / short `max_fails` still cannot
+serve traffic with zero backends — the gap is process uptime, not proxy knobs alone.
 
 ### companyId readiness (2026-08-21 night)
 

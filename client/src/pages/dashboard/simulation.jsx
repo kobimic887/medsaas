@@ -81,6 +81,35 @@ function normalizeCatalogMolecule(molecule = {}) {
   };
 }
 
+/** Prefer plain wording over bare "HTTP 502: Bad Gateway" (restart gap or upstream). */
+function describeUpstreamHttpError(status, statusText = '', bodyHint = '', kind = 'catalog') {
+  if (status === 502 || status === 503 || status === 504) {
+    return kind === 'docking'
+      ? 'Upstream docking service failed. Please try again.'
+      : 'Catalog temporarily unavailable (redeploy or upstream). Please try again.';
+  }
+  const base = `HTTP ${status}${statusText ? `: ${statusText}` : ''}`;
+  if (!bodyHint) return base;
+  const trimmed = String(bodyHint).trim().slice(0, 200);
+  return trimmed ? `${base} - ${trimmed}` : base;
+}
+
+/** Brief client retry for gateway 5xx during pyxis-web restart (nginx 502 while bun is down). */
+async function fetchWithGatewayRetry(url, init = {}, { maxAttempts = 3, baseDelayMs = 400 } = {}) {
+  let lastResponse;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    lastResponse = await fetch(url, init);
+    const retryable =
+      lastResponse.status === 502 ||
+      lastResponse.status === 503 ||
+      lastResponse.status === 504;
+    if (!retryable || attempt === maxAttempts) return lastResponse;
+    if (init.signal?.aborted) return lastResponse;
+    await new Promise((resolve) => setTimeout(resolve, baseDelayMs * attempt));
+  }
+  return lastResponse;
+}
+
 export function Simulation() {
   // Popup state for clipboard copy
   const [showClipboardPopup, setShowClipboardPopup] = useState(false);
@@ -295,17 +324,20 @@ export function Simulation() {
       }
       
       const token = getAuthToken();
-      const res = await fetch(API_CONFIG.buildApiUrl(`/asinex/all/${page}_${requestedPageSize}`), {
-        method: "GET",
-        signal: controller.signal,
-        headers: { 
-          'accept': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-      });
-      
+      const res = await fetchWithGatewayRetry(
+        API_CONFIG.buildApiUrl(`/asinex/all/${page}_${requestedPageSize}`),
+        {
+          method: "GET",
+          signal: controller.signal,
+          headers: {
+            'accept': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+        }
+      );
+
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        throw new Error(describeUpstreamHttpError(res.status, res.statusText));
       }
       
       const result = await res.json();
@@ -434,7 +466,7 @@ export function Simulation() {
 
       // POST to /api4/{method} with JSON body
       const url = API_CONFIG.buildApiUrl(`/api4/${method}`);
-      const res = await fetch(url, {
+      const res = await fetchWithGatewayRetry(url, {
         method: 'POST',
         signal: controller.signal,
         headers: {
@@ -447,7 +479,7 @@ export function Simulation() {
       
       const responseText = await res.text();
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}${responseText ? ` - ${responseText}` : ''}`);
+        throw new Error(describeUpstreamHttpError(res.status, res.statusText, responseText));
       }
       const result = responseText.trim() ? JSON.parse(responseText) : [];
       if (searchControllerRef.current !== controller || requestId !== searchRequestIdRef.current) {
@@ -546,7 +578,7 @@ export function Simulation() {
       });
       
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        throw new Error(describeUpstreamHttpError(res.status, res.statusText));
       }
       
       const responseText = await res.text();
@@ -639,6 +671,9 @@ export function Simulation() {
 
       const result = await res.json().catch(() => null);
       if (!res.ok) {
+        if (res.status === 502 || res.status === 503 || res.status === 504) {
+          throw new Error(result?.error || describeUpstreamHttpError(res.status, '', '', 'docking'));
+        }
         throw new Error(result?.error || `Simulation failed (HTTP ${res.status})`);
       }
 

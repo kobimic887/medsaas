@@ -1,6 +1,8 @@
 # Public Pyxis on :5174 (soft flip 2026-08-23). systemd + Bun, not Docker.
 # nginx :443 / :8443 -> 127.0.0.1:5174. Legacy Vite :5173 is rollback only.
-# Tree on 84: /root/pyxis-LIVE-5174 (was pyxis-new-standby-5174).
+# Tree on 84: /root/pyxis-LIVE-5174 (rename from pyxis-new-standby-5174 is permanent).
+# Never mv/rename that tree under public traffic — nginx 502s for the whole restart gap.
+# Deploy: in-place tar extract → restart → poll http://127.0.0.1:5174/health (see NEXT-SESSION).
 [Unit]
 Description=Pyxis web (this repo's server + client/dist, port 5174 — see header)
 After=network-online.target
@@ -16,7 +18,8 @@ Environment=PORT=5174
 Environment=FRONTEND_DIST=/root/pyxis-LIVE-5174/client/dist
 ExecStart=/usr/local/bin/bun index.js
 Restart=always
-RestartSec=5
+# Short gap after crash/restart so nginx :443 is not 502 for long when bun comes back.
+RestartSec=2
 StandardOutput=append:/var/log/pyxis-web.log
 StandardError=append:/var/log/pyxis-web.log
 NoNewPrivileges=true

@@ -44,6 +44,7 @@ import {
   buildTenantFilter,
 } from './utils/simulationLogs.js';
 import { ensureUserTenantOnLogin } from './utils/ensureUserTenant.js';
+import { fetchWithUpstreamRetry, safeUpstreamUrl } from './utils/upstreamRetry.js';
 import scientificServicesRouter from './routes/scientificServices.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -296,6 +297,18 @@ function fetchWithTimeout(url, opts = {}) {
   const { timeoutMs = EXTERNAL_HTTP_TIMEOUT_MS, ...rest } = opts;
   if (rest.signal) return fetch(url, rest);
   return fetch(url, { ...rest, signal: AbortSignal.timeout(timeoutMs) });
+}
+
+// ASINEX catalog browse/search is flaky under load (intermittent 5xx / reset).
+// Retry only those cases; never 4xx. Logs status + sanitized URL, never secrets.
+function fetchAsinexUpstream(url, opts = {}) {
+  return fetchWithUpstreamRetry(url, opts, {
+    fetchImpl: (u, o) => fetchWithTimeout(u, o),
+    maxAttempts: 3,
+    baseDelayMs: 250,
+    maxDelayMs: 2000,
+    log: (msg) => console.warn(msg),
+  });
 }
 
 // ── NVIDIA hosted NIM access ────────────────────────────────────────────────
@@ -4529,9 +4542,10 @@ app.get('/api/id/:id_number', ensureMongoConnected, authenticateToken, requireAc
  *         description: Asinex API response
  */
 app.post('/api/api4/bas', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+  const { catalogApiBase } = await getRequestLigandServiceConfig(req);
+  const upstreamUrl = `${catalogApiBase}/api4/bas`;
   try {
-    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    const response = await fetchWithTimeout(`${catalogApiBase}/api4/bas`, {
+    const response = await fetchAsinexUpstream(upstreamUrl, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -4544,6 +4558,9 @@ app.post('/api/api4/bas', ensureMongoConnected, authenticateToken, requireActive
     let data;
     try { data = JSON.parse(text); } catch { data = text; }
 
+    if (response.status >= 500) {
+      console.error(`Asinex API upstream status=${response.status} url=${safeUpstreamUrl(upstreamUrl)}`);
+    }
     res.status(relayUpstreamStatus(response.status));
     if (response.headers.get('content-type')) {
       res.setHeader('Content-Type', response.headers.get('content-type'));
@@ -4554,8 +4571,8 @@ app.post('/api/api4/bas', ensureMongoConnected, authenticateToken, requireActive
       res.send(data);
     }
   } catch (error) {
-    console.error('Asinex API proxy error (/api4/bas):', error);
-    res.status(500).json({ error: 'Failed to connect to Asinex API', details: error.message });
+    console.error(`Asinex API proxy error (/api4/bas) url=${safeUpstreamUrl(upstreamUrl)}:`, error.message || error);
+    res.status(502).json({ error: 'Failed to connect to Asinex API', details: error.message });
   }
 });
 
@@ -4599,9 +4616,10 @@ app.post('/api/api4/bas', ensureMongoConnected, authenticateToken, requireActive
  *         description: Asinex API response
  */
 app.post('/api/api4/structure', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+  const { catalogApiBase } = await getRequestLigandServiceConfig(req);
+  const upstreamUrl = `${catalogApiBase}/api4/structure`;
   try {
-    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    const response = await fetchWithTimeout(`${catalogApiBase}/api4/structure`, {
+    const response = await fetchAsinexUpstream(upstreamUrl, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -4614,6 +4632,9 @@ app.post('/api/api4/structure', ensureMongoConnected, authenticateToken, require
     let data;
     try { data = JSON.parse(text); } catch { data = text; }
 
+    if (response.status >= 500) {
+      console.error(`Asinex API upstream status=${response.status} url=${safeUpstreamUrl(upstreamUrl)}`);
+    }
     res.status(relayUpstreamStatus(response.status));
     if (response.headers.get('content-type')) {
       res.setHeader('Content-Type', response.headers.get('content-type'));
@@ -4624,8 +4645,8 @@ app.post('/api/api4/structure', ensureMongoConnected, authenticateToken, require
       res.send(data);
     }
   } catch (error) {
-    console.error('Asinex API proxy error (/api4/structure):', error);
-    res.status(500).json({ error: 'Failed to connect to Asinex API', details: error.message });
+    console.error(`Asinex API proxy error (/api4/structure) url=${safeUpstreamUrl(upstreamUrl)}:`, error.message || error);
+    res.status(502).json({ error: 'Failed to connect to Asinex API', details: error.message });
   }
 });
 
@@ -4669,9 +4690,10 @@ app.post('/api/api4/structure', ensureMongoConnected, authenticateToken, require
  *         description: Asinex API response
  */
 app.post('/api/api4/substructure', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+  const { catalogApiBase } = await getRequestLigandServiceConfig(req);
+  const upstreamUrl = `${catalogApiBase}/api4/substructure`;
   try {
-    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    const response = await fetchWithTimeout(`${catalogApiBase}/api4/substructure`, {
+    const response = await fetchAsinexUpstream(upstreamUrl, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -4684,6 +4706,9 @@ app.post('/api/api4/substructure', ensureMongoConnected, authenticateToken, requ
     let data;
     try { data = JSON.parse(text); } catch { data = text; }
 
+    if (response.status >= 500) {
+      console.error(`Asinex API upstream status=${response.status} url=${safeUpstreamUrl(upstreamUrl)}`);
+    }
     res.status(relayUpstreamStatus(response.status));
     if (response.headers.get('content-type')) {
       res.setHeader('Content-Type', response.headers.get('content-type'));
@@ -4694,8 +4719,8 @@ app.post('/api/api4/substructure', ensureMongoConnected, authenticateToken, requ
       res.send(data);
     }
   } catch (error) {
-    console.error('Asinex API proxy error (/api4/substructure):', error);
-    res.status(500).json({ error: 'Failed to connect to Asinex API', details: error.message });
+    console.error(`Asinex API proxy error (/api4/substructure) url=${safeUpstreamUrl(upstreamUrl)}:`, error.message || error);
+    res.status(502).json({ error: 'Failed to connect to Asinex API', details: error.message });
   }
 });
 
@@ -4739,9 +4764,10 @@ app.post('/api/api4/substructure', ensureMongoConnected, authenticateToken, requ
  *         description: Asinex API response
  */
 app.post('/api/api4/similarity', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+  const { catalogApiBase } = await getRequestLigandServiceConfig(req);
+  const upstreamUrl = `${catalogApiBase}/api4/similarity`;
   try {
-    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    const response = await fetchWithTimeout(`${catalogApiBase}/api4/similarity`, {
+    const response = await fetchAsinexUpstream(upstreamUrl, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -4754,6 +4780,9 @@ app.post('/api/api4/similarity', ensureMongoConnected, authenticateToken, requir
     let data;
     try { data = JSON.parse(text); } catch { data = text; }
 
+    if (response.status >= 500) {
+      console.error(`Asinex API upstream status=${response.status} url=${safeUpstreamUrl(upstreamUrl)}`);
+    }
     res.status(relayUpstreamStatus(response.status));
     if (response.headers.get('content-type')) {
       res.setHeader('Content-Type', response.headers.get('content-type'));
@@ -4764,8 +4793,8 @@ app.post('/api/api4/similarity', ensureMongoConnected, authenticateToken, requir
       res.send(data);
     }
   } catch (error) {
-    console.error('Asinex API proxy error (/api4/similarity):', error);
-    res.status(500).json({ error: 'Failed to connect to Asinex API', details: error.message });
+    console.error(`Asinex API proxy error (/api4/similarity) url=${safeUpstreamUrl(upstreamUrl)}:`, error.message || error);
+    res.status(502).json({ error: 'Failed to connect to Asinex API', details: error.message });
   }
 });
 
@@ -4809,9 +4838,10 @@ app.post('/api/api4/similarity', ensureMongoConnected, authenticateToken, requir
  *         description: Asinex API response
  */
 app.post('/api/api4/mw', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+  const { catalogApiBase } = await getRequestLigandServiceConfig(req);
+  const upstreamUrl = `${catalogApiBase}/api4/mw`;
   try {
-    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    const response = await fetchWithTimeout(`${catalogApiBase}/api4/mw`, {
+    const response = await fetchAsinexUpstream(upstreamUrl, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -4824,6 +4854,9 @@ app.post('/api/api4/mw', ensureMongoConnected, authenticateToken, requireActiveU
     let data;
     try { data = JSON.parse(text); } catch { data = text; }
 
+    if (response.status >= 500) {
+      console.error(`Asinex API upstream status=${response.status} url=${safeUpstreamUrl(upstreamUrl)}`);
+    }
     res.status(relayUpstreamStatus(response.status));
     if (response.headers.get('content-type')) {
       res.setHeader('Content-Type', response.headers.get('content-type'));
@@ -4834,8 +4867,8 @@ app.post('/api/api4/mw', ensureMongoConnected, authenticateToken, requireActiveU
       res.send(data);
     }
   } catch (error) {
-    console.error('Asinex API proxy error (/api4/mw):', error);
-    res.status(500).json({ error: 'Failed to connect to Asinex API', details: error.message });
+    console.error(`Asinex API proxy error (/api4/mw) url=${safeUpstreamUrl(upstreamUrl)}:`, error.message || error);
+    res.status(502).json({ error: 'Failed to connect to Asinex API', details: error.message });
   }
 });
 
@@ -5193,30 +5226,34 @@ app.post('/api/diffdock/generate_file', ensureMongoConnected, authenticateToken,
  *         description: Server error
  */
 app.get('/api/asinex/all/:id_:pageSize', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+  const { id_, pageSize } = req.params;
+  const { catalogApiBase } = await getRequestLigandServiceConfig(req);
+
+  if (!id_ || !pageSize ) {
+    return res.status(400).json({ error: '_id, pageSize are all required' });
+  }
+
+  const upstreamUrl = `${catalogApiBase}/api/all/${id_}_${pageSize.replace('_', '')}`;
   try {
-    const { id_, pageSize } = req.params;
-    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    
-    if (!id_ || !pageSize ) {
-      return res.status(400).json({ error: '_id, pageSize are all required' });
+    const response = await fetchAsinexUpstream(upstreamUrl, {
+      method: 'GET'
+    });
+
+    if (!response.ok) {
+      console.error(`Asinex catalog upstream status=${response.status} url=${safeUpstreamUrl(upstreamUrl)}`);
+      return res.status(relayUpstreamStatus(response.status)).json({
+        error: 'Upstream catalog failed',
+        details: `Asinex API responded with status: ${response.status}`
+      });
     }
 
-    const response = await fetchWithTimeout(`${catalogApiBase}/api/all/${id_}_${pageSize.replace('_', '')}`, {
-      method: 'GET' 
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Asinex API responded with status: ${response.status}`);
-    }
-    
     const data = await response.json();
-    
-      res.json(data);
+    res.json(data);
   } catch (error) {
-    console.error('Asinex API error:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch from Asinex API', 
-      details: error.message 
+    console.error(`Asinex API error url=${safeUpstreamUrl(upstreamUrl)}:`, error.message || error);
+    res.status(502).json({
+      error: 'Failed to fetch from Asinex API',
+      details: error.message
     });
   }
 });

@@ -28,6 +28,9 @@
     "test:asinex": "SERVER_RUNTIME=bun bun test/asinex-compound.test.mjs",
     "test:asinex:bun": "SERVER_RUNTIME=bun bun test/asinex-compound.test.mjs",
     "test:asinex:node": "SERVER_RUNTIME=node node test/asinex-compound.test.mjs",
+    "test:upstream-retry": "SERVER_RUNTIME=bun bun test/upstream-retry.test.mjs",
+    "test:upstream-retry:bun": "SERVER_RUNTIME=bun bun test/upstream-retry.test.mjs",
+    "test:upstream-retry:node": "SERVER_RUNTIME=node node test/upstream-retry.test.mjs",
     "test:plans": "bun test/plan-checkout.test.mjs",
     "test:plans:bun": "bun test/plan-checkout.test.mjs",
     "test:plans:node": "node test/plan-checkout.test.mjs",
@@ -40,8 +43,8 @@
     "test:simulation-logs": "SERVER_RUNTIME=bun bun test/simulation-logs-tenant.test.mjs",
     "test:simulation-logs:bun": "SERVER_RUNTIME=bun bun test/simulation-logs-tenant.test.mjs",
     "test:simulation-logs:node": "SERVER_RUNTIME=node node test/simulation-logs-tenant.test.mjs",
-    "test": "bun run test:asinex:bun && bun run test:plans:bun && bun run test:email-theming:bun && bun run test:stripe:bun && bun run test:branding:bun && bun run test:ssrf:bun && bun run test:admet-queue:bun && bun run test:simulation-logs:bun && bun run test:runtime-smoke",
-    "test:node": "npm run test:asinex:node && npm run test:plans:node && npm run test:email-theming:node && npm run test:stripe:node && npm run test:branding:node && npm run test:ssrf:node && npm run test:admet-queue:node && npm run test:simulation-logs:node && SERVER_RUNTIME=node node test/runtime-smoke.test.mjs"
+    "test": "bun run test:asinex:bun && bun run test:upstream-retry:bun && bun run test:plans:bun && bun run test:email-theming:bun && bun run test:stripe:bun && bun run test:branding:bun && bun run test:ssrf:bun && bun run test:admet-queue:bun && bun run test:simulation-logs:bun && bun run test:runtime-smoke",
+    "test:node": "npm run test:asinex:node && npm run test:upstream-retry:node && npm run test:plans:node && npm run test:email-theming:node && npm run test:stripe:node && npm run test:branding:node && npm run test:ssrf:node && npm run test:admet-queue:node && npm run test:simulation-logs:node && SERVER_RUNTIME=node node test/runtime-smoke.test.mjs"
   },
   "dependencies": {
     "@e965/xlsx": "^0.20.3",

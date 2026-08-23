@@ -218,9 +218,10 @@ ships a source archive to the Oracle VPS, and builds the Docker image there.
 
 **`deploy.yml` does not reach production.** It is `workflow_dispatch`-only and points
 at a non-production Oracle path. Live deploys are manual to **`84`**: refresh
-`/root/pyxis-LIVE-5174` via `git archive` / `tar`, then `systemctl restart pyxis-web`
-— see [docs/NEXT-SESSION.md](./docs/NEXT-SESSION.md). Do not deploy new work to the rollback
-trees.
+`/root/pyxis-LIVE-5174` **in place** via `git archive` / `tar` (never rename the live tree
+under traffic), `systemctl restart pyxis-web`, then poll `http://127.0.0.1:5174/health`
+until 200 — see [docs/NEXT-SESSION.md](./docs/NEXT-SESSION.md). Do not deploy new work to
+the rollback trees.
 Pushing runs CI and deploys nothing.
 
 The current deploy does not use GitHub Packages/GHCR. See
