@@ -10,9 +10,7 @@ Git, Mac↔oracleOld sync, production approval, start mode, and token-conserve l
 `~/.codex/AGENTS.md`. Do not create `LANDMINES.md` here — encode traps in code and
 keep this file updated **in the same change** when a path or trap moves.
 
-**Voice:** minimal compressed — facts + next step. No audit novels, no “Say word.”,
-no GOAL dump. Do not ban caveman; do not require every article. Cavecrew
-`path:line: emoji` only if that skill ran. Pretty English only if asked.
+**Voice:** `~/.codex/AGENTS.md` (minimal compressed). Pretty English only if asked.
 
 ## Invariants
 
@@ -102,12 +100,7 @@ units — never broad `pkill`.
 
 ## Skills and subagents
 
-**Use subagents.** Do not do the whole job inline alone. Prefer **1**. Usual
-tasks: **maximum 2**. Hard max **3** if really needed. **Never 4–5 / fleets /
-“explore everything” swarms.** Cheap / “usage is low” / conserve tokens: still
-prefer **1**, not a swarm. Measure/plan is not an excuse for 5 — still **1–2**.
-
-Use the named skill when the trigger fits.
+Subagent limits: `~/.codex/AGENTS.md` (Skills, subagents, cheap mode). Use the named skill when the trigger fits.
 
 | Trigger | Use |
 |---|---|
