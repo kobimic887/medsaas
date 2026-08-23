@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
+const CONTACT_FETCH_TIMEOUT_MS = 15_000;
+
 export default function ContactUs() {
   const [form, setForm] = useState({
     name: "",
@@ -40,6 +42,11 @@ export default function ContactUs() {
     requestControllerRef.current?.abort();
     const controller = new AbortController();
     requestControllerRef.current = controller;
+    let timedOut = false;
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, CONTACT_FETCH_TIMEOUT_MS);
     
     try {
       const response = await fetch('/api/send-email', {
@@ -65,10 +72,14 @@ export default function ContactUs() {
         setError(result?.error || `Message could not be sent (HTTP ${response.status}). Please try again.`);
       }
     } catch (error) {
-      if (error.name === 'AbortError') return;
+      if (error.name === 'AbortError') {
+        if (timedOut) setError('Request timed out. Please try again.');
+        return;
+      }
       console.error('Error sending email:', error);
       setError('Failed to send email. Please check your connection and try again.');
     } finally {
+      window.clearTimeout(timeoutId);
       if (requestControllerRef.current === controller) {
         requestControllerRef.current = null;
         setLoading(false);
@@ -78,29 +89,29 @@ export default function ContactUs() {
 
   return (
     <div className="mx-auto max-w-2xl px-5 py-12 font-sans sm:px-8">
-      <h1 className="text-3xl font-bold tracking-tight text-blue-gray-900">Contact Pyxis Discovery</h1>
-      <p className="mt-3 text-base leading-7 text-blue-gray-700">
+      <h1 className="text-3xl font-bold tracking-tight text-blue-gray-900 dark:text-slate-50">Contact Pyxis Discovery</h1>
+      <p className="mt-3 text-base leading-7 text-blue-gray-700 dark:text-slate-300">
         Tell our team how we can help with registration, partnerships, or technical support.
       </p>
-      <div className="mt-6 rounded-xl border border-blue-gray-100 bg-blue-gray-50 p-4 text-sm text-blue-gray-700">
+      <div className="mt-6 rounded-xl border border-blue-gray-100 bg-blue-gray-50 p-4 text-sm text-blue-gray-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
         <p>
           Prefer email?{" "}
           <a
             href="mailto:contact@pyxis-discovery.com"
-            className="font-medium text-blue-700 underline underline-offset-2"
+            className="font-medium text-blue-700 underline underline-offset-2 dark:text-brand-300"
           >
             contact@pyxis-discovery.com
           </a>
         </p>
       </div>
       {submitted ? (
-        <div className="mt-8 rounded-lg border border-green-200 bg-green-50 p-4 text-green-800" role="status">
+        <div className="mt-8 rounded-lg border border-green-200 bg-green-50 p-4 text-green-800 dark:border-green-900/60 dark:bg-green-950/40 dark:text-green-200" role="status">
           Thank you for contacting us! We will get back to you soon.
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="mt-8 space-y-5">
           <div>
-            <label htmlFor="contact-name" className="mb-2 block text-sm font-medium text-blue-gray-800">Your name</label>
+            <label htmlFor="contact-name" className="mb-2 block text-sm font-medium text-blue-gray-800 dark:text-slate-200">Your name</label>
             <input
               id="contact-name"
               type="text"
@@ -109,11 +120,11 @@ export default function ContactUs() {
               value={form.name}
               onChange={handleChange}
               required
-              className="w-full rounded-lg border border-blue-gray-200 bg-white px-3 py-2.5 text-blue-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+              className="w-full rounded-lg border border-blue-gray-200 bg-white px-3 py-2.5 text-blue-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             />
           </div>
           <div>
-            <label htmlFor="contact-email" className="mb-2 block text-sm font-medium text-blue-gray-800">Your email</label>
+            <label htmlFor="contact-email" className="mb-2 block text-sm font-medium text-blue-gray-800 dark:text-slate-200">Your email</label>
             <input
               id="contact-email"
               type="email"
@@ -122,11 +133,11 @@ export default function ContactUs() {
               value={form.recipientEmail}
               onChange={handleChange}
               required
-              className="w-full rounded-lg border border-blue-gray-200 bg-white px-3 py-2.5 text-blue-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+              className="w-full rounded-lg border border-blue-gray-200 bg-white px-3 py-2.5 text-blue-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             />
           </div>
           <div>
-            <label htmlFor="contact-subject" className="mb-2 block text-sm font-medium text-blue-gray-800">Subject</label>
+            <label htmlFor="contact-subject" className="mb-2 block text-sm font-medium text-blue-gray-800 dark:text-slate-200">Subject</label>
             <input
               id="contact-subject"
               type="text"
@@ -134,11 +145,11 @@ export default function ContactUs() {
               value={form.subject}
               onChange={handleChange}
               required
-              className="w-full rounded-lg border border-blue-gray-200 bg-white px-3 py-2.5 text-blue-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+              className="w-full rounded-lg border border-blue-gray-200 bg-white px-3 py-2.5 text-blue-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             />
           </div>
           <div>
-            <label htmlFor="contact-message" className="mb-2 block text-sm font-medium text-blue-gray-800">Message</label>
+            <label htmlFor="contact-message" className="mb-2 block text-sm font-medium text-blue-gray-800 dark:text-slate-200">Message</label>
             <textarea
               id="contact-message"
               name="message"
@@ -146,10 +157,10 @@ export default function ContactUs() {
               onChange={handleChange}
               required
               rows={5}
-              className="w-full resize-y rounded-lg border border-blue-gray-200 bg-white px-3 py-2.5 text-blue-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+              className="w-full resize-y rounded-lg border border-blue-gray-200 bg-white px-3 py-2.5 text-blue-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             />
           </div>
-          {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">{error}</div>}
+          {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200" role="alert">{error}</div>}
           <button
             type="submit"
             disabled={loading}

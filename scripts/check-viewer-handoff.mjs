@@ -80,6 +80,12 @@ const checks = [
     simulation.includes('const sdfUrl = API_CONFIG.buildApiUrl(`/sanitizedminimalsdf/')
       && simulation.includes("simResult.simulationKey}")
       && simulation.includes("localStorage.setItem('molstar_sdf_url', sdfUrl)")],
+  ['simulation result downloads send Authorization instead of a bare href',
+    simulation.includes('downloadAuthedSimulationFile')
+      && simulation.includes('Authorization: `Bearer ${token}`')
+      && simulation.includes("API_CONFIG.buildApiUrl(endpoint)")
+      && !simulation.includes('href={API_CONFIG.buildApiUrl(`/sanitizedpdb/')
+      && !simulation.includes('href={API_CONFIG.buildApiUrl(`/sanitizedminimalsdf/')],
   ['result page loads SMILES rows through the authenticated parent',
     parent.includes('if (sdfUrl)')
       && parent.includes('loadSdfData(sdfUrl, resultRequestController.signal, resultRequestEpoch)')

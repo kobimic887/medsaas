@@ -23,12 +23,16 @@ import {
 import { ClockIcon, ShoppingCartIcon } from "@heroicons/react/24/solid";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 
+const CONTROL_PANEL_FETCH_TIMEOUT_MS = 15_000;
+
 export function ControlPanel() {
   const navigate = useNavigate();
   const [activityData, setActivityData] = React.useState(null);
   const [userSimulationLogs, setUserSimulationLogs] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
-  const [_error, setError] = React.useState(null);
+  const [error, setError] = React.useState(null);
+  const panelFetchControllerRef = React.useRef(null);
+  const panelFetchTimeoutRef = React.useRef(null);
   
   // Price popup state
   const [showPricePopup, setShowPricePopup] = React.useState(false);
@@ -53,7 +57,7 @@ export function ControlPanel() {
   const [computeConfig, setComputeConfig] = React.useState(null);
 
   // Function to fetch activities from API
-  const fetchActivities = async (signal) => {
+  const fetchActivities = async (signal, didTimeout) => {
     try {
       setLoading(true);
       setError(null);
@@ -73,11 +77,14 @@ export function ControlPanel() {
       const data = await response.json();
       setActivityData(data);
     } catch (err) {
-      if (err.name === 'AbortError') return;
+      if (err.name === 'AbortError') {
+        if (didTimeout?.()) setError('Request timed out');
+        return;
+      }
       console.error('Error fetching activities:', err);
       setError(err.message);
     } finally {
-      if (!signal?.aborted) setLoading(false);
+      if (!signal?.aborted || didTimeout?.()) setLoading(false);
     }
   };
 
@@ -128,15 +135,28 @@ export function ControlPanel() {
     }
   };
 
-  // Fetch activities and simulation logs on component mount
-  React.useEffect(() => {
+  const startPanelFetches = () => {
+    panelFetchControllerRef.current?.abort();
+    window.clearTimeout(panelFetchTimeoutRef.current);
     const controller = new AbortController();
-    fetchActivities(controller.signal);
+    panelFetchControllerRef.current = controller;
+    let timedOut = false;
+    panelFetchTimeoutRef.current = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, CONTROL_PANEL_FETCH_TIMEOUT_MS);
+    fetchActivities(controller.signal, () => timedOut);
     fetchUserSimulationLogs(controller.signal);
     fetchComputeEndpoints(controller.signal);
+  };
+
+  // Fetch activities and simulation logs on component mount
+  React.useEffect(() => {
+    startPanelFetches();
     loadCartFromStorage();
     return () => {
-      controller.abort();
+      panelFetchControllerRef.current?.abort();
+      window.clearTimeout(panelFetchTimeoutRef.current);
       window.clearTimeout(admetRefreshTimerRef.current);
       window.clearTimeout(messageTimerRef.current);
     };
@@ -643,9 +663,11 @@ export function ControlPanel() {
             No data available
           </Typography>
           <Typography variant="small" color="gray" className="mt-2">
-            Please ensure your API is running and accessible.
+            {error === 'Request timed out'
+              ? 'The workspace feed did not answer in time. Retry to load it.'
+              : 'Please ensure your API is running and accessible.'}
           </Typography>
-          <Button variant="outlined" className="mt-4" onClick={fetchActivities}>
+          <Button variant="outlined" className="mt-4" onClick={startPanelFetches}>
             Retry Loading
           </Button>
         </div>

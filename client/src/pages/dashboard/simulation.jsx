@@ -203,6 +203,8 @@ export function Simulation() {
   const searchRequestIdRef = useRef(0);
   const messageTimerRef = useRef(null);
   const clipboardTimerRef = useRef(null);
+  const resultDownloadControllerRef = useRef(null);
+  const [resultDownloadKind, setResultDownloadKind] = useState('');
 
   const navigate = useNavigate();
 
@@ -262,6 +264,7 @@ export function Simulation() {
   useEffect(() => () => {
     browseControllerRef.current?.abort();
     searchControllerRef.current?.abort();
+    resultDownloadControllerRef.current?.abort();
     if (messageTimerRef.current) window.clearTimeout(messageTimerRef.current);
     if (clipboardTimerRef.current) window.clearTimeout(clipboardTimerRef.current);
   }, []);
@@ -1138,6 +1141,61 @@ export function Simulation() {
     }
   };
 
+  // /api/sanitized* require a bearer token. A same-origin <a href> cannot send
+  // Authorization, so these used to open a 401 JSON tab after a successful dock.
+  const RESULT_DOWNLOAD_TIMEOUT_MS = 15_000;
+  const downloadAuthedSimulationFile = async (kind) => {
+    if (!simResult?.simulationKey || resultDownloadKind) return;
+    const endpoint = kind === 'pdb'
+      ? `/sanitizedpdb/${simResult.simulationKey}`
+      : `/sanitizedminimalsdf/${simResult.simulationKey}`;
+    const filename = kind === 'pdb'
+      ? `${simResult.simulationKey}.pdb`
+      : `${simResult.simulationKey}.sdf`;
+    resultDownloadControllerRef.current?.abort();
+    const controller = new AbortController();
+    resultDownloadControllerRef.current = controller;
+    let timedOut = false;
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, RESULT_DOWNLOAD_TIMEOUT_MS);
+    setResultDownloadKind(kind);
+    try {
+      const token = getAuthToken();
+      const response = await fetch(API_CONFIG.buildApiUrl(endpoint), {
+        signal: controller.signal,
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`Could not download ${kind.toUpperCase()} (HTTP ${response.status})`);
+      }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        if (timedOut) showMessage('Download timed out. Try again.', 'error');
+        return;
+      }
+      showMessage(err.message || 'Download failed', 'error');
+    } finally {
+      window.clearTimeout(timeoutId);
+      if (resultDownloadControllerRef.current === controller) {
+        resultDownloadControllerRef.current = null;
+        setResultDownloadKind('');
+      }
+    }
+  };
+
   const handleCopySmiles = async () => {
     if (ketcherIframeRef.current) {
       try {
@@ -1930,30 +1988,32 @@ export function Simulation() {
             variant="gradient"
             className="mb-4 grid h-12 place-items-center"
           >
-            <Typography variant="h6" color="black">
+            <Typography variant="h6" color="black" className="dark:text-slate-50">
               Simulation Result
             </Typography>
           </CardHeader>
           <CardBody>
-            <pre className="whitespace-pre-wrap text-sm font-mono bg-white p-4 rounded border overflow-auto max-h-48">
+            <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded border bg-white p-4 font-mono text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
               {JSON.stringify(simResult, null, 2)}
             </pre>
             {simResult.simulationKey && (
               <div className="mt-4 flex gap-2">
-                <a download
-                  className="inline-block px-4 py-2 border border-blue-500 text-blue-500 rounded hover:bg-blue-50 transition"
-                  href={API_CONFIG.buildApiUrl(`/sanitizedpdb/${simResult.simulationKey}`)}
-                  target="_blank" rel="noopener"
+                <button
+                  type="button"
+                  disabled={Boolean(resultDownloadKind)}
+                  className="inline-block rounded border border-blue-500 px-4 py-2 text-blue-500 transition hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60 dark:border-blue-400 dark:text-blue-300 dark:hover:bg-slate-800"
+                  onClick={() => downloadAuthedSimulationFile('pdb')}
                 >
-                  View Sanitized PDB Result
-                </a>
-                <a download
-                  className="inline-block px-4 py-2 border border-brand-500 text-brand-500 rounded hover:bg-brand-50 transition"
-                  href={API_CONFIG.buildApiUrl(`/sanitizedminimalsdf/${simResult.simulationKey}`)}
-                  target="_blank" rel="noopener"
+                  {resultDownloadKind === 'pdb' ? 'Downloading PDB…' : 'Download Sanitized PDB'}
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(resultDownloadKind)}
+                  className="inline-block rounded border border-brand-500 px-4 py-2 text-brand-500 transition hover:bg-brand-50 disabled:cursor-wait disabled:opacity-60 dark:hover:bg-slate-800"
+                  onClick={() => downloadAuthedSimulationFile('sdf')}
                 >
-                  View Sanitized SDF Result
-                </a>
+                  {resultDownloadKind === 'sdf' ? 'Downloading SDF…' : 'Download Sanitized SDF'}
+                </button>
               </div>
             )}
           </CardBody>

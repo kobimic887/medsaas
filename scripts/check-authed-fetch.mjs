@@ -99,6 +99,17 @@ for (const dir of SCAN_DIRS) {
       const line = source.slice(0, match.index).split('\n').length;
       failures.push(`${rel}:${line}  fetch() to our API with no Authorization header`);
     }
+
+    // <a href="/api/..."> is not fetch(), so the interceptor never sees it — but
+    // the browser also cannot attach Authorization. A click on a protected
+    // sanitized PDB/SDF link just opened a 401 JSON tab after a successful dock.
+    for (const match of source.matchAll(/\bhref\s*=\s*\{([^}]+)\}/g)) {
+      const expr = match[1];
+      if (!/buildApiUrl|buildUrl|["'`]\/api\//.test(expr)) continue;
+      if (mentionsPublicRoute(expr)) continue;
+      const line = source.slice(0, match.index).split('\n').length;
+      failures.push(`${rel}:${line}  <a href> to a protected API route cannot send Authorization`);
+    }
   }
 }
 
