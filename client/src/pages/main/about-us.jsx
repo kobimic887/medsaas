@@ -118,7 +118,7 @@ export default function AboutUs() {
               drug-like, synthetically tractable macrocycles. Our libraries are
               designed to be compatible with modern drug discovery workflows,
               including AI-driven design, high-throughput screening, and
-              structure-based drug design — and the app workspace lets research
+              structure-based drug design — and the app lets research
               teams search catalogs, run docking, and inspect poses in 3D.
             </p>
           </div>

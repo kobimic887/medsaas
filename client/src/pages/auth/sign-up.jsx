@@ -84,8 +84,8 @@ export function SignUp() {
     ? `Set up ${brandName}`
     : `Create your company on ${platformName}`;
   const subtitle = organization.trim()
-    ? `Register your team workspace for ${brandName}.`
-    : "Your company name becomes the workspace name used across the platform.";
+    ? `Register your company on ${brandName}.`
+    : "Your company name is used for branding and admin.";
 
   return (
     <AuthShell title={title} subtitle={subtitle}>

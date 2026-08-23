@@ -93,7 +93,7 @@ export function MainHome() {
 
           <Reveal delay={200}>
             <p className="cb-hero-subtitle">
-              Pyxis Discovery gives research teams one workspace to search compound
+              Pyxis Discovery gives research teams one place to search compound
               catalogs, prepare molecular inputs, run configured docking workflows,
               and inspect stored receptors and poses in 3D.
             </p>
@@ -128,12 +128,12 @@ export function MainHome() {
       <section className="cb-section">
         <Reveal>
           <h2 className="cb-section-title">How <span className="cb-gradient-text">Pyxis Discovery</span> Works</h2>
-          <p className="cb-section-subtitle">From workspace setup to a reviewable docking result</p>
+          <p className="cb-section-subtitle">From company setup to a reviewable docking result</p>
         </Reveal>
 
         <div className="flex flex-wrap gap-6 justify-center mt-12 max-w-6xl mx-auto">
-          <StepCard number="01" icon="🏢" title="Create a Workspace" delay={0}
-            description="Register a company workspace, then manage its branding, team roles, and usage policy from the admin area." />
+          <StepCard number="01" icon="🏢" title="Create a Company" delay={0}
+            description="Register your company, then manage its branding, team roles, and usage policy from the admin area." />
           <StepCard number="02" icon="🔬" title="Choose Molecular Inputs" delay={100}
             description="Search the configured compound catalog, sketch a structure, or provide the supported receptor and ligand inputs directly." />
           <StepCard number="03" icon="🧬" title="Run a Docking Workflow" delay={200}
@@ -147,7 +147,7 @@ export function MainHome() {
       <section className="cb-section cb-section-alt">
         <Reveal>
           <h2 className="cb-section-title">Built for <span className="cb-gradient-text">Modern</span> Drug Discovery</h2>
-          <p className="cb-section-subtitle">Everything your lab and your customers need, in one place</p>
+          <p className="cb-section-subtitle">Everything your lab needs, in one place</p>
         </Reveal>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-12 max-w-6xl mx-auto px-4">
@@ -162,7 +162,7 @@ export function MainHome() {
           <FeatureCard icon="📚" title="Research Utilities" delay={320}
             description="Use literature search, molecular similarity, protein-folding, and molecular-editing routes from one dashboard." />
           <FeatureCard icon="🔒" title="Company Controls" delay={400}
-            description="Manage workspace branding, member roles, credit policy, and tenant-scoped activity with authenticated controls." />
+            description="Manage company branding, member roles, credit policy, and activity with authenticated controls." />
         </div>
       </section>
 
@@ -185,17 +185,17 @@ export function MainHome() {
           <Reveal delay={150} className="flex-1">
             <span className="cb-badge">For Laboratories</span>
             <h2 className="text-3xl lg:text-4xl font-bold text-white mb-4" style={{ fontFamily: "'Outfit', sans-serif" }}>
-              Your Compounds,<br />Their Discovery
+              Your Compounds,<br />Your Discovery
             </h2>
             <p className="text-gray-400 leading-relaxed mb-6">
               Whether you specialise in macrocyclic research, covalent inhibitors, or
               molecular glues, Pyxis Discovery keeps catalog exploration, molecular
-              tools, docking records, and company controls together in one workspace.
+              tools, docking records, and company controls together in one place.
             </p>
             <ul className="space-y-3 text-gray-300">
               {["Company branding and role-based member management",
                 "Catalog search, package selection, and server-priced checkout",
-                "Tenant-scoped activity and simulation history",
+                "Company activity and simulation history",
                 "Configurable usage policy and credit balances"
               ].map((t, i) => (
                 <li key={i} className="flex items-start gap-2">
@@ -225,7 +225,7 @@ export function MainHome() {
             </div>
           </Reveal>
           <Reveal delay={150} className="flex-1">
-            <span className="cb-badge cb-badge-blue">For Customers</span>
+            <span className="cb-badge cb-badge-blue">For Research Teams</span>
             <h2 className="text-3xl lg:text-4xl font-bold text-white mb-4" style={{ fontFamily: "'Outfit', sans-serif" }}>
               Explore, Simulate,<br />Then Purchase
             </h2>
@@ -259,7 +259,7 @@ export function MainHome() {
         </Reveal>
         <Reveal delay={100}>
           <p className="text-gray-400 text-center max-w-xl mx-auto mb-8">
-            Create a workspace to explore the available tools, or contact the team to
+            Create an account to explore the available tools, or contact the team to
             discuss your catalog and compute-service requirements.
           </p>
         </Reveal>
@@ -269,7 +269,7 @@ export function MainHome() {
               Get Started — It's Free
             </Link>
             <Link to="/main/contact-us" className="cb-btn-ghost cb-btn-lg">
-              Contact Sales
+              Contact the team
             </Link>
           </div>
         </Reveal>

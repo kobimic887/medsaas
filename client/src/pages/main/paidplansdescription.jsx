@@ -58,9 +58,9 @@ export function PaidPlansDescription() {
         </section>
 
         <section className="mt-12 rounded-2xl border border-brand-100 bg-brand-50 px-6 py-8 text-center dark:border-brand-900 dark:bg-brand-950/40">
-          <h2 className="text-xl font-semibold">Need a team or custom deployment?</h2>
+          <h2 className="text-xl font-semibold">Need a team setup or higher volume?</h2>
           <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-            Contact us for multi-user access, custom workflows, infrastructure integration, or higher-volume requirements.
+            Contact us for team access, custom workflows, or higher-volume requirements.
           </p>
           <Link
             to="/main/contact-us"

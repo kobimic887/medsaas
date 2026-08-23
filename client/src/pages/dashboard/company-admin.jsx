@@ -571,7 +571,7 @@ export function CompanyAdmin() {
             Admin Panel
           </Typography>
           <Typography variant="small" className="mt-1 font-normal text-blue-gray-600">
-            {company?.name || "Company workspace"}
+            {company?.name || "Company"}
           </Typography>
         </div>
         <div className="flex flex-wrap items-center gap-2">

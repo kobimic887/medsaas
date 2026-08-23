@@ -25,8 +25,7 @@ export function Footer({ brandName, brandLink, routes }) {
             className="font-bold transition-colors hover:text-blue-500 dark:hover:text-brand-300"
           >
             Outwize inc
-          </a>{" "}
-          for a better web.
+          </a>
         </Typography>
         <ul className="flex items-center gap-4">
           {routes.map(({ name, path }) => (
