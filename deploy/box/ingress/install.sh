@@ -86,17 +86,17 @@ cat <<NOTE
 
 Next:
 
-  1. Open the firewall — 443 to 83 only, 80 to the world for ACME:
-       sudo $HERE/firewall.sh 83.229.87.94 <your-admin-ip>
+  1. Open the firewall — 443 to 84 only (live app host), 80 to the world for ACME:
+       sudo $HERE/firewall.sh 84.13.81.51 <your-admin-ip>
 
   2. Certificate issuance is not instant. Watch it land:
        journalctl -u caddy -f
 
-  3. Prove it from 83, not from here:
+  3. Prove it from 84 (live app host), not from here:
        curl -sS https://$BOX_DOMAIN/ingress-health      # -> ok
 
   4. Prove it is closed from anywhere else:
        curl -sS --max-time 10 https://$BOX_DOMAIN/ingress-health   # must fail
 
-Only then repoint one variable at a time on 83 (ARRIVAL-RUNBOOK Phase 2.5).
+Only then repoint one variable at a time on 84 (ARRIVAL-RUNBOOK Phase 2.5).
 NOTE

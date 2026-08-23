@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Host firewall for the box. Idempotent — safe to run again.
 #
-#   sudo deploy/box/ingress/firewall.sh 83.229.87.94 <your-admin-ip>
+#   sudo deploy/box/ingress/firewall.sh 84.13.81.51 <your-admin-ip>
 #
 # Admits :443 from the listed addresses ONLY. Everything else on :443 is dropped, and the
 # compute ports are never published to a public interface in the first place — compose binds
 # them to ${BIND_ADDR}, which defaults to 127.0.0.1.
 #
-# ⚠ Include an admin IP as well as 83's. With only 83 allowed, an SSH session from anywhere
+# ⚠ Include an admin IP as well as 84's. With only 84 allowed, an SSH session from anywhere
 # else still works (SSH is opened separately below) but you cannot curl the ingress to debug
 # it. Locking yourself out of the diagnostic path on a machine with no on-site service is
 # a bad trade.

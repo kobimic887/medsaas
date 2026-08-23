@@ -9,7 +9,7 @@
 # the first. This does the second.
 #
 # Both are needed, and neither substitutes for the other:
-#   · firewall only, plain HTTP — anyone on the path between Amsterdam and 83 reads every
+#   · firewall only, plain HTTP — anyone on the path between Amsterdam and 84 reads every
 #     protein and ligand and can rewrite the docking results coming back. TCP source
 #     addresses are hard to spoof, so the firewall is real access control, but it is not
 #     confidentiality and it is not integrity.
@@ -17,7 +17,7 @@
 #     /api/diffdock/generate is exactly how the NVIDIA quota got drained; this would be the
 #     same mistake with more expensive hardware.
 #
-# It is also a true 1:1 with what it replaces. Today 83 calls
+# It is also a true 1:1 with what it replaces. Today 84 (pyxis-web) still calls
 # `https://services.asinex.com:58000/...` over the open internet, so keeping HTTPS means
 # rollback is putting the Asinex hostname back in one variable — nothing else changes.
 #

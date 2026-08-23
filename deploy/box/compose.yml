@@ -1,6 +1,7 @@
 # The Amsterdam box — compute only. No API server, no database.
 #
-# The platform API stays on 83 and MongoDB stays on Atlas; see docs/BOX-ARCHITECTURE.md.
+# The platform API stays on 84 (pyxis-web :5174) and MongoDB stays on Atlas;
+# see docs/BOX-ARCHITECTURE.md. 83 is leftover, not the caller.
 # Everything here is something the platform CALLS, addressed by one environment variable
 # each, so cutover and rollback are a variable and a restart.
 #
@@ -17,8 +18,8 @@
 #   8002  diffdock     Replaces services.asinex.com:58000
 #   8003  tanimoto     Replaces Oracle 151.145.91.17:8000
 #   8005  glioblastoma
-#   8006  gromacs      NOTE: 8004 deliberately skipped — 83 runs GROMACS on 8000 today and
-#                      reusing a low number invites a copy-paste mistake during cutover
+#   8006  gromacs      NOTE: 8004 deliberately skipped — leftover 83 still has GROMACS on
+#                      :8000; 84 does not. Reusing a low number invites a copy-paste miss.
 #
 # ⚠ NONE of these may be exposed to the internet. They are unauthenticated compute on a
 # EUR 24,727 machine, and chem_beo's open /api/diffdock/generate is exactly how the NVIDIA
@@ -27,7 +28,7 @@
 # How that is enforced, decided 2026-07-29 (ARRIVAL-RUNBOOK Phase 3.1) — NO VPN:
 #   1. every port below binds ${BIND_ADDR}, which defaults to 127.0.0.1
 #   2. Caddy on :443 with a Let's Encrypt cert reverse-proxies to those loopback ports
-#   3. the host firewall admits only 83's IP to :443
+#   3. the host firewall admits only 84's IP to :443 (live app host)
 # So the box is reached by a public hostname over HTTPS — exactly how Asinex is reached
 # today — and the firewall, not a tunnel, is what keeps everyone else out. An earlier
 # version of this comment suggested WireGuard/Tailscale; that was never a decision and

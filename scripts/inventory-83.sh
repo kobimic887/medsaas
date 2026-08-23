@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
 #
-# Read-only inventory of the production host (83.229.87.94).
-#
-# Answers Phase 0 items 0.9 (what backend is actually serving production) and
-# part of 0.2 (where its Mongo is) from docs/ARRIVAL-RUNBOOK.md. Nobody has ever
-# written this down, and it is the thing the compute-box move replaces.
+# Read-only inventory of leftover host 83 (83.229.87.94). Not DNS, not production.
+# Public Pyxis is 84 + pyxis-web :5174. Do not treat this script's target as live.
 #
 # THIS SCRIPT ONLY READS. It runs no writes, starts and stops nothing, and edits
 # no configuration. That is deliberate and load-bearing: 83 is a shared VPS
@@ -22,7 +19,7 @@
 #   scripts/inventory-83.sh prod-83 inventory.txt
 #
 # Output goes to stdout and, if given, to a file. Read it before pasting it
-# anywhere: it is an inventory of a production host. It deliberately prints env
+# anywhere: leftover host inventory, not the live app. It deliberately prints env
 # var NAMES ONLY, never values — but check before sharing regardless.
 
 set -uo pipefail
@@ -154,7 +151,7 @@ run() {
 if [ -n "$OUT" ]; then
   run | tee "$OUT"
   echo
-  echo "written to $OUT — review before sharing; it describes a production host" >&2
+  echo "written to $OUT — review before sharing; leftover 83, not the live app" >&2
 else
   run
 fi

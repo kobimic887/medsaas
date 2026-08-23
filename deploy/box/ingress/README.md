@@ -2,10 +2,10 @@
 
 ```bash
 sudo deploy/box/ingress/install.sh  box.example.com  ops@example.com
-sudo deploy/box/ingress/firewall.sh 83.229.87.94     <your-admin-ip>
+sudo deploy/box/ingress/firewall.sh 84.13.81.51     <your-admin-ip>
 ```
 
-Then, from 83: `curl https://box.example.com/ingress-health` → `ok`.
+Then, from 84: `curl https://box.example.com/ingress-health` → `ok`.
 From anywhere else: it must fail.
 
 ---
@@ -20,13 +20,13 @@ That leaves two separate problems, and they need two separate answers:
 
 | Problem | Answer | Why the other one doesn't cover it |
 |---|---|---|
-| Anyone can use the GPUs | **firewall** — `:443` from 83 only | TLS authenticates the *server* to the client, not the client to the server. It would encrypt a stranger's dock request perfectly |
+| Anyone can use the GPUs | **firewall** — `:443` from 84 only | TLS authenticates the *server* to the client, not the client to the server. It would encrypt a stranger's dock request perfectly |
 | Anyone on the path can read and rewrite the traffic | **TLS** | A source-IP allowlist says nothing about who reads the packets in between. Proteins, ligands and results would be plaintext, and a returned pose could be altered without either end noticing |
 
 `chem_beo`'s open `/api/diffdock/generate` is exactly how the NVIDIA quota got drained. This is
 the same mistake available again, with more expensive hardware.
 
-It is also **1:1 with what it replaces.** 83 calls `https://services.asinex.com:58000/…` over
+It is also **1:1 with what it replaces.** 84 (`pyxis-web`) calls `https://services.asinex.com:58000/…` over
 the public internet today. Keeping the shape identical means rollback is putting the Asinex
 hostname back in one environment variable — no VPN client to remove, no route to unwind.
 
@@ -68,7 +68,7 @@ binary built with the DNS provider's plugin (`xcaddy build --with github.com/cad
 an API token for the zone. If `BOX_DOMAIN` lives with a supported provider, switch to it and
 close `:80`.
 
-## Routes, and the variable each one sets on 83
+## Routes, and the variable each one sets on 84
 
 | Path | → | Platform variable |
 |---|---|---|
@@ -100,8 +100,8 @@ knob is `response_header_timeout`. See the comment in `Caddyfile`.
    a missing record makes ACME retry in a loop that looks like a Caddy fault and is not.
 2. `install.sh` — validates the config **before** reloading, so a typo cannot take the ingress
    down.
-3. `firewall.sh` — pass an **admin IP as well as 83's**. With only 83 allowed you can still SSH
+3. `firewall.sh` — pass an **admin IP as well as 84's**. With only 84 allowed you can still SSH
    in but cannot `curl` the ingress to debug it, which is a bad position on a machine with no
    on-site service.
-4. Verify from 83 **and** from somewhere else. Both directions, or it is not verified.
+4. Verify from 84 **and** from somewhere else. Both directions, or it is not verified.
 5. Only then repoint the platform, one variable at a time (ARRIVAL-RUNBOOK Phase 2.5).
