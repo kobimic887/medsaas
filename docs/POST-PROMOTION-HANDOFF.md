@@ -13,7 +13,7 @@ and service identity with live checks at the start of every session. Every copy
 |---|---|
 | `app.pyxis-discovery.com` A | **`84.13.81.51`** (`oracleNew`) |
 | `app.fin-srv.com` A | **`84.13.81.51`** |
-| Public Pyxis product | **Maintained `pyxis-web`** on `:5174` (soft flip 2026-08-23) — title `Pyxis Discovery` (re-fetched 2026-08-23), `DEPLOYED_SHA` `7955150…` |
+| Public Pyxis product | **Maintained `pyxis-web`** on `:5174` (soft flip 2026-08-23) — title `Pyxis Discovery` (re-fetched 2026-08-23), `DEPLOYED_SHA` `d96a7a6…` |
 | nginx on `84` | `proxy_pass http://127.0.0.1:5174` on `:443` (legacy `:5173` kept for rollback) |
 | Side door | nginx **`:8443`** also → `:5174`. Checklist / rollback: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md) |
 | Host `83` (`83.229.87.94`) | **Imminent shutdown** (owner 2026-08-21 — not long-lived standby). **Measured:** SSH OK, hostname `chem`, up ~50d, nginx active, listeners `:443`/`:80`, `:5173`, `127.0.0.1:5174`, `:3000`, `:3001`, `:4000`. **Not** on public DNS. Agents: read-only only; do not kill. See § “Before killing `83`”. |
