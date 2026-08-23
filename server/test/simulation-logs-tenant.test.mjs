@@ -1,6 +1,8 @@
 // Dual-shape simulation_logs ownership: legacy nested user.username vs maintained
-// top-level username/companyId. Pins the Control Panel list/cache filter so each
-// stack can read the other's rows during the coexistence window.
+// top-level username/companyId. Atlas still has chem_beo-shaped rows, so the
+// Control Panel list/cache filter must read both. Public stack since 2026-08-23
+// is 84 pyxis-web :5174 only — the "coexistence window" was dual-live serving
+// (Vite :5173 + maintained :5174), not a current host requirement.
 //
 // Run: bun test/simulation-logs-tenant.test.mjs
 

@@ -20,8 +20,9 @@ const ROOT = new URL('..', import.meta.url).pathname;
 const SCAN_DIRS = ['client/src'];
 
 // Routes that genuinely answer without authenticateToken in THIS repo
-// (server/index.js). chem_beo left many of these open; do not copy that
-// inventory. Adding a route here is a claim that the live handler has no
+// (server/index.js — live 84 pyxis-web :5174 since 2026-08-23). chem_beo
+// left many of these open; do not copy that inventory or Vite :5173.
+// Adding a route here is a claim that the live handler has no
 // authenticateToken — check first.
 //
 // Not public here: /company/branding (authenticateToken + requireActiveUser).

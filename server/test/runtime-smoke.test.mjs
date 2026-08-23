@@ -1,6 +1,10 @@
 // Runtime parity smoke: auth, Stripe webhook, token consumption, static serving.
 //
-// Proves RUN-03 and RUN-02 under both Bun and Node runtimes.
+// Live product (2026-08-23+): 84 pyxis-web serves this API + client/dist on :5174.
+// Default run blanks FRONTEND_DIST so API checks stay hermetic. --assert-static
+// (after `bun run build`) proves the unified pyxis-web path — not Vite :5173.
+//
+// Historical: through 2026-08-23 public was Vite :5173 (83, then 84 dual-stack).
 //
 // Run:
 //   SERVER_RUNTIME=node npm --prefix server run test:runtime-smoke
@@ -465,8 +469,10 @@ async function main() {
 
     // --- Test 5d: the demo session, and that it carries no password ---
     // The legacy page typed tester123/Tester!23 into the form from component
-    // source that production served unminified. The button is a wanted feature
-    // and stays; what must not come back is the credential in the client.
+    // source. Through 2026-08-23 production was Vite :5173 serving that file
+    // unminified. Public is now pyxis-web :5174 (minified client/dist). The
+    // button is a wanted feature and stays; what must not come back is the
+    // credential in the client.
     const demoConfigured = await fetch(`${BASE}/api/demo-session`, { method: 'GET' });
     const demoConfiguredBody = await demoConfigured.json().catch(() => ({}));
     check('demo availability endpoint is explicit', demoConfigured.status === 200, `(got ${demoConfigured.status})`);
@@ -495,8 +501,9 @@ async function main() {
     // --- Test 5e: an unexpected Origin must not take the whole app down ---
     // Refusing CORS by throwing turned every request from an unlisted origin into
     // a 500 — index.html and /assets/*.js included — so the browser got a blank
-    // page. Found in rehearsal through an SSH tunnel, which is exactly the kind of
-    // ordinary operational access that hits it.
+    // page. Found in dress rehearsal (pre-2026-08-23 public flip) through an
+    // SSH tunnel. Ordinary operational access still hits the same CORS path on
+    // live 84 pyxis-web.
     console.log('\nTest 5e — a disallowed Origin does not 500 the app:');
     const weirdOrigin = { Origin: 'https://not-the-configured-origin.example' };
     const healthOdd = await fetch(`${BASE}/health`, { headers: weirdOrigin });
@@ -534,12 +541,21 @@ async function main() {
     );
 
     // --- Test 6: static serving (only with --assert-static) ---
+    // 84+:5174 pyxis-web path. Vite :5173 is rollback — not this check.
     if (ASSERT_STATIC) {
       console.log('\nTest 6 — GET / serves built frontend HTML:');
       const rootRes = await fetch(`${BASE}/`);
       const rootText = await rootRes.text().catch(() => '');
       check('GET / returns 200', rootRes.status === 200, `(got ${rootRes.status})`);
       check('GET / returns HTML', rootText.includes('<!DOCTYPE html') || rootText.includes('<html'), `(got ${rootText.slice(0, 100)})`);
+      const title = rootText.match(/<title>[\s\S]*?<\/title>/i)?.[0] || '';
+      check(
+        'GET / is Pyxis Discovery, not the Vite Macrocycles tab',
+        /<title>\s*Pyxis Discovery\s*<\/title>/i.test(rootText)
+          && !/Macrocycles/i.test(rootText)
+          && !/dress rehearsal/i.test(rootText),
+        `(got ${title || rootText.slice(0, 120)})`
+      );
     }
 
     await mongo.close();

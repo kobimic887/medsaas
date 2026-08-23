@@ -2,6 +2,10 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// Public/auth UX for the live product: 84 pyxis-web :5174 (nginx :443 →
+// 127.0.0.1:5174 since 2026-08-23). Vite :5173 is rollback only — do not
+// retarget these checks at that tree.
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (file) => readFileSync(path.join(root, file), "utf8");
 
@@ -11,6 +15,7 @@ const authShell = read("client/src/components/AuthShell.jsx");
 const authLayout = read("client/src/layouts/auth.jsx");
 const mainLayout = read("client/src/layouts/mainpage.jsx");
 const clientIndex = read("client/index.html");
+const branding = read("client/src/config/branding.js");
 const mainHome = read("client/src/pages/main/mainhome.jsx");
 const navbar = read("client/src/widgets/layout/main-navbar.jsx");
 const blog = read("client/src/pages/main/blog.jsx");
@@ -21,6 +26,16 @@ const resultsPage = read("client/src/pages/dashboard/molstar3d.jsx");
 const signupServer = read("server/index.js");
 
 const checks = [
+  ["public document title is the platform-name placeholder, not the Vite Macrocycles tab",
+    clientIndex.includes("<title>%VITE_PLATFORM_NAME%</title>")
+    && !clientIndex.includes("Pyxis-Discovery")
+    && !clientIndex.includes("Macrocycles")],
+  ["client brand fallback is Pyxis Discovery", branding.includes("|| 'Pyxis Discovery'")],
+  ["public pages do not advertise dress rehearsal",
+    !clientIndex.includes("dress rehearsal")
+    && !mainHome.includes("dress rehearsal")
+    && !authShell.includes("dress rehearsal")
+    && !signIn.includes("dress rehearsal")],
   ["auth screens share one lightweight shell", signIn.includes('from "@/components/AuthShell"') && signUp.includes('from "@/components/AuthShell"')],
   ["auth layout exposes a skip link to main content", authLayout.includes("SkipLink") && authLayout.includes('id="main-content"')],
   ["marketing layout exposes a skip link to main content", mainLayout.includes("SkipLink") && mainLayout.includes('id="main-content"')],

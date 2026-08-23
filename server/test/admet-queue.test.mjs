@@ -1,6 +1,7 @@
 // ADMET job queue regression suite.
 //
-// ADMET has never run in production: chem_beo published to CloudAMQP, nothing ever
+// ADMET has never run in production (still true on 84 pyxis-web, 2026-08-23):
+// chem_beo published to CloudAMQP, nothing ever
 // consumed, and every job any user queued is still `queued`. The transport is a Mongo
 // collection now (docs/BOX-ARCHITECTURE.md §5), and these tests pin the properties that
 // make the failure visible instead of silent.
