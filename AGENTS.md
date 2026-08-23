@@ -10,6 +10,10 @@ Git, Mac↔oracleOld sync, production approval, start mode, and token-conserve l
 `~/.codex/AGENTS.md`. Do not create `LANDMINES.md` here — encode traps in code and
 keep this file updated **in the same change** when a path or trap moves.
 
+**Voice:** normal English to the user (full sentences, articles). Not telegram,
+not caveman. Cavecrew / compressed formats are internal receipts only. Short by
+default; no audit novels unless asked. Do not write “Say word.”
+
 ## Invariants
 
 - **“De-SaaS” means one-company Pyxis branding.** It does **not** mean deleting
