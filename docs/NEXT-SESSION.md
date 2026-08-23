@@ -15,18 +15,17 @@
 > session. Before-kill checklist:
 > [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md) § “Before killing `83`”.
 >
-> **Current as of 2026-08-22:** Boss **approved** public switch to `pyxis-web`
-> (**not executed**). Flip checklist: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md). Do not
-> mutate nginx/JWT/Stripe/DNS until owner says **“do the flip now”**. Product flip may
-> precede Amsterdam box.
+> **Current as of 2026-08-23:** Soft flip **executed** — public `:443` → maintained
+> `:5174` (`pyxis-web`). JWT rotated on maintained. Legacy `:5173` kept for rollback.
+> Stripe webhook **still pending**. Checklist / rollback:
+> [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md).
 >
 > **2026-08-23:** Interim SMILES→SDF converter live on `84`: docker `pyxis-convertstr`
 > (loopback `127.0.0.1:8001`, healthy), `SDF_CONVERTER_URL=http://127.0.0.1:8001/convertSTR`
 > in `/root/pyxis-new-standby-5174/server/.env`, image source kept at
-> `/root/pyxis-convertstr-src`. Heals `pyxis-web` `:5174` only — public `chem_beo` `:5173`
-> SMILES docking stays broken until the flip. Replace with the Amsterdam box ingress
-> (`https://<box-domain>/convertSTR`) when the box arrives. Rollback: stop+rm the
-> container, remove the env line, restart `pyxis-web`.
+> `/root/pyxis-convertstr-src`. Now serves **public** maintained stack (post soft flip).
+> Replace with the Amsterdam box ingress (`https://<box-domain>/convertSTR`) when the box
+> arrives. Rollback: stop+rm the container, remove the env line, restart `pyxis-web`.
 >
 > Everything older than the 2026-08-01 archive is recoverable from
 > the git tag `docs-archive-2026-08-01` — a ~1,130-line historical log used to live at the
@@ -47,9 +46,9 @@ executed. The GPU question is closed — **4× RTX PRO 4000**.
 reverse charge landed on the invoice ([BOX-SPEC.md](./BOX-SPEC.md) §5), and transfer the Tanimoto
 dump off the owner's Mac (it is the **only copy** of a 2.9 M-molecule index and lives on one
 laptop — [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §1b). The `chem_beo` unauthenticated-route
-exposure stays until the **public flip** — settled 2026-08-01: **do not patch live
-`chem_beo`**; the flip is the remediation. **2026-08-22:** boss approved the maintained
-public switch (eligible now; not executed) — see [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md).
+exposure was remediated by the **public flip** — settled 2026-08-01: **do not patch live
+`chem_beo`**. **2026-08-23:** soft flip executed (public → `:5174`); rollback would
+re-expose those routes — see [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md).
 
 ⚠ **This runbook may be run from a fresh clone on another machine.** Four things it needs are
 not in git — the Tanimoto dump, `client/dist`, the `.env` files, and the DiffDock weights.
@@ -66,7 +65,7 @@ Concise product/ops answers — do not re-litigate unless the owner changes them
 | **Dual stack** | Public `app.pyxis-discovery.com` → legacy **`:5173`**. Maintained this-repo product on **`:5174`** = dress rehearsal + future live. |
 | **Primary during transition (Q6=B → superseded 2026-08-21 night)** | **Legacy public stack is intentionally not improved.** Do not patch ipify, Configurator, Safari tip, titles, or other small UX on live `:5173` — leave it a bit worse so the boss prefers switching to `:5174`. All product energy on `:5174`. Emergencies that keep public login/docking alive are still allowed; polish is not. |
 | **When to flip (Q17=A, Q22=A+B)** | Public flip on **boss sign-off (click-test)** **or** box arrival. Boss click-test **may include broad scientific paths**, not marketing-only. |
-| **Flip approval (2026-08-22)** | Boss **approved** public → `pyxis-web`. Status: **approved, not executed**. Soft/product flip **may precede Amsterdam box** (supersedes ARRIVAL §8 “arrival-day only / do not re-raise”). Execute only on owner **“do the flip now”** — [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md). |
+| **Flip (2026-08-23)** | Soft flip **executed**: nginx `:443` → `127.0.0.1:5174`. JWT rotated on maintained. Stripe webhook still **after**. Rollback + notes: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md). |
 | **Atlas** | Keep sharing one Pyxis Atlas. Fix `simulation_logs` dual-shape in the **reader** — engineering in parallel with dress rehearsal. |
 | **JWT (Q13=A)** | Rotate JWT secret **on public flip**. |
 | **Stripe (Q14=A, Q18=B)** | Register Stripe webhook **after** public flip. Stripe is **not critical near-term**. |
@@ -78,16 +77,14 @@ Concise product/ops answers — do not re-litigate unless the owner changes them
 
 ## State of production
 
-`app.pyxis-discovery.com` → **`84.13.81.51`**, and still serves the **original Pyxis**
-(legacy Vite), deliberately — **until the approved flip executes**. The owner rolled back
-the *product* on 2026-07-31; DNS later moved the *host* to `84`. Maintained frontend is on
-`:5174` (`pyxis-web`). **2026-08-22:** boss approved making that stack public; flip **not
-done**. Checklist: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md).
+`app.pyxis-discovery.com` → **`84.13.81.51`**, public product = **maintained `pyxis-web`
+on `:5174`** (soft flip 2026-08-23). Legacy Vite remains on `:5173` for rollback only.
+Checklist / rollback: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md).
 
 | Port | Unit | What on `84` | Reachable |
 |---|---|---|---|
-| **5173** | `pyxis-vite-legacy` | `/root/pyxis-OLD-LIVE-frontend-5173` (`material-tailwind-dashboard-react`, Vite dev) → legacy API on `:3000` | **the public site**, via nginx `:443` |
-| **5174** | `pyxis-web` | `/root/pyxis-new-standby-5174` (this repo, Bun + `client/dist`) → **MongoDB Atlas** | process on `0.0.0.0:5174`; also nginx **`:8443`** → 5174 (dress / side door). Docs that said “loopback only” are stale until flip hygiene |
+| **5173** | `pyxis-vite-legacy` | `/root/pyxis-OLD-LIVE-frontend-5173` (`material-tailwind-dashboard-react`, Vite dev) → legacy API on `:3000` | **rollback only** (kept running; not public) |
+| **5174** | `pyxis-web` | `/root/pyxis-new-standby-5174` (this repo, Bun + `client/dist`) → **MongoDB Atlas** | **public** via nginx `:443`; also `:8443` side door; process `0.0.0.0:5174` |
 | 3000 | `pyxis-api-legacy` | `/root/pyxis-OLD-LIVE-backend-3000` (`chem_beo`) | serves 5173; also its own HTTPS listener |
 | 3001 | `pyxis-stripe` | `stripe-server.cjs` (from the legacy frontend tree) | part of the rollback path — **do not kill it** |
 
@@ -101,10 +98,9 @@ All four Pyxis units are under systemd (`deploy/83/systemd/`) and `enabled`, so 
 longer ends production. Both frontends run together; `Conflicts=` was removed from `pyxis-web`
 because they are on different ports now.
 
-**Public flip** — approved 2026-08-22, **not executed**. Prefer nginx soft flip (`:443` →
-`:5174`) or classic port swap; full ordered steps, JWT, Stripe-after, rollback, and STOP gate:
-[`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md). Do the flip on **`84`** (live). ARRIVAL-RUNBOOK §8
-is the historical box-day port-swap writeup; product flip may precede the box. ⚠ Older lines
+**Public flip** — soft flip **executed 2026-08-23** on `84` (nginx `:443` → `:5174`, JWT
+rotated). Stripe webhook still pending ([`STRIPE_LIVE_CUTOVER.md`](./STRIPE_LIVE_CUTOVER.md)).
+Rollback + residual checklist: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md). ⚠ Older lines
 that say “mirror config to `83`” need **owner confirmation after shutdown** — there will be no
 long-lived `83` rollback host; confirm the post-kill rollback target (likely on-disk /
 snapshot on `84` only).

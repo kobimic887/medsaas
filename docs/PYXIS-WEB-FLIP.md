@@ -1,8 +1,12 @@
 # Pyxis-web public flip checklist
 
-**Status (2026-08-22):** Boss **approved** switching public Pyxis to maintained
-`pyxis-web`. Flip is **eligible** and **not executed**. Do **not** run this
-checklist until the owner says **“do the flip now”** in the active session.
+**Status (2026-08-23):** Soft flip **executed** on `84` (nginx `:443` →
+`127.0.0.1:5174`, procedure **A**). JWT rotated on maintained only. Public title =
+**Pyxis Discovery**. `DEPLOYED_SHA` =
+`b0ea769…+dress-rehearsal-20260822T192154Z`. Legacy `:5173` / `chem_beo` /
+`pyxis-stripe` left running for rollback. Stripe webhook **not** registered yet
+(§4). Rollback = restore `proxy_pass http://localhost:5173` + `nginx -t &&
+reload` (backup under `/root/pyxis-flip-backups-20260823T095238Z/`).
 
 **Authority / related:** [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md),
 [`NEXT-SESSION.md`](./NEXT-SESSION.md), [`ARRIVAL-RUNBOOK.md`](./ARRIVAL-RUNBOOK.md) §8
@@ -22,14 +26,15 @@ on the arrival runbook and does not block this checklist.
 
 ---
 
-## STOP
+## STOP (historical)
 
 ```
-Do not mutate nginx, systemd ports, JWT_SECRET, DNS, or Stripe webhooks
-until the owner explicitly says: do the flip now
+Flip mutation window closed 2026-08-23 (soft flip A executed).
+Do not re-flip or rotate JWT again without a new owner ask.
+Stripe webhook remains §4 (after). Rollback = nginx → localhost:5173.
 ```
 
-Preparation (docs, dress-rehearsal deploys to `:5174`, read-only measure) is fine.
+Preparation language below is retained for rollback / audit.
 
 ---
 

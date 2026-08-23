@@ -3,12 +3,10 @@
 Longer-form reference for Pyxis Discovery. Shared agent instructions:
 [`../AGENTS.md`](../AGENTS.md). Product intent: [`../GOAL.md`](../GOAL.md).
 
-> **Current state (2026-08-22):** DNS for `app.pyxis-discovery.com` / `app.fin-srv.com` →
-> **`84.13.81.51`**. Public product = legacy Vite **`:5173`** (intentionally not improved).
-> This repo on **`:5174`** = dress rehearsal. **Boss approved** public → `pyxis-web`
-> (**not executed**) — [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md). Soft flip may precede
-> Amsterdam box. **`83`** = imminent shutdown (still up until killed — not long-lived
-> standby). Box ordered, not delivered. Atlas shared. Details: the three files below.
+> **Current state (2026-08-23):** DNS → **`84.13.81.51`**. Public product = maintained
+> **`:5174`** (`pyxis-web`, soft flip executed). Legacy `:5173` = rollback only. Stripe
+> webhook still pending — [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md). **`83`** = imminent
+> shutdown. Box ordered, not delivered. Atlas shared. Details: the three files below.
 
 ## Where to start (pick one)
 
@@ -16,7 +14,7 @@ Longer-form reference for Pyxis Discovery. Shared agent instructions:
 |---|---|
 | **Any ops / fresh agent** | [POST-PROMOTION-HANDOFF.md](./POST-PROMOTION-HANDOFF.md) |
 | **What to do while waiting / owner decisions** | [NEXT-SESSION.md](./NEXT-SESSION.md) |
-| **Public → pyxis-web flip (approved / execute)** | [PYXIS-WEB-FLIP.md](./PYXIS-WEB-FLIP.md) — STOP until “do the flip now” |
+| **Public flip (executed) / rollback / Stripe-after** | [PYXIS-WEB-FLIP.md](./PYXIS-WEB-FLIP.md) |
 | **Box has arrived / cutover day** | [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) (after the handoff) |
 
 Topology *why*: [BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md). What was ordered:
@@ -26,11 +24,9 @@ Topology *why*: [BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md). What was ordered:
 
 Full table in [NEXT-SESSION.md](./NEXT-SESSION.md) § Owner decisions. Short form:
 
-- Dual stack: public `:5173` legacy / `:5174` maintained (future live).
-- Do **not** polish live legacy; all product energy on `:5174`.
-- **2026-08-22:** boss **approved** public → `pyxis-web` (**not executed**). Soft/product
-  flip may precede box — [PYXIS-WEB-FLIP.md](./PYXIS-WEB-FLIP.md). JWT rotate on flip; Stripe
-  webhook **after** flip.
+- Public = maintained `:5174`; legacy `:5173` = rollback only.
+- **2026-08-23:** soft flip executed (JWT rotated). Stripe webhook **after** — still open.
+- Do **not** polish legacy unless rolling back.
 - Shared Atlas; `simulation_logs` dual-shape in the **reader**; ensure-on-login `companyId`.
 - Box access from runbook §1c probe — no Tailscale Pro mandate.
 - PubMed on maintained only; bare Molstar visit stays empty (by design).
@@ -42,7 +38,7 @@ Full table in [NEXT-SESSION.md](./NEXT-SESSION.md) § Owner decisions. Short for
 |---|---|
 | [POST-PROMOTION-HANDOFF.md](./POST-PROMOTION-HANDOFF.md) | **Authority** — host roles, `84` paths, before-kill `83`, arrival prompt |
 | [NEXT-SESSION.md](./NEXT-SESSION.md) | **Authority** — backlog, owner decisions, do-nots, deploy to `:5174` |
-| [PYXIS-WEB-FLIP.md](./PYXIS-WEB-FLIP.md) | **Flip checklist** — approved 2026-08-22; execute only on “do the flip now” |
+| [PYXIS-WEB-FLIP.md](./PYXIS-WEB-FLIP.md) | **Flip executed 2026-08-23** — rollback + Stripe-after remaining |
 | [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) | Box-day sequence (pre-promotion body; handoff overrides host roles; §8 product swap superseded by flip doc when soft-flipping pre-box) |
 | [BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md) | Compute-only topology decision record |
 | [BOX-SPEC.md](./BOX-SPEC.md) | Ordered hardware (4× RTX PRO 4000) + VAT checklist |

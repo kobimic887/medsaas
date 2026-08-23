@@ -12,18 +12,18 @@ and service identity with live checks at the start of every session.
 |---|---|
 | `app.pyxis-discovery.com` A | **`84.13.81.51`** (`oracleNew`) |
 | `app.fin-srv.com` A | **`84.13.81.51`** |
-| Public Pyxis product | Still **legacy Vite** on `:5173` (`/@vite/client`, Creative Tim banner, title `Pyxis-Discovery \| Macrocycles`) — **not** this repo's `client/dist` |
-| nginx on `84` | `proxy_pass http://localhost:5173` |
-| Dress-rehearsal / approved-not-flipped live | This repo on **`:5174`** (`pyxis-web`, title `Pyxis Discovery`). Measured 2026-08-22: binds `0.0.0.0:5174` (no live `BIND_HOST`); nginx also serves it on **`:8443`**. Public `:443` still → `:5173` until flip. Checklist: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md) |
+| Public Pyxis product | **Maintained `pyxis-web`** on `:5174` (soft flip 2026-08-23) — title `Pyxis Discovery`, `DEPLOYED_SHA` `b0ea769…` |
+| nginx on `84` | `proxy_pass http://127.0.0.1:5174` on `:443` (legacy `:5173` kept for rollback) |
+| Side door | nginx **`:8443`** also → `:5174`. Checklist / rollback: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md) |
 | Host `83` (`83.229.87.94`) | **Imminent shutdown** (owner 2026-08-21 — not long-lived standby). **Measured:** SSH OK, hostname `chem`, up ~50d, nginx active, listeners `:443`/`:80`, `:5173`, `127.0.0.1:5174`, `:3000`, `:3001`, `:4000`. **Not** on public DNS. Agents: read-only only; do not kill. See § “Before killing `83`”. |
 
 ### Paths on `84` (renamed; do not expect the old `/root/chem_beo` names)
 
 | Role | Path on `84` | Git remote / identity |
 |---|---|---|
-| Live frontend (public) | `/root/pyxis-OLD-LIVE-frontend-5173` | `eitangenis/material-tailwind-dashboard-react` @ `58ad4cb` |
-| Live API | `/root/pyxis-OLD-LIVE-backend-3000` | `eitangenis/chem_beo` @ `3074d8d` |
-| Maintained dress rehearsal | `/root/pyxis-new-standby-5174` | deploy tree (no `.git`); `DEPLOYED_SHA` stamped |
+| Legacy rollback frontend | `/root/pyxis-OLD-LIVE-frontend-5173` | `eitangenis/material-tailwind-dashboard-react` @ `58ad4cb` |
+| Legacy rollback API | `/root/pyxis-OLD-LIVE-backend-3000` | `eitangenis/chem_beo` @ `3074d8d` |
+| Live maintained (public) | `/root/pyxis-new-standby-5174` | deploy tree (no `.git`); `DEPLOYED_SHA` stamped |
 | FinSrv | `/opt/finsrv` | nginx → `:4000` |
 
 `/home/ubuntu` exposes those trees as symlinks (`~/pyxis-OLD-LIVE-frontend-5173`,
@@ -36,17 +36,12 @@ kill) the legacy trees may still use older names (`/root/chem_beo`,
 See also [`NEXT-SESSION.md`](./NEXT-SESSION.md) § “Owner decisions” and the flip checklist
 [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md). Short form for agents landing here first:
 
-- **Dual stack (until flip executes):** public → legacy `:5173`; maintained `:5174` =
-  dress rehearsal → **approved future public**.
-- **Transition (2026-08-21 night):** legacy public stack is **intentionally not improved**
-  (supersedes “small UX on legacy OK”). All product energy on `:5174`. Emergencies that keep
-  public login/docking alive still allowed; polish on `:5173` is not.
-- **Public flip status (2026-08-22):** Boss **approved** switching public Pyxis to maintained
-  `pyxis-web`. Status = **approved, not executed**. Soft/product flip is **eligible without
-  waiting for the Amsterdam box** (box day remains compute cutover only). Do **not** flip
-  until the owner says **“do the flip now”** — see [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md).
-  This supersedes ARRIVAL-RUNBOOK §8 “keep port swap on arrival day / do not re-raise early
-  flip” for the *product* cutover only.
+- **Public product (2026-08-23):** maintained `:5174` via nginx soft flip. Legacy `:5173`
+  remains installed/running for **rollback only**.
+- **Do not polish legacy** — product energy stays on maintained. Emergencies on legacy only
+  if rolling back.
+- **Flip status:** **executed** (soft flip A + JWT rotate). Stripe webhook still pending.
+  Details: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md).
 - **Flip triggers (historical grill):** boss click-test (may include broad scientific paths)
   **or** box arrival (Q17=A, Q22=A+B) — boss path is now the active path.
 - **Atlas shared;** fix `simulation_logs` dual-shape in the reader in parallel.
