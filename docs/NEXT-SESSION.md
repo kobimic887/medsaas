@@ -18,7 +18,17 @@
 > **Current as of 2026-08-22:** Boss **approved** public switch to `pyxis-web`
 > (**not executed**). Flip checklist: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md). Do not
 > mutate nginx/JWT/Stripe/DNS until owner says **“do the flip now”**. Product flip may
-> precede Amsterdam box. Everything older than the 2026-08-01 archive is recoverable from
+> precede Amsterdam box.
+>
+> **2026-08-23:** Interim SMILES→SDF converter live on `84`: docker `pyxis-convertstr`
+> (loopback `127.0.0.1:8001`, healthy), `SDF_CONVERTER_URL=http://127.0.0.1:8001/convertSTR`
+> in `/root/pyxis-new-standby-5174/server/.env`, image source kept at
+> `/root/pyxis-convertstr-src`. Heals `pyxis-web` `:5174` only — public `chem_beo` `:5173`
+> SMILES docking stays broken until the flip. Replace with the Amsterdam box ingress
+> (`https://<box-domain>/convertSTR`) when the box arrives. Rollback: stop+rm the
+> container, remove the env line, restart `pyxis-web`.
+>
+> Everything older than the 2026-08-01 archive is recoverable from
 > the git tag `docs-archive-2026-08-01` — a ~1,130-line historical log used to live at the
 > bottom of this file and was deleted, not lost. Recover it with:
 

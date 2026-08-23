@@ -44,10 +44,10 @@ no GOAL dump. Do not ban caveman; do not require every article. Cavecrew
 - `oracleOld` (`151.145.91.17`) is a distinct host and a temporary Tanimoto source.
   `oracleNew` (`84.13.81.51`) is the **live** application host — measure DNS.
   `83` (`83.229.87.94`) is scheduled for shutdown and is **not** production.
-  `SDF_CONVERTER_URL` defaults to dead `83:8001` in `server/index.js` (boot warns when
-  unset). The live value is host-local `.env` on `84`:
-  `https://<box-domain>/convertSTR` once the Amsterdam box ingress exists — box not
-  delivered yet, so the env is still unset there. Do not change the code default without
+  `SDF_CONVERTER_URL` code default is dead `83:8001` (boot warns when unset). Live on
+  `84` since 2026-08-23 via interim loopback container `pyxis-convertstr`
+  (`http://127.0.0.1:8001/convertSTR`); replace with `https://<box-domain>/convertSTR`
+  when the Amsterdam box ingress exists. Do not change the code default without
   measuring env on `84`.
 - Root, `client/`, and `server/` keep both Bun and npm lockfiles. After a dependency
   change run `bun run lockfiles:refresh` and commit both families.
