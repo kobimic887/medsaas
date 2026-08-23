@@ -39,9 +39,8 @@ function App() {
           element={isAuthenticated ? <Navigate to="/dashboard/controlpanel" replace /> : <Auth />}
         />
         <Route path="/main/*" element={<MainPage />} />
-        {/* The marketing site is the landing page again — it came from the original
-            Pyxis app (chem_beo), whose frontend still serves all seven of these pages
-            on 83. An already-authenticated visitor never stops there: /auth/* above
+        {/* Marketing landing lives in this repo (`/main/*`). Public is pyxis-web on
+            84 :5174. An already-authenticated visitor never stops here: /auth/* above
             bounces them on to the dashboard. */}
         <Route path="*" element={<Navigate to="/main/mainHome" replace />} />
       </Routes>

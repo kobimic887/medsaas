@@ -2549,11 +2549,12 @@ app.post('/api/password-reset/confirm', authRateLimit, ensureMongoConnected, asy
 //
 //     const handleDemoLogin = async () => { setEmail("tester123"); setPassword("Tester!23");
 //
-// and production serves that frontend from a Vite dev server, so anyone could read
-// them unminified at /src/pages/auth/sign-in.jsx and sign in as that account
-// directly — no button needed. Moving the lookup server-side means the browser
-// never sees a password, and the demo account's password can be rotated to
-// something nobody knows without touching the frontend at all.
+// The legacy public site served that frontend from a Vite dev server, so anyone
+// could read them unminified at /src/pages/auth/sign-in.jsx and sign in as that
+// account directly — no button needed. Public is now pyxis-web + client/dist on
+// :5174 (Vite :5173 is rollback only). Moving the lookup server-side means the
+// browser never sees a password, and the demo account's password can be rotated
+// without touching the frontend.
 //
 // DEMO_USERNAME is required; unset means no demo and the button hides itself.
 // The account is an ordinary user record, so every downstream guard — active,
