@@ -56,8 +56,9 @@ WebGL-specific compatibility fixes.
 No legacy-code workaround was applied during the 2026-08-14 diagnosis; the compatibility change
 is limited to the maintained `pyxis-web` viewer.
 
-## Bare Molstar visit is empty (by design)
+## Bare Molstar visit (TTL restore)
 
-Opening `/dashboard/molstar3d` (or equivalent) with **no** simulation handoff / stored result
-shows an empty viewer. That is intentional (owner 2026-08-21). Do not “fix” it with demo
-structures or auto-loading sample PDBs.
+Opening `/dashboard/molstar3d` with **no** query handoff restores the last docking /
+DiffDock localStorage bundle only while it is within ~5 minutes of being saved
+(`molstar_result_saved_at`). After the TTL (or Clear / new dock / logout), the
+page stays an empty workspace — do not auto-load demo PDBs.

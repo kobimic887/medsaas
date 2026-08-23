@@ -2,7 +2,12 @@ import { Button, Card, CardBody, CardHeader, Chip, Typography } from "@material-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
-import { clearViewerStorage, clearViewerHandoffFlag, peekViewerLoadIntent } from "@/utils/viewerStorage";
+import {
+  clearViewerStorage,
+  clearViewerHandoffFlag,
+  peekViewerLoadIntent,
+  stampViewerResultSaved,
+} from "@/utils/viewerStorage";
 
 // The /api/sanitized* endpoints require a bearer token. Every same-origin 401 is
 // treated by the global interceptor as a dead session, so a bare fetch() here did
@@ -67,9 +72,9 @@ const structureImageUrl = (value) => {
 export function Molstar3D() {
   const molstarRef = useRef(null);
   const navigate = useNavigate();
-  // Results load only from an explicit handoff: ?simulation= / ?pdb= / ?diffdock=
-  // or a one-shot sessionStorage flag set by simulation.jsx. Bare nav visits must
-  // stay idle even when localStorage still holds the previous run.
+  // Results load from an explicit handoff (?simulation= / ?pdb= / ?diffdock= or
+  // one-shot sessionStorage flag) or a localStorage bundle still within the
+  // ~5 minute TTL. Bare visits after TTL stay idle.
   const shouldAutoLoad = peekViewerLoadIntent();
   const [sdfData, setSdfData] = useState([]);
   // A historical/direct result already has enough information to begin loading on
@@ -82,8 +87,8 @@ export function Molstar3D() {
   // Outcome of the last SDF load. 'empty' means the request succeeded but no pose
   // survived parsing — the failure mode that used to render as a blank panel.
   const [sdfStatus, setSdfStatus] = useState(shouldAutoLoad ? 'loading' : 'idle'); // 'idle' | 'loading' | 'ok' | 'empty' | 'error'
-  // Bare visits keep storage for Reload PDB but hide stale result chrome until a
-  // handoff, Reload, or Test SDF actually presents a workspace.
+  // Post-TTL bare visits hide result chrome until a fresh handoff, Reload, or
+  // Test SDF presents a workspace. Within TTL, chrome follows shouldAutoLoad.
   const [resultChromeVisible, setResultChromeVisible] = useState(shouldAutoLoad);
   const [cart, setCart] = useState([]); // Shopping cart state
   const viewerClearedRef = useRef(false);
@@ -489,8 +494,8 @@ export function Molstar3D() {
       molstarRef.current.addEventListener('load', handleIframeLoad);
     }
 
-    // Bare Simulation Results visit: calm empty workspace. Do not reopen the last
-    // localStorage run. Reload PDB / Test SDF / Clear still work below.
+    // Bare Simulation Results with no fresh TTL bundle: calm empty workspace.
+    // Reload PDB / Test SDF / Clear still work below.
     if (!shouldAutoLoadRef.current) {
       setIsLoading(false);
       setSdfStatus('idle');
@@ -550,6 +555,7 @@ export function Molstar3D() {
           'molstar_sdf_url',
           API_CONFIG.buildApiUrl(`/sanitizedminimalsdf/${simulationParam}`),
         );
+        stampViewerResultSaved();
       }
 
     }

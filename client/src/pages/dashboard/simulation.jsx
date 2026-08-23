@@ -809,8 +809,8 @@ export function Simulation() {
         // Store updated dictionary
         localStorage.setItem('molstar_simulation_pairs', JSON.stringify(simulationPairs));
 
-        // Query + one-shot flag: molstar3d only auto-loads on handoff / deep link,
-        // not when the user later clicks Simulation Results in the nav.
+        // Query + one-shot flag + TTL stamp: molstar3d auto-loads on handoff /
+        // deep link, and restores from localStorage for ~5 minutes on bare nav.
         markViewerHandoff();
         const handoffParams = new URLSearchParams({
           simulation: simResult.simulationKey,
@@ -890,7 +890,7 @@ export function Simulation() {
         }
       }
       
-      // Query + one-shot flag so a later bare nav visit does not reopen this run.
+      // Query + one-shot flag + TTL stamp (~5 min bare-nav restore).
       // Do not pass ?pdb= here: that path is the RCSB/share-link loader and would
       // overwrite DiffDock's in-memory receptor handoff.
       markViewerHandoff();

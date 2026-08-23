@@ -29,7 +29,7 @@ Full table in [NEXT-SESSION.md](./NEXT-SESSION.md) § Owner decisions. Short for
 - Do **not** polish legacy unless rolling back.
 - Shared Atlas; `simulation_logs` dual-shape in the **reader**; ensure-on-login `companyId`.
 - Box access from runbook §1c probe — no Tailscale Pro mandate.
-- PubMed on maintained only; bare Molstar visit stays empty (by design).
+- PubMed on maintained only; bare Molstar restores last result for ~5 min TTL, then empty.
 - `chem_beo` hardening patch will **never** be applied; public flip remediates exposure.
 
 ## Reference catalog

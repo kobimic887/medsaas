@@ -1,12 +1,55 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const parent = readFileSync(path.join(root, 'client/src/pages/dashboard/molstar3d.jsx'), 'utf8');
 const simulation = readFileSync(path.join(root, 'client/src/pages/dashboard/simulation.jsx'), 'utf8');
 const storage = readFileSync(path.join(root, 'client/src/utils/viewerStorage.js'), 'utf8');
 const frame = readFileSync(path.join(root, 'client/public/molstar/index.html'), 'utf8');
+
+const memory = new Map();
+globalThis.localStorage = {
+  getItem: (key) => (memory.has(key) ? memory.get(key) : null),
+  setItem: (key, value) => { memory.set(key, String(value)); },
+  removeItem: (key) => { memory.delete(key); },
+  clear: () => { memory.clear(); },
+};
+globalThis.sessionStorage = {
+  getItem: () => null,
+  setItem: () => {},
+  removeItem: () => {},
+};
+
+const {
+  VIEWER_RESULT_TTL_MS,
+  markViewerHandoff,
+  clearViewerStorage,
+  clearViewerHandoffFlag,
+  peekViewerLoadIntent,
+  stampViewerResultSaved,
+  purgeExpiredViewerStorage,
+} = await import(pathToFileURL(path.join(root, 'client/src/utils/viewerStorage.js')).href);
+
+const now = 1_700_000_000_000;
+memory.clear();
+localStorage.setItem('molstar_simulation_key', 'sim-abc');
+localStorage.setItem('molstar_pdb_url', 'https://example.test/pdb');
+stampViewerResultSaved(now);
+clearViewerHandoffFlag();
+const restoresWithinTtl = peekViewerLoadIntent('', now + VIEWER_RESULT_TTL_MS - 1_000) === true;
+const expiresAfterTtl = peekViewerLoadIntent('', now + VIEWER_RESULT_TTL_MS + 1) === false
+  && localStorage.getItem('molstar_simulation_key') === null;
+
+memory.clear();
+localStorage.setItem('molstar_simulation_key', 'legacy');
+localStorage.setItem('molstar_pdb_url', 'https://example.test/pdb');
+const legacyWithoutStampClears = purgeExpiredViewerStorage(now) === true
+  && localStorage.getItem('molstar_simulation_key') === null;
+
+memory.clear();
+markViewerHandoff();
+const handoffStamps = Boolean(localStorage.getItem('molstar_result_saved_at'));
 
 const checks = [
   ['parent requests explicit viewer readiness', parent.includes("type: 'requestViewerReady'")],
@@ -65,13 +108,38 @@ const checks = [
   ['transient messages share one lifecycle-safe timer',
     (parent.match(/window\.setTimeout\(/g) || []).length === 1
       && parent.includes('window.clearTimeout(messageTimerRef.current)')],
-  ['bare Simulation Results visits do not auto-load from localStorage alone',
+  ['viewer result TTL is five minutes',
+    storage.includes('VIEWER_RESULT_TTL_MS = 5 * 60 * 1000')
+      && storage.includes("VIEWER_RESULT_SAVED_AT_KEY = 'molstar_result_saved_at'")
+      && storage.includes('purgeExpiredViewerStorage')
+      && storage.includes('hasRestorableViewerBundle')],
+  ['bare Simulation Results restores within TTL only',
     storage.includes('peekViewerLoadIntent')
       && storage.includes("params.get('diffdock')")
       && storage.includes('VIEWER_HANDOFF_FLAG')
       && parent.includes('peekViewerLoadIntent()')
       && parent.includes('if (!shouldAutoLoadRef.current)')
-      && !parent.includes('hasRequestedSimulation')],
+      && !parent.includes('hasRequestedSimulation')
+      && restoresWithinTtl
+      && expiresAfterTtl
+      && legacyWithoutStampClears
+      && handoffStamps],
+  ['markViewerHandoff stamps result freshness',
+    storage.includes('stampViewerResultSaved()')
+      && simulation.includes('markViewerHandoff()')],
+  ['deep-link simulation writes refresh the TTL stamp',
+    parent.includes('stampViewerResultSaved()')],
+  ['intentional clears still wipe viewer storage',
+    parent.includes('clearViewerStorage()')
+      && simulation.includes('clearViewerStorage()')
+      && (() => {
+        memory.clear();
+        stampViewerResultSaved(now);
+        localStorage.setItem('molstar_simulation_key', 'x');
+        clearViewerStorage();
+        return localStorage.getItem('molstar_simulation_key') === null
+          && localStorage.getItem('molstar_result_saved_at') === null;
+      })()],
   ['simulation handoff marks intent and navigates with query',
     simulation.includes('markViewerHandoff()')
       && simulation.includes('simulation: simResult.simulationKey')
