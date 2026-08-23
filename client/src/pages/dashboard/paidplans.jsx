@@ -136,10 +136,10 @@ export function PaidPlans() {
 
         {/* Header Section */}
         <div className="text-center mb-16">
-          <Typography variant="h1" className="mb-4 text-4xl lg:text-5xl font-bold text-gray-900">
+          <Typography variant="h1" className="mb-4 text-4xl font-bold text-gray-900 dark:text-slate-50 lg:text-5xl">
             Choose Your Plan
           </Typography>
-          <Typography variant="lead" className="mb-8 text-xl text-gray-600 max-w-3xl mx-auto">
+          <Typography variant="lead" className="mx-auto mb-8 max-w-3xl text-xl text-gray-600 dark:text-slate-400">
             Elevate your molecular research without breaking the bank! Our pricing options make 
             advanced computational tools accessible to every researcher and scientist.
           </Typography>
@@ -214,11 +214,11 @@ export function PaidPlans() {
 
         {/* Additional Info Section */}
         <div className="mt-16 text-center">
-          <Typography className="text-gray-600 mb-4">
+          <Typography className="mb-4 text-gray-600 dark:text-slate-400">
             Start free with the Trial plan, then buy credit packs as you need them. Credits are added automatically after payment.
           </Typography>
-          <Typography className="text-gray-500 text-sm">
-            Questions about our plans? <a href="mailto:sales@asinex.com?subject=Plan%20inquiry" className="text-blue-600 hover:underline">Contact our sales team</a>
+          <Typography className="text-sm text-gray-500 dark:text-slate-400">
+            Questions about our plans? <a href="mailto:sales@asinex.com?subject=Plan%20inquiry" className="text-blue-600 hover:underline dark:text-blue-300">Contact our sales team</a>
           </Typography>
         </div>
       </div>

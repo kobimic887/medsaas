@@ -165,15 +165,15 @@ export function Notifications() {
   return (
     <div className="mx-auto my-20 flex max-w-screen-lg flex-col gap-8">
       {/* Latest Activities Card */}
-      <Card>
+      <Card className="border border-blue-gray-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">
         <CardHeader
           color="transparent"
           floated={false}
           shadow={false}
-          className="m-0 p-4"
+          className="m-0 bg-white p-4 dark:bg-slate-900"
         >
           <div className="flex items-center justify-between">
-            <Typography variant="h5" color="blue-gray">
+            <Typography variant="h5" color="blue-gray" className="dark:text-slate-50">
               Latest Activities
             </Typography>
             <button
@@ -186,11 +186,11 @@ export function Notifications() {
             </button>
           </div>
         </CardHeader>
-        <CardBody className="p-4">
+        <CardBody className="bg-white p-4 dark:bg-slate-900">
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-8">
               <Spinner className="h-4 w-4" />
-              <Typography variant="small" color="gray">
+              <Typography variant="small" color="gray" className="dark:text-slate-400">
                 Loading activities...
               </Typography>
             </div>
@@ -201,7 +201,7 @@ export function Notifications() {
               </Typography>
             </Alert>
           ) : !Array.isArray(activities) || activities.length === 0 ? (
-            <Typography variant="small" color="gray" className="text-center py-8">
+            <Typography variant="small" color="gray" className="py-8 text-center dark:text-slate-400">
               No activities found.
             </Typography>
           ) : (
@@ -238,18 +238,18 @@ export function Notifications() {
       </Card>
 
       {/* Information Tips Card */}
-      <Card>
+      <Card className="border border-blue-gray-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">
         <CardHeader
           color="transparent"
           floated={false}
           shadow={false}
-          className="m-0 p-4"
+          className="m-0 bg-white p-4 dark:bg-slate-900"
         >
-          <Typography variant="h5" color="blue-gray">
+          <Typography variant="h5" color="blue-gray" className="dark:text-slate-50">
             Tips & Information
           </Typography>
         </CardHeader>
-        <CardBody className="p-4">
+        <CardBody className="bg-white p-4 dark:bg-slate-900">
           <div className="flex flex-col gap-3">
             {infoMessages.map((message, index) => (
               <Alert
