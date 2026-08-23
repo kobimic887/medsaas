@@ -93,7 +93,16 @@ const PUBLIC_SIGNUP_ENABLED = String(process.env.ALLOW_PUBLIC_SIGNUP || '').trim
 // with no pagination, so this is a safety ceiling rather than a page size.
 const SIMULATION_LOG_PAGE_LIMIT = 500;
 const TANIMOTO_API_BASE = (process.env.TANIMOTO_API_BASE || 'http://151.145.91.17:8000').replace(/\/$/, '');
+// LANDMINE: the fallback below is the retired 83 host. Port 8001 there has been dead
+// since 2026-06-04 (docs/PRODUCTION-83-INVENTORY.md), so an unset SDF_CONVERTER_URL
+// means every SMILES ligand in /api/diffdock/generate fails. The working converter is
+// the Amsterdam box ingress — SDF_CONVERTER_URL=https://<BOX_DOMAIN>/convertSTR
+// (deploy/box/ingress/Caddyfile) — set in host-local .env. Module-scope const:
+// cutover needs a restart, not just an edit.
 const SDF_CONVERTER_URL = process.env.SDF_CONVERTER_URL || 'http://83.229.87.94:8001/convertSTR';
+if (!process.env.SDF_CONVERTER_URL) {
+  console.warn('[diffdock] SDF_CONVERTER_URL is not set — falling back to the retired 83:8001 default, which is DOWN. SMILES ligands in /api/diffdock/generate will fail until this points at a live converter (Amsterdam box: https://<BOX_DOMAIN>/convertSTR).');
+}
 // Default ligand catalog/docking endpoints. Companies override these per-company
 // from Company Admin; env vars (if set) seed the defaults for backward compatibility.
 const DEFAULT_LIGAND_SERVICE_CONFIG = Object.freeze({

@@ -44,8 +44,11 @@ default; no audit novels unless asked. Do not write “Say word.”
 - `oracleOld` (`151.145.91.17`) is a distinct host and a temporary Tanimoto source.
   `oracleNew` (`84.13.81.51`) is the **live** application host — measure DNS.
   `83` (`83.229.87.94`) is scheduled for shutdown and is **not** production.
-  `SDF_CONVERTER_URL` still defaults to `83:8001` in `server/index.js` — leftover,
-  not proof `83` is live. Do not change that default without measuring env on `84`.
+  `SDF_CONVERTER_URL` defaults to dead `83:8001` in `server/index.js` (boot warns when
+  unset). The live value is host-local `.env` on `84`:
+  `https://<box-domain>/convertSTR` once the Amsterdam box ingress exists — box not
+  delivered yet, so the env is still unset there. Do not change the code default without
+  measuring env on `84`.
 - Root, `client/`, and `server/` keep both Bun and npm lockfiles. After a dependency
   change run `bun run lockfiles:refresh` and commit both families.
 

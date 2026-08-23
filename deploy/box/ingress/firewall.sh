@@ -26,7 +26,7 @@ fi
 
 if [ "$#" -lt 1 ]; then
   echo "usage: $0 <allowed-ip> [more-allowed-ips...]" >&2
-  echo "  the first should be 83.229.87.94 (the platform API)" >&2
+  echo "  the first should be 84.13.81.51 (the live platform API; 83 is retiring)" >&2
   exit 1
 fi
 
