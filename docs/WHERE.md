@@ -24,7 +24,7 @@ DNS `app.pyxis-discovery.com` A → **`84.13.81.51`**. Apex/www `pyxis-discovery
 
 | What | Where | Identity |
 |---|---|---|
-| Public UI + API | `84` systemd `pyxis-web` → `/root/pyxis-LIVE-5174` | nginx `:443` / `:8443` → `127.0.0.1:5174`. **systemd + Bun, not Docker.** `DEPLOYED_SHA` `c162b15…` (gitless deploy tree; origin/main UX refresh 2026-08-23) |
+| Public UI + API | `84` systemd `pyxis-web` → `/root/pyxis-LIVE-5174` | nginx `:443` / `:8443` → `127.0.0.1:5174`. **systemd + Bun, not Docker.** `DEPLOYED_SHA` `7955150…` (gitless deploy tree; auth downloads + panel retry 2026-08-23) |
 | Mongo | **MongoDB Atlas** (Pyxis project) | Do not replace with a dump. FinSrv uses a **different** Atlas project |
 | convertSTR | `84` docker `pyxis-convertstr` | `127.0.0.1:8001`. Source `/root/pyxis-convertstr-src` |
 | Ubuntu shortcuts | `84` `~/pyxis-LIVE-5174` etc. | Symlinks to `/root/…` |
@@ -120,7 +120,7 @@ CI does **not** deploy. Live deploy = `git archive` / `tar` onto `/root/pyxis-LI
 
 1. **Both 84 and 83 are hostname `chem`.** Measure DNS, not hostname.
 2. Same systemd unit *names* on 83 and 84. Only 84 is public.
-3. Two gitless `:5174` trees: 84 live `c162b15…` vs 83 `b5962da`.
+3. Two gitless `:5174` trees: 84 live `7955150…` vs 83 `b5962da`.
 4. `:8000` is not one service.
 5. `~/projects/oracleNew` and `~/projects/oracleOld` are **host docs**, not app clones.
 
