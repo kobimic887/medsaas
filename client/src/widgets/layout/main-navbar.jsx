@@ -140,7 +140,7 @@ export function MainNavbar() {
                 </MenuItem>
                 {isAdmin() && (
                   <MenuItem className="dark:hover:bg-slate-800">
-                    <Link to="/dashboard/controlpanel" className="w-full">
+                    <Link to="/dashboard/company-admin" className="w-full">
                       Admin Panel
                     </Link>
                   </MenuItem>
@@ -224,6 +224,17 @@ export function MainNavbar() {
               >
                 Dashboard
               </Link>
+              {isAdmin() && (
+                <Link
+                  to="/dashboard/company-admin"
+                  onClick={() => setMobileOpen(false)}
+                  className={`block rounded-lg px-3 py-2 text-sm font-semibold no-underline ${
+                    isLandingPage ? "text-brand-300" : "text-brand-700 dark:text-brand-300"
+                  }`}
+                >
+                  Admin Panel
+                </Link>
+              )}
               <button
                 type="button"
                 className={`block w-full rounded-lg px-3 py-2 text-left text-sm font-medium ${
