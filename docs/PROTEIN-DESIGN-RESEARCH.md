@@ -137,6 +137,14 @@ assays. The competition copy cites 300, target page 321, and collection 322:
 preserve these source differences. “12k+ submissions” was secondary-source only.
 Tested subsets, curation and rank selection create substantial selection bias.
 
+## Deferred UX priorities (owner: 2026-09-07)
+
+Remember these; do not implement now while Simulation search agents finish:
+reliable folding → saved prediction history and comparison → a target-focused
+reference/binder workflow → potentially binder generation. Saved history should
+retain inputs, meaningful names and results, with suitable ownership/access checks.
+These are product ideas, not implementation authorization.
+
 ## Backlog and acceptance gates
 
 1. **Finish current folding verification:** real hosted response through the

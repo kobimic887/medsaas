@@ -12,6 +12,7 @@ Longer-form reference for Pyxis Discovery. Shared agent instructions:
 
 | Situation | Read |
 |---|---|
+| **Resume the two-agent Simulation search review** | [NEXT-SESSION-SEARCH-REVIEW.md](./NEXT-SESSION-SEARCH-REVIEW.md) |
 | **Protein-design research / folding next steps** | [PROTEIN-DESIGN-RESEARCH.md](./PROTEIN-DESIGN-RESEARCH.md) |
 | **Where is this copy / leftover?** | [WHERE.md](./WHERE.md) |
 | **Any ops / fresh agent** | [POST-PROMOTION-HANDOFF.md](./POST-PROMOTION-HANDOFF.md) |
