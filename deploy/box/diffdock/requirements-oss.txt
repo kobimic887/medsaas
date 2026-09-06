@@ -48,6 +48,6 @@ pyyaml==6.0.2
 rdkit==2022.3.3
 scikit-learn==1.1.0
 scipy==1.12.0
-spyrmsd==0.5.2
+spyrmsd==0.9.0
 torchmetrics==0.11.0
 tqdm==4.67.1
