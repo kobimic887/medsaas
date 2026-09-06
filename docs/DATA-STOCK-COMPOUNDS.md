@@ -116,8 +116,10 @@ bun scripts/import-stock-compounds.mjs \
 ## API / data contract for the frontend
 
 Deep Similarity Search (`client/src/pages/dashboard/deep-similarity.jsx`)
-currently calls the medsaas proxy with **no `dataset_id`** — results come from
-the whole corpus. Dataset scoping already works at the API level:
+lists available datasets in an authenticated picker. It defaults to **All datasets**
+(no `dataset_id`); selecting a dataset scopes exact, similarity, and substructure
+searches and clears previous results. Failed dataset loading offers retry while
+all-dataset search remains available. Dataset scoping works at the API level:
 
 - `GET /tanimoto/v1/datasets` → `{ datasets: [{ id, name, filename, row_count,
   created_at }], count }` (proxied through `server/index.js` with auth).
@@ -134,9 +136,9 @@ the whole corpus. Dataset scoping already works at the API level:
   (naming convention = default dataset name; the engine falls back to the CSV
   filename only when `dataset_name` is missing).
 
-What remains is frontend scope (coordinating agent): a dataset picker that lists
-`/tanimoto/v1/datasets` and appends `dataset_id` to search calls, defaulting to
-the full corpus (no `dataset_id`) or to the stock dataset.
+The picker only lists datasets in the configured search service. The scratch
+stock import does not make stock data available in production; that requires a
+separately approved live import.
 
 ## Verification evidence
 
@@ -161,3 +163,12 @@ on the loopback-only scratch stack (`oracleOld:8010`, own volume) as the
 evidence artifact; production is untouched. Note: host `/` on oracleOld was
 93–94% full during the build — delete the scratch stack (frees ~4 GB) when the
 evidence is no longer needed.
+
+## Picker verification
+
+`bun run test:similarity-datasets` executes the component with lightweight React
+hook/element adapters and controlled HTTP responses to check authenticated listing,
+all three scoped search modes, the full-corpus default, and listing failure/retry.
+Set `STOCK_SEARCH_BASE` to an isolated search service to also verify its stock
+dataset listing. This does not substitute for a signed-in browser test through
+the application proxy.

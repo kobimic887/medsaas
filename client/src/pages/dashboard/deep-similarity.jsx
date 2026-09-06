@@ -28,6 +28,11 @@ export function DeepSimilarity() {
   const [threshold, setThreshold] = useState(0.5);
   const [fingerprintType, setFingerprintType] = useState("morgan");
   const [similarityMetric, setSimilarityMetric] = useState("tanimoto");
+  const [datasets, setDatasets] = useState([]);
+  const [datasetId, setDatasetId] = useState("");
+  const [datasetsLoading, setDatasetsLoading] = useState(true);
+  const [datasetsError, setDatasetsError] = useState("");
+  const [datasetAttempt, setDatasetAttempt] = useState(0);
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -37,6 +42,30 @@ export function DeepSimilarity() {
   const searchControllerRef = useRef(null);
 
   useEffect(() => () => searchControllerRef.current?.abort(), []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setDatasetsLoading(true);
+    setDatasetsError("");
+    const token = getAuthToken();
+    fetch(API_CONFIG.buildUrl("/tanimoto/v1/datasets"), {
+      signal: controller.signal,
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    }).then(async (response) => {
+      const data = await response.json();
+      if (!response.ok || !Array.isArray(data?.datasets)) {
+        throw new Error("Could not load datasets. You can still search all datasets.");
+      }
+      if (!controller.signal.aborted) setDatasets(data.datasets);
+    }).catch(() => {
+      if (!controller.signal.aborted) {
+        setDatasetsError("Could not load datasets. You can still search all datasets.");
+      }
+    }).finally(() => {
+      if (!controller.signal.aborted) setDatasetsLoading(false);
+    });
+    return () => controller.abort();
+  }, [datasetAttempt]);
 
   const handleSearch = async () => {
     const query = searchQuery.trim();
@@ -65,6 +94,8 @@ export function DeepSimilarity() {
         url = API_CONFIG.buildUrl(`/tanimoto/v1/search/substructure?smiles=${smiles}`);
       }
 
+      if (datasetId) url += `&dataset_id=${encodeURIComponent(datasetId)}`;
+
       const res = await fetch(url, {
         method: "GET",
         signal: controller.signal,
@@ -78,11 +109,12 @@ export function DeepSimilarity() {
         throw new Error(data?.error || `Search failed (HTTP ${res.status})`);
       }
 
+      if (controller.signal.aborted) return;
       const rows = data?.results || [];
       setResults(rows);
       setSearchStatus(rows.length > 0 ? "ok" : "empty");
     } catch (err) {
-      if (err.name === "AbortError") return;
+      if (controller.signal.aborted || err.name === "AbortError") return;
       setError(err.message);
       setSearchStatus("error");
     } finally {
@@ -117,6 +149,43 @@ export function DeepSimilarity() {
         </CardHeader>
 
         <CardBody className="space-y-5 p-5 sm:p-6">
+          <div className="space-y-2">
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-blue-gray-700 dark:text-slate-300">Dataset</span>
+              <select
+                aria-label="Dataset"
+                value={datasetId}
+                disabled={datasetsLoading}
+                onChange={(event) => {
+                  searchControllerRef.current?.abort();
+                  searchControllerRef.current = null;
+                  setLoading(false);
+                  setDatasetId(event.target.value);
+                  setResults([]);
+                  setError("");
+                  setSearchStatus("idle");
+                }}
+                className="min-h-11 w-full rounded-lg border border-blue-gray-200 bg-white px-3 text-sm text-blue-gray-800 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              >
+                <option value="">All datasets</option>
+                {datasets.map((dataset) => (
+                  <option key={dataset.id} value={String(dataset.id)}>
+                    {dataset.name}{Number.isFinite(dataset.row_count) ? ` (${dataset.row_count.toLocaleString()} compounds)` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {datasetsLoading && <p role="status" className="text-sm text-blue-gray-500">Loading datasets…</p>}
+            {datasetsError && (
+              <div role="alert" className="text-sm text-red-600 dark:text-red-400">
+                {datasetsError}{" "}
+                <button type="button" className="underline" onClick={() => setDatasetAttempt((attempt) => attempt + 1)}>Retry</button>
+              </div>
+            )}
+            {!datasetsLoading && !datasetsError && datasets.length === 0 && (
+              <p className="text-sm text-blue-gray-500">No datasets are available yet.</p>
+            )}
+          </div>
           <form
             className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_10rem_auto]"
             onSubmit={(event) => {
