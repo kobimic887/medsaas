@@ -2052,7 +2052,9 @@ export function Simulation() {
                   </thead>
                   <tbody>
                     {topMolecules.map((mol, idx) => {
-                      const stockMoleculeId = mol.ASINEX_ID || mol.stockRowId || `stock-${idx}`;
+                      // Same identity as handleCheckboxChange / docking handoff
+                      // (ASINEX_ID holds the stock code for stock rows).
+                      const stockMoleculeId = moleculeSelectionId(mol, idx);
                       const isChecked = selectedMolecules.has(stockMoleculeId);
                       const stockSmiles = mol.SMILES_STRING || "";
                       return (

@@ -1,7 +1,9 @@
 # Stock compounds dataset — Anna's MOE export (2026-09-01)
 
-Support for searching Anna's stock-compound corpus in Pyxis Discovery's Deep
-Similarity Search. The importer is
+Support for searching Anna's stock-compound corpus in Pyxis Discovery. The
+**intended UI is the Simulation tab** (source toggle Asinex | Stock compounds);
+the Deep Similarity dataset picker remains useful for scoped Tanimoto work but
+is not this workflow. The importer is
 [`scripts/import-stock-compounds.mjs`](../scripts/import-stock-compounds.mjs) —
 read its header for the full flag reference. This file records the inspection,
 the import contract, and what the frontend needs.
@@ -279,3 +281,65 @@ Simulation toggle, checkbox selection → docking button enabled, and the drawin
 editor path — the harness proves the API contract, the row mapping, and the
 component invariants instead. Do not launch a paid docking job just to verify
 selection; the handoff uses the same `searchCode` SMILES flow as ASINEX hits.
+
+## Live provisioning / deployment (needs owner approval — not executed)
+
+Code for Simulation stock search is already on `main`. Production does **not**
+see stock hits until (1) the stock dataset is imported into the **live**
+search service and (2) the app on `84` is deployed with env that can resolve
+it. Scratch `:8010` / dataset id 10 must **not** be hardcoded into the app.
+
+### A. Import into the live search service (long; one-time)
+
+Target is the live tonomitosql stack that production already uses for Deep
+Similarity (`TANIMOTO_API_BASE`, today typically `http://151.145.91.17:8000` —
+measure before acting). Do **not** import into scratch `:8010` again.
+
+```bash
+# On the host that can reach the live search service (usually oracleOld),
+# with the preserved source TSV / zip from the out-dir (not in git):
+bun scripts/import-stock-compounds.mjs \
+  --input <STRUCTURES_20260901_63652_unique.txt|zip> \
+  --base-url <LIVE_TANIMOTO_API_BASE> \
+  --name "Stock compounds — 2026-09-01" \
+  --out-dir <data dir outside the repo> \
+  --verify
+```
+
+- **Expected duration:** ~12.5 h engine commit (measured 2026-09-05 on the
+  Ampere scratch stack) plus ~50 min client parse/CSV. Plan a full day.
+- **Idempotency:** same `--name` already present → abort; use
+  `--expect-existing` to verify, or `--replace` only with explicit approval.
+- **Rollback of the import alone:** delete that dataset via the live
+  tonomitosql API / admin path used for other datasets. Does not affect the
+  Pyxis app until env points at it. Keep scratch `:8010` as the evidence
+  artifact until live verification succeeds.
+
+### B. Deploy app code + env on oracleNew (`84`)
+
+1. Deploy the maintained `:5174` tree that includes this commit (manual
+   `git archive` / runbook path — pushes do **not** deploy).
+2. Set on the live Pyxis API env (`/root/pyxis-LIVE-5174/server/.env` or the
+   unit EnvironmentFile — measure which is authoritative):
+
+   | Var | Value |
+   |---|---|
+   | `STOCK_SEARCH_BASE` | *(optional)* live search base if different from `TANIMOTO_API_BASE`; unset is fine when the import is on the shared service |
+   | `STOCK_SEARCH_DATASET_NAME` | `Stock compounds — 2026-09-01` (default; set explicitly if preferred) |
+   | `STOCK_SEARCH_DATASET_ID` | *(optional)* pin the live dataset id after import; prefer name discovery until the id is stable |
+
+3. Restart `pyxis-web` (or the API unit that loads that env).
+4. Smoke: signed-in Simulation → **Search in: Stock compounds** → status
+   available with expected `rowCount` → self-search a known `MAIN_BAS` at
+   threshold 1.0 → load a second page → select a hit and confirm the SMILES
+   lands in the docking input. Do **not** launch a paid dock just to verify.
+
+### C. Rollback (app)
+
+- Unset `STOCK_SEARCH_BASE` / `STOCK_SEARCH_DATASET_*` **or** point
+  `STOCK_SEARCH_DATASET_NAME` at a name that does not exist → status
+  `available:false`, similarity **503 `STOCK_SEARCH_UNAVAILABLE`**, UI shows
+  the unavailable note. Asinex catalog mode is unchanged.
+- Or redeploy the previous `:5174` SHA (stock routes absent / toggle absent).
+- Do **not** delete the live dataset as the first rollback step unless the
+  import itself is wrong — env alone disables the feature.
