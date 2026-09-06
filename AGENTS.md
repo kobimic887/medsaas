@@ -26,6 +26,9 @@ execute the small slice.
 - Company branding and role checks are server-owned. Do not trust client-only enforcement.
 - MongoDB Atlas is the production application database. Do not replace it with a local dump.
   Pyxis and FinSrv use separate Atlas projects.
+- OpenFold3 request/result normalization lives in `client/src/utils/openfold.js`;
+  folding previews use `ProteinFoldViewer.jsx`. Preserve the PDB default for docking
+  when extending the shared Molstar message format to mmCIF.
 - Folding and molecule generation stay hosted NVIDIA services. DiffDock replacement is
   OSS DiffDock — do not re-propose NVIDIA NIM / AI Enterprise for DiffDock.
 

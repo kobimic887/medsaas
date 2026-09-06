@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import ProteinFoldViewer from "@/components/ProteinFoldViewer";
+import { buildFoldRequest, foldStructures } from "@/utils/openfold";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 
 const ENTITY_COLORS = {
@@ -32,6 +34,8 @@ const ProteinFolding = () => {
   const [addType, setAddType] = useState("protein");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [selectedStructure, setSelectedStructure] = useState(0);
+  const [showViewer, setShowViewer] = useState(false);
   const [error, setError] = useState(null);
   const requestControllerRef = useRef(null);
 
@@ -50,54 +54,17 @@ const ProteinFolding = () => {
     setEntities((prev) => [...prev, createEntity(addType, id)]);
   };
 
-  const buildRequestBody = () => {
-    const molecules = entities.map((entity) => {
-      const mol = { type: entity.type, id: entity.id };
-
-      if (entity.type === "protein") {
-        mol.sequence = entity.sequence;
-        if (entity.msaEnabled && entity.msaCsv.trim()) {
-          mol.msa = {
-            main_db: {
-              csv: {
-                alignment: entity.msaCsv,
-                format: "csv",
-              },
-            },
-          };
-        }
-      } else if (entity.type === "dna" || entity.type === "rna") {
-        mol.sequence = entity.sequence;
-      } else if (entity.type === "ligand") {
-        if (entity.ligandMode === "ccd") {
-          mol.ccd_code = entity.ccdCode;
-        } else {
-          mol.smiles = entity.smiles;
-        }
-      }
-
-      return mol;
-    });
-
-    return {
-      request_id: requestId,
-      inputs: [
-        {
-          input_id: requestId,
-          molecules,
-          output_format: outputFormat,
-        },
-      ],
-    };
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
+    let body;
+    try { body = buildFoldRequest(entities, requestId, outputFormat); }
+    catch (err) { setError(err.message); return; }
     setLoading(true);
     setError(null);
     setResult(null);
 
-    const body = buildRequestBody();
+    setShowViewer(false);
+    setSelectedStructure(0);
 
     requestControllerRef.current?.abort();
     const controller = new AbortController();
@@ -125,7 +92,10 @@ const ProteinFolding = () => {
       }
 
       const data = await response.json();
-      setResult(data);
+      if (controller.signal.aborted) return;
+      const structures = foldStructures(data, body.inputs[0].output_format, body.request_id);
+      if (!structures.length) throw new Error("The service returned no predicted structures. Please retry or contact support.");
+      setResult(structures);
     } catch (err) {
       if (err.name === "AbortError") return;
       setError(err.message);
@@ -134,29 +104,17 @@ const ProteinFolding = () => {
     }
   };
 
-  const getResultText = () => {
-    if (!result) return "";
-    if (typeof result === "string") return result;
-    // The API may return the structure inside an output field or as nested JSON
-    if (result.output) return typeof result.output === "string" ? result.output : JSON.stringify(result.output, null, 2);
-    if (result.outputs && Array.isArray(result.outputs) && result.outputs.length > 0) {
-      const out = result.outputs[0];
-      if (out.output) return typeof out.output === "string" ? out.output : JSON.stringify(out.output, null, 2);
-      if (out.pdb_string) return out.pdb_string;
-      if (out.mmcif_string) return out.mmcif_string;
-      return JSON.stringify(out, null, 2);
-    }
-    return JSON.stringify(result, null, 2);
-  };
+  const currentStructure = result?.[selectedStructure];
+  const getResultText = () => currentStructure?.text || "";
 
   const handleDownload = () => {
     const text = getResultText();
-    const ext = outputFormat === "pdb" ? "pdb" : "cif";
+    const ext = currentStructure.format === "pdb" ? "pdb" : "cif";
     const blob = new Blob([text], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${requestId}.${ext}`;
+    a.download = `${currentStructure.name}.${ext}`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -286,9 +244,10 @@ const ProteinFolding = () => {
                                 onChange={(e) => updateEntity(idx, "msaEnabled", e.target.checked)}
                                 className="rounded"
                               />
-                              <span className="font-medium">Include MSA alignment (optional)</span>
+                              <span className="font-medium">Use a custom MSA alignment</span>
                             </label>
                           </div>
+                          {!entity.msaEnabled && <p className="mb-2 text-xs text-gray-600 dark:text-slate-400">Uses a query-only alignment. A custom alignment with related sequences may improve the prediction.</p>}
                           {entity.msaEnabled && (
                             <div>
                               <label className="block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1" htmlFor={`pf-msa-${idx}`}>
@@ -551,9 +510,20 @@ const ProteinFolding = () => {
                       clipRule="evenodd"
                     />
                   </svg>
-                  Download .{outputFormat === "pdb" ? "pdb" : "cif"}
+                  Download .{currentStructure.format === "pdb" ? "pdb" : "cif"}
                 </button>
               </div>
+              <label className="mb-3 block text-sm">Predicted structure
+                <select aria-label="Predicted structure" value={selectedStructure} onChange={event => { setSelectedStructure(Number(event.target.value)); setShowViewer(false); }} className="ml-2 rounded border p-2 dark:bg-slate-900">
+                  {result.map((structure, index) => <option key={structure.name} value={index}>{structure.name}</option>)}
+                </select>
+              </label>
+              <dl className="mb-2 grid grid-cols-2 gap-2 text-sm">
+                {[["confidence_score", "Confidence"], ["complex_plddt_score", "Complex pLDDT"], ["ptm_score", "pTM"], ["iptm_score", "ipTM"]].map(([key, label]) => Number.isFinite(currentStructure.scores[key]) && <div key={key}><dt>{label}</dt><dd>{currentStructure.scores[key].toFixed(3)}</dd></div>)}
+              </dl>
+              <p className="mb-3 text-xs text-gray-600 dark:text-slate-400">These scores describe prediction confidence, not measured binding affinity.</p>
+              <button type="button" onClick={() => setShowViewer(true)} className="mb-3 rounded bg-blue-600 px-3 py-2 text-white">View in 3D</button>
+              {showViewer && <ProteinFoldViewer key={currentStructure.name} structure={currentStructure} />}
               <div className="border border-gray-200 rounded-lg overflow-hidden">
                 <pre className="bg-gray-900 text-green-300 text-xs p-4 overflow-auto whitespace-pre font-mono" style={{ maxHeight: "600px" }}>
                   {getResultText()}

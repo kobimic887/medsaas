@@ -514,7 +514,8 @@
                     if (proteinPdbId) {
                         await loadRcsbPdbEntry(proteinPdbId, proteinName);
                     } else if (proteinText) {
-                        await loadStructureText(proteinText, 'pdb', proteinName);
+                        // Folding can return mmCIF; existing docking messages retain the PDB default.
+                        await loadStructureText(proteinText, event.data.proteinFormat === 'mmcif' ? 'mmcif' : 'pdb', proteinName);
                     } else if (proteinUrl) {
                         await viewer.loadStructureFromUrl(proteinUrl, 'pdb', false, { label: proteinName });
                     }
