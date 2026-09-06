@@ -54,6 +54,7 @@ Full table in [NEXT-SESSION.md](./NEXT-SESSION.md) § Owner decisions. Short for
 | [STRIPE_LIVE_CUTOVER.md](./STRIPE_LIVE_CUTOVER.md) | Webhook registration — **after** public flip |
 | [IMPROVEMENTS.md](./IMPROVEMENTS.md) | Optional backlog (not critical path) |
 | [ASINEX-ESHOP-HANDOFF.md](./ASINEX-ESHOP-HANDOFF.md) / [ASINEX-ESHOP-REVERSE-ENGINEERING.md](./ASINEX-ESHOP-REVERSE-ENGINEERING.md) | External catalog/storefront reference |
+| [DATA-STOCK-COMPOUNDS.md](./DATA-STOCK-COMPOUNDS.md) | Anna's stock-compound dataset (inspection, import contract, frontend API contract) |
 | [archive/](./archive/) | Superseded plans (quality roadmap, Neurosnap, Bun↔Node rollback) |
 
 ### Deploy trees agents trip on
