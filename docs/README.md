@@ -6,19 +6,20 @@ Longer-form reference for Pyxis Discovery. Shared agent instructions:
 > **Current state (2026-08-23):** DNS → **`84.13.81.51`**. Public product = maintained
 > **`:5174`** (`pyxis-web`). Rollback units **stopped** (enabled; trees stay). Stripe
 > webhook **registered** (checkout smoke still open) — [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md). **`83`** = leftover,
-> not DNS. Box ordered, not delivered. Atlas shared. Map: [WHERE.md](./WHERE.md).
+> not DNS. Box planned, not ordered or delivered (owner correction 2026-09-06). Atlas shared. Map: [WHERE.md](./WHERE.md).
 
 ## Where to start (pick one)
 
 | Situation | Read |
 |---|---|
+| **Protein-design research / folding next steps** | [PROTEIN-DESIGN-RESEARCH.md](./PROTEIN-DESIGN-RESEARCH.md) |
 | **Where is this copy / leftover?** | [WHERE.md](./WHERE.md) |
 | **Any ops / fresh agent** | [POST-PROMOTION-HANDOFF.md](./POST-PROMOTION-HANDOFF.md) |
 | **What to do while waiting / owner decisions** | [NEXT-SESSION.md](./NEXT-SESSION.md) |
 | **Public flip (executed) / rollback / Stripe-after** | [PYXIS-WEB-FLIP.md](./PYXIS-WEB-FLIP.md) |
 | **Box has arrived / cutover day** | [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) (after the handoff) |
 
-Topology *why*: [BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md). What was ordered:
+Topology *why*: [BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md). Planned specification:
 [BOX-SPEC.md](./BOX-SPEC.md). Docking bytes: [DOCKING-CONTRACT.md](./DOCKING-CONTRACT.md).
 
 ## Settled decisions (do not re-litigate)
