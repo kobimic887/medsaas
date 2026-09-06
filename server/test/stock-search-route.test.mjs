@@ -268,7 +268,7 @@ async function main() {
     const emptyBody = await emptyRes.json();
     check('no-match page returns 200 with no results', emptyRes.status === 200 && Array.isArray(emptyBody.results) && emptyBody.results.length === 0);
 
-    console.log('\nTest 6 — validation is 400, unprovisioned is 503:\n');
+    console.log('\nTest 6 — validation is 400:\n');
     const badThreshold = await fetch(`${BASE}/api/stock-search/similarity?smiles=c1ccccc1&threshold=0.05`, { headers: auth });
     check('threshold below 0.1 → 400 (client validation, no upstream call)', badThreshold.status === 400, `(got ${badThreshold.status})`);
     const missingSmiles = await fetch(`${BASE}/api/stock-search/similarity`, { headers: auth });
@@ -279,6 +279,87 @@ async function main() {
     failed += 1;
   } finally {
     await cleanup();
+  }
+
+  // Unprovisioned dataset is a separate process: the first server already
+  // resolved a matching dataset into its in-process cache. Spawn a second
+  // app pointed at the stub (or nowhere in live mode) with a name that does
+  // not exist so status stays honest and similarity answers 503.
+  if (!LIVE_VERIFY && failed === 0) {
+    console.log('\nTest 7 — unprovisioned dataset is 503 (not a silent Asinex fallback):\n');
+    const mem2 = await MongoMemoryServer.create();
+    const uri2 = mem2.getUri(`${DB_NAME}_unprov`);
+    const mongo2 = new MongoClient(uri2);
+    await mongo2.connect();
+    const stub2 = await startStub({ datasetName: 'Stock compounds — 2026-09-01' });
+    const child2 = spawn(runtimeBin, ['index.js'], {
+      cwd: SERVER_DIR,
+      env: {
+        ...process.env,
+        MONGODB_URI: uri2,
+        JWT_SECRET: STOCK_JWT_SECRET,
+        STRIPE_SECRET_KEY: 'sk_test_dummy_key_never_calls_api',
+        STRIPE_WEBHOOK_SECRET: 'whsec_stock_route_test_do_not_use',
+        PORT: String(PORT + 1),
+        NODE_ENV: 'test',
+        FRONTEND_DIST: '',
+        NVIDIA_MOLMIM_API_KEY: '',
+        STOCK_SEARCH_BASE: `http://127.0.0.1:${STUB_PORT}`,
+        TANIMOTO_API_BASE: `http://127.0.0.1:${STUB_PORT}`,
+        STOCK_SEARCH_DATASET_NAME: 'Definitely not provisioned stock dataset',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const base2 = `http://127.0.0.1:${PORT + 1}`;
+    let log2 = '';
+    child2.stdout.on('data', (d) => { log2 += d.toString(); });
+    child2.stderr.on('data', (d) => { log2 += d.toString(); });
+    try {
+      const deadline = Date.now() + 40000;
+      let healthy2 = false;
+      while (Date.now() < deadline) {
+        try {
+          const res = await fetch(`${base2}/health`);
+          if (res.ok) { healthy2 = true; break; }
+        } catch { /* not up yet */ }
+        await new Promise((r) => setTimeout(r, 300));
+      }
+      if (!healthy2) throw new Error(`unprovisioned server not healthy\n${log2.slice(-2000)}`);
+      const users2 = mongo2.db(`${DB_NAME}_unprov`).collection('users');
+      await users2.insertOne({
+        username: 'stockuser2',
+        email: 'stock2@example.com',
+        password: await bcrypt.hash('StockPass1!', 10),
+        verified: true,
+        active: true,
+        role: 'member',
+        simulationTokens: 5,
+        createdAt: new Date(),
+      });
+      const signin2 = await fetch(`${base2}/api/signin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'stockuser2', password: 'StockPass1!' }),
+      });
+      const token2 = (await signin2.json()).token;
+      const auth2 = { Authorization: `Bearer ${token2}` };
+      const status2 = await fetch(`${base2}/api/stock-search/status`, { headers: auth2 });
+      const statusBody2 = await status2.json();
+      check('unprovisioned status is available:false (200, not 401)', status2.status === 200 && statusBody2.available === false);
+      const sim2 = await fetch(`${base2}/api/stock-search/similarity?smiles=c1ccccc1`, { headers: auth2 });
+      const simBody2 = await sim2.json();
+      check('unprovisioned similarity → 503 STOCK_SEARCH_UNAVAILABLE',
+        sim2.status === 503 && simBody2.code === 'STOCK_SEARCH_UNAVAILABLE',
+        `(got ${sim2.status} ${JSON.stringify(simBody2)})`);
+    } catch (err) {
+      console.error('[stock-route] unprovisioned test error:', err);
+      failed += 1;
+    } finally {
+      try { child2.kill('SIGKILL'); } catch {}
+      try { await new Promise((resolve) => stub2.server.close(() => resolve())); } catch {}
+      try { await mem2.stop(); } catch {}
+      try { await mongo2.close(); } catch {}
+    }
   }
 
   console.log(`\nstock-search route: ${passed} passed, ${failed} failed`);

@@ -92,6 +92,7 @@ checks.push(
   ['stock rows are clearly labelled as not purchasable here', simulation.includes('not purchasable in this flow')],
   ['stock snapshot quantities are labelled as dated snapshots', simulation.includes('Dated snapshot quantity from the supplier export')],
   ['stock empty/error states are distinct from the catalog', simulation.includes('No stock compounds matched this structure at the current threshold')],
+  ['stock row checkboxes share moleculeSelectionId with the docking handoff', simulation.includes('const stockMoleculeId = moleculeSelectionId(mol, idx)')],
 );
 
 // Pure row-mapping checks against REAL engine payloads captured 2026-09-06 from
