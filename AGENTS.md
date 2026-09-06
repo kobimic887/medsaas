@@ -38,6 +38,13 @@ execute the small slice.
   scientific + MCP; `deploy/` host and box.
 - Routes primarily in `server/index.js`; scientific proxies also in
   `server/routes/scientificServices.js`.
+- Stock-compound similarity lives **in Simulation** (source toggle `Asinex
+  catalog | Stock compounds`), not the Deep Similarity picker. Server
+  `GET /api/stock-search/status|similarity` proxy an internal tonomitosql
+  dataset via `STOCK_SEARCH_BASE` / `STOCK_SEARCH_DATASET_ID` /
+  `STOCK_SEARCH_DATASET_NAME`; unprovisioned = **503 `STOCK_SEARCH_UNAVAILABLE`**
+  (never a silent fallback to Asinex). Full contract in
+  `docs/DATA-STOCK-COMPOUNDS.md`.
 - Client routes: `client/src/routes.jsx`. Use `API_CONFIG.buildApiUrl()` for `/api/*`
   and `API_CONFIG.buildUrl()` for top-level routes.
 - Auth state: `client/src/context/auth.jsx`. Session logout interceptor:

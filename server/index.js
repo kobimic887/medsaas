@@ -33,6 +33,16 @@ import {
 } from './utils/admetQueue.js';
 import { normalizeShopSearchResponse } from './utils/asinexCompound.js';
 import {
+  buildStockSimilarityUrl,
+  createStockDatasetResolver,
+  describeStockUpstreamError,
+  parseStockSearchQuery,
+  relayStockUpstreamStatus,
+  stockSearchConfig,
+  StockSearchUnavailableError,
+  StockSearchValidationError,
+} from './utils/stockSearch.js';
+import {
   DEFAULT_BRAND_PALETTE,
   extractBrandPalette,
   normalizeBrandPalette,
@@ -94,6 +104,27 @@ const PUBLIC_SIGNUP_ENABLED = String(process.env.ALLOW_PUBLIC_SIGNUP || '').trim
 // with no pagination, so this is a safety ceiling rather than a page size.
 const SIMULATION_LOG_PAGE_LIMIT = 500;
 const TANIMOTO_API_BASE = (process.env.TANIMOTO_API_BASE || 'http://151.145.91.17:8000').replace(/\/$/, '');
+
+// Stock-compound search (Anna's MOE export imported into a tonomitosql service;
+// docs/DATA-STOCK-COMPOUNDS.md). Explicit configuration contract:
+//   STOCK_SEARCH_BASE        — defaults to the shared TANIMOTO_API_BASE service so a
+//                              live import needs no extra env. Set it to an isolated
+//                              stack (e.g. oracleOld scratch :8010) only for
+//                              dev/verification — never hardcode that address here.
+//   STOCK_SEARCH_DATASET_ID  — pin the numeric dataset id (live import changes ids,
+//                              so discovery by name below is the default).
+//   STOCK_SEARCH_DATASET_NAME— dataset name used for discovery when the id is unset.
+// Resolution is lazy + cached in-process (see stockSearchResolver below); when no
+// dataset is provisioned the search routes answer 503 STOCK_SEARCH_UNAVAILABLE so
+// the Simulation UI shows a clear unavailable state instead of silently falling
+// back to the ASINEX corpus.
+const STOCK_SEARCH_CONFIG = stockSearchConfig(process.env);
+const stockSearchResolver = createStockDatasetResolver({
+  config: STOCK_SEARCH_CONFIG,
+  // The search service is internal + unauthenticated. Bound quickly so an
+  // unreachable host surfaces as unavailable instead of hanging a user search.
+  fetchImpl: (url) => fetchWithTimeout(url, { timeoutMs: 10000 }),
+});
 // LANDMINE: the fallback below is the retired 83 host. Port 8001 there has been dead
 // since 2026-06-04 (docs/PRODUCTION-83-INVENTORY.md), so an unset SDF_CONVERTER_URL
 // means every SMILES ligand in /api/diffdock/generate fails. The working converter is
@@ -4884,6 +4915,160 @@ app.post('/api/api4/mw', ensureMongoConnected, authenticateToken, requireActiveU
   } catch (error) {
     console.error(`Asinex API proxy error (/api4/mw) url=${safeUpstreamUrl(upstreamUrl)}:`, error.message || error);
     res.status(502).json({ error: 'Failed to connect to Asinex API', details: error.message });
+  }
+});
+
+// ── Stock-compound similarity search (Simulation) ───────────────────────────
+// Anna's stock export (630k+ compounds) is searched by STRUCTURE through a
+// tonomitosql dataset (docs/DATA-STOCK-COMPOUNDS.md). These routes are the only
+// way the browser reaches that internal service: same auth chain as the ASINEX
+// proxies, server-side dataset resolution from STOCK_SEARCH_* env, ranked
+// results paginated by offset/limit. When the dataset is not provisioned the
+// routes answer 503 STOCK_SEARCH_UNAVAILABLE (a configuration state, not a dead
+// session) so the Simulation page shows a clear unavailable message instead of
+// silently falling back to the ASINEX corpus.
+
+/**
+ * @swagger
+ * /api/stock-search/status:
+ *   get:
+ *     summary: Stock-compound search availability (dataset provisioned?)
+ *     tags: [Stock Search]
+ *     responses:
+ *       200:
+ *         description: >
+ *           { available: true, dataset: { id, name, rowCount } } when the
+ *           configured dataset resolves; { available: false, reason } when the
+ *           backend is unreachable or no stock dataset is provisioned.
+ */
+app.get('/api/stock-search/status', ensureMongoConnected, authenticateToken, requireActiveUser, async (_req, res) => {
+  try {
+    const dataset = await stockSearchResolver.resolve();
+    return res.json({
+      available: true,
+      dataset: {
+        id: dataset.id,
+        name: dataset.name,
+        rowCount: dataset.rowCount ?? null,
+      },
+      // The engine computes RDKit fingerprints from SMILES for both library and
+      // query; morgan (ECFP4) + tanimoto are the defaults we search with.
+      fingerprintType: 'morgan',
+      similarityMetric: 'tanimoto',
+    });
+  } catch (error) {
+    if (error instanceof StockSearchUnavailableError) {
+      return res.json({ available: false, reason: error.message });
+    }
+    console.error('Stock search status error:', error);
+    return res.json({ available: false, reason: 'Stock-compound search could not be checked right now.' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/stock-search/similarity:
+ *   get:
+ *     summary: Ranked similarity search over the stock-compound dataset
+ *     tags: [Stock Search]
+ *     parameters:
+ *       - in: query
+ *         name: smiles
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Query SMILES string
+ *       - in: query
+ *         name: threshold
+ *         schema:
+ *           type: number
+ *           default: 0.5
+ *           description: Minimum RDKit Tanimoto similarity (0.1-1.0)
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *           description: Result offset for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *           description: Page size (max 100)
+ *     responses:
+ *       200:
+ *         description: Engine payload { found, count, results, query_smiles } — each
+ *           result { molecule_id, canonical_smiles, similarity, metadata } with
+ *           metadata { ID, MAIN_BAS, compound_id, CURRENT_TOT_AMOUNT_UM,
+ *           CURRENT_TOT_NETTO_MG } from the import.
+ *       400:
+ *         description: Invalid smiles/threshold/offset/limit (validation)
+ *       503:
+ *         description: Stock dataset not provisioned (STOCK_SEARCH_UNAVAILABLE)
+ *       502:
+ *         description: Upstream search service unreachable/failed
+ */
+app.get('/api/stock-search/similarity', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+  let params;
+  try {
+    params = parseStockSearchQuery(req.query);
+  } catch (error) {
+    if (error instanceof StockSearchValidationError) {
+      return res.status(400).json({ error: error.message });
+    }
+    throw error;
+  }
+
+  let dataset;
+  try {
+    dataset = await stockSearchResolver.resolve();
+  } catch (error) {
+    if (error instanceof StockSearchUnavailableError) {
+      console.warn(`Stock search unavailable: ${error.message}`);
+      return res.status(503).json({ error: error.message, code: error.code });
+    }
+    throw error;
+  }
+
+  const upstreamUrl = buildStockSimilarityUrl({
+    baseUrl: STOCK_SEARCH_CONFIG.baseUrl,
+    datasetId: dataset.id,
+    smiles: params.smiles,
+    threshold: params.threshold,
+    offset: params.offset,
+    limit: params.limit,
+  });
+
+  try {
+    const response = await fetchWithTimeout(upstreamUrl, {
+      headers: { Accept: 'application/json' },
+    });
+    const text = await response.text();
+    let data;
+    try { data = JSON.parse(text); } catch { data = text; }
+
+    if (!response.ok) {
+      const status = relayStockUpstreamStatus(response.status);
+      return res.status(status).json({
+        error: describeStockUpstreamError(response.status, data),
+        ...(status === 502 ? { details: `Upstream HTTP ${response.status}` } : {}),
+      });
+    }
+
+    if (response.headers.get('content-type')) {
+      res.setHeader('Content-Type', response.headers.get('content-type'));
+    }
+    if (typeof data === 'object') {
+      return res.json(data);
+    }
+    return res.send(data);
+  } catch (error) {
+    console.error(`Stock search proxy error url=${safeUpstreamUrl(upstreamUrl)}:`, error.message || error);
+    return res.status(502).json({
+      error: 'Stock search is temporarily unavailable',
+      details: error.message,
+    });
   }
 });
 

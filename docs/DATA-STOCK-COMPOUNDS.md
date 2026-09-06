@@ -172,3 +172,110 @@ all three scoped search modes, the full-corpus default, and listing failure/retr
 Set `STOCK_SEARCH_BASE` to an isolated search service to also verify its stock
 dataset listing. This does not substitute for a signed-in browser test through
 the application proxy.
+
+## Simulation search — the real destination (2026-09-06)
+
+The dataset picker on the Deep Similarity screen was the **wrong user workflow**.
+The intended destination is the Simulation tab's molecule search
+(`client/src/pages/dashboard/simulation.jsx`), which used to search only the
+ASINEX catalog. It now has a **Search in: `Asinex catalog` | `Stock compounds
+(similarity)`** source toggle. Both corpora live in the same result list and feed
+the same selection → docking/DiffDock handoff. Switching sources clears results
+and aborts in-flight requests; a failed/unprovisioned stock search is shown as
+such and **never silently falls back to the ASINEX corpus**.
+
+### Server configuration contract (env, not hardcoded)
+
+`server/utils/stockSearch.js` owns the config; `server/index.js` mounts two
+authenticated routes (`ensureMongoConnected → authenticateToken →
+requireActiveUser`, same as the ASINEX proxies):
+
+| Route | Purpose |
+|---|---|
+| `GET /api/stock-search/status` | Availability: resolves the dataset and returns `{ available, dataset:{id,name,rowCount}, fingerprintType:'morgan', similarityMetric:'tanimoto' }` or `{ available:false, reason }` |
+| `GET /api/stock-search/similarity?smiles=&threshold=&offset=&limit=` | Ranked similarity over the stock dataset; relays the engine payload |
+
+Client calls go through `API_CONFIG.buildApiUrl()` with `Authorization`, so the
+internal unauthenticated tonomitosql service is never exposed to the browser.
+
+The dataset/backend are **explicitly configured** — nothing is hardcoded (in
+particular not scratch `:8010` or dataset id 10):
+
+- `STOCK_SEARCH_BASE` — tonomitosql base URL holding the stock dataset. Unset →
+  the shared `TANIMOTO_API_BASE` service (the normal production shape after a
+  live import). Point it at an isolated stack only for dev/verification.
+- `STOCK_SEARCH_DATASET_ID` — pin the dataset by numeric id (optional).
+- `STOCK_SEARCH_DATASET_NAME` — dataset name for discovery when the id is unset.
+  Default `Stock compounds — 2026-09-01` (matches the importer default).
+
+When no dataset resolves, `status` reports `available:false` and `similarity`
+answers **503 `STOCK_SEARCH_UNAVAILABLE`** — a configuration state, not a dead
+session (never a same-origin `401`). Upstream search-service auth/5xx failures
+relay as **502**; validation (`smiles`/`threshold`/`offset`/`limit`) is **400**.
+
+### Fingerprints: RDKit, computed the same way for query and library
+
+Anna's MOE export ships `FP:MACCS` (sparse key lists) and 11 more MOE
+fingerprint columns, and the MOE PDF (local copy under
+`~/.t3/userdata/attachments/…-pdf.pdf`) confirms they are MOE-native
+representations. **The Simulation stock search does not use any of Anna's MOE
+fingerprints.** The tonomitosql engine computes RDKit fingerprints (Morgan
+radius 2 ≈ ECFP4, Tanimoto metric by default) from SMILES for **both** the query
+and every library structure — the same implementation and settings on both
+sides, so results are internally consistent. MOE FP:* columns stay preserved
+only in the source TSV; comparing RDKit query fingerprints to MOE library
+fingerprints would not be scientifically valid, and nothing in this repo claims
+MOE-equivalent results. The UI labels the method honestly ("ranked by RDKit
+Morgan (ECFP4) Tanimoto similarity").
+
+### Stock result rows and pagination
+
+Each engine hit is `{ molecule_id, canonical_smiles, similarity, metadata }`;
+metadata carries `ID`, `MAIN_BAS`, `compound_id`, `CURRENT_TOT_AMOUNT_UM`,
+`CURRENT_TOT_NETTO_MG` as strings (leading zeros intact). The Simulation mapper
+(`client/src/utils/stockResults.js`) exposes the **stock code as the row
+identity**, keeps `molecule_id` as the separate engine row id, and deliberately
+invents **no** Asinex fields: no IUPAC/InChI/formula/MW, no prices, no
+availability — the table shows a Stock ID, SMILES, similarity, and the µmol/mg
+values labelled as **dated snapshot quantities** (not purchasable in this flow).
+Ranked pagination is by **offset/limit** over the engine's stable KNN ordering
+(measured 2026-09-06 against scratch: same-query offset pages share no rows and
+keep the ranking; the engine exposes no total count, so the page end is "fewer
+than limit rows returned"). A fresh search resets the offset, so new queries can
+never append stale pages.
+
+### ASINEX pagination defect (measured) — fixed only where provable
+
+While integrating stock search we measured the configured ASINEX provider
+(`/api4/*`): rows carry a numeric `id` and the BAS/substructure/molecular-weight
+responses are ordered by it, with `fromId` meaning "start after this id". The
+Simulation page used to compute its cursor as `parseInt(ASINEX_ID)` — but
+`ASINEX_ID` is the display code (`"ASN 04188606"`), so the cursor was always 0
+and "load more" repeated page one. The cursor now uses the numeric row `id` for
+the id-ordered modes. Score-ranked `/api4/similarity` has **no provable
+id-continuation** on the provider (it returns at most self/exact hits), so its
+first page is treated as the complete result instead of looping. (The ranked
+similarity path in this screen is the stock source above.)
+
+### Verification
+
+- `server/test/stock-search.test.mjs` — config, dataset discovery/cache,
+  validation, URL building, status relay (unit).
+- `server/test/stock-search-route.test.mjs` — spawns the real server + memory
+  Mongo against a fixture-backed stub: auth (401 without token), dataset
+  discovery by name, ranked page 1 + offset page 2 with **no shared
+  `molecule_id`**, empty page, 400 validation, honest result fields.
+- Fixtures under `server/test/fixtures/stock-similarity-*.json` are **real
+  engine responses** captured 2026-09-06 from the isolated scratch stack
+  (query `O=C(O)c1ccccc1`, morgan+tanimoto, threshold 0.35).
+- `scripts/check-simulation-search-lifecycle.mjs` asserts the source-switch /
+  offset-pagination / unavailable-state / honest-stock-rows invariants in
+  `simulation.jsx` and exercises the mapper on the real fixtures.
+- Run: `bun run test:stock-search` (unit + route) and `bun run
+  test:simulation-search` (UI invariants). `bun run test` includes both.
+
+Not yet browser-proven (no browser harness in this repo): clicking through the
+Simulation toggle, checkbox selection → docking button enabled, and the drawing
+editor path — the harness proves the API contract, the row mapping, and the
+component invariants instead. Do not launch a paid docking job just to verify
+selection; the handoff uses the same `searchCode` SMILES flow as ASINEX hits.
