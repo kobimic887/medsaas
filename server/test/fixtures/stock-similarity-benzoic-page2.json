@@ -1,0 +1,103 @@
+{
+  "found": true,
+  "count": 50,
+  "results": [
+    {
+      "molecule_id": 1443986,
+      "canonical_smiles": "N#Cc1cccc(C(=O)O)c1",
+      "similarity": 0.4615,
+      "metadata": {
+        "ID": "18129842",
+        "MAIN_BAS": "LAS 18129842",
+        "compound_id": "LAS 18129842",
+        "CURRENT_TOT_NETTO_MG": "305.10001",
+        "CURRENT_TOT_AMOUNT_UM": "2074.3"
+      }
+    },
+    {
+      "molecule_id": 1443310,
+      "canonical_smiles": "CC(C)c1cccc(C(=O)O)c1",
+      "similarity": 0.4615,
+      "metadata": {
+        "ID": "22243163",
+        "MAIN_BAS": "BAS 22243163",
+        "compound_id": "BAS 22243163",
+        "CURRENT_TOT_NETTO_MG": "347.20001",
+        "CURRENT_TOT_AMOUNT_UM": "2114.3"
+      }
+    },
+    {
+      "molecule_id": 1443314,
+      "canonical_smiles": "CN(C)c1cccc(C(=O)O)c1",
+      "similarity": 0.4615,
+      "metadata": {
+        "ID": "26391445",
+        "MAIN_BAS": "LAS 26391445",
+        "compound_id": "LAS 26391445",
+        "CURRENT_TOT_NETTO_MG": "351.39999",
+        "CURRENT_TOT_AMOUNT_UM": "2127.3"
+      }
+    },
+    {
+      "molecule_id": 1690436,
+      "canonical_smiles": "O=C(c1ccccc1)N1CCN(c2ccccc2)CC1",
+      "similarity": 0.4615,
+      "metadata": {
+        "ID": "00500692",
+        "MAIN_BAS": "BAS 00500692",
+        "compound_id": "BAS 00500692",
+        "CURRENT_TOT_NETTO_MG": "79.400002",
+        "CURRENT_TOT_AMOUNT_UM": "298.10001"
+      }
+    },
+    {
+      "molecule_id": 1441748,
+      "canonical_smiles": "O=C(c1ccccc1)c1ccc(C(=O)O)c(C(=O)O)c1",
+      "similarity": 0.4615,
+      "metadata": {
+        "ID": "00095877",
+        "MAIN_BAS": "BAS 00095877",
+        "compound_id": "BAS 00095877",
+        "CURRENT_TOT_NETTO_MG": "5.5",
+        "CURRENT_TOT_AMOUNT_UM": "20"
+      }
+    },
+    {
+      "molecule_id": 1637359,
+      "canonical_smiles": "O=C(NNC(=O)c1ccccc1C(=O)O)c1ccccc1",
+      "similarity": 0.4615,
+      "metadata": {
+        "ID": "00144568",
+        "MAIN_BAS": "BAS 00144568",
+        "compound_id": "BAS 00144568",
+        "CURRENT_TOT_NETTO_MG": "218.2",
+        "CURRENT_TOT_AMOUNT_UM": "767.59998"
+      }
+    },
+    {
+      "molecule_id": 1715578,
+      "canonical_smiles": "O=C(O)c1ccc(N2CCNCC2)cc1",
+      "similarity": 0.4615,
+      "metadata": {
+        "ID": "03840548",
+        "MAIN_BAS": "LAS 03840548",
+        "compound_id": "LAS 03840548",
+        "CURRENT_TOT_NETTO_MG": "731.79999",
+        "CURRENT_TOT_AMOUNT_UM": "3015.2"
+      }
+    },
+    {
+      "molecule_id": 1798918,
+      "canonical_smiles": "O=Cc1ccccc1C(=O)O",
+      "similarity": 0.4583,
+      "metadata": {
+        "ID": "13482352",
+        "MAIN_BAS": "BAS 13482352",
+        "compound_id": "BAS 13482352",
+        "CURRENT_TOT_NETTO_MG": "1090.5",
+        "CURRENT_TOT_AMOUNT_UM": "7263.7002"
+      }
+    }
+  ],
+  "query_smiles": "O=C(O)c1ccccc1"
+}

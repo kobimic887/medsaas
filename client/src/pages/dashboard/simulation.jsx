@@ -22,6 +22,7 @@ import { convertPriceToEuro, formatPrice } from '@/utils/algo/algo';
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 import { copyToClipboard } from '@/utils/copyToClipboard';
 import { clearViewerStorage, markViewerHandoff, normalizePdbId, rcsbPdbDownloadUrl } from '@/utils/viewerStorage';
+import { stockResultsFromPayload } from '@/utils/stockResults';
 
 function catalogRowsFromResponse(result) {
   if (Array.isArray(result)) return result;
@@ -117,6 +118,16 @@ export function Simulation() {
   const [topError, setTopError] = useState("");
 
   const [searchType, setSearchType] = useState("similarity"); // Add searchType state
+  // Which corpus the search box targets: 'asinex' = the live ASINEX catalog
+  // (existing behavior), 'stock' = Anna's stock-compound dataset (RDKit-fingerprint
+  // similarity through /api/stock-search/similarity). Stock is never a silent
+  // fallback for Asinex or vice versa — switching clears the result list.
+  const [searchSource, setSearchSource] = useState("asinex");
+  const [stockStatus, setStockStatus] = useState(null); // null | { state: 'loading' } | { state: 'available', dataset } | { state: 'unavailable', reason }
+  const stockStatusRequestRef = useRef(0);
+  // Stock pagination is by offset over the engine's stable ranking, never by a
+  // parsed compound code (ASINEX IDs like "ASN 04188606" are strings).
+  const [stockOffset, setStockOffset] = useState(0); // next offset for stock pages
   const [queryType, setQueryType] = useState("draw"); // Default to Draw molecule
   const moleculeLimit = 30;
   const [similarityThreshold, setSimilarityThreshold] = useState(0.7); // Similarity threshold (0-1)
@@ -172,6 +183,9 @@ export function Simulation() {
   const lastSearchQueryRef = useRef("");
   const lastFromIdRef = useRef(0);
   const searchTypeRef = useRef(searchType);
+  const searchSourceRef = useRef(searchSource);
+  const stockStatusRef = useRef(stockStatus);
+  const stockOffsetRef = useRef(stockOffset);
   const pageSizeRef = useRef(pageSize);
   const similarityThresholdRef = useRef(similarityThreshold);
   const molWeightMinRef = useRef(molWeightMin);
@@ -234,16 +248,27 @@ export function Simulation() {
     lastSearchQueryRef.current = lastSearchQuery;
     lastFromIdRef.current = lastFromId;
     searchTypeRef.current = searchType;
+    searchSourceRef.current = searchSource;
     pageSizeRef.current = pageSize;
     similarityThresholdRef.current = similarityThreshold;
     molWeightMinRef.current = molWeightMin;
     molWeightMaxRef.current = molWeightMax;
-  }, [lastSearchQuery, lastFromId, searchType, pageSize, similarityThreshold, molWeightMin, molWeightMax]);
+  }, [lastSearchQuery, lastFromId, searchType, searchSource, pageSize, similarityThreshold, molWeightMin, molWeightMax]);
+
+  useEffect(() => {
+    stockStatusRef.current = stockStatus;
+  }, [stockStatus]);
+
+  useEffect(() => {
+    stockOffsetRef.current = stockOffset;
+  }, [stockOffset]);
 
   useEffect(() => () => {
     browseControllerRef.current?.abort();
     searchControllerRef.current?.abort();
     resultDownloadControllerRef.current?.abort();
+    // Invalidate an in-flight stock availability check when leaving the page.
+    stockStatusRequestRef.current += 1;
     if (messageTimerRef.current) window.clearTimeout(messageTimerRef.current);
     if (clipboardTimerRef.current) window.clearTimeout(clipboardTimerRef.current);
   }, []);
@@ -372,6 +397,135 @@ export function Simulation() {
     }
   };
 
+  // Stock-compound search availability. The dataset lives in a configured search
+  // service (STOCK_SEARCH_*); until it is provisioned the server answers 503 and
+  // this stays in the 'unavailable' state — a clear note, never a silent switch
+  // to the ASINEX corpus.
+  const fetchStockStatus = async () => {
+    const requestId = ++stockStatusRequestRef.current;
+    setStockStatus({ state: 'loading' });
+    const token = getAuthToken();
+    try {
+      const res = await fetch(API_CONFIG.buildApiUrl('/stock-search/status'), {
+        headers: {
+          'accept': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+      });
+      const data = await res.json().catch(() => null);
+      if (stockStatusRequestRef.current !== requestId) return;
+      if (!res.ok) {
+        setStockStatus({ state: 'unavailable', reason: data?.reason || `Availability check failed (HTTP ${res.status}).` });
+        return;
+      }
+      if (data && data.available === true && data.dataset && data.dataset.id !== undefined && data.dataset.id !== null) {
+        setStockStatus({ state: 'available', dataset: data.dataset, fingerprintType: data.fingerprintType, similarityMetric: data.similarityMetric });
+      } else {
+        setStockStatus({ state: 'unavailable', reason: data?.reason || 'Stock-compound search is not provisioned.' });
+      }
+    } catch (err) {
+      if (stockStatusRequestRef.current !== requestId) return;
+      setStockStatus({ state: 'unavailable', reason: err.message || 'Availability check failed.' });
+    }
+  };
+
+  // Switching the search corpus must never leave the other corpus' results on
+  // screen or let a stale response from it land afterwards. Reset everything the
+  // list, cursor, selection, and in-flight requests depend on.
+  const handleSourceChange = (nextSource) => {
+    if (nextSource === searchSourceRef.current) return;
+    searchSourceRef.current = nextSource;
+    browseControllerRef.current?.abort();
+    searchControllerRef.current?.abort();
+    browseRequestIdRef.current += 1;
+    searchRequestIdRef.current += 1;
+    stockStatusRequestRef.current += 1; // invalidate any in-flight status check
+    setSearchSource(nextSource);
+    setIsSearchActive(false);
+    isSearchActiveRef.current = false;
+    setSearchLoading(false);
+    setTopLoading(false);
+    setSearchError("");
+    setTopError("");
+    setSearchResult(null);
+    setTopMolecules([]);
+    setAllMolecules([]);
+    setHasMore(true);
+    setCurrentPage(0);
+    setLastFromId(0);
+    lastFromIdRef.current = 0;
+    setStockOffset(0);
+    stockOffsetRef.current = 0;
+    setSelectedMolecules(new Set());
+    setInitialLoading(false);
+    setCatalogSettled(true);
+
+    if (nextSource === 'stock') {
+      // Stock similarity is the only supported stock mode; the threshold slider
+      // below then controls the RDKit Tanimoto cutoff.
+      setSearchType('similarity');
+      if (!stockStatusRef.current) fetchStockStatus();
+    } else {
+      // Back to the catalog: restore the normal browse entry state.
+      fetchAllMolecules(0, false);
+    }
+  };
+
+  // One page of stock-compound similarity search. offsetStart is a page cursor
+  // (0 for a fresh search); append controls whether rows are replaced or added.
+  // The engine ranks by RDKit Tanimoto similarity (stable KNN order), so pages
+  // advance by offset without repeats or skips — never by a parsed compound code.
+  // Throws on failure so the caller's shared catch keeps the error visible.
+  const runStockSearch = async (offsetStart, append, { token, rawQuery, controller, requestId }) => {
+    if (stockStatusRef.current?.state !== 'available') {
+      throw new Error('Stock-compound search is not available yet. See the availability note above.');
+    }
+    const activeThreshold = similarityThresholdRef.current;
+    const activePageSize = pageSizeRef.current;
+    const params = new URLSearchParams({
+      smiles: rawQuery,
+      threshold: String(activeThreshold),
+      offset: String(offsetStart),
+      limit: String(activePageSize),
+    });
+    const url = `${API_CONFIG.buildApiUrl('/stock-search/similarity')}?${params.toString()}`;
+    const res = await fetchWithGatewayRetry(url, {
+      method: 'GET',
+      signal: controller.signal,
+      headers: {
+        'accept': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+    });
+    const responseText = await res.text();
+    if (!res.ok) {
+      let payload = null;
+      try { payload = responseText.trim() ? JSON.parse(responseText) : null; } catch { payload = null; }
+      if (payload && payload.code === 'STOCK_SEARCH_UNAVAILABLE') {
+        throw new Error(`Stock-compound search is not available: ${payload.error || 'the dataset is not provisioned'}.`);
+      }
+      throw new Error(payload?.error || describeUpstreamHttpError(res.status, res.statusText, responseText, 'stock'));
+    }
+    const payload = responseText.trim() ? JSON.parse(responseText) : { results: [] };
+    if (searchControllerRef.current !== controller || requestId !== searchRequestIdRef.current) {
+      return false;
+    }
+    const rows = stockResultsFromPayload(payload);
+    if (append) {
+      setTopMolecules(prev => [...prev, ...rows]);
+    } else {
+      setTopMolecules(rows);
+      setSelectedMolecules(new Set());
+    }
+    // A page exactly as large as requested may have a successor; a short or empty
+    // page is the end of the ranking. The engine exposes no total count.
+    const fullPage = rows.length >= pageSizeRef.current;
+    setHasMore(fullPage);
+    stockOffsetRef.current = offsetStart + rows.length;
+    setStockOffset(stockOffsetRef.current);
+    return true;
+  };
+
   const handleSearch = async () => {
     browseControllerRef.current?.abort();
     // Invalidate any response that was already past fetch cancellation before
@@ -399,6 +553,10 @@ export function Simulation() {
     setAllMolecules([]);
     setHasMore(true);
     setLastFromId(0); // Reset fromId to 0 for new search
+    // Stock similarity pages by offset; every fresh search restarts at offset 0
+    // so a previous query's cursor can never continue into new results.
+    setStockOffset(0);
+    stockOffsetRef.current = 0;
     
     // Clear selected molecules when doing a new search
     setSelectedMolecules(new Set());
@@ -406,6 +564,19 @@ export function Simulation() {
     try {
       const token = getAuthToken();
       const rawQuery = (searchCode || '').trim();
+
+      if (searchSourceRef.current === 'stock') {
+        // Stock mode = similarity only, over /api/stock-search/similarity. The
+        // engine ranks the same way for every page; offsets (not a parsed code)
+        // page through the ranking. A failure is shown as-is — never silently
+        // re-run against the ASINEX corpus.
+        const progressed = await runStockSearch(0, false, { token, rawQuery, controller, requestId });
+        if (progressed === false) return; // superseded by a newer request
+        isSearchActiveRef.current = true;
+        setIsSearchActive(true);
+        setLastSearchQuery(rawQuery);
+        return;
+      }
 
       // Map UI searchType to API method names
       const methodMap = {
@@ -471,14 +642,27 @@ export function Simulation() {
       const formattedMolecules = resultRows.map(normalizeCatalogMolecule);
       setTopMolecules(formattedMolecules);
       setSelectedMolecules(new Set());
-      setHasMore(formattedMolecules.length >= pageSize);
 
-      if (formattedMolecules.length > 0) {
-        const maxId = Math.max(...formattedMolecules.map((molecule) => {
-          const id = molecule.ASINEX_ID || '0';
-          return Number.parseInt(id, 10) || 0;
-        }));
-        setLastFromId(maxId);
+      // ASINEX cursor contract (measured on the configured provider 2026-09-06):
+      // /api4 rows are keyed by a numeric `id`. The BAS/substructure/molecular
+      // weight modes return id-ordered rows and continue with fromId = last row
+      // id. Score-ranked similarity has NO provable id-continuation, so its first
+      // page is treated as the complete result — never loop "fromId=0" duplicates
+      // or skip a ranking with a guessed cursor. (The provider itself returns at
+      // most self/exact hits for similarity; Anna's stock dataset is the ranked
+      // similarity path in this screen.)
+      const modeContinuesByCursor =
+        method !== 'similarity' && formattedMolecules.length >= pageSize;
+      setHasMore(modeContinuesByCursor);
+
+      if (formattedMolecules.length > 0 && modeContinuesByCursor) {
+        const maxRowId = formattedMolecules.reduce((max, molecule) => {
+          const parsed = Number(molecule.id);
+          return Number.isSafeInteger(parsed) && parsed > max ? parsed : max;
+        }, 0);
+        setLastFromId(maxRowId > 0 ? maxRowId : 0);
+      } else {
+        setLastFromId(0);
       }
       isSearchActiveRef.current = true;
       setIsSearchActive(true);
@@ -514,6 +698,14 @@ export function Simulation() {
       const activeThreshold = similarityThresholdRef.current;
       const activeMolWeightMin = molWeightMinRef.current;
       const activeMolWeightMax = molWeightMaxRef.current;
+
+      if (searchSourceRef.current === 'stock') {
+        // Stock pages advance by offset over the engine's stable ranking; the
+        // shared caller resets the offset on every fresh search, so an append can
+        // never trail into a newer query's results.
+        await runStockSearch(stockOffsetRef.current, true, { token, rawQuery, controller, requestId });
+        return;
+      }
 
       // Map UI searchType to API method names
       const methodMap = {
@@ -569,12 +761,6 @@ export function Simulation() {
         return;
       }
       
-      // Check if response fromId matches request fromId (meaning we've hit the end)
-      if (result.fromId !== undefined && result.fromId === lastFromIdRef.current) {
-        setHasMore(false);
-        return;
-      }
-      
       const resultRows = catalogRowsFromResponse(result);
       const formattedMolecules = resultRows.map(normalizeCatalogMolecule);
 
@@ -582,14 +768,21 @@ export function Simulation() {
         // Append to existing molecules
         setTopMolecules(prev => [...prev, ...formattedMolecules]);
         
-        // Update lastFromId to the maximum id_number from the response for next page
-        if (formattedMolecules.length > 0) {
-          const maxId = Math.max(...formattedMolecules.map(m => {
-            const id = m.ASINEX_ID || '0';
-            return Number.parseInt(id, 10) || 0;
-          }));
-          lastFromIdRef.current = maxId;
-          setLastFromId(maxId);
+        // ASINEX cursor contract (measured on the configured provider 2026-09-06):
+        // /api4 search rows carry a numeric `id`; the BAS/substructure/molecular
+        // weight responses are ordered by it and `fromId` means "start after this
+        // id". The display code ("ASN 04188606") is a string and must never be
+        // parsed as the cursor — parseInt(...) yields 0 and would repeat the
+        // first page forever. Score-ranked similarity has no provable id
+        // continuation, so handleSearch already stopped paging there; this page
+        // only ever runs for the id-ordered modes.
+        const maxRowId = formattedMolecules.reduce((max, molecule) => {
+          const parsed = Number(molecule.id);
+          return Number.isSafeInteger(parsed) && parsed > max ? parsed : max;
+        }, 0);
+        if (maxRowId > 0) {
+          lastFromIdRef.current = maxRowId;
+          setLastFromId(maxRowId);
         }
         
         // Check if we have more data
@@ -1186,6 +1379,11 @@ export function Simulation() {
     }
   };
 
+  // Stock searches are similarity-only and require a provisioned backend; the
+  // catalog never stands in silently, so the Search button stays disabled until
+  // the stock availability check reports 'available'.
+  const stockSearchDisabled = searchSource === 'stock' && stockStatus?.state !== 'available';
+
   const handleCopySmiles = async () => {
     if (ketcherIframeRef.current) {
       try {
@@ -1276,7 +1474,65 @@ export function Simulation() {
         </div>
       )}
 
-      <div className="mb-6 flex flex-col gap-2 w-full">        
+      <div className="mb-6 flex flex-col gap-2 w-full">
+        {/* Search source: live ASINEX catalog vs Anna's stock compounds. The two
+            corpora are never mixed or silently substituted: switching clears the
+            result list, and an unprovisioned stock search is shown as such. */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 mb-2 w-full">
+          <Typography variant="small" color="blue-gray" className="mr-2">Search in:</Typography>
+          <label className="flex items-center gap-1 w-full sm:w-auto">
+            <input
+              type="radio"
+              name="searchSource"
+              value="asinex"
+              checked={searchSource === "asinex"}
+              onChange={() => handleSourceChange("asinex")}
+            />
+            <span>Asinex catalog</span>
+          </label>
+          <label className="flex items-center gap-1 w-full sm:w-auto">
+            <input
+              type="radio"
+              name="searchSource"
+              value="stock"
+              checked={searchSource === "stock"}
+              onChange={() => handleSourceChange("stock")}
+            />
+            <span>Stock compounds (similarity)</span>
+          </label>
+        </div>
+
+        {/* Stock-compound availability: a clear state, never a silent corpus switch. */}
+        {searchSource === "stock" && stockStatus && stockStatus.state === "loading" && (
+          <div className="mb-2 flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/70 px-4 py-3" role="status" aria-live="polite">
+            <Spinner className="h-4 w-4 text-blue-500" />
+            <Typography variant="small" color="blue-gray">Checking stock-compound search availability…</Typography>
+          </div>
+        )}
+        {searchSource === "stock" && stockStatus && stockStatus.state === "available" && (
+          <div className="mb-2 rounded-lg border border-teal-100 bg-teal-50/70 px-4 py-3">
+            <Typography variant="small" color="blue-gray">
+              Stock-compound search is ready — {stockStatus.dataset.rowCount ? `${stockStatus.dataset.rowCount.toLocaleString()} compounds` : "the imported dataset"}, ranked by RDKit Morgan (ECFP4) Tanimoto similarity.
+            </Typography>
+          </div>
+        )}
+        {searchSource === "stock" && stockStatus && stockStatus.state === "unavailable" && (
+          <Alert color="amber" className="mb-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <Typography variant="small">
+                Stock-compound search is not available yet: {stockStatus.reason} You can still search the Asinex catalog — switch the source above.
+              </Typography>
+              <button
+                type="button"
+                className="w-fit shrink-0 text-sm font-semibold underline"
+                onClick={fetchStockStatus}
+              >
+                Check again
+              </button>
+            </div>
+          </Alert>
+        )}
+        
         {/* Query type radio buttons above search box */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 mb-2 w-full">
           <Typography variant="small" color="blue-gray" className="mr-2">Query:</Typography>
@@ -1301,7 +1557,9 @@ export function Simulation() {
             <span>Molecule ID, SMILES, CAS Number, IUPAC name, InChI, InChIKey</span>
           </label>
         </div>
-        {/* Search type radio buttons */}
+        {/* Search type radio buttons. Stock mode is similarity-only (ranked); the
+            catalog modes (substructure/structure/BAS/molecular weight) stay
+            available under the Asinex source exactly as before. */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 mb-2 w-full">
           <Typography variant="small" color="blue-gray" className="mr-2">Search type:</Typography>
           <label className="flex items-center gap-1 w-full sm:w-auto">
@@ -1314,47 +1572,56 @@ export function Simulation() {
             />
             <span>Similarity</span>
           </label>
-          <label className="flex items-center gap-1 w-full sm:w-auto">
-            <input
-              type="radio"
-              name="searchType"
-              value="substructure"
-              checked={searchType === "substructure"}
-              onChange={() => setSearchType("substructure")}
-            />
-            <span>Substructure</span>
-          </label>
-          <label className="flex items-center gap-1">
-            <input
-              type="radio"
-              name="searchType"
-              value="structure"
-              checked={searchType === "structure"}
-              onChange={() => setSearchType("structure")}
-            />
-            <span>Structure</span>
-          </label>
-          <label className="flex items-center gap-1 w-full sm:w-auto">
-            <input
-              type="radio"
-              name="searchType"
-              value="bas"
-              checked={searchType === "bas"}
-              onChange={() => setSearchType("bas")}
-            />
-            <span>BAS</span>
-          </label>
-          <label className="flex items-center gap-1 w-full sm:w-auto">
-            <input
-              type="radio"
-              name="searchType"
-              value="molweight"
-              checked={searchType === "molweight"}
-              onChange={() => setSearchType("molweight")}
-            />
-            <span>Mol weight</span>
-          </label>
+          {searchSource === "asinex" && (
+            <>
+              <label className="flex items-center gap-1 w-full sm:w-auto">
+                <input
+                  type="radio"
+                  name="searchType"
+                  value="substructure"
+                  checked={searchType === "substructure"}
+                  onChange={() => setSearchType("substructure")}
+                />
+                <span>Substructure</span>
+              </label>
+              <label className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="searchType"
+                  value="structure"
+                  checked={searchType === "structure"}
+                  onChange={() => setSearchType("structure")}
+                />
+                <span>Structure</span>
+              </label>
+              <label className="flex items-center gap-1 w-full sm:w-auto">
+                <input
+                  type="radio"
+                  name="searchType"
+                  value="bas"
+                  checked={searchType === "bas"}
+                  onChange={() => setSearchType("bas")}
+                />
+                <span>BAS</span>
+              </label>
+              <label className="flex items-center gap-1 w-full sm:w-auto">
+                <input
+                  type="radio"
+                  name="searchType"
+                  value="molweight"
+                  checked={searchType === "molweight"}
+                  onChange={() => setSearchType("molweight")}
+                />
+                <span>Mol weight</span>
+              </label>
+            </>
+          )}
         </div>
+        {searchSource === "stock" && (
+          <p className="mb-2 text-sm text-blue-gray-500">
+            Stock search compares structures with RDKit fingerprints (Morgan/ECFP4, Tanimoto) computed the same way for the query and every compound. Substructure, BAS, and molecular-weight search stay available under the Asinex catalog source.
+          </p>
+        )}
         
         {/* Similarity Threshold Slider */}
         {searchType === "similarity" && (
@@ -1468,7 +1735,7 @@ export function Simulation() {
           {/* Search section */}
           <div id="molecule-search" className="flex flex-col sm:flex-row items-stretch gap-2 w-full lg:w-1/2"> {/* 50% width search bar */}
             <Input
-              label="Add molecule ID, SMILES, CAS Number, IUPAC name, InChI or InChIKey here"
+              label={searchSource === "stock" ? "SMILES of the molecule to search against the stock list" : "Add molecule ID, SMILES, CAS Number, IUPAC name, InChI or InChIKey here"}
               value={searchCode}
               onChange={e => setSearchCode(e.target.value)}
               className="flex-1 min-w-0 w-full" // full width within the container
@@ -1476,7 +1743,7 @@ export function Simulation() {
             <Button
               size="lg"
               onClick={handleSearch}
-              disabled={searchLoading || !searchCode.trim() || selectedMolecules.size > 1}
+              disabled={searchLoading || !searchCode.trim() || selectedMolecules.size > 1 || stockSearchDisabled}
               className="flex items-center gap-3 px-6 py-3 text-lg font-semibold whitespace-nowrap bg-brand-500 text-white focus:opacity-[0.85] active:opacity-[0.85]"
             >
               {searchLoading ? <Spinner className="h-5 w-5" /> : <CloudIcon className="h-5 w-5" />}
@@ -1625,7 +1892,7 @@ export function Simulation() {
             <div className="flex flex-col gap-2">
               <Typography variant="h6" color="blue-gray">Search Molecules</Typography>
               <Input
-                label="Add molecule ID, SMILES, CAS Number, IUPAC name, InChI or InChIKey here"
+                label={searchSource === "stock" ? "SMILES of the molecule to search against the stock list" : "Add molecule ID, SMILES, CAS Number, IUPAC name, InChI or InChIKey here"}
                 value={searchCode}
                 onChange={e => setSearchCode(e.target.value)}
                 className="w-full"
@@ -1633,7 +1900,7 @@ export function Simulation() {
               <Button
                 size="lg"
                 onClick={handleSearch}
-                disabled={searchLoading || !searchCode || selectedMolecules.size > 1}
+                disabled={searchLoading || !searchCode || selectedMolecules.size > 1 || stockSearchDisabled}
                 className="flex items-center justify-center gap-3 w-full bg-brand-500 text-white focus:opacity-[0.85] active:opacity-[0.85]"
               >
                 {searchLoading ? <Spinner className="h-5 w-5" /> : <CloudIcon className="h-5 w-5" />}
@@ -1752,7 +2019,102 @@ export function Simulation() {
           {topError && (
             <Alert color="red" className="mb-4">{topError}</Alert>
           )}
-          {!initialLoading && !topError && topMolecules.length > 0 && (
+          {!initialLoading && !topError && topMolecules.length > 0 && (searchSource === "stock" ? (
+            <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
+              <CardBody className="p-0">
+                <div className="border-b border-blue-gray-100 bg-blue-gray-50/60 px-4 py-2 text-xs text-blue-gray-600 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-400">
+                  Source: stock compounds, ranked by RDKit Morgan (ECFP4) Tanimoto similarity. µmol / mg are dated snapshot quantities from the supplier export — not live availability — and stock rows are not purchasable in this flow.
+                </div>
+                <table className="w-full text-left">
+                  <thead className="sticky top-0 z-10 bg-white">
+                    <tr>
+                      <th className="p-2 font-bold bg-white">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={getSelectAllState().checked}
+                            ref={(el) => {
+                              if (el) el.indeterminate = getSelectAllState().indeterminate;
+                            }}
+                            onChange={(e) => handleSelectAll(e.target.checked)}
+                            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                          />
+                          <span>Select</span>
+                        </div>
+                      </th>
+                      <th className="p-2 font-bold bg-white">#</th>
+                      <th className="p-2 font-bold bg-white">Similarity</th>
+                      <th className="p-2 font-bold bg-white">Stock ID</th>
+                      <th className="p-2 font-bold bg-white">SMILES</th>
+                      <th className="p-2 font-bold bg-white" title="Dated snapshot quantity from the supplier export — not live availability">µmol</th>
+                      <th className="p-2 font-bold bg-white" title="Dated snapshot quantity from the supplier export — not live availability">mg</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topMolecules.map((mol, idx) => {
+                      const stockMoleculeId = mol.ASINEX_ID || mol.stockRowId || `stock-${idx}`;
+                      const isChecked = selectedMolecules.has(stockMoleculeId);
+                      const stockSmiles = mol.SMILES_STRING || "";
+                      return (
+                        <tr key={`${stockMoleculeId}-${idx}`} className="border-b">
+                          <td className="p-2">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => handleCheckboxChange(mol, idx, e.target.checked)}
+                              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                          </td>
+                          <td className="p-2">{idx + 1}</td>
+                          <td className="p-2 font-bold text-blue-600" title={mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? `Similarity: ${mol.SIMILARITY}` : "N/A"}>
+                            {mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? parseFloat(mol.SIMILARITY).toFixed(3) : "N/A"}
+                          </td>
+                          <td
+                            className="p-2 font-mono text-xs whitespace-nowrap"
+                            title={mol.stockCode}
+                            onMouseEnter={(e) => handleMouseEnter(stockSmiles, e, "Stock compound")}
+                            onMouseLeave={handleMouseLeave}
+                          >
+                            {mol.stockCode}
+                          </td>
+                          <td className="p-0 font-mono text-xs">
+                            <button
+                              type="button"
+                              className="w-full p-2 text-left hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 dark:hover:bg-slate-800"
+                              title={stockSmiles || "N/A"}
+                              onClick={async () => {
+                                setSearchCode(stockSmiles);
+                                if (!stockSmiles) return;
+                                try {
+                                  await copyToClipboard(stockSmiles);
+                                  showClipboardConfirmation();
+                                } catch (err) {
+                                  console.error("Failed to copy SMILES:", err);
+                                  showMessage("SMILES could not be copied.", "error");
+                                }
+                              }}
+                              onMouseEnter={(e) => handleMouseEnter(stockSmiles, e, "SMILES")}
+                              onMouseLeave={handleMouseLeave}
+                              onFocus={(e) => handleMouseEnter(stockSmiles, e, "SMILES")}
+                              onBlur={handleMouseLeave}
+                            >
+                              {(stockSmiles || "N/A").toString().slice(0, moleculeLimit)}{(stockSmiles || "N/A").toString().length > moleculeLimit ? "..." : ""}
+                            </button>
+                          </td>
+                          <td className="p-2" title={mol.STOCK_UM !== null && mol.STOCK_UM !== undefined ? String(mol.STOCK_UM) : "not in snapshot"}>
+                            {mol.STOCK_UM !== null && mol.STOCK_UM !== undefined ? formatNumericValue(mol.STOCK_UM) : "—"}
+                          </td>
+                          <td className="p-2" title={mol.STOCK_MG !== null && mol.STOCK_MG !== undefined ? String(mol.STOCK_MG) : "not in snapshot"}>
+                            {mol.STOCK_MG !== null && mol.STOCK_MG !== undefined ? formatNumericValue(mol.STOCK_MG) : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </CardBody>
+            </Card>
+          ) : (
             <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
                 <table className="w-full text-left">
@@ -1929,7 +2291,7 @@ export function Simulation() {
                 </table>
               </CardBody>
             </Card>
-          )}
+          ))}
           
           {/* Pagination Loading Indicator */}
           {topLoading && topMolecules.length > 0 && (
@@ -1952,11 +2314,15 @@ export function Simulation() {
           {(!isSearchActive ? catalogSettled : !searchLoading) && !initialLoading && !topLoading && !topError && !searchError && topMolecules.length === 0 && (
             <div className="text-center py-8" role="status" aria-live="polite">
               <Typography variant="small" color="gray">
-                {queryType === "text"
+                {searchSource === "stock"
                   ? isSearchActive
-                    ? "No molecules matched this search. Try another query or adjust the search options."
-                    : "Enter a molecule identifier or structure above, then select Search."
-                  : "No catalog molecules are available right now."}
+                    ? "No stock compounds matched this structure at the current threshold. Lower the similarity threshold or try another molecule."
+                    : "Search the stock list: enter a SMILES or draw a molecule, then select Search."
+                  : queryType === "text"
+                    ? isSearchActive
+                      ? "No molecules matched this search. Try another query or adjust the search options."
+                      : "Enter a molecule identifier or structure above, then select Search."
+                    : "No catalog molecules are available right now."}
               </Typography>
             </div>
           )}
