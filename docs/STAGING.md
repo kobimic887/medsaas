@@ -1,21 +1,24 @@
 # Pyxis staging — `/staging/` on the live hostname
 
 Status: **owner-test preview, LIVE at `https://app.pyxis-discovery.com/staging/`
-since 2026-09-07 (branch `staging/folding-preview` @ `f06e8a6`).** Nothing here
+since 2026-09-07 (branch `staging/folding-preview` @ `2d32f4a`).** Nothing here
 is promoted to production automatically; production behavior changes only
 through the scoped `/staging/` nginx routing and the separate staging service.
 
-The **Simulation extension** (below) is committed on `staging/folding-preview`
-but **not yet deployed** — it awaits owner approval of the service update on 84
-(docking is real and billed; install touches only the staging unit/tree, never
-production `:5174`).
+The **Simulation extension** below is LIVE since 2026-09-07 at commit
+`2d32f4a` (owner-approved update of the staging service/tree only — production
+`:5174` untouched). Docking/DiffDock on staging are real and billed under the
+synthetic demo account.
 
 Verified live over HTTPS on 2026-09-07: `/staging` → `/staging/` redirect,
 staging SPA + deep-link refresh (200), `/staging/assets/*` scoped, sample files
 served, demo sign-in + validate-token, fixture predict (labelled demo), paid
-endpoint refusal (403), unknown `/api` (503); production `/`, `/health`, stock
-search and `/auth/sign-in` unchanged (no banner). Interactive/WebGL/mobile
-keyboard checks remain pending a real-browser visit.
+endpoint refusal (403), unknown `/api` (503); **Simulation live checks**
+(2d32f4a): catalog browse + substructure search returning real Asinex rows,
+`503 STOCK_SEARCH_UNAVAILABLE`, `simulation-logs []`, unauth 401;
+production `/`, `/health`, stock search and `/auth/sign-in` unchanged (no
+banner). Interactive/WebGL/mobile keyboard checks and the first billed docking
+round-trip remain pending a real-browser visit by the owner.
 
 Runbook and files: [`deploy/staging/README.md`](../deploy/staging/README.md).
 Branch: `staging/folding-preview`.

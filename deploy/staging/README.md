@@ -3,10 +3,11 @@
 Owner-test staging lives at **https://app.pyxis-discovery.com/staging/** — no new
 DNS record, subdomain, or certificate.
 
-**Live since 2026-09-07** (branch `staging/folding-preview`, commit `f06e8a6`,
-tree `/root/pyxis-STAGING-5274`, service `pyxis-web-staging` on loopback
-`:5274`). Nginx backups made at install (REAL file copies — see the symlink
-warning below):
+**Live since 2026-09-07** (branch `staging/folding-preview`, commit `2d32f4a`
+— folding preview since `f06e8a6`, Simulation catalog + docking/DiffDock
+owner-authorized at `2d32f4a`; tree `/root/pyxis-STAGING-5274`, service
+`pyxis-web-staging` on loopback `:5274`). Nginx backups made at install (REAL
+file copies — see the symlink warning below):
 - `/root/pyxis-staging-nginx-backup.20260907T152427.original` — pre-staging
   config (md5 `4241cf29f104cb40d5ccbf0d722e01c3`)
 - `/root/pyxis-staging-nginx-backup.20260907T152427.current` — config WITH the
