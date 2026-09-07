@@ -13,6 +13,7 @@ Longer-form reference for Pyxis Discovery. Shared agent instructions:
 | Situation | Read |
 |---|---|
 | **Simulation stock search (live state)** | [NEXT-SESSION-SEARCH-REVIEW.md](./NEXT-SESSION-SEARCH-REVIEW.md) · [DATA-STOCK-COMPOUNDS.md](./DATA-STOCK-COMPOUNDS.md) |
+| **Staging / demo mode / folding history** | [STAGING.md](./STAGING.md) (runbook: `deploy/staging/README.md`) |
 | **Protein-design research / folding next steps** | [PROTEIN-DESIGN-RESEARCH.md](./PROTEIN-DESIGN-RESEARCH.md) |
 | **Where is this copy / leftover?** | [WHERE.md](./WHERE.md) |
 | **Any ops / fresh agent** | [POST-PROMOTION-HANDOFF.md](./POST-PROMOTION-HANDOFF.md) |

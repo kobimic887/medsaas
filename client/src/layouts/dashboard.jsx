@@ -11,6 +11,7 @@ import { ThemeProvider } from "@material-tailwind/react";
 import { useMaterialTailwindController, MaterialTailwindControllerProvider } from "@/context";
 import { useBranding } from "@/hooks/useBranding";
 import { SkipLink } from "@/components/SkipLink";
+import { StagingBanner } from "@/components/StagingBanner";
 
 class DashboardErrorBoundary extends React.Component {
   constructor(props) {
@@ -97,8 +98,11 @@ function DashboardShell() {
           openSidenav ? 'xl:ml-72' : 'xl:ml-0'
         }`}
       >
-        {/* Top Navigation Header */}
+        {/* Top Navigation Header. The staging-only banner renders inside the
+            sticky header so it stays visible on every dashboard page without
+            overlapping the navbar (it renders nothing on the prod build). */}
         <header id="top-header" className="sticky top-0 z-30">
+          <StagingBanner />
           <DashboardNavbar />
         </header>
 

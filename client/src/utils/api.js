@@ -1,20 +1,22 @@
 // Utility functions for API calls
+import { APP_BASE_PATH } from "./appEnv";
 
 const explicitApiBase = (import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/$/, '');
 
 /**
  * API base URL for browser requests.
- * Default: same-origin (empty string) so Vite dev proxy and unified production deploy work
- * without setting VITE_API_HOSTNAME / port. Set VITE_API_BASE_URL only for split hosting.
+ * Default: same-origin. On the normal build that is the root ("") so Vite dev
+ * proxy and the unified production deploy work without setting
+ * VITE_API_HOSTNAME / port. On the isolated staging build it is "/staging", so
+ * requests stay inside the staging nginx scope ("no staging request may silently
+ * fall through to the production API") and nginx forwards them to the staging
+ * server. Set VITE_API_BASE_URL only for split hosting.
  */
 export const getApiBaseUrl = () => {
   if (explicitApiBase) {
     return explicitApiBase;
   }
-  if (import.meta.env.DEV) {
-    return '';
-  }
-  return '';
+  return APP_BASE_PATH;
 };
 
 export const API_HOSTNAME = explicitApiBase

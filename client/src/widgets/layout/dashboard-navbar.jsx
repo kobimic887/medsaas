@@ -30,6 +30,7 @@ import {
 import { useThemeMode } from "@/context/theme";
 import { useState, useEffect, useRef } from "react";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
+import { withAppBase } from "@/utils/appEnv";
 
 const NAVBAR_VALIDATE_TIMEOUT_MS = 15_000;
 const CART_FETCH_TIMEOUT_MS = 15_000;
@@ -690,7 +691,7 @@ Please contact the customer at ${userEmail} to process this order.
                   size="sm"
                   alt="User Avatar"
                   className="border border-gray-900 p-0.5"
-                  src="/img/team-1.jpeg"
+                  src={withAppBase("/img/team-1.jpeg")}
                 />
                 <Typography
                   variant="small"

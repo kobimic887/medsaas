@@ -10,9 +10,19 @@
 // storm an expired token triggers. A soft nav would leave components racing.
 
 import { clearAuthStorage } from './constants';
+import { APP_BASE_PATH, withAppBase } from './appEnv';
 
-const SIGN_IN_PATH = '/auth/sign-in';
+const SIGN_IN_PATH = withAppBase('/auth/sign-in');
 let isRedirecting = false;
+
+// The browser path includes the build base (e.g. "/staging/auth/sign-in");
+// compare the app-level path instead so the guard works on both builds.
+function appPathname(pathname) {
+  if (!APP_BASE_PATH) return pathname;
+  return pathname.startsWith(APP_BASE_PATH)
+    ? pathname.slice(APP_BASE_PATH.length) || '/'
+    : pathname;
+}
 
 function handleAuthFailure() {
   // Guard: /activity and /simulation-logs (and others) can 401 concurrently —
@@ -20,7 +30,7 @@ function handleAuthFailure() {
   if (isRedirecting) return;
   // Never bounce while already on an auth page (avoids a redirect loop and
   // avoids reacting to a 401 from the login request itself).
-  if (window.location.pathname.startsWith('/auth')) return;
+  if (appPathname(window.location.pathname).startsWith('/auth')) return;
   isRedirecting = true;
   clearAuthStorage();
   window.location.href = SIGN_IN_PATH;
@@ -34,8 +44,8 @@ function requestUrl(input) {
   return '';
 }
 
-// Only act on requests to our own origin. Relative URLs ("/api/...") are
-// same-origin by definition; absolute URLs are checked against location.origin
+// Only act on requests to our own origin. Relative URLs ("/staging/api/...")
+// are same-origin by definition; absolute URLs are checked against location.origin
 // so a 401 from Stripe/RudderStack/etc. can never log the user out.
 function isSameOrigin(url) {
   if (!url) return false;

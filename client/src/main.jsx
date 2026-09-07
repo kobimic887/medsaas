@@ -6,10 +6,16 @@ import { AuthProvider } from "@/context/auth";
 import { BrandingProvider } from "@/context/branding";
 import { initializeThemeMode, ThemeModeProvider } from "@/context/theme";
 import { installAuthInterceptor } from "@/utils/authInterceptor";
+import { APP_BASE_PATH } from "@/utils/appEnv";
+import { installStorageNamespace } from "@/utils/storageNamespace";
 import "./tailwind.css";
 
 // Auto-redirect to sign-in when any same-origin API call returns 401 (expired/invalid token).
 installAuthInterceptor();
+// On the /staging/ build, transparently namespace every localStorage /
+// sessionStorage key so staging and production never read or clear each
+// other's sessions on the shared origin. No-op on the production build.
+installStorageNamespace();
 initializeThemeMode();
 
 // Material Tailwind's ThemeProvider and the sidenav controller used to wrap the
@@ -22,7 +28,7 @@ initializeThemeMode();
 // BlogProvider went with the blog page; nothing read it any more.
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename={APP_BASE_PATH || undefined}>
       <ThemeModeProvider>
         <AuthProvider>
           <BrandingProvider>

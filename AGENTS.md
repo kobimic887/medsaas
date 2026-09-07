@@ -53,6 +53,11 @@ execute the small slice.
   GROMACS, ADMET, glioblastoma). It does not receive the application API or MongoDB.
 - `oracleOld` (`151.145.91.17`) is a distinct host and a temporary Tanimoto source.
   `oracleNew` (`84.13.81.51`) is the **live** application host — measure DNS.
+- Owner-test **staging** is the same hostname at `/staging/`: separate loopback
+  service `pyxis-web-staging` `:5274` (tree `/root/pyxis-STAGING-5274`), demo mode
+  (`PYXIS_DEMO_MODE=true` — no DB, no paid providers, fixture folding), separate
+  signing secret, Vite `--mode staging` build, nginx `location /staging/` only.
+  Contract, traps and rollback: `docs/STAGING.md` + `deploy/staging/README.md`.
   Public Pyxis is systemd + Bun **`pyxis-web` `:5174`** (nginx `:443` → `127.0.0.1:5174`).
   Legacy Vite `:5173` / `chem_beo` `:3000` = rollback on disk (units **stopped**, still
   **enabled**). `83` (`83.229.87.94`) is leftover, **not DNS**, and is **not** production.
@@ -78,6 +83,9 @@ Do not open these unless the task is prod, deploy, continuation, or box work.
 7. Roadmap / unclear priority only: `GOAL.md`. Not for a narrow bugfix or API slice.
 8. Architecture relationships: global `graphify` skill if `graphify-out/` exists
    (confirm live facts in files). Docking contract: `docs/DOCKING-CONTRACT.md`.
+9. Staging / demo-mode / folding-history work: `docs/STAGING.md` +
+   `deploy/staging/README.md` (isolated `/staging/` preview — never point it at
+   production Atlas or real providers).
 
 ## Commands
 
@@ -87,7 +95,13 @@ bun run check             # server compile + client build
 bun run lint
 bun run test              # server suite
 bun run ci                # full gate
+bun run test:staging-demo # demo/staging server contract (fixtures, privacy, refusals)
+bun run test:staging-build# staging client build scoping checks
 ```
+
+Staging build (never for the live tree): `bun --cwd=client run build:staging`
+writes `client/dist` in staging mode — re-run the normal `bun --cwd=client run
+build` before packing anything for production.
 
 Pick the smallest convincing check:
 

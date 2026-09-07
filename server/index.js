@@ -56,6 +56,7 @@ import {
 import { ensureUserTenantOnLogin } from './utils/ensureUserTenant.js';
 import { fetchWithUpstreamRetry, safeUpstreamUrl } from './utils/upstreamRetry.js';
 import scientificServicesRouter from './routes/scientificServices.js';
+import { createStagingDemoRouter } from './routes/stagingDemo.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -64,7 +65,17 @@ const __dirname = path.dirname(__filename);
 configDotenv({ path: path.resolve(__dirname, '../.env') });
 configDotenv();
 
-const REQUIRED_ENV = ['MONGODB_URI', 'JWT_SECRET', 'STRIPE_SECRET_KEY'];
+// Staging/demo mode (PYXIS_DEMO_MODE=true): an isolated, database-free preview
+// with fixture results and refused paid/outbound endpoints. Production and the
+// normal dev stack leave this unset and are completely unaffected.
+const DEMO_MODE = process.env.PYXIS_DEMO_MODE === 'true';
+
+// In demo mode the server has NO MongoDB and NO Stripe/NVIDIA keys. JWT_SECRET
+// is still required — the staging process must run with its OWN signing secret
+// so staging tokens can never authenticate against production and vice versa.
+const REQUIRED_ENV = DEMO_MODE
+  ? ['JWT_SECRET']
+  : ['MONGODB_URI', 'JWT_SECRET', 'STRIPE_SECRET_KEY'];
 const missingRequiredEnv = REQUIRED_ENV.filter((key) => !process.env[key]);
 
 if (missingRequiredEnv.length > 0) {
@@ -155,7 +166,10 @@ const PLAN_CATALOG = Object.freeze({
 });
 const PASSWORD_POLICY = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).{8,}$/;
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const stripe = new Stripe(DEMO_MODE ? 'sk_test_pyxis_staging_demo_disabled' : process.env.STRIPE_SECRET_KEY);
+if (DEMO_MODE) {
+  console.warn('[demo] PYXIS_DEMO_MODE is on — no MongoDB, no Stripe, no paid providers. Fixture results only.');
+}
 
 const FRONTEND_DIST_PATH = path.resolve(
   __dirname,
@@ -167,6 +181,12 @@ const hasFrontendBuild = () => fs.existsSync(FRONTEND_INDEX_PATH);
 const app = express();
 
 app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  if (DEMO_MODE) {
+    return res.status(403).json({
+      error: 'Disabled in this staging demo environment. Stripe webhooks are switched off.',
+      code: 'DEMO_MODE_DISABLED',
+    });
+  }
   if (!STRIPE_WEBHOOK_SECRET) {
     return res.status(500).json({ error: 'STRIPE_WEBHOOK_SECRET is not configured' });
   }
@@ -235,6 +255,14 @@ app.use((_req, res, next) => {
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   next();
 });
+
+if (DEMO_MODE) {
+  // Demo router must run before every production route: it owns the demo auth,
+  // fixture predict, history CRUD and shell stubs, refuses paid/outbound
+  // endpoints with 403, and answers any other /api path with 503 so nothing can
+  // silently fall through to the Mongo-backed API or a paid provider.
+  app.use(createStagingDemoRouter({ jwtSecret: JWT_SECRET, jwtExpiresIn: JWT_EXPIRES_IN }));
+}
 
 /**
  * The address to rate-limit against.
@@ -665,6 +693,9 @@ app.get('/health', (_req, res) => {
 
 // Add a database health check endpoint
 app.get('/health/db', async (_req, res) => {
+  if (DEMO_MODE) {
+    return res.json({ status: 'OK', database: 'demo (no MongoDB)', dbName: null, demo: true, timestamp: new Date().toISOString() });
+  }
   try {
     await client.db().admin().ping();
     const dbStats = await client.db().stats();
@@ -1059,7 +1090,9 @@ app.get('/api/openapi.json', (_req, res) => {
 });
 
 const uri = MONGODB_URI;
-const client = new MongoClient(uri);
+// Demo mode never constructs a Mongo client: the demo process has no database
+// and must never touch the production Atlas URI.
+const client = DEMO_MODE ? null : new MongoClient(uri);
 let usersCollection;
 let companiesCollection;
 let auditLogsCollection;
@@ -5822,16 +5855,23 @@ app.get('/api/asinex/health', ensureMongoConnected, authenticateToken, requireAc
 app.use('/api', ensureMongoConnected, authenticateToken, requireActiveUser, scientificServicesRouter);
 
 const PORT = process.env.PORT || 3000;
+// Staging binds to loopback (BIND_HOST=127.0.0.1) so the process is only
+// reachable through nginx, never directly. Production keeps 0.0.0.0.
+const BIND_HOST = process.env.BIND_HOST || '0.0.0.0';
 
 // Initialize database and start server
 async function startServer() {
-  // Initialize database connection
-  const dbInitialized = await initializeDatabase();
-  
-  if (!dbInitialized) {
-    console.error('❌ Failed to initialize database. Server will not start.');
-    console.error('Please ensure MongoDB is running and accessible.');
-    process.exit(1);
+  if (DEMO_MODE) {
+    console.log('⏭ Skipping MongoDB initialization (PYXIS_DEMO_MODE). Demo store is in-process only.');
+  } else {
+    // Initialize database connection
+    const dbInitialized = await initializeDatabase();
+    
+    if (!dbInitialized) {
+      console.error('❌ Failed to initialize database. Server will not start.');
+      console.error('Please ensure MongoDB is running and accessible.');
+      process.exit(1);
+    }
   }
 
   // Try HTTPS first (for production), fallback to HTTP (for development)
@@ -5845,13 +5885,13 @@ async function startServer() {
       key: fs.readFileSync(sslKeyPath),
       cert: fs.readFileSync(sslCertPath)
     };
-    https.createServer(httpsOptions, app).listen(PORT, '0.0.0.0', () => {
+    https.createServer(httpsOptions, app).listen(PORT, BIND_HOST, () => {
       console.log(`✅ HTTPS Server running on port ${PORT}`);
       console.log(`📚 API Documentation: https://localhost:${PORT}/api-docs`);
     });
   } catch (_error) {
     console.log('SSL certificates not found, starting HTTP server for development...');
-    app.listen(PORT, '0.0.0.0', () => {
+    app.listen(PORT, BIND_HOST, () => {
       console.log(`✅ HTTP Server running on port ${PORT}`);
       console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
       console.log(`🔍 Health Check: http://localhost:${PORT}/health`);
@@ -5862,11 +5902,13 @@ async function startServer() {
 // Handle graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\n🛑 Shutting down server...');
-  try {
-    await client.close();
-    console.log('✓ MongoDB connection closed');
-  } catch (err) {
-    console.error('Error closing MongoDB connection:', err);
+  if (client) {
+    try {
+      await client.close();
+      console.log('✓ MongoDB connection closed');
+    } catch (err) {
+      console.error('Error closing MongoDB connection:', err);
+    }
   }
   process.exit(0);
 });

@@ -8,7 +8,7 @@ import path from 'path';
 // the production jsx-runtime where jsxDEV is void 0 — blank white screen on every
 // route (seen on 84:5174 after the 2026-08-21 deploy). Force production for
 // builds regardless of the shell.
-export default defineConfig(({ command }) => {
+export default defineConfig(({ command, mode }) => {
   const nodeEnv =
     command === "build"
       ? "production"
@@ -17,8 +17,17 @@ export default defineConfig(({ command }) => {
     process.env.NODE_ENV = "production";
   }
 
+  // Isolated staging build: `vite build --mode staging` (client/package.json
+  // "build:staging"). Everything the app emits (asset URLs, React Router
+  // basename, storage namespace) is derived from BASE_URL = "/staging/", so the
+  // one knob here is the Vite `base`. The normal `vite build` keeps base "/" and
+  // production defaults unchanged.
+  const isStagingMode = command === "build" && mode === "staging";
+  const base = isStagingMode ? "/staging/" : "/";
+
   return {
   envDir: '..',
+  base,
   plugins: [
     {
       name: 'exclude-git-directory',
@@ -48,8 +57,15 @@ export default defineConfig(({ command }) => {
       name: 'platform-name-in-html',
       transformIndexHtml: {
         order: 'pre',
-        handler: (html) =>
-          html.replaceAll('%VITE_PLATFORM_NAME%', (process.env.VITE_PLATFORM_NAME || '').trim() || 'Pyxis Discovery'),
+        handler: (html) => {
+          let out = html.replaceAll('%VITE_PLATFORM_NAME%', (process.env.VITE_PLATFORM_NAME || '').trim() || 'Pyxis Discovery');
+          if (isStagingMode) {
+            // noindex is a courtesy signal only — access control is the separate
+            // staging auth, never robots meta.
+            out = out.replace(/<head>/, '<head>\n    <meta name="robots" content="noindex,nofollow" />');
+          }
+          return out;
+        },
       },
     },
   ],

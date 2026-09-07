@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { withAppBase } from '@/utils/appEnv';
 
 export default function ProteinFoldViewer({ structure }) {
   const frame = useRef(null);
@@ -18,6 +19,6 @@ export default function ProteinFoldViewer({ structure }) {
   }, [structure]);
   return <div>
     {error && <p role="alert" className="text-red-600">{error}</p>}
-    <iframe ref={frame} src="/molstar/index.html" title="Predicted structure in Molstar" className="h-[520px] w-full rounded border" onLoad={() => frame.current?.contentWindow?.postMessage({ type: 'requestViewerReady' }, window.location.origin)} />
+    <iframe ref={frame} src={withAppBase('/molstar/index.html')} title="Predicted structure in Molstar" className="h-[520px] w-full rounded border" onLoad={() => frame.current?.contentWindow?.postMessage({ type: 'requestViewerReady' }, window.location.origin)} />
   </div>;
 }

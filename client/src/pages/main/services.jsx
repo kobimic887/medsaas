@@ -1,5 +1,6 @@
 
 import { servicesImages } from "@/data/servicesImages";
+import { Link } from "react-router-dom";
 
 export default function Services() {
   return (
@@ -38,9 +39,9 @@ export default function Services() {
               With the development and free availability of AlphaFold, an interest in ultra large chemical libraries has spiked. We created a unique database of
               cell-permeable macrocycles. Our library consists of only drug-like macrocyclic compounds, validated for high synthesis success rate. We also offer structure-based virtual screening services.
             </p>
-            <a href="/main/contact-us" className="btn btn-outline-primary mt-2">
+            <Link to="/main/contact-us" className="btn btn-outline-primary mt-2">
               Request Structure-Based Screening
-            </a>
+            </Link>
           </div>
         </div>
 
@@ -59,9 +60,9 @@ export default function Services() {
             <p className="lead">
               The rapidly growing size of tangible chemical space can create technical challenges in handling and navigating structurally-rich datasets. To facilitate this, we offer ready-to-go products and services for analog and molecule selection, including scaffold-based, substructure, or pharmacophore-based queries within a larger chemical space.
             </p>
-            <a href="/main/contact-us" className="btn btn-outline-primary mt-2">
+            <Link to="/main/contact-us" className="btn btn-outline-primary mt-2">
               Request Query-Based Selection
-            </a>
+            </Link>
           </div>
         </div>
 
@@ -80,9 +81,9 @@ export default function Services() {
             <p className="lead">
               Pyxis Discovery has years of experience in designing cell-permeable and CNS-like compounds. Our cell-permeable macrocycles are based on proprietary PAMPA data and all products are designed with cell-permeability in mind.
             </p>
-            <a href="/main/contact-us" className="btn btn-outline-primary mt-2">
+            <Link to="/main/contact-us" className="btn btn-outline-primary mt-2">
               Request Property-Based Filtering
-            </a>
+            </Link>
           </div>
         </div>
 
@@ -101,9 +102,9 @@ export default function Services() {
             <p className="lead">
               Our unique platform of high throughput experimentation allows us to instantly and cost-efficiently produce molecules for your research.
             </p>
-            <a href="/main/contact-us" className="btn btn-outline-primary mt-2">
+            <Link to="/main/contact-us" className="btn btn-outline-primary mt-2">
               Request Synthesis on Demand
-            </a>
+            </Link>
           </div>
         </div>
 
@@ -111,9 +112,9 @@ export default function Services() {
         <div className="row">
           <div className="col text-center">
             <h2 className="fw-bold mb-3" style={{ fontSize: '3rem' }}>Looking for advice or a screening partner?</h2>
-            <a href="/main/contact-us" className="btn btn-success ms-2">
+            <Link to="/main/contact-us" className="btn btn-success ms-2">
               Contact Pyxis Discovery
-            </a>
+            </Link>
           </div>
         </div>
       </section>

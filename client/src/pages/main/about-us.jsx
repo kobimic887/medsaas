@@ -1,3 +1,6 @@
+import { Link } from "react-router-dom";
+import { withAppBase } from "@/utils/appEnv";
+
 export default function AboutUs() {
   return (
     <div className="about-us-page">
@@ -23,7 +26,7 @@ export default function AboutUs() {
         <div className="row align-items-center mb-5">
           <div className="col-lg-6 mb-4 mb-lg-0">
             <img
-              src="/img/pyxis-team.jpeg"
+              src={withAppBase("/img/pyxis-team.jpeg")}
               alt="Pyxis Discovery Team"
               className="img-fluid rounded shadow"
               style={{ maxHeight: 400, objectFit: "cover", width: "100%" }}
@@ -88,7 +91,7 @@ export default function AboutUs() {
         <div className="row align-items-center mb-5">
           <div className="col-lg-6 order-lg-2 mb-4 mb-lg-0">
             <img
-              src="/img/pyxis-lab.jpeg"
+              src={withAppBase("/img/pyxis-lab.jpeg")}
               alt="Pyxis Discovery Lab"
               className="img-fluid rounded shadow"
               style={{ maxHeight: 400, objectFit: "cover", width: "100%" }}
@@ -133,13 +136,13 @@ export default function AboutUs() {
             <p>
               Interested in learning more about Pyxis Discovery or collaborating
               with us?
-              <a
-                href="/main/contact-us"
+              <Link
+                to="/main/contact-us"
                 className="btn btn-success ms-2"
                 role="button"
               >
                 Contact Us
-              </a>
+              </Link>
             </p>
           </div>
         </div>

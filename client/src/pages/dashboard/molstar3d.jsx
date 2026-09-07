@@ -2,6 +2,7 @@ import { Button, Card, CardBody, CardHeader, Chip, Typography } from "@material-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
+import { withAppBase } from "@/utils/appEnv";
 import {
   clearViewerStorage,
   clearViewerHandoffFlag,
@@ -1127,7 +1128,7 @@ export function Molstar3D() {
           <CardBody className="h-[clamp(20rem,58vh,38rem)] min-h-0 overflow-hidden p-0 md:h-[clamp(24rem,68vh,52rem)]">
             <iframe
               ref={molstarRef}
-              src="/molstar/index.html"
+              src={withAppBase("/molstar/index.html")}
               className="block h-full min-h-0 w-full border-0"
               title="Molstar 3D Viewer"
             />

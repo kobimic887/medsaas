@@ -2,6 +2,7 @@ import {
   CloudIcon,
 } from "@heroicons/react/24/outline";
 import { ShoppingCartIcon } from '@heroicons/react/24/solid';
+import { withAppBase } from "@/utils/appEnv";
 import {
   Alert,
   Button,
@@ -1890,7 +1891,7 @@ export function Simulation() {
             <div className="overflow-hidden rounded-xl border border-blue-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900">
               <iframe
                 ref={ketcherIframeRef}
-                src="/ketcher/index.html"
+                src={withAppBase("/ketcher/index.html")}
                 title="Ketcher 2D Chemical Editor"
                 className="h-[clamp(28rem,63vh,42rem)] w-full border-0 bg-white dark:bg-slate-900"
                 allowFullScreen

@@ -2,11 +2,13 @@ import { Suspense } from "react";
 import { Routes, Route } from "react-router-dom";
 import { RouteFallback } from "@/widgets/layout/route-fallback";
 import { SkipLink } from "@/components/SkipLink";
+import { StagingBanner } from "@/components/StagingBanner";
 import routes from "@/routes";
 
 export function Auth() {
   return (
     <div className="relative min-h-screen w-full">
+      <StagingBanner />
       <SkipLink />
       {/* Sign-in is lazy (routes.jsx); Suspense is mandatory once it is. */}
       <main id="main-content">
