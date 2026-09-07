@@ -65,9 +65,11 @@ const __dirname = path.dirname(__filename);
 configDotenv({ path: path.resolve(__dirname, '../.env') });
 configDotenv();
 
-// Staging/demo mode (PYXIS_DEMO_MODE=true): an isolated, database-free preview
-// with fixture results and refused paid/outbound endpoints. Production and the
-// normal dev stack leave this unset and are completely unaffected.
+// Staging/demo mode (PYXIS_DEMO_MODE=true): a database-free preview on its own
+// signing secret. Folding is answered from fixtures; Simulation mirrors the
+// read-only ASINEX catalog and, when configured, forwards docking to the real
+// providers (owner-authorized). Billing/purchases/email stay refused. Production
+// and the normal dev stack leave this unset and are completely unaffected.
 const DEMO_MODE = process.env.PYXIS_DEMO_MODE === 'true';
 
 // In demo mode the server has NO MongoDB and NO Stripe/NVIDIA keys. JWT_SECRET
@@ -168,7 +170,7 @@ const PASSWORD_POLICY = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]
 
 const stripe = new Stripe(DEMO_MODE ? 'sk_test_pyxis_staging_demo_disabled' : process.env.STRIPE_SECRET_KEY);
 if (DEMO_MODE) {
-  console.warn('[demo] PYXIS_DEMO_MODE is on — no MongoDB, no Stripe, no paid providers. Fixture results only.');
+  console.warn('[demo] PYXIS_DEMO_MODE is on — no MongoDB, no Stripe. Folding is fixture-only; catalog proxies are read-only; docking/DiffDock forward to the real providers only when the corresponding service envs are set (owner-authorized for staging).');
 }
 
 const FRONTEND_DIST_PATH = path.resolve(
@@ -258,9 +260,11 @@ app.use((_req, res, next) => {
 
 if (DEMO_MODE) {
   // Demo router must run before every production route: it owns the demo auth,
-  // fixture predict, history CRUD and shell stubs, refuses paid/outbound
-  // endpoints with 403, and answers any other /api path with 503 so nothing can
-  // silently fall through to the Mongo-backed API or a paid provider.
+  // fixture predict, folding/simulation history CRUD, catalog proxies and (when
+  // the service envs are configured) real docking/DiffDock forwarding; it
+  // refuses remaining paid/outbound endpoints with 403 and answers any other
+  // /api path with 503 so nothing can silently fall through to the Mongo-backed
+  // API or a paid provider.
   app.use(createStagingDemoRouter({ jwtSecret: JWT_SECRET, jwtExpiresIn: JWT_EXPIRES_IN }));
 }
 

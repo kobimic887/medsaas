@@ -5,6 +5,11 @@ since 2026-09-07 (branch `staging/folding-preview` @ `f06e8a6`).** Nothing here
 is promoted to production automatically; production behavior changes only
 through the scoped `/staging/` nginx routing and the separate staging service.
 
+The **Simulation extension** (below) is committed on `staging/folding-preview`
+but **not yet deployed** — it awaits owner approval of the service update on 84
+(docking is real and billed; install touches only the staging unit/tree, never
+production `:5174`).
+
 Verified live over HTTPS on 2026-09-07: `/staging` → `/staging/` redirect,
 staging SPA + deep-link refresh (200), `/staging/assets/*` scoped, sample files
 served, demo sign-in + validate-token, fixture predict (labelled demo), paid
@@ -30,8 +35,9 @@ production app (`:5174`) exactly as before.
 | Frontend build | `vite build` (base `/`) | `vite build --mode staging` (base `/staging/`) |
 | Mode | normal | `PYXIS_DEMO_MODE=true` |
 | Database | MongoDB Atlas (production) | **none** — in-process demo store |
-| Provider calls | NVIDIA NIM (real, credited) | server fixture — no outbound |
-| Billing / email | enabled | refused (`403 DEMO_MODE_DISABLED`) |
+| Folding provider | NVIDIA NIM (real, credited) | server fixture — no outbound |
+| Catalog + docking | real (Asinex/NVIDIA) | real (owner-authorized 2026-09-07): live read-only catalog + docking/DiffDock under the synthetic demo account |
+| Billing / email / ADMET / other paid | enabled | refused (`403 DEMO_MODE_DISABLED`) |
 | JWT secret | production secret | **separate** staging secret |
 
 ## Isolation contract
@@ -55,16 +61,19 @@ These are enforced by code + config, not by convention:
    vice versa — no cross-authentication in either direction.
 4. **Demo mode is server-controlled.** `PYXIS_DEMO_MODE=true` changes the
    server, not just the UI: no Mongo client is created, no Stripe/NVIDIA keys
-   are read, paid/outbound endpoints (checkout, billing, MolMIM, DiffDock,
-   simulation, email, Tanimoto) return `403 DEMO_MODE_DISABLED` even when
-   called by hand, and `/api/openfold3/predict` is answered by a labelled
-   server fixture. `GET /api/staging/status` is the single source of truth the
-   UI reads for demo/history capability.
+   are read, and `/api/openfold3/predict` is answered by a labelled server
+   fixture. Simulation browsing/search proxy the **read-only** Asinex catalog
+   and, when the service envs are set (owner-authorized for the synthetic
+   account), `/api/simulation` + `/api/diffdock/generate` forward to the real
+   docking providers — those cost real money. Everything else paid (checkout,
+   billing, MolMIM, `diffdock/generate_file`, ADMET, email, Tanimoto) returns
+   `403 DEMO_MODE_DISABLED` even when called by hand. `GET /api/staging/status`
+   is the single source of truth the UI reads for demo/history capability.
 5. **No database, and no pretending there is one.** Production Atlas is
    off-limits and no separate approved database exists, so the demo keeps saved
-   predictions in an in-process store (`server/utils/foldDemoStore.js`). The
-   UI and the status endpoint both say history is demo-only and resets on
-   restart.
+   predictions and simulation runs in in-process stores
+   (`server/utils/foldDemoStore.js`, `server/utils/demoSimStore.js`). The UI and
+   the status endpoint both say history is demo-only and resets on restart.
 6. **Noindex is not access control.** The staging build injects
    `<meta name="robots" content="noindex,nofollow">`; access control is the
    separate staging sign-in.
@@ -100,17 +109,53 @@ confidence scores**, and are labelled `_pyxisDemo: true` so the UI marks them
 real public coordinates (RCSB PDB 1CRN, crambin — `client/public/folding-samples/`)
 labelled as examples with provenance, never as new predictions.
 
+## Simulation on staging (owner-tested with real data)
+
+Simulation is usable end-to-end, mirroring production:
+
+- **Browse + search operate on the live read-only Asinex catalog** the same way
+  production proxies it (`server/routes/stagingDemo.js` forwards to
+  `ASINEX_API_BASE`): browse pagination (`/api/asinex/all/:page_:size`),
+  single-compound and exact-SMILES lookups, and the `/api/api4/{bas,
+  structure, substructure, similarity, mw}` search family. Queries are
+  forwarded untouched and responses passed through verbatim — no canned hits,
+  no invented scores (catalog similarity returns only genuine upstream hits,
+  exactly like production).
+- **Real docking** (`POST /api/simulation`) and **DiffDock**
+  (`POST /api/diffdock/generate`) run against the real providers when
+  `ASINEX_DOCKING_API_URL` / `DIFFDOCK_API_URL` (+ `SDF_CONVERTER_URL` for
+  SMILES ligands) are set. They are paid calls billed under the synthetic demo
+  account — authorized by the owner, but each run costs money. Results and
+  coordinate blobs are stored in-process with the same row shape and ownership
+  semantics as `simulation_logs`; a repeat run is a free in-memory cache hit
+  (no second provider call), mirroring production's dedupe.
+- **History** (`GET /api/simulation-logs`) lists the demo account's real runs
+  only (Control Panel shows an honest empty state until one exists). Storage is
+  in-process and resets on restart — labelled as temporary demo history.
+- **Stock-compound search** honestly reports
+  `503 STOCK_SEARCH_UNAVAILABLE`: the stock dataset is deployed by the separate
+  Simulation stock service and is not provisioned for staging. The UI shows an
+  explanatory note and disables that source — never a silent Asinex fallback.
+- **Still blocked** with explanatory states (never 503 loops): checkout,
+  billing, MolMIM, `diffdock/generate_file`, ADMET and other paid neighbours.
+
+Fixture-verified without any real outbound call in
+`server/test/staging-simulation.test.mjs` (39 checks under bun + node).
+
 ## Status of integrations
 
 - **Verified:** staging routing + deep-link/API scoping (build checks +
   nginx contract), demo sign-in, fixture predict (PDB + mmCIF), viewer-test
-  sample files, private history lifecycle + privacy negatives + size limits
-  (server suite `server/test/staging-demo.test.mjs`, 56 checks), cross-secret
+  sample files, private folding history lifecycle + privacy negatives + size
+  limits (`server/test/staging-demo.test.mjs`, 57 checks), Simulation
+  catalog/search/artifacts/docking-lifecycle + refusals against fixture
+  upstreams (`server/test/staging-simulation.test.mjs`, 39 checks), cross-secret
   token rejection, paid-endpoint refusal.
-- **Unverified by design:** any real NVIDIA prediction (requires separate owner
-  authorization + a real keyed call), persistent history across staging
-  restarts (no isolated DB approved yet), browser-rendered Molstar evidence
-  (needs a real browser visit to `/staging/`).
+- **Unverified by design:** any real NVIDIA folding prediction (fixture only),
+  real docking/DiffDock round-trips against the live providers (fixture-verified
+  server-side; needs the owner's browser on `/staging/` and costs money),
+  persistent history across staging restarts (no isolated DB approved yet),
+  browser-rendered Molstar evidence (needs a real browser visit to `/staging/`).
 
 ## Common traps
 

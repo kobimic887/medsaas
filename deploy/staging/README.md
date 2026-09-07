@@ -35,7 +35,7 @@ demo/fixture semantics.
 | Listen | `127.0.0.1:5274` only (`BIND_HOST`), never public |
 | Tree | `/root/pyxis-STAGING-5274` (mirrors the `pyxis-LIVE-5174` layout) |
 | Frontend build | staging mode: `vite build --mode staging` (base `/staging/`, noindex, namespaced storage) |
-| Mode | `PYXIS_DEMO_MODE=true` → **no MongoDB, no paid providers, fixture results** |
+| Mode | `PYXIS_DEMO_MODE=true` → **no MongoDB, no Stripe. Folding fixture-only; Simulation catalog read-only + real docking/DiffDock (owner-authorized)** |
 | DB | none (in-process demo history store, resets on restart) |
 | Sign-in | synthetic demo account via the sign-in page demo button |
 | Production | untouched: same `pyxis-web` on `:5174`, same nginx server block |
@@ -79,6 +79,10 @@ openssl rand -base64 48 > /dev/null   # just to confirm openssl exists
 cat > /root/pyxis-STAGING-5274/server/.env <<EOF
 PYXIS_DEMO_MODE=true
 JWT_SECRET=$(openssl rand -base64 48 | tr -d '\n')
+# Real Simulation services (owner-authorized): catalog defaults to
+# http://dev.asinex.com:58181 when unset; docking/DiffDock default to
+# services.asinex.com. Set SDF_CONVERTER_URL for DiffDock SMILES ligands.
+SDF_CONVERTER_URL=http://127.0.0.1:8001/convertSTR
 EOF
 chmod 600 /root/pyxis-STAGING-5274/server/.env
 
@@ -146,9 +150,16 @@ the unit plus removing the nginx location fully removes it from the internet.
 
 ## Owner notes
 
-- Staging demo history lives **in the process** and resets when
-  `pyxis-web-staging` restarts. Persistent history needs an approved isolated
-  database; production Atlas is off-limits by design.
-- No real NVIDIA verification is possible here: the demo predict is a labelled
-  server fixture. A real keyed NVIDIA prediction needs separate owner
-  authorization.
+- Staging demo history (folding predictions and simulation runs) lives **in the
+  process** and resets when `pyxis-web-staging` restarts. Persistent history
+  needs an approved isolated database; production Atlas is off-limits by design.
+- The demo folding predict is a labelled server fixture — no NVIDIA folding call.
+- Simulation browsing/search is the **live read-only Asinex catalog**; docking
+  and DiffDock forward to the **real providers** under the synthetic demo
+  account (owner-authorized) and each run costs money. `SDF_CONVERTER_URL`
+  points at 84's shared loopback converter container (a stateless utility).
+  Stock-compound search reports `503 STOCK_SEARCH_UNAVAILABLE` until the
+  separate Simulation stock service provisions a dataset for staging.
+- Real-docking behaviour is fixture-verified in
+  `server/test/staging-simulation.test.mjs`; the first live provider round-trip
+  should happen in the owner's browser (it bills the service).

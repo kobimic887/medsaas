@@ -55,7 +55,12 @@ execute the small slice.
   `oracleNew` (`84.13.81.51`) is the **live** application host — measure DNS.
 - Owner-test **staging** is the same hostname at `/staging/`: separate loopback
   service `pyxis-web-staging` `:5274` (tree `/root/pyxis-STAGING-5274`), demo mode
-  (`PYXIS_DEMO_MODE=true` — no DB, no paid providers, fixture folding), separate
+  (`PYXIS_DEMO_MODE=true` — no DB, in-process history). Folding stays a labelled
+  fixture; Simulation catalog browse/search proxy the live read-only Asinex
+  catalog and — owner-authorized — docking/DiffDock forward to the real
+  providers from the demo router (`server/routes/stagingDemo.js`,
+  `server/utils/demoSimStore.js`); stock search answers
+  `503 STOCK_SEARCH_UNAVAILABLE` (separate stock deployment's dataset). Separate
   signing secret, Vite `--mode staging` build, nginx `location /staging/` only.
   Contract, traps and rollback: `docs/STAGING.md` + `deploy/staging/README.md`.
   Public Pyxis is systemd + Bun **`pyxis-web` `:5174`** (nginx `:443` → `127.0.0.1:5174`).
@@ -85,7 +90,8 @@ Do not open these unless the task is prod, deploy, continuation, or box work.
    (confirm live facts in files). Docking contract: `docs/DOCKING-CONTRACT.md`.
 9. Staging / demo-mode / folding-history work: `docs/STAGING.md` +
    `deploy/staging/README.md` (isolated `/staging/` preview — never point it at
-   production Atlas or real providers).
+   production Atlas; real docking on staging is authorized only from the demo
+   router under the synthetic account, everything else paid stays refused).
 
 ## Commands
 
@@ -96,6 +102,7 @@ bun run lint
 bun run test              # server suite
 bun run ci                # full gate
 bun run test:staging-demo # demo/staging server contract (fixtures, privacy, refusals)
+bun run test:staging-simulation # staging Simulation: catalog/search/docking/artifacts against fixture upstreams
 bun run test:staging-build# staging client build scoping checks
 ```
 

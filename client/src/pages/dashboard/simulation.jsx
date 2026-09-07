@@ -2,7 +2,7 @@ import {
   CloudIcon,
 } from "@heroicons/react/24/outline";
 import { ShoppingCartIcon } from '@heroicons/react/24/solid';
-import { withAppBase } from "@/utils/appEnv";
+import { withAppBase, IS_STAGING_BUILD } from "@/utils/appEnv";
 import {
   Alert,
   Button,
@@ -1524,6 +1524,15 @@ export function Simulation() {
             <span>Stock compounds (similarity)</span>
           </label>
         </div>
+
+        {/* Staging-only note: what the data is and what costs money, so owner
+            testing never mistakes the live catalog for a sample or a run for free. */}
+        {IS_STAGING_BUILD && (
+          <p className="mb-2 text-xs text-blue-gray-500 dark:text-slate-400" role="note">
+            Staging: catalog data is the live read-only Asinex source (the same one production uses); search runs against it.
+            Docking below calls the real provider and is billed to the Asinex/NVIDIA service under the synthetic test account — checkout stays disabled.
+          </p>
+        )}
 
         {/* Stock-compound availability: a clear state, never a silent corpus switch. */}
         {searchSource === "stock" && stockStatus && stockStatus.state === "loading" && (

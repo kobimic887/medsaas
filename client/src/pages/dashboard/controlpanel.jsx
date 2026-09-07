@@ -31,6 +31,10 @@ export function ControlPanel() {
   const [userSimulationLogs, setUserSimulationLogs] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState(null);
+  // Honest loading/error/empty states for the simulation table — a failed or
+  // empty fetch used to leave the rows showing "Loading..." forever.
+  const [logsLoading, setLogsLoading] = React.useState(true);
+  const [logsError, setLogsError] = React.useState(null);
   const panelFetchControllerRef = React.useRef(null);
   const panelFetchTimeoutRef = React.useRef(null);
   
@@ -88,6 +92,8 @@ export function ControlPanel() {
   // Function to fetch simulation logs for current user
   const fetchUserSimulationLogs = async (signal) => {
     try {
+      setLogsLoading(true);
+      setLogsError(null);
       const token = getAuthToken();
       const response = await fetch(API_CONFIG.buildApiUrl('/simulation-logs'), {
         signal,
@@ -98,7 +104,7 @@ export function ControlPanel() {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(await responseErrorText(response));
       }
       
       const data = await response.json();
@@ -107,7 +113,9 @@ export function ControlPanel() {
     } catch (err) {
       if (err.name === 'AbortError') return;
       console.error('Error fetching simulation logs:', err);
-      setError(err.message);
+      setLogsError(err.message);
+    } finally {
+      if (!signal?.aborted) setLogsLoading(false);
     }
   };
 
@@ -167,6 +175,17 @@ export function ControlPanel() {
     }
   };
 
+  // Read the server's explanatory error (e.g. 403 DEMO_MODE_DISABLED text)
+  // instead of surfacing a bare status number in the popups/table.
+  const responseErrorText = async (response) => {
+    try {
+      const body = await response.json();
+      return body?.error || body?.details || `HTTP error! status: ${response.status}`;
+    } catch {
+      return `HTTP error! status: ${response.status}`;
+    }
+  };
+
   const exportSimulationLogs = () => {
     if (!userSimulationLogs.length) return;
     const csvCell = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
@@ -205,7 +224,7 @@ export function ControlPanel() {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(await responseErrorText(response));
       }
       
       const data = await response.json();
@@ -233,7 +252,7 @@ export function ControlPanel() {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(await responseErrorText(response));
       }
       
       const data = await response.json();
@@ -434,10 +453,37 @@ export function ControlPanel() {
                   </tr>
                 </thead>
                 <tbody>
-                  {userSimulationLogs?.length === 0 ? (
+                  {logsLoading ? (
                     <tr>
                       <td colSpan="8" className="py-8 text-center">
                         <Typography variant="small" color="gray" className="text-sm">Loading simulation logs...</Typography>
+                      </td>
+                    </tr>
+                  ) : logsError ? (
+                    <tr>
+                      <td colSpan="8" className="py-8 text-center">
+                        <Alert color="red" className="mx-auto max-w-xl text-left">
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                            <Typography variant="small">
+                              Could not load simulation history: {logsError}
+                            </Typography>
+                            <button
+                              type="button"
+                              className="w-fit shrink-0 text-sm font-semibold underline"
+                              onClick={() => fetchUserSimulationLogs()}
+                            >
+                              Retry
+                            </button>
+                          </div>
+                        </Alert>
+                      </td>
+                    </tr>
+                  ) : userSimulationLogs?.length === 0 ? (
+                    <tr>
+                      <td colSpan="8" className="py-8 text-center">
+                        <Typography variant="small" color="gray" className="text-sm">
+                          No simulation runs yet — run one from Simulation to see its history here.
+                        </Typography>
                       </td>
                     </tr>
                   ) : (

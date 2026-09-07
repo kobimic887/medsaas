@@ -304,18 +304,27 @@ async function main() {
       ['POST', '/api/generate-molecules', { smiles: 'CCO' }], // NVIDIA MolMIM
       ['POST', '/create-checkout-session', { plan: 'Standard' }],
       ['POST', '/create-checkout-session-onetime', { plan: 'Standard' }],
-      ['POST', '/api/simulation', {}],
-      ['POST', '/api/diffdock/generate', {}],
       ['POST', '/api/shop', {}],
       ['POST', '/send-email', {}],
+      ['POST', '/api/diffdock/generate_file', {}], // local-script flow stays off
     ]) {
       r = await api(method, p, { token: demoToken, body });
       check(`${method} ${p} refused 403`, r.status === 403 && r.json?.code === 'DEMO_MODE_DISABLED', `got ${r.status} ${r.text.slice(0, 80)}`);
     }
 
+    // /api/simulation and /api/diffdock/generate are REAL docking routes on
+    // staging (owner-authorized). An empty body must fail validation (400)
+    // BEFORE any outbound call, never be refused or silently proxied.
+    r = await api('POST', '/api/simulation', { token: demoToken, body: {} });
+    check('POST /api/simulation {} -> 400 validation (route enabled)', r.status === 400 && !r.json?.code?.includes('DEMO'), `got ${r.status} ${r.text.slice(0, 80)}`);
+    r = await api('POST', '/api/diffdock/generate', { token: demoToken, body: {} });
+    check('POST /api/diffdock/generate {} -> 400 validation (route enabled)', r.status === 400 && !r.json?.code?.includes('DEMO'), `got ${r.status} ${r.text.slice(0, 80)}`);
+
     console.log('\nTest 7 — no silent fallthrough to a Mongo-backed API:');
+    // Simulation history is served from the in-process store: honest empty list
+    // (no DB, no 503 loop), populated only by real docking runs.
     r = await api('GET', '/api/simulation-logs', { token: demoToken });
-    check('simulation-logs (read) is NOT refused as a job run -> 503', r.status === 503 && r.json?.code === 'DEMO_MODE_UNAVAILABLE', `got ${r.status} ${r.text.slice(0, 80)}`);
+    check('simulation-logs returns 200 empty list', r.status === 200 && Array.isArray(r.json) && r.json.length === 0, `got ${r.status} ${r.text.slice(0, 80)}`);
     r = await api('POST', '/api/openfold3/not-a-real-route', { token: demoToken, body: {} });
     check('unknown openfold3 sub-path -> 503 (never reaches a provider)', r.status === 503 && r.json?.code === 'DEMO_MODE_UNAVAILABLE', `got ${r.status} ${r.text.slice(0, 80)}`);
     r = await api('GET', '/api/company/branding', { token: demoToken });
