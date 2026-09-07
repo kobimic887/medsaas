@@ -138,33 +138,34 @@ all-dataset search remains available. Dataset scoping works at the API level:
   (naming convention = default dataset name; the engine falls back to the CSV
   filename only when `dataset_name` is missing).
 
-The picker only lists datasets in the configured search service. The scratch
-stock import does not make stock data available in production; that requires a
-separately approved live import.
+The picker only lists datasets in the configured search service. Live Simulation
+stock search resolves the dataset by name (default) on the shared
+`TANIMOTO_API_BASE` service — see **Live state** below.
 
 ## Verification evidence
 
-**Full dataset (2026-09-06, isolated scratch stack):** the committed dataset
-(id 10, name `Stock compounds — 2026-09-01`) holds **630,646** rows =
-630,652 accepted source rows − 6 cartridge-invalid SMILES (the 6 offenders were
-identified earlier by diagnostic bisect; arm64 cannot itemize them inline).
-Real-record verification passed **51/51**: for 7 deterministic source samples,
-self-search at similarity 1.0 returned the compound itself with its original
-`ID` under **all six** fingerprint types, exact search found it, and ranked
-morgan@0.3 search returned ≥0.3 hits sorted descending with the probe at the
-top (count=50). Re-parse of the source confirmed 0 source-level rejects and the
-88 duplicate-structure rows kept.
+**Live dataset (2026-09-07, oracleOld `:8000`):** dataset **id 4**, name
+`Stock compounds — 2026-09-01`, **630,646** rows = 630,652 accepted source rows −
+6 cartridge-invalid SMILES. Import report:
+`/home/ubuntu/scratch/stock-import/live-20260907/import-report.json` (parse
+accepted 630,652 / rejected 0; engine valid 630,646; silent drops 6;
+verification **51/51**). Importer `--verify` confirmed self-search at similarity
+1.0 with original `ID` under all six fingerprint types, exact match, and ranked
+morgan@0.3 with the probe at the top. Ranked offset pages through the Pyxis
+proxy share no `molecule_id`s. Public signed-in Simulation browser checks on
+`https://app.pyxis-discovery.com` (2026-09-07) passed: stock availability
+banner, SMILES + draw-mode search, ranked hits, infinite-scroll next pages
+without duplicates, threshold clear, source switching, selection → docking
+SMILES handoff (no paid job), empty/validation API paths, and Asinex regression.
 
-**Earlier runs (2026-09-05, same stack):** smoke (2,000 rows), name-check
+**Earlier scratch evidence (2026-09-06, isolated `:8010`, dataset id 10):** same
+row count and 51/51 verify path used before live import. The scratch stack was
+removed 2026-09-07 after isolated UI verification to free disk for the live
+import (~4 GB). Do not recreate it unless a new isolated experiment needs it.
+
+**Earlier runs (2026-09-05, scratch):** smoke (2,000 rows), name-check
 (100 rows), and rejected-record fixture runs — re-import abort, `--replace`,
 `--expect-existing`, and rejected-record reporting — all passed.
-
-Real-record checks are performed by the importer's `--verify` path and recorded
-in `import-report.json` in the out-dir. The committed scratch dataset remains
-on the loopback-only scratch stack (`oracleOld:8010`, own volume) as the
-evidence artifact; production is untouched. Note: host `/` on oracleOld was
-93–94% full during the build — delete the scratch stack (frees ~4 GB) when the
-evidence is no longer needed.
 
 ## Picker verification
 
@@ -276,78 +277,52 @@ similarity path in this screen is the stock source above.)
 - Run: `bun run test:stock-search` (unit + route) and `bun run
   test:simulation-search` (UI invariants). `bun run test` includes both.
 
-Not yet browser-proven (no browser harness in this repo): clicking through the
-Simulation toggle, checkbox selection → docking button enabled, and the drawing
-editor path — the harness proves the API contract, the row mapping, and the
-component invariants instead. Do not launch a paid docking job just to verify
-selection; the handoff uses the same `searchCode` SMILES flow as ASINEX hits.
+Automated harnesses remain the regression gate (`bun run test:stock-search`,
+`bun run test:simulation-search`). Public browser proof is recorded under
+**Verification evidence** / **Live state** above. Do not launch a paid docking
+job just to verify selection; the handoff uses the same `searchCode` SMILES
+flow as ASINEX hits.
 
-## Live provisioning / deployment (needs owner approval — not executed)
+## Live state (measured 2026-09-07)
 
-Code for Simulation stock search is already on `main`. Production does **not**
-see stock hits until (1) the stock dataset is imported into the **live**
-search service and (2) the app on `84` is deployed with env that can resolve
-it. Scratch `:8010` / dataset id 10 must **not** be hardcoded into the app.
+| | |
+|---|---|
+| App host | `84` / `pyxis-web` `:5174` → `https://app.pyxis-discovery.com` |
+| Deployed SHA | `c9a4cff` (`release/stock-sim-scoped`: stock Simulation commits cherry-picked onto `ff166d0`; **excludes** unverified folding `2c9cc61` from `main`) |
+| Prior SHA (rollback) | `ff166d0` — also stamped `/root/pyxis-LIVE-5174/ROLLBACK_SHA_BEFORE_STOCK` |
+| Search service | live tonomitosql `http://151.145.91.17:8000` (`TANIMOTO_API_BASE`; `STOCK_SEARCH_*` unset → defaults) |
+| Dataset | **id 4**, name `Stock compounds — 2026-09-01`, **630,646** rows |
+| Existing corpus | dataset id 3 `DATA` (2,951,975) preserved |
+| Import artifacts | `/home/ubuntu/scratch/stock-import/live-20260907/` (`STATUS.txt`, `import-report.*`, `LIVE_VERIFY.txt`) |
 
-### A. Import into the live search service (long; one-time)
+**Scientific method (do not blur):** Simulation stock search ranks Anna’s stock
+**structures** with RDKit Morgan (ECFP4) + Tanimoto computed the same way for
+query and library inside tonomitosql. Anna’s MOE `FP:*` columns remain archived
+in the source TSV only — they are **not** compared to the query. Results are
+**not** MOE-equivalent.
 
-Target is the live tonomitosql stack that production already uses for Deep
-Similarity (`TANIMOTO_API_BASE`, today typically `http://151.145.91.17:8000` —
-measure before acting). Do **not** import into scratch `:8010` again.
+### Re-import / recovery (only if needed)
 
-```bash
-# On the host that can reach the live search service (usually oracleOld),
-# with the preserved source TSV / zip from the out-dir (not in git):
-bun scripts/import-stock-compounds.mjs \
-  --input <STRUCTURES_20260901_63652_unique.txt|zip> \
-  --base-url <LIVE_TANIMOTO_API_BASE> \
-  --name "Stock compounds — 2026-09-01" \
-  --out-dir <data dir outside the repo> \
-  --verify
-```
+The live dataset already exists — do **not** re-run the importer blindly. Same
+`--name` aborts unless `--expect-existing` (verify counts) or `--replace`
+(explicit approval). A disconnected client does not cancel the server
+transaction; recover with `--dataset-id <id> --verify`. Measured live import
+wall time 2026-09-07 was ~1.25 h (parse + upload/commit + verify), shorter than
+the earlier ~12.5 h scratch measurement on a cold stack.
 
-- **Expected duration:** ~12.5 h engine commit (measured 2026-09-05 on the
-  Ampere scratch stack) plus ~50 min client parse/CSV. Plan a full day.
-- **Idempotency:** same `--name` already present → abort; use
-  `--expect-existing` to verify, or `--replace` only with explicit approval.
-- **Rollback of the import alone:** delete that dataset via the live
-  tonomitosql API / admin path used for other datasets. Does not affect the
-  Pyxis app until env points at it. Keep scratch `:8010` as the evidence
-  artifact until live verification succeeds.
+### Rollback (app)
 
-### B. Deploy app code + env on oracleNew (`84`)
-
-1. Deploy the maintained `:5174` tree that includes this commit (manual
-   `git archive` / runbook path — pushes do **not** deploy).
-2. Set on the live Pyxis API env (`/root/pyxis-LIVE-5174/server/.env` or the
-   unit EnvironmentFile — measure which is authoritative):
-
-   | Var | Value |
-   |---|---|
-   | `STOCK_SEARCH_BASE` | *(optional)* live search base if different from `TANIMOTO_API_BASE`; unset is fine when the import is on the shared service |
-   | `STOCK_SEARCH_DATASET_NAME` | `Stock compounds — 2026-09-01` (default; set explicitly if preferred) |
-   | `STOCK_SEARCH_DATASET_ID` | *(optional)* pin the live dataset id after import; prefer name discovery until the id is stable |
-
-3. Restart `pyxis-web` (or the API unit that loads that env).
-4. Smoke: signed-in Simulation → **Search in: Stock compounds** → status
-   available with expected `rowCount` → self-search a known `MAIN_BAS` at
-   threshold 1.0 → load a second page → select a hit and confirm the SMILES
-   lands in the docking input. Do **not** launch a paid dock just to verify.
-
-### C. Rollback (app)
-
-- Unset `STOCK_SEARCH_BASE` / `STOCK_SEARCH_DATASET_*` **or** point
-  `STOCK_SEARCH_DATASET_NAME` at a name that does not exist → status
-  `available:false`, similarity **503 `STOCK_SEARCH_UNAVAILABLE`**, UI shows
-  the unavailable note. Asinex catalog mode is unchanged.
-- Or redeploy the previous `:5174` SHA (stock routes absent / toggle absent).
-- Do **not** delete the live dataset as the first rollback step unless the
-  import itself is wrong — env alone disables the feature.
+- Point `STOCK_SEARCH_DATASET_NAME` at a non-existent name (or unset discovery)
+  → status `available:false`, similarity **503 `STOCK_SEARCH_UNAVAILABLE`**.
+  Asinex unchanged.
+- Or redeploy prior `:5174` SHA `ff166d0` (stock toggle/routes absent).
+- Do **not** delete live dataset id 4 as the first rollback step.
 
 ### Integration corrections (2026-09-07)
 
 Changing the stock threshold cancels pending pages and clears the old ranking and
-offset; submit Search to run the new threshold. Stock thresholds start at 0.1.
-Returning to Stock retries an interrupted availability check. The server passes
-its resolved TANIMOTO_API_BASE into stock configuration, preserving the documented
-default when neither search-base environment variable is set.
+offset; submit Search to run the new threshold. Stock threshold slider minimum is
+0.1 (default slider value may still be 0.7 until changed). Returning to Stock
+retries an interrupted availability check. The server passes its resolved
+TANIMOTO_API_BASE into stock configuration when neither search-base environment
+variable is set.
