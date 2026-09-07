@@ -1,8 +1,16 @@
 # Pyxis staging — `/staging/` on the live hostname
 
-Status: **owner-test preview, deployed only to staging.** Nothing here is
-promoted to production automatically; production behavior changes only through
-the scoped `/staging/` nginx routing and the separate staging service.
+Status: **owner-test preview, LIVE at `https://app.pyxis-discovery.com/staging/`
+since 2026-09-07 (branch `staging/folding-preview` @ `f06e8a6`).** Nothing here
+is promoted to production automatically; production behavior changes only
+through the scoped `/staging/` nginx routing and the separate staging service.
+
+Verified live over HTTPS on 2026-09-07: `/staging` → `/staging/` redirect,
+staging SPA + deep-link refresh (200), `/staging/assets/*` scoped, sample files
+served, demo sign-in + validate-token, fixture predict (labelled demo), paid
+endpoint refusal (403), unknown `/api` (503); production `/`, `/health`, stock
+search and `/auth/sign-in` unchanged (no banner). Interactive/WebGL/mobile
+keyboard checks remain pending a real-browser visit.
 
 Runbook and files: [`deploy/staging/README.md`](../deploy/staging/README.md).
 Branch: `staging/folding-preview`.

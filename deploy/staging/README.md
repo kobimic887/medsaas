@@ -1,7 +1,12 @@
 # Isolated Pyxis staging (`/staging/` on the existing hostname)
 
 Owner-test staging lives at **https://app.pyxis-discovery.com/staging/** — no new
-DNS record, subdomain, or certificate. It is a *second, isolated application
+DNS record, subdomain, or certificate.
+
+**Live since 2026-09-07** (branch `staging/folding-preview`, commit `f06e8a6`,
+tree `/root/pyxis-STAGING-5274`, service `pyxis-web-staging` on loopback
+`:5274`). Nginx backup made at install: `/root/pyxis-staging-nginx-backup.20260907T152427`
+(original md5 `4241cf29f104cb40d5ccbf0d722e01c3`). It is a *second, isolated application
 process* on the same host (`oracleNew` / `84.13.81.51`), reached through an
 nginx `location /staging/` that forwards to a loopback-only staging server.
 

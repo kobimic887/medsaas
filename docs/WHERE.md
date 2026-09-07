@@ -25,7 +25,7 @@ DNS `app.pyxis-discovery.com` A → **`84.13.81.51`**. Apex/www `pyxis-discovery
 | What | Where | Identity |
 |---|---|---|
 | Public UI + API | `84` systemd `pyxis-web` → `/root/pyxis-LIVE-5174` | nginx `:443` / `:8443` → `127.0.0.1:5174`. **systemd + Bun, not Docker.** `DEPLOYED_SHA` `d96a7a6…` (gitless deploy tree; Home rename + demo admin hide 2026-08-23) |
-| **Staging (owner-test)** | `84` systemd `pyxis-web-staging` → `/root/pyxis-STAGING-5274` | `https://app.pyxis-discovery.com/staging/` — nginx `location /staging/` → `127.0.0.1:5274` (loopback only). Demo mode, no DB, fixture folding. Branch `staging/folding-preview`. Contract: `docs/STAGING.md` |
+| **Staging (owner-test)** | `84` systemd `pyxis-web-staging` → `/root/pyxis-STAGING-5274` | `https://app.pyxis-discovery.com/staging/` — nginx `location /staging/` → `127.0.0.1:5274` (loopback only). Demo mode, no DB, fixture folding. **Live 2026-09-07**, branch `staging/folding-preview` @ `f06e8a6`. Contract + rollback: `docs/STAGING.md` / `deploy/staging/` |
 | Mongo | **MongoDB Atlas** (Pyxis project) | Do not replace with a dump. FinSrv uses a **different** Atlas project |
 | convertSTR | `84` docker `pyxis-convertstr` | `127.0.0.1:8001`. Source `/root/pyxis-convertstr-src` |
 | Ubuntu shortcuts | `84` `~/pyxis-LIVE-5174` etc. | Symlinks to `/root/…` |
