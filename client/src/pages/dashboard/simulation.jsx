@@ -432,6 +432,27 @@ export function Simulation() {
   // Switching the search corpus must never leave the other corpus' results on
   // screen or let a stale response from it land afterwards. Reset everything the
   // list, cursor, selection, and in-flight requests depend on.
+  // A changed threshold defines a new ranking: invalidate its old offset and
+  // any pending page before allowing another search.
+  const handleThresholdChange = (value) => {
+    setSimilarityThreshold(value);
+    if (searchSourceRef.current !== 'stock') return;
+    searchControllerRef.current?.abort();
+    searchControllerRef.current = null;
+    searchRequestIdRef.current += 1;
+    isSearchActiveRef.current = false;
+    isLoadingPageRef.current = false;
+    stockOffsetRef.current = 0;
+    setStockOffset(0);
+    setIsSearchActive(false);
+    setSearchLoading(false);
+    setTopLoading(false);
+    setHasMore(false);
+    setTopMolecules([]);
+    setSelectedMolecules(new Set());
+    setSearchError("");
+  };
+
   const handleSourceChange = (nextSource) => {
     if (nextSource === searchSourceRef.current) return;
     searchSourceRef.current = nextSource;
@@ -464,7 +485,8 @@ export function Simulation() {
       // Stock similarity is the only supported stock mode; the threshold slider
       // below then controls the RDKit Tanimoto cutoff.
       setSearchType('similarity');
-      if (!stockStatusRef.current) fetchStockStatus();
+      setSimilarityThreshold(value => Math.max(0.1, value));
+      if (stockStatusRef.current?.state !== 'available') fetchStockStatus();
     } else {
       // Back to the catalog: restore the normal browse entry state.
       fetchAllMolecules(0, false);
@@ -1632,11 +1654,11 @@ export function Simulation() {
             <div className="flex items-center gap-4 w-full sm:w-auto flex-1">
               <input
                 type="range"
-                min="0"
+                min={searchSource === "stock" ? "0.1" : "0"}
                 max="1"
                 step="0.1"
                 value={similarityThreshold}
-                onChange={(e) => setSimilarityThreshold(parseFloat(e.target.value))}
+                onChange={(e) => handleThresholdChange(parseFloat(e.target.value))}
                 className="flex-1 h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                 style={{ minWidth: '150px' }}
               />

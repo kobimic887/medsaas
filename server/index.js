@@ -118,7 +118,7 @@ const TANIMOTO_API_BASE = (process.env.TANIMOTO_API_BASE || 'http://151.145.91.1
 // dataset is provisioned the search routes answer 503 STOCK_SEARCH_UNAVAILABLE so
 // the Simulation UI shows a clear unavailable state instead of silently falling
 // back to the ASINEX corpus.
-const STOCK_SEARCH_CONFIG = stockSearchConfig(process.env);
+const STOCK_SEARCH_CONFIG = stockSearchConfig({ ...process.env, TANIMOTO_API_BASE });
 const stockSearchResolver = createStockDatasetResolver({
   config: STOCK_SEARCH_CONFIG,
   // The search service is internal + unauthenticated. Bound quickly so an

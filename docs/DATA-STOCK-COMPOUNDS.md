@@ -343,3 +343,11 @@ bun scripts/import-stock-compounds.mjs \
 - Or redeploy the previous `:5174` SHA (stock routes absent / toggle absent).
 - Do **not** delete the live dataset as the first rollback step unless the
   import itself is wrong — env alone disables the feature.
+
+### Integration corrections (2026-09-07)
+
+Changing the stock threshold cancels pending pages and clears the old ranking and
+offset; submit Search to run the new threshold. Stock thresholds start at 0.1.
+Returning to Stock retries an interrupted availability check. The server passes
+its resolved TANIMOTO_API_BASE into stock configuration, preserving the documented
+default when neither search-base environment variable is set.

@@ -134,6 +134,26 @@ checks.push(
   );
 }
 
+// Execute the real threshold handler to prove it cancels and resets a ranking.
+const handlerBody = simulation.split('const handleThresholdChange = (value) => {')[1].split('\n  };')[0];
+const calls = [];
+const context = {
+  searchSourceRef: { current: 'stock' },
+  searchControllerRef: { current: { abort() { calls.push('abort'); } } },
+  searchRequestIdRef: { current: 7 }, isSearchActiveRef: { current: true },
+  isLoadingPageRef: { current: true }, stockOffsetRef: { current: 50 },
+};
+for (const name of ['setSimilarityThreshold', 'setStockOffset', 'setIsSearchActive', 'setSearchLoading', 'setTopLoading', 'setHasMore', 'setTopMolecules', 'setSelectedMolecules', 'setSearchError']) context[name] = value => calls.push([name, value]);
+new Function(...Object.keys(context), 'value', handlerBody)(...Object.values(context), 0.7);
+checks.push(
+  ['threshold change aborts the old stock ranking', calls.includes('abort') && context.searchRequestIdRef.current === 8],
+  ['threshold change resets paging and old rows', context.stockOffsetRef.current === 0 && !context.isSearchActiveRef.current && calls.some(c => c[0] === 'setTopMolecules' && c[1].length === 0)],
+  ['returning to stock retries unfinished availability', simulation.includes("if (stockStatusRef.current?.state !== 'available') fetchStockStatus()")],
+  ['stock threshold matches API minimum', simulation.includes('min={searchSource === "stock" ? "0.1" : "0"}') && simulation.includes('Math.max(0.1, value)')],
+);
+
+checks.push(['stock backend inherits the resolved Tanimoto default', readFileSync(path.join(root, 'server/index.js'), 'utf8').includes('stockSearchConfig({ ...process.env, TANIMOTO_API_BASE })')]);
+
 const failures = checks.filter(([, passed]) => !passed).map(([label]) => label);
 if (failures.length) {
   console.error('Simulation search lifecycle regression check failed:');
