@@ -5,8 +5,19 @@ DNS record, subdomain, or certificate.
 
 **Live since 2026-09-07** (branch `staging/folding-preview`, commit `f06e8a6`,
 tree `/root/pyxis-STAGING-5274`, service `pyxis-web-staging` on loopback
-`:5274`). Nginx backup made at install: `/root/pyxis-staging-nginx-backup.20260907T152427`
-(original md5 `4241cf29f104cb40d5ccbf0d722e01c3`). It is a *second, isolated application
+`:5274`). Nginx backups made at install (REAL file copies — see the symlink
+warning below):
+- `/root/pyxis-staging-nginx-backup.20260907T152427.original` — pre-staging
+  config (md5 `4241cf29f104cb40d5ccbf0d722e01c3`)
+- `/root/pyxis-staging-nginx-backup.20260907T152427.current` — config WITH the
+  `/staging/` block (md5 `b9b5885e046cc015914841f6b8d93c82`)
+
+> **Symlink trap:** on this host `/etc/nginx/sites-enabled/app.pyxis-discovery.com`
+> is a symlink into `sites-available/`. Never back it up with `cp -a`, which
+> copies the symlink and tracks the live file. Back up and restore FILE CONTENT:
+> `sudo sh -c 'cat /etc/nginx/sites-available/app.pyxis-discovery.com > /root/...'`
+> and `sudo sh -c 'cat /root/...original > /etc/nginx/sites-enabled/app.pyxis-discovery.com'`
+> (writing through the symlink updates the sites-available target nginx reads). It is a *second, isolated application
 process* on the same host (`oracleNew` / `84.13.81.51`), reached through an
 nginx `location /staging/` that forwards to a loopback-only staging server.
 
@@ -79,9 +90,10 @@ curl -s http://127.0.0.1:5274/health          # must answer {"status":"OK",...}
 curl -s http://127.0.0.1:5274/api/staging/status
 
 # 4. nginx routing. Validate BEFORE reloading; the reload touches production
-#    nginx, so this is the only step with any blast radius on :443.
-cp -a /etc/nginx/sites-enabled/app.pyxis-discovery.com \
-      /root/pyxis-staging-nginx-backup.$(date +%Y%m%dT%H%M%S)
+#    nginx, so this is the only step with any blast radius on :443. The live
+#    file is a symlink — back up CONTENT (cp -a would copy the link):
+sudo sh -c 'cat /etc/nginx/sites-enabled/app.pyxis-discovery.com > \
+      /root/pyxis-staging-nginx-backup.$(date +%Y%m%dT%H%M%S).original'
 #   Insert the `location = /staging` + `location /staging/` block (from
 #   nginx-staging.conf) inside the 443 server block, then:
 nginx -t && systemctl reload nginx
@@ -120,11 +132,12 @@ bun --cwd=client run build
 ssh oracleNew
 systemctl stop pyxis-web-staging
 rm /etc/systemd/system/pyxis-web-staging.service && systemctl daemon-reload
-#   restore nginx from the backup made before the /staging block was added:
-cp -a /root/pyxis-staging-nginx-backup.<ts> /etc/nginx/sites-enabled/app.pyxis-discovery.com
-nginx -t && systemctl reload nginx
+#   restore nginx CONTENT from the backup made before the /staging block was
+#   added (sites-enabled is a symlink — write through it, never cp -a):
+sudo sh -c 'cat /root/pyxis-staging-nginx-backup.<ts>.original > /etc/nginx/sites-enabled/app.pyxis-discovery.com'
+sudo nginx -t && sudo systemctl reload nginx
 #   tree can stay on disk (harmless, loopback-only); remove with:
-rm -rf /root/pyxis-STAGING-5274
+sudo rm -rf /root/pyxis-STAGING-5274
 ```
 
 Rollback never touches `/root/pyxis-LIVE-5174`, the `pyxis-web` unit, or the

@@ -119,6 +119,10 @@ labelled as examples with provenance, never as new predictions.
   anything for the live tree, or a “prod” deploy would ship `/staging/` assets.
 - Production `pyxis-web` runs on `0.0.0.0:5174`; the staging unit must keep
   `BIND_HOST=127.0.0.1`. Never flip the staging unit to public.
+- nginx `sites-enabled/app.pyxis-discovery.com` is a symlink to `sites-available`.
+  Back up/restore file CONTENT (`cat >` / `cat … >`), never `cp -a` (it copies
+  the symlink and tracks the live file — real backups carry `.original`/`.current`
+  suffixes under `/root/`).
 - The demo store resets on restart — don’t “fix” that by pointing staging at
   production Atlas.
 - `401` on staging still means dead session only (client logout is namespaced,
