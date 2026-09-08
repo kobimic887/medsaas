@@ -194,8 +194,11 @@ check('upstream 403 → 502', relayStockUpstreamStatus(403) === 502);
 check('upstream 500 → 502', relayStockUpstreamStatus(500) === 502);
 check('upstream 429 → 503 (indistinguishable from the app rate limiter)', relayStockUpstreamStatus(429) === 503);
 check('upstream 400 stays 400 (validation)', relayStockUpstreamStatus(400) === 400);
-check('detail from upstream validation error surfaces', describeStockUpstreamError(400, { detail: 'SMILES "x" is invalid' }) === 'SMILES "x" is invalid');
+check('detail from upstream validation error surfaces', describeStockUpstreamError(400, { detail: 'SMILES "x" is invalid' }).includes('Check atom charges and bond orders'));
 check('502 wording is generic and clear', describeStockUpstreamError(502, '') === 'Stock search is temporarily unavailable');
+
+check("non-chemistry validation retains upstream detail", describeStockUpstreamError(400, { detail: "threshold out of range" }) === "threshold out of range");
 
 console.log(`\nstockSearch util: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
+

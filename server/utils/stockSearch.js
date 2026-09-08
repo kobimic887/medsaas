@@ -246,6 +246,13 @@ export function relayStockUpstreamStatus(status) {
 
 /** Human-readable client error for a failed upstream stock search. */
 export function describeStockUpstreamError(status, body) {
+  // A generic cartridge parse failure also covers sanitization/valence failures.
+  // Explain what to check without claiming an atom-level diagnosis or repairing it.
+  const detailText = typeof body === 'string' ? body : body?.detail ?? body?.error ?? body?.message;
+  if (status === 400 && typeof detailText === 'string'
+      && /invalid smiles|smiles.*invalid|could not be parsed by rdkit/i.test(detailText)) {
+    return 'This structure cannot be searched. Check atom charges and bond orders. A structure may display in the editor but still fail chemical validation. Your input has been kept so you can edit it.';
+  }
   const text = typeof body === 'string' ? body.slice(0, 200) : '';
   if (typeof body === 'object' && body !== null) {
     const detail = body.detail ?? body.error ?? body.message;

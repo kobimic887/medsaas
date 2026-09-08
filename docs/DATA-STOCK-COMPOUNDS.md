@@ -351,3 +351,7 @@ offset; submit Search to run the new threshold. Stock thresholds start at 0.1.
 Returning to Stock retries an interrupted availability check. The server passes
 its resolved TANIMOTO_API_BASE into stock configuration, preserving the documented
 default when neither search-base environment variable is set.
+
+### Stock validation hotfix (2026-09-08)
+
+Failed/new queries clear old rows and disable paging. Catalog fetches refuse stock mode and pending searches, preventing unrelated Asinex rows after rejection. Generic RDKit invalid-SMILES errors explain charges/bonds and retain editable input; chemistry validation is unchanged. Scoped release based on c9a4cff, excluding staging/folding features.

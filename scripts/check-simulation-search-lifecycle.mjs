@@ -154,6 +154,34 @@ checks.push(
 
 checks.push(['stock backend inherits the resolved Tanimoto default', readFileSync(path.join(root, 'server/index.js'), 'utf8').includes('stockSearchConfig({ ...process.env, TANIMOTO_API_BASE })')]);
 
+// Execute the actual request handlers with a rejected engine query. This catches
+// the failure-to-catalog transition, rather than only checking source strings.
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+const searchBody = simulation.split('const handleSearch = async () => {')[1].split('\n  // Function to load more search results')[0].replace(/};\s*$/, '');
+const rejectedCalls = [];
+const rejectedContext = {
+  AbortController, searchCode: '[N](C)(C)(C)C',
+  getAuthToken: () => 'fixture',
+  runStockSearch: async () => { throw new Error('RDKit rejected fixture'); },
+};
+for (const name of new Set(searchBody.match(/\b\w+Ref\b/g))) rejectedContext[name] = { current: null };
+rejectedContext.searchSourceRef.current = 'stock';
+rejectedContext.hasMoreRef.current = true;
+rejectedContext.browseRequestIdRef.current = 0;
+rejectedContext.searchRequestIdRef.current = 0;
+for (const name of new Set(searchBody.match(/\bset[A-Z]\w*/g))) rejectedContext[name] = value => rejectedCalls.push([name, value]);
+await new AsyncFunction(...Object.keys(rejectedContext), searchBody)(...Object.values(rejectedContext));
+checks.push(
+  ['rejected stock query clears previous visible rows', rejectedCalls.some(([name, value]) => name === 'setTopMolecules' && value.length === 0)],
+  ['rejected stock query cannot keep pagination enabled', rejectedContext.hasMoreRef.current === false && !rejectedCalls.some(([name, value]) => name === 'setHasMore' && value === true)],
+  ['rejected stock query preserves the actual error', rejectedCalls.some(([name, value]) => name === 'setSearchError' && value.includes('RDKit rejected fixture'))],
+);
+const browseBody = simulation.split('const fetchAllMolecules = async (page = 0, append = false, requestedPageSize = pageSizeRef.current) => {')[1].split('\n  };')[0];
+// No fetch mocks: reaching the catalog network code would fail this execution.
+await new AsyncFunction('searchSourceRef', 'searchControllerRef', browseBody)({ current: 'stock' }, { current: null });
+await new AsyncFunction('searchSourceRef', 'searchControllerRef', browseBody)({ current: 'asinex' }, { current: {} });
+checks.push(['catalog handler refuses stock source and pending searches before fetching', true]);
+
 const failures = checks.filter(([, passed]) => !passed).map(([label]) => label);
 if (failures.length) {
   console.error('Simulation search lifecycle regression check failed:');
