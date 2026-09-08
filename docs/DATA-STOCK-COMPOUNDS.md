@@ -330,3 +330,5 @@ variable is set.
 ### Failed-query result isolation (2026-09-08)
 
 A rejected stock query previously left pagination enabled, allowing the scroll handler to load Asinex browse rows into the stock table (blank stock IDs and N/A similarity). Fresh searches now clear visible rows and disable continuation until success; catalog fetches refuse stock mode and pending searches. Handler-level regression coverage is in `scripts/check-simulation-search-lifecycle.mjs`. This fix does not change RDKit sanitization or establish why a particular charge-edited SMILES is rejected; that requires the exact input.
+
+Generic RDKit invalid-SMILES errors now explain charges/bond orders and the distinction between rendering and chemical validation. No automatic structure repair or sanitization bypass is performed.
