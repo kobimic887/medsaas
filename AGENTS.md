@@ -44,7 +44,8 @@ execute the small slice.
   dataset via `STOCK_SEARCH_BASE` / `STOCK_SEARCH_DATASET_ID` /
   `STOCK_SEARCH_DATASET_NAME`; unprovisioned = **503 `STOCK_SEARCH_UNAVAILABLE`**
   (never a silent fallback to Asinex). Full contract in
-  `docs/DATA-STOCK-COMPOUNDS.md`.
+  `docs/DATA-STOCK-COMPOUNDS.md`. Failed/new searches disable pagination and clear old rows; catalog browsing
+  must reject stock mode so Asinex rows cannot appear as stock hits.
 - Client routes: `client/src/routes.jsx`. Use `API_CONFIG.buildApiUrl()` for `/api/*`
   and `API_CONFIG.buildUrl()` for top-level routes.
 - Auth state: `client/src/context/auth.jsx`. Session logout interceptor:

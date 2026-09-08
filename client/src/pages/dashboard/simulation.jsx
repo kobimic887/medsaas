@@ -306,6 +306,9 @@ export function Simulation() {
 
   // Function to fetch molecules from /asinex/all/x_10
   const fetchAllMolecules = async (page = 0, append = false, requestedPageSize = pageSizeRef.current) => {
+    // Catalog browsing must never populate a stock result table, including after
+    // a rejected query or while a new search is still pending.
+    if (searchSourceRef.current !== 'asinex' || searchControllerRef.current) return;
     // Only the infinite-scroll path needs this guard — it fires from a scroll handler
     // and would otherwise queue the same page repeatedly. A fresh (non-append) load
     // must never be blocked by it: that path aborts whatever is in flight and replaces
@@ -459,6 +462,7 @@ export function Simulation() {
     searchSourceRef.current = nextSource;
     browseControllerRef.current?.abort();
     searchControllerRef.current?.abort();
+    searchControllerRef.current = null;
     browseRequestIdRef.current += 1;
     searchRequestIdRef.current += 1;
     stockStatusRequestRef.current += 1; // invalidate any in-flight status check
@@ -574,7 +578,9 @@ export function Simulation() {
     // Reset pagination when searching
     setCurrentPage(0);
     setAllMolecules([]);
-    setHasMore(true);
+    setTopMolecules([]);
+    hasMoreRef.current = false;
+    setHasMore(false);
     setLastFromId(0); // Reset fromId to 0 for new search
     // Stock similarity pages by offset; every fresh search restarts at offset 0
     // so a previous query's cursor can never continue into new results.
@@ -693,6 +699,8 @@ export function Simulation() {
     } catch (err) {
       if (err.name === 'AbortError') return;
       if (searchControllerRef.current !== controller || requestId !== searchRequestIdRef.current) return;
+      hasMoreRef.current = false;
+      setHasMore(false);
       setSearchError(`Search failed: ${err.message}`);
     } finally {
       if (searchControllerRef.current === controller && requestId === searchRequestIdRef.current) {

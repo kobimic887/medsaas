@@ -326,3 +326,7 @@ offset; submit Search to run the new threshold. Stock threshold slider minimum i
 retries an interrupted availability check. The server passes its resolved
 TANIMOTO_API_BASE into stock configuration when neither search-base environment
 variable is set.
+
+### Failed-query result isolation (2026-09-08)
+
+A rejected stock query previously left pagination enabled, allowing the scroll handler to load Asinex browse rows into the stock table (blank stock IDs and N/A similarity). Fresh searches now clear visible rows and disable continuation until success; catalog fetches refuse stock mode and pending searches. Handler-level regression coverage is in `scripts/check-simulation-search-lifecycle.mjs`. This fix does not change RDKit sanitization or establish why a particular charge-edited SMILES is rejected; that requires the exact input.
