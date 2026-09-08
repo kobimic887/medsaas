@@ -197,7 +197,8 @@ check('upstream 400 stays 400 (validation)', relayStockUpstreamStatus(400) === 4
 check('detail from upstream validation error surfaces', describeStockUpstreamError(400, { detail: 'SMILES "x" is invalid' }).includes('Check atom charges and bond orders'));
 check('502 wording is generic and clear', describeStockUpstreamError(502, '') === 'Stock search is temporarily unavailable');
 
+check("non-chemistry validation retains upstream detail", describeStockUpstreamError(400, { detail: "threshold out of range" }) === "threshold out of range");
+
 console.log(`\nstockSearch util: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
 
-check("non-chemistry validation retains upstream detail", describeStockUpstreamError(400, { detail: "threshold out of range" }) === "threshold out of range");
