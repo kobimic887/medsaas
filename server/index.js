@@ -43,6 +43,19 @@ import {
   StockSearchValidationError,
 } from './utils/stockSearch.js';
 import {
+  buildOpenCompoundsStatus,
+  OpenCompoundsUnavailableError,
+  OpenCompoundsUpstreamError,
+  OpenCompoundsValidationError,
+  openCompoundsConfig,
+  parseOpenCompoundsQuery,
+  resultsToCsv,
+  resultsToSdf,
+  runOpenCompoundsSearch,
+  validateAndFingerprint,
+  loadRDKit,
+} from './utils/openCompounds.js';
+import {
   DEFAULT_BRAND_PALETTE,
   extractBrandPalette,
   normalizeBrandPalette,
@@ -125,6 +138,7 @@ const stockSearchResolver = createStockDatasetResolver({
   // unreachable host surfaces as unavailable instead of hanging a user search.
   fetchImpl: (url) => fetchWithTimeout(url, { timeoutMs: 10000 }),
 });
+const OPEN_COMPOUNDS_CONFIG = openCompoundsConfig(process.env);
 // LANDMINE: the fallback below is the retired 83 host. Port 8001 there has been dead
 // since 2026-06-04 (docs/PRODUCTION-83-INVENTORY.md), so an unset SDF_CONVERTER_URL
 // means every SMILES ligand in /api/diffdock/generate fails. The working converter is
@@ -5067,6 +5081,179 @@ app.get('/api/stock-search/similarity', ensureMongoConnected, authenticateToken,
     console.error(`Stock search proxy error url=${safeUpstreamUrl(upstreamUrl)}:`, error.message || error);
     return res.status(502).json({
       error: 'Stock search is temporarily unavailable',
+      details: error.message,
+    });
+  }
+});
+
+// ── Open compounds (Simulation) ─────────────────────────────────────────────
+// Public ChEMBL similarity → local RDKit Morgan (r=2, 2048-bit) Tanimoto
+// re-score. Query SMILES are sent to ChEMBL; never cache cross-user. AI assist
+// is optional and off unless explicitly configured — scores are never model-
+// written. docs/DATA-OPEN-COMPOUNDS.md.
+
+/**
+ * @swagger
+ * /api/open-compounds/status:
+ *   get:
+ *     summary: Open-compounds search availability and fingerprint declaration
+ *     tags: [Open Compounds]
+ */
+app.get('/api/open-compounds/status', ensureMongoConnected, authenticateToken, requireActiveUser, async (_req, res) => {
+  const status = buildOpenCompoundsStatus(OPEN_COMPOUNDS_CONFIG);
+  if (!status.available) {
+    return res.status(503).json({ ...status, code: 'OPEN_COMPOUNDS_UNAVAILABLE' });
+  }
+  return res.json(status);
+});
+
+/**
+ * @swagger
+ * /api/open-compounds/similarity:
+ *   get:
+ *     summary: Ranked ChEMBL similarity with local RDKit Morgan Tanimoto scores
+ *     tags: [Open Compounds]
+ */
+app.get('/api/open-compounds/similarity', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+  let params;
+  try {
+    params = parseOpenCompoundsQuery(req.query);
+  } catch (error) {
+    if (error instanceof OpenCompoundsValidationError) {
+      return res.status(400).json({ error: error.message, code: error.code });
+    }
+    throw error;
+  }
+
+  try {
+    const payload = await runOpenCompoundsSearch({
+      config: OPEN_COMPOUNDS_CONFIG,
+      params,
+      fetchImpl: (url, opts = {}) => fetchWithTimeout(url, opts),
+    });
+    // Strip internal molblock map from the JSON response.
+    const { _molblocksById, ...publicPayload } = payload;
+    return res.json(publicPayload);
+  } catch (error) {
+    if (error instanceof OpenCompoundsValidationError) {
+      return res.status(400).json({ error: error.message, code: error.code });
+    }
+    if (error instanceof OpenCompoundsUnavailableError) {
+      return res.status(503).json({ error: error.message, code: error.code });
+    }
+    if (error instanceof OpenCompoundsUpstreamError) {
+      console.warn(`Open compounds upstream: ${error.message}`);
+      return res.status(error.status || 502).json({
+        error: error.message,
+        code: error.code,
+        partial: Boolean(error.partial),
+      });
+    }
+    console.error('Open compounds search error:', error.message || error);
+    return res.status(502).json({
+      error: 'Open compounds search is temporarily unavailable',
+      code: 'OPEN_COMPOUNDS_UPSTREAM',
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/open-compounds/export:
+ *   get:
+ *     summary: CSV or SDF export of the same ranked open-compounds result set
+ *     tags: [Open Compounds]
+ *     description: >
+ *       Re-runs the deterministic search with the same query params and exports
+ *       the full ranked set (up to maxResults). SDF structures are RDKit-
+ *       validated molblocks; DOCKING_READY is always false unless ligand
+ *       preparation was performed (it was not).
+ */
+app.get('/api/open-compounds/export', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+  let params;
+  try {
+    params = parseOpenCompoundsQuery({
+      ...req.query,
+      offset: '0',
+      limit: '100',
+    });
+    // Export always takes the full ranked window (≤ maxResults), not a page.
+    params.offset = 0;
+    params.limit = params.maxResults;
+  } catch (error) {
+    if (error instanceof OpenCompoundsValidationError) {
+      return res.status(400).json({ error: error.message, code: error.code });
+    }
+    throw error;
+  }
+
+  const format = String(req.query.format || 'csv').trim().toLowerCase();
+  if (format !== 'csv' && format !== 'sdf') {
+    return res.status(400).json({ error: 'format must be csv or sdf', code: 'OPEN_COMPOUNDS_VALIDATION' });
+  }
+
+  try {
+    const payload = await runOpenCompoundsSearch({
+      config: OPEN_COMPOUNDS_CONFIG,
+      params,
+      fetchImpl: (url, opts = {}) => fetchWithTimeout(url, opts),
+    });
+    const rows = payload.results.map((row) => ({
+      ...row,
+      molblock: payload._molblocksById?.[row.chemblId] || null,
+    }));
+
+    if (format === 'csv') {
+      const csv = resultsToCsv({
+        querySmiles: payload.query_smiles_canonical || params.smiles,
+        threshold: params.threshold,
+        results: rows,
+      });
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="open-compounds.csv"');
+      return res.send(csv);
+    }
+
+    // Ensure every row has a validated molblock (re-parse if the page mapper stripped it).
+    const RDKit = await loadRDKit();
+    const withBlocks = [];
+    for (const row of rows) {
+      if (row.molblock) {
+        withBlocks.push(row);
+        continue;
+      }
+      const validated = validateAndFingerprint(RDKit, row.smiles);
+      if (!validated?.molblock) {
+        return res.status(400).json({
+          error: `Could not build a validated SDF for ${row.chemblId}`,
+          code: 'OPEN_COMPOUNDS_VALIDATION',
+        });
+      }
+      withBlocks.push({ ...row, molblock: validated.molblock });
+    }
+    const sdf = resultsToSdf(withBlocks);
+    res.setHeader('Content-Type', 'chemical/x-mdl-sdfile');
+    res.setHeader('Content-Disposition', 'attachment; filename="open-compounds.sdf"');
+    return res.send(sdf);
+  } catch (error) {
+    if (error instanceof OpenCompoundsValidationError) {
+      return res.status(400).json({ error: error.message, code: error.code });
+    }
+    if (error instanceof OpenCompoundsUnavailableError) {
+      return res.status(503).json({ error: error.message, code: error.code });
+    }
+    if (error instanceof OpenCompoundsUpstreamError) {
+      return res.status(error.status || 502).json({
+        error: error.message,
+        code: error.code,
+        partial: Boolean(error.partial),
+      });
+    }
+    console.error('Open compounds export error:', error.message || error);
+    return res.status(502).json({
+      error: 'Open compounds export is temporarily unavailable',
+      code: 'OPEN_COMPOUNDS_UPSTREAM',
       details: error.message,
     });
   }

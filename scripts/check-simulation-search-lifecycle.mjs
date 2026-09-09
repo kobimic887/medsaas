@@ -149,10 +149,22 @@ checks.push(
   ['threshold change aborts the old stock ranking', calls.includes('abort') && context.searchRequestIdRef.current === 8],
   ['threshold change resets paging and old rows', context.stockOffsetRef.current === 0 && !context.isSearchActiveRef.current && calls.some(c => c[0] === 'setTopMolecules' && c[1].length === 0)],
   ['returning to stock retries unfinished availability', simulation.includes("if (stockStatusRef.current?.state !== 'available') fetchStockStatus()")],
-  ['stock threshold matches API minimum', simulation.includes('min={searchSource === "stock" ? "0.1" : "0"}') && simulation.includes('Math.max(0.1, value)')],
+  ['stock threshold matches API minimum', simulation.includes('searchSource === "stock" ? "0.1"') && simulation.includes('Math.max(0.1, value)')],
+);
+
+checks.push(
+  ['open source posts to the authenticated open-compounds endpoint', simulation.includes("/open-compounds/similarity")],
+  ['open availability is probed via the status endpoint', simulation.includes("/open-compounds/status")],
+  ['open search is similarity-only and restarts at offset zero', simulation.includes("const progressed = await runOpenSearch(0, false,")],
+  ['open compounds radio is present', simulation.includes('Open compounds (ChEMBL)')],
+  ['open threshold floor is 0.4', simulation.includes('searchSource === "open" ? "0.4"') && simulation.includes('Math.max(0.4, value)')],
+  ['open export uses authenticated export route', simulation.includes("/open-compounds/export")],
+  ['open empty/error states are distinct', simulation.includes('No open compounds matched this structure')],
+  ['open rows never claim purchase/stock', simulation.includes('Not stocked or priced')],
 );
 
 checks.push(['stock backend inherits the resolved Tanimoto default', readFileSync(path.join(root, 'server/index.js'), 'utf8').includes('stockSearchConfig({ ...process.env, TANIMOTO_API_BASE })')]);
+checks.push(['open compounds routes are registered', readFileSync(path.join(root, 'server/index.js'), 'utf8').includes("/api/open-compounds/similarity")]);
 
 // Execute the actual request handlers with a rejected engine query. This catches
 // the failure-to-catalog transition, rather than only checking source strings.
@@ -163,6 +175,7 @@ const rejectedContext = {
   AbortController, searchCode: '[N](C)(C)(C)C',
   getAuthToken: () => 'fixture',
   runStockSearch: async () => { throw new Error('RDKit rejected fixture'); },
+  runOpenSearch: async () => { throw new Error('should not run open'); },
 };
 for (const name of new Set(searchBody.match(/\b\w+Ref\b/g))) rejectedContext[name] = { current: null };
 rejectedContext.searchSourceRef.current = 'stock';
@@ -176,11 +189,52 @@ checks.push(
   ['rejected stock query cannot keep pagination enabled', rejectedContext.hasMoreRef.current === false && !rejectedCalls.some(([name, value]) => name === 'setHasMore' && value === true)],
   ['rejected stock query preserves the actual error', rejectedCalls.some(([name, value]) => name === 'setSearchError' && value.includes('RDKit rejected fixture'))],
 );
+
+const rejectedOpenCalls = [];
+const rejectedOpenContext = {
+  AbortController, searchCode: '[N](C)(C)(C)C',
+  getAuthToken: () => 'fixture',
+  runStockSearch: async () => { throw new Error('should not run stock'); },
+  runOpenSearch: async () => { throw new Error('ChEMBL rejected fixture'); },
+};
+for (const name of new Set(searchBody.match(/\b\w+Ref\b/g))) rejectedOpenContext[name] = { current: null };
+rejectedOpenContext.searchSourceRef.current = 'open';
+rejectedOpenContext.hasMoreRef.current = true;
+rejectedOpenContext.browseRequestIdRef.current = 0;
+rejectedOpenContext.searchRequestIdRef.current = 0;
+for (const name of new Set(searchBody.match(/\bset[A-Z]\w*/g))) rejectedOpenContext[name] = value => rejectedOpenCalls.push([name, value]);
+await new AsyncFunction(...Object.keys(rejectedOpenContext), searchBody)(...Object.values(rejectedOpenContext));
+checks.push(
+  ['rejected open query clears previous visible rows', rejectedOpenCalls.some(([name, value]) => name === 'setTopMolecules' && value.length === 0)],
+  ['rejected open query cannot keep pagination enabled', rejectedOpenContext.hasMoreRef.current === false && !rejectedOpenCalls.some(([name, value]) => name === 'setHasMore' && value === true)],
+  ['rejected open query preserves the actual error', rejectedOpenCalls.some(([name, value]) => name === 'setSearchError' && value.includes('ChEMBL rejected fixture'))],
+);
+
+const { openResultsFromPayload } = await import(
+  pathToFileURL(path.join(root, 'client/src/utils/openResults.js')).href
+);
+const openMapped = openResultsFromPayload({
+  results: [{
+    rank: 1,
+    chemblId: 'CHEMBL1373993',
+    smiles: 'O=C(O)CSc1nc2ccccc2s1',
+    similarity: 1,
+    sourceUrl: 'https://www.ebi.ac.uk/chembl/compound_report_card/CHEMBL1373993/',
+    sourceLabel: 'ChEMBL',
+    inchiKey: 'ZZUQWNYNSKJLPI-UHFFFAOYSA-N',
+  }],
+});
+checks.push(
+  ['open mapper keeps ChEMBL id as selection key', openMapped[0]?.ASINEX_ID === 'CHEMBL1373993' && openMapped[0]?.isOpenRow === true],
+  ['open mapper never invents prices', openMapped[0]?.PRICE_1MG === undefined],
+);
+
 const browseBody = simulation.split('const fetchAllMolecules = async (page = 0, append = false, requestedPageSize = pageSizeRef.current) => {')[1].split('\n  };')[0];
 // No fetch mocks: reaching the catalog network code would fail this execution.
 await new AsyncFunction('searchSourceRef', 'searchControllerRef', browseBody)({ current: 'stock' }, { current: null });
+await new AsyncFunction('searchSourceRef', 'searchControllerRef', browseBody)({ current: 'open' }, { current: null });
 await new AsyncFunction('searchSourceRef', 'searchControllerRef', browseBody)({ current: 'asinex' }, { current: {} });
-checks.push(['catalog handler refuses stock source and pending searches before fetching', true]);
+checks.push(['catalog handler refuses stock/open source and pending searches before fetching', true]);
 
 const failures = checks.filter(([, passed]) => !passed).map(([label]) => label);
 if (failures.length) {
