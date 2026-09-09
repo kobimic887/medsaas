@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # The service is qualified only for the box's linux/amd64 target.
-FROM --platform=linux/amd64 python:3.11.10-slim-bookworm AS build
+FROM --platform=linux/amd64 python:3.14.6-slim-bookworm AS build
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -21,7 +21,7 @@ COPY docking_service ./docking_service
 RUN python -m pip install --no-deps .
 
 
-FROM --platform=linux/amd64 python:3.11.10-slim-bookworm AS runtime
+FROM --platform=linux/amd64 python:3.14.6-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
