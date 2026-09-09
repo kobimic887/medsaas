@@ -1519,7 +1519,7 @@ export function Simulation() {
               checked={searchSource === "asinex"}
               onChange={() => handleSourceChange("asinex")}
             />
-            <span>Asinex catalog</span>
+            <span>Internal catalog</span>
           </label>
           <label className="flex items-center gap-1 w-full sm:w-auto">
             <input
@@ -1537,8 +1537,8 @@ export function Simulation() {
             testing never mistakes the live catalog for a sample or a run for free. */}
         {IS_STAGING_BUILD && (
           <p className="mb-2 text-xs text-blue-gray-500 dark:text-slate-400" role="note">
-            Staging: catalog data is the live read-only Asinex source (the same one production uses); search runs against it.
-            Docking below calls the real provider and is billed to the Asinex/NVIDIA service under the synthetic test account — checkout stays disabled.
+            Staging: catalog data is the live read-only internal catalog (the same one production uses); search runs against it.
+            Docking below calls the real provider and is billed to the upstream service under the synthetic test account — checkout stays disabled.
           </p>
         )}
 
@@ -1560,7 +1560,7 @@ export function Simulation() {
           <Alert color="amber" className="mb-2">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               <Typography variant="small">
-                Stock-compound search is not available yet: {stockStatus.reason} You can still search the Asinex catalog — switch the source above.
+                Stock-compound search is not available yet: {stockStatus.reason} You can still search the internal catalog — switch the source above.
               </Typography>
               <button
                 type="button"
@@ -1659,7 +1659,7 @@ export function Simulation() {
         </div>
         {searchSource === "stock" && (
           <p className="mb-2 text-sm text-blue-gray-500">
-            Stock search compares structures with RDKit fingerprints (Morgan/ECFP4, Tanimoto) computed the same way for the query and every compound. Substructure, BAS, and molecular-weight search stay available under the Asinex catalog source.
+            Stock search compares structures with RDKit fingerprints (Morgan/ECFP4, Tanimoto) computed the same way for the query and every compound. Substructure, BAS, and molecular-weight search stay available under the internal catalog source.
           </p>
         )}
         
