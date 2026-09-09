@@ -56,6 +56,12 @@ import {
   loadRDKit,
 } from './utils/openCompounds.js';
 import {
+  OpenCompoundsAiError,
+  parseOpenCompoundsAiBody,
+  resolveOpenCompoundsAiRuntime,
+  runOpenCompoundsAiSearch,
+} from './utils/openCompoundsAi.js';
+import {
   DEFAULT_BRAND_PALETTE,
   extractBrandPalette,
   normalizeBrandPalette,
@@ -5137,7 +5143,8 @@ app.get('/api/stock-search/similarity', ensureMongoConnected, authenticateToken,
  *     tags: [Open Compounds]
  */
 app.get('/api/open-compounds/status', ensureMongoConnected, authenticateToken, requireActiveUser, async (_req, res) => {
-  const status = buildOpenCompoundsStatus(OPEN_COMPOUNDS_CONFIG);
+  const aiRuntime = resolveOpenCompoundsAiRuntime(OPEN_COMPOUNDS_CONFIG.ai, process.env);
+  const status = buildOpenCompoundsStatus(OPEN_COMPOUNDS_CONFIG, aiRuntime);
   if (!status.available) {
     return res.status(503).json({ ...status, code: 'OPEN_COMPOUNDS_UNAVAILABLE' });
   }
@@ -5191,6 +5198,80 @@ app.get('/api/open-compounds/similarity', ensureMongoConnected, authenticateToke
       error: 'Open compounds search is temporarily unavailable',
       code: 'OPEN_COMPOUNDS_UPSTREAM',
       details: error.message,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/open-compounds/ai-search:
+ *   post:
+ *     summary: AI tool-loop open-compounds search (model calls ChEMBL/RDKit tool)
+ *     tags: [Open Compounds]
+ *     description: >
+ *       Real model round-trip. The model must call search_similar_open_compounds;
+ *       displayed scores/IDs come only from the validated tool path. Does not
+ *       silently fall back to deterministic search on AI failure.
+ */
+app.post('/api/open-compounds/ai-search', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+  let parsed;
+  try {
+    parsed = parseOpenCompoundsAiBody(req.body || {});
+  } catch (error) {
+    if (error instanceof OpenCompoundsValidationError) {
+      return res.status(400).json({ error: error.message, code: error.code });
+    }
+    throw error;
+  }
+
+  const aiRuntime = resolveOpenCompoundsAiRuntime(OPEN_COMPOUNDS_CONFIG.ai, process.env);
+  if (!aiRuntime.enabled) {
+    return res.status(503).json({
+      error: aiRuntime.reason,
+      code: 'OPEN_COMPOUNDS_AI_UNAVAILABLE',
+      ai: {
+        enabled: false,
+        reason: aiRuntime.reason,
+        deterministicFallbackLabel: 'Search without AI',
+      },
+    });
+  }
+
+  try {
+    const payload = await runOpenCompoundsAiSearch({
+      config: OPEN_COMPOUNDS_CONFIG,
+      runtime: aiRuntime,
+      params: parsed.params,
+      instruction: parsed.instruction,
+      fetchImpl: (url, opts = {}) => fetchWithTimeout(url, opts),
+    });
+    const { _molblocksById, ...publicPayload } = payload;
+    return res.json(publicPayload);
+  } catch (error) {
+    if (error instanceof OpenCompoundsValidationError) {
+      return res.status(400).json({ error: error.message, code: error.code });
+    }
+    if (error instanceof OpenCompoundsAiError) {
+      console.warn(`Open compounds AI: ${error.code}: ${error.message}`);
+      return res.status(error.status || 502).json({
+        error: error.message,
+        code: error.code,
+      });
+    }
+    if (error instanceof OpenCompoundsUnavailableError) {
+      return res.status(503).json({ error: error.message, code: error.code });
+    }
+    if (error instanceof OpenCompoundsUpstreamError) {
+      return res.status(error.status || 502).json({
+        error: error.message,
+        code: error.code,
+        partial: Boolean(error.partial),
+      });
+    }
+    console.error('Open compounds AI search error:', error.message || error);
+    return res.status(502).json({
+      error: 'Open compounds AI search failed',
+      code: 'OPEN_COMPOUNDS_AI_UPSTREAM',
     });
   }
 });

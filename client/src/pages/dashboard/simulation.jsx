@@ -136,6 +136,14 @@ export function Simulation() {
   const [openMaxResults, setOpenMaxResults] = useState(100);
   const openMaxResultsRef = useRef(100);
   const [openExportKind, setOpenExportKind] = useState(''); // '' | 'csv' | 'sdf'
+  const [openUseAi, setOpenUseAi] = useState(true);
+  const openUseAiRef = useRef(true);
+  const [openInstruction, setOpenInstruction] = useState('');
+  const openInstructionRef = useRef('');
+  const [openAiStage, setOpenAiStage] = useState(''); // human-readable stage label
+  const [openAiExplanation, setOpenAiExplanation] = useState('');
+  // Full ranked AI result set — pagination slices locally so we do not re-call the model.
+  const openRankedCacheRef = useRef(null);
   const [queryType, setQueryType] = useState("draw"); // Default to Draw molecule
   const moleculeLimit = 30;
   const [similarityThreshold, setSimilarityThreshold] = useState(0.7); // Similarity threshold (0-1)
@@ -275,6 +283,14 @@ export function Simulation() {
   useEffect(() => {
     openMaxResultsRef.current = openMaxResults;
   }, [openMaxResults]);
+
+  useEffect(() => {
+    openUseAiRef.current = openUseAi;
+  }, [openUseAi]);
+
+  useEffect(() => {
+    openInstructionRef.current = openInstruction;
+  }, [openInstruction]);
 
   useEffect(() => {
     stockOffsetRef.current = stockOffset;
@@ -478,10 +494,14 @@ export function Simulation() {
           attribution: data.attribution,
           rankingNote: data.rankingNote,
           sendsQueryExternally: data.sendsQueryExternally,
+          externalDestination: data.externalDestination,
           ai: data.ai,
           maxResults: data.maxResults,
           minThreshold: data.minThreshold,
         });
+        // Prefer AI when the server says the tool loop is actually enabled.
+        if (data.ai?.enabled) setOpenUseAi(true);
+        else setOpenUseAi(false);
       } else {
         setOpenStatus({ state: 'unavailable', reason: data?.reason || 'Open compounds search is not available.' });
       }
@@ -513,6 +533,9 @@ export function Simulation() {
     setTopMolecules([]);
     setSelectedMolecules(new Set());
     setSearchError("");
+    openRankedCacheRef.current = null;
+    setOpenAiStage('');
+    setOpenAiExplanation('');
   };
 
   const handleSourceChange = (nextSource) => {
@@ -545,6 +568,9 @@ export function Simulation() {
     setInitialLoading(false);
     setCatalogSettled(true);
     setOpenExportKind('');
+    setOpenAiStage('');
+    setOpenAiExplanation('');
+    openRankedCacheRef.current = null;
 
     if (nextSource === 'stock') {
       // Stock similarity is the only supported stock mode; the threshold slider
@@ -619,10 +645,14 @@ export function Simulation() {
 
   // One page of open-compounds (ChEMBL → local Morgan re-score). Same offset
   // pagination contract as stock; never falls back to catalog or stock.
+  // This is the explicit “Search without AI” path.
   const runOpenSearch = async (offsetStart, append, { token, rawQuery, controller, requestId }) => {
     if (openStatusRef.current?.state !== 'available') {
       throw new Error('Open compounds search is not available yet. See the availability note above.');
     }
+    openRankedCacheRef.current = null;
+    setOpenAiStage('');
+    setOpenAiExplanation('');
     const activeThreshold = similarityThresholdRef.current;
     const activePageSize = pageSizeRef.current;
     const activeMaxResults = openMaxResultsRef.current;
@@ -668,6 +698,106 @@ export function Simulation() {
     const fullPage = rows.length >= pageSizeRef.current && Boolean(payload.hasMore);
     setHasMore(fullPage || (Boolean(payload.hasMore) && rows.length > 0));
     stockOffsetRef.current = offsetStart + rows.length;
+    setStockOffset(stockOffsetRef.current);
+    return true;
+  };
+
+  const openAiStageLabel = (stage) => {
+    switch (stage) {
+      case 'interpreting': return 'Interpreting request';
+      case 'calling_model': return 'Asking the model to call the search tool';
+      case 'model_followup': return 'Sending tool results back to the model';
+      case 'searching_sources': return 'Searching compound sources';
+      case 'ranked': return 'Applying calculated Morgan/Tanimoto ranks';
+      case 'summarizing': return 'Summarizing validated tool results';
+      case 'tool_error': return 'Search tool reported an error';
+      case 'complete': return 'AI workflow complete';
+      default: return stage || '';
+    }
+  };
+
+  // AI tool-loop search. Never silently falls back to deterministic search.
+  // Full ranked set is cached; further pages slice locally.
+  const runOpenAiSearch = async ({ token, rawQuery, controller, requestId, pageOffset = 0, append = false }) => {
+    if (openStatusRef.current?.state !== 'available') {
+      throw new Error('Open compounds search is not available yet. See the availability note above.');
+    }
+    if (!openStatusRef.current?.ai?.enabled) {
+      throw new Error(
+        openStatusRef.current?.ai?.reason
+          || 'AI search is not available. Use “Search without AI”, or ask an admin to provision an AI provider/model.'
+      );
+    }
+
+    // Pagination after the first AI response: slice the cache only.
+    if (pageOffset > 0 && openRankedCacheRef.current) {
+      const cache = openRankedCacheRef.current;
+      const pageSize = pageSizeRef.current;
+      const slice = cache.slice(pageOffset, pageOffset + pageSize);
+      if (searchControllerRef.current !== controller || requestId !== searchRequestIdRef.current) {
+        return false;
+      }
+      if (append) setTopMolecules(prev => [...prev, ...slice]);
+      else setTopMolecules(slice);
+      setHasMore(pageOffset + slice.length < cache.length);
+      stockOffsetRef.current = pageOffset + slice.length;
+      setStockOffset(stockOffsetRef.current);
+      return true;
+    }
+
+    setOpenAiStage('Interpreting request');
+    setOpenAiExplanation('');
+    openRankedCacheRef.current = null;
+    const activeThreshold = similarityThresholdRef.current;
+    const activeMaxResults = openMaxResultsRef.current;
+    const instruction = (openInstructionRef.current || '').trim();
+
+    const res = await fetchWithGatewayRetry(API_CONFIG.buildApiUrl('/open-compounds/ai-search'), {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'accept': 'application/json',
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({
+        smiles: rawQuery,
+        threshold: activeThreshold,
+        maxResults: activeMaxResults,
+        ...(instruction ? { instruction } : {}),
+      }),
+    });
+    const responseText = await res.text();
+    if (!res.ok) {
+      let payload = null;
+      try { payload = responseText.trim() ? JSON.parse(responseText) : null; } catch { payload = null; }
+      if (payload?.code === 'OPEN_COMPOUNDS_AI_UNAVAILABLE') {
+        throw new Error(
+          `${payload.error || 'AI search is unavailable'}. Use “Search without AI” for the deterministic ChEMBL path — this failure did not silently run that path.`
+        );
+      }
+      throw new Error(payload?.error || describeUpstreamHttpError(res.status, res.statusText, responseText, 'open'));
+    }
+    const payload = responseText.trim() ? JSON.parse(responseText) : { results: [] };
+    if (searchControllerRef.current !== controller || requestId !== searchRequestIdRef.current) {
+      return false;
+    }
+    if (payload.mode !== 'ai') {
+      throw new Error('AI search response was missing mode=ai; refusing to display unverified results.');
+    }
+    const stages = Array.isArray(payload.ai?.stages) ? payload.ai.stages : [];
+    const lastStage = stages[stages.length - 1];
+    setOpenAiStage(openAiStageLabel(lastStage?.stage) || 'AI workflow complete');
+    setOpenAiExplanation(typeof payload.ai?.explanation === 'string' ? payload.ai.explanation : '');
+
+    const allRows = openResultsFromPayload(payload);
+    openRankedCacheRef.current = allRows;
+    const pageSize = pageSizeRef.current;
+    const pageRows = allRows.slice(0, pageSize);
+    setTopMolecules(pageRows);
+    setSelectedMolecules(new Set());
+    setHasMore(allRows.length > pageRows.length);
+    stockOffsetRef.current = pageRows.length;
     setStockOffset(stockOffsetRef.current);
     return true;
   };
@@ -769,9 +899,12 @@ export function Simulation() {
       }
 
       if (searchSourceRef.current === 'open') {
-        // Open compounds = ChEMBL retrieval + local Morgan re-score. Never fall
-        // back to Internal catalog or Stock compounds on failure.
-        const progressed = await runOpenSearch(0, false, { token, rawQuery, controller, requestId });
+        // Open compounds: AI tool-loop by default when enabled; otherwise the
+        // explicit deterministic path. Failures never fall back across modes.
+        const useAi = openUseAiRef.current;
+        const progressed = useAi
+          ? await runOpenAiSearch({ token, rawQuery, controller, requestId, pageOffset: 0, append: false })
+          : await runOpenSearch(0, false, { token, rawQuery, controller, requestId });
         if (progressed === false) return;
         isSearchActiveRef.current = true;
         setIsSearchActive(true);
@@ -910,7 +1043,18 @@ export function Simulation() {
         return;
       }
       if (searchSourceRef.current === 'open') {
-        await runOpenSearch(stockOffsetRef.current, true, { token, rawQuery, controller, requestId });
+        if (openUseAiRef.current) {
+          await runOpenAiSearch({
+            token,
+            rawQuery,
+            controller,
+            requestId,
+            pageOffset: stockOffsetRef.current,
+            append: true,
+          });
+        } else {
+          await runOpenSearch(stockOffsetRef.current, true, { token, rawQuery, controller, requestId });
+        }
         return;
       }
 
@@ -1590,7 +1734,10 @@ export function Simulation() {
   // catalog never stands in silently, so the Search button stays disabled until
   // the availability check reports 'available'.
   const stockSearchDisabled = searchSource === 'stock' && stockStatus?.state !== 'available';
-  const openSearchDisabled = searchSource === 'open' && openStatus?.state !== 'available';
+  const openSearchDisabled = searchSource === 'open' && (
+    openStatus?.state !== 'available'
+    || (openUseAi && openStatus?.ai?.enabled !== true)
+  );
   const sourceSearchDisabled = stockSearchDisabled || openSearchDisabled;
 
   const handleCopySmiles = async () => {
@@ -1768,13 +1915,64 @@ export function Simulation() {
           </div>
         )}
         {searchSource === "open" && openStatus && openStatus.state === "available" && (
-          <div className="mb-2 rounded-lg border border-indigo-100 bg-indigo-50/70 px-4 py-3 space-y-1">
+          <div className="mb-2 rounded-lg border border-indigo-100 bg-indigo-50/70 px-4 py-3 space-y-2">
             <Typography variant="small" color="blue-gray">
-              Open compounds search is ready — query SMILES are sent to ChEMBL (EMBL-EBI), then re-scored locally with RDKit Morgan radius&nbsp;2 / 2048-bit Tanimoto (chirality off). Results are ranked among retrieved candidates, not guaranteed exhaustive database-wide top-N.
+              Open compounds sends your query to external providers
+              {openStatus.externalDestination ? ` (${openStatus.externalDestination})` : ''}.
+              Scores are always calculated with RDKit Morgan radius&nbsp;2 / 2048-bit Tanimoto (chirality off), never by the model.
+              Results are ranked among retrieved candidates, not guaranteed exhaustive database-wide top-N.
             </Typography>
-            {openStatus.ai && !openStatus.ai.enabled && (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+              <label className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="openSearchMode"
+                  checked={openUseAi}
+                  disabled={!openStatus.ai?.enabled}
+                  onChange={() => setOpenUseAi(true)}
+                />
+                <span>AI search{openStatus.ai?.enabled ? '' : ' (unavailable)'}</span>
+              </label>
+              <label className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="openSearchMode"
+                  checked={!openUseAi}
+                  onChange={() => setOpenUseAi(false)}
+                />
+                <span>Search without AI</span>
+              </label>
+            </div>
+            {openUseAi && openStatus.ai?.enabled && (
+              <div className="space-y-1">
+                <Typography variant="small" className="font-semibold text-blue-gray-700">
+                  Optional instruction
+                </Typography>
+                <textarea
+                  value={openInstruction}
+                  onChange={(e) => setOpenInstruction(e.target.value.slice(0, 500))}
+                  rows={2}
+                  placeholder="e.g. Prefer compact benzothiazoles if present among hits. Do not change the query SMILES."
+                  className="w-full rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm"
+                />
+                <Typography variant="small" className="text-blue-gray-500">
+                  Instructions cannot silently change the SMILES, threshold, or result count — conflicts are explained.
+                </Typography>
+              </div>
+            )}
+            {!openStatus.ai?.enabled && (
               <Typography variant="small" className="text-blue-gray-500">
-                AI assist: {openStatus.ai.reason}
+                AI: {openStatus.ai?.reason || 'not configured'}. Deterministic “Search without AI” still works.
+              </Typography>
+            )}
+            {openAiStage && (
+              <Typography variant="small" className="text-indigo-800" role="status" aria-live="polite">
+                {openAiStage}
+              </Typography>
+            )}
+            {openAiExplanation && (
+              <Typography variant="small" className="text-blue-gray-700 whitespace-pre-wrap">
+                {openAiExplanation}
               </Typography>
             )}
           </div>
@@ -1887,7 +2085,7 @@ export function Simulation() {
         )}
         {searchSource === "open" && (
           <p className="mb-2 text-sm text-blue-gray-500">
-            Open compounds retrieves public ChEMBL structures for your drawn molecule or SMILES, then applies the declared RDKit Morgan score. Open compounds are not stocked or priced here — use selection for docking handoff only.
+            Open compounds uses an AI tool loop when enabled (model requests the chemical-search tool; RDKit scores). Use “Search without AI” for the deterministic ChEMBL path. Open compounds are not stocked or priced here — selection is for docking handoff only.
           </p>
         )}
         

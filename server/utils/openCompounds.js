@@ -18,7 +18,8 @@
 // Attribution: ChEMBL data are © EMBL-EBI / ChEMBL contributors; reuse under
 // the ChEMBL licence (CC Attribution). Link each hit to its ChEMBL compound page.
 //
-// AI: optional and off by default. Similarity numbers never come from a model.
+// AI orchestration lives in openCompoundsAi.js (tool loop). Similarity numbers
+// never come from a model — only from this RDKit path.
 
 import initRDKitModule from '@rdkit/rdkit';
 
@@ -78,37 +79,29 @@ export class OpenCompoundsUpstreamError extends Error {
   }
 }
 
-/** Read open-compounds config from env. Pure. */
+/** Read open-compounds config from env. Pure; no side effects. */
 export function openCompoundsConfig(env = process.env) {
   const baseUrl = String(env.OPEN_COMPOUNDS_BASE || OPEN_COMPOUNDS_BASE_DEFAULT)
     .trim()
     .replace(/\/+$/, '');
   const enabledRaw = String(env.OPEN_COMPOUNDS_ENABLED ?? 'true').trim().toLowerCase();
   const enabled = !(enabledRaw === '0' || enabledRaw === 'false' || enabledRaw === 'off');
-  // AI stays off unless explicitly enabled AND a provider key is present.
-  // Never silently fall through to a paid model.
-  const aiEnabled = String(env.OPEN_COMPOUNDS_AI_ENABLED || '').trim().toLowerCase() === 'true';
+  const aiConfigured = String(env.OPEN_COMPOUNDS_AI_ENABLED || '').trim().toLowerCase() === 'true';
   const aiProvider = String(env.OPEN_COMPOUNDS_AI_PROVIDER || '').trim().toLowerCase() || null;
   const aiModel = String(env.OPEN_COMPOUNDS_AI_MODEL || '').trim() || null;
   const hasAiKey = Boolean(
     String(env.OPEN_COMPOUNDS_AI_API_KEY || env.OPENROUTER_API_KEY || env.OPENAI_API_KEY || '').trim()
   );
+  // Detailed enablement (allowlist, free/paid gate) is resolved in openCompoundsAi.js
+  // at request time so this file stays free of a circular import.
   return {
     baseUrl,
     enabled,
     ai: {
-      enabled: false, // Configuration alone cannot enable an unimplemented AI tool loop.
-      configured: aiEnabled,
+      configured: aiConfigured,
       hasKey: hasAiKey,
       provider: aiProvider,
       model: aiModel,
-      reason: !aiEnabled
-        ? 'AI assist is not enabled (deterministic ChEMBL search only).'
-        : !hasAiKey
-          ? 'AI assist enabled but no API key is configured; deterministic search still works.'
-          : !(aiProvider && aiModel)
-            ? 'AI assist needs OPEN_COMPOUNDS_AI_PROVIDER and OPEN_COMPOUNDS_AI_MODEL.'
-            : 'AI settings are present, but natural-language assistance is not implemented yet.',
     },
   };
 }
@@ -502,8 +495,26 @@ export async function fetchChemblCandidates({
   };
 }
 
-/** Build the public status payload. */
-export function buildOpenCompoundsStatus(config = openCompoundsConfig()) {
+/** Build the public status payload. Pass `aiRuntime` from resolveOpenCompoundsAiRuntime. */
+export function buildOpenCompoundsStatus(config = openCompoundsConfig(), aiRuntime = null) {
+  const ai = aiRuntime
+    ? {
+        enabled: Boolean(aiRuntime.enabled),
+        reason: aiRuntime.reason,
+        provider: aiRuntime.provider,
+        model: aiRuntime.enabled ? aiRuntime.model : aiRuntime.model,
+        allowPaid: Boolean(aiRuntime.allowPaid),
+        deterministicFallbackLabel: 'Search without AI',
+      }
+    : {
+        enabled: false,
+        reason: 'AI runtime was not resolved.',
+        provider: config.ai?.provider || null,
+        model: config.ai?.model || null,
+        allowPaid: false,
+        deterministicFallbackLabel: 'Search without AI',
+      };
+
   return {
     available: Boolean(config.enabled && config.baseUrl),
     source: OPEN_COMPOUNDS_SOURCE,
@@ -513,13 +524,12 @@ export function buildOpenCompoundsStatus(config = openCompoundsConfig()) {
     maxResults: OPEN_SIMILARITY_MAX_RESULTS,
     minThreshold: OPEN_SIMILARITY_MIN_THRESHOLD,
     sendsQueryExternally: true,
-    externalDestination: 'ChEMBL Data Web Services (EMBL-EBI)',
+    externalDestination: ai.enabled
+      ? 'AI provider (tool loop) and ChEMBL Data Web Services (EMBL-EBI)'
+      : 'ChEMBL Data Web Services (EMBL-EBI)',
     rankingNote:
       'Results are ranked among retrieved ChEMBL candidates after local RDKit re-scoring, not guaranteed exhaustive database-wide top-N.',
-    ai: {
-      enabled: config.ai.enabled,
-      reason: config.ai.reason,
-    },
+    ai,
     ...(config.enabled ? {} : { reason: 'Open compounds search is disabled (OPEN_COMPOUNDS_ENABLED=false).' }),
   };
 }

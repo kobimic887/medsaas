@@ -43,15 +43,21 @@ console.log('[open-compounds] config + query validation');
   const cfg = openCompoundsConfig({});
   check('default base is ChEMBL', cfg.baseUrl.includes('ebi.ac.uk/chembl'));
   check('enabled by default', cfg.enabled === true);
-  check('AI off without keys', cfg.ai.enabled === false);
-  check('AI stays unavailable until implemented even with settings', openCompoundsConfig({ OPEN_COMPOUNDS_AI_ENABLED: 'true', OPEN_COMPOUNDS_AI_PROVIDER: 'fixture', OPEN_COMPOUNDS_AI_MODEL: 'fixture', OPEN_COMPOUNDS_AI_API_KEY: 'fixture' }).ai.enabled === false);
+  check('AI not configured by default', cfg.ai.configured === false);
 
   const disabled = openCompoundsConfig({ OPEN_COMPOUNDS_ENABLED: 'false' });
   check('can disable open compounds', disabled.enabled === false);
 
-  const status = buildOpenCompoundsStatus(cfg);
+  const status = buildOpenCompoundsStatus(cfg, {
+    enabled: false,
+    reason: 'AI assist is not enabled (deterministic ChEMBL search only).',
+    provider: null,
+    model: null,
+    allowPaid: false,
+  });
   check('status declares Morgan fingerprint', status.fingerprint.radius === 2 && status.fingerprint.nBits === 2048);
   check('status warns query leaves the premises', status.sendsQueryExternally === true);
+  check('status AI disabled without runtime enablement', status.ai.enabled === false);
 
   try {
     parseOpenCompoundsQuery({});

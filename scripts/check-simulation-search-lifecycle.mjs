@@ -142,29 +142,35 @@ const context = {
   searchControllerRef: { current: { abort() { calls.push('abort'); } } },
   searchRequestIdRef: { current: 7 }, isSearchActiveRef: { current: true },
   isLoadingPageRef: { current: true }, stockOffsetRef: { current: 50 },
+  openRankedCacheRef: { current: [{ chemblId: 'stale' }] },
 };
-for (const name of ['setSimilarityThreshold', 'setStockOffset', 'setIsSearchActive', 'setSearchLoading', 'setTopLoading', 'setHasMore', 'setTopMolecules', 'setSelectedMolecules', 'setSearchError']) context[name] = value => calls.push([name, value]);
+for (const name of ['setSimilarityThreshold', 'setStockOffset', 'setIsSearchActive', 'setSearchLoading', 'setTopLoading', 'setHasMore', 'setTopMolecules', 'setSelectedMolecules', 'setSearchError', 'setOpenAiStage', 'setOpenAiExplanation']) context[name] = value => calls.push([name, value]);
 new Function(...Object.keys(context), 'value', handlerBody)(...Object.values(context), 0.7);
 checks.push(
   ['threshold change aborts the old stock ranking', calls.includes('abort') && context.searchRequestIdRef.current === 8],
   ['threshold change resets paging and old rows', context.stockOffsetRef.current === 0 && !context.isSearchActiveRef.current && calls.some(c => c[0] === 'setTopMolecules' && c[1].length === 0)],
+  ['threshold change clears open AI cache', context.openRankedCacheRef.current === null],
   ['returning to stock retries unfinished availability', simulation.includes("if (stockStatusRef.current?.state !== 'available') fetchStockStatus()")],
   ['stock threshold matches API minimum', simulation.includes('searchSource === "stock" ? "0.1"') && simulation.includes('Math.max(0.1, value)')],
 );
 
 checks.push(
   ['open source posts to the authenticated open-compounds endpoint', simulation.includes("/open-compounds/similarity")],
+  ['open AI search posts to ai-search', simulation.includes("/open-compounds/ai-search")],
   ['open availability is probed via the status endpoint', simulation.includes("/open-compounds/status")],
-  ['open search is similarity-only and restarts at offset zero', simulation.includes("const progressed = await runOpenSearch(0, false,")],
+  ['open search is similarity-only and restarts at offset zero', simulation.includes("runOpenSearch(0, false,") || simulation.includes("runOpenAiSearch({")],
   ['open compounds radio is present', simulation.includes('Open compounds (ChEMBL)')],
   ['open threshold floor is 0.4', simulation.includes('searchSource === "open" ? "0.4"') && simulation.includes('Math.max(0.4, value)')],
   ['open export uses authenticated export route', simulation.includes("/open-compounds/export")],
   ['open empty/error states are distinct', simulation.includes('No open compounds matched this structure')],
   ['open rows never claim purchase/stock', simulation.includes('Not stocked or priced')],
+  ['explicit Search without AI control exists', simulation.includes('Search without AI')],
+  ['AI failure does not pretend deterministic search ran', simulation.includes('did not silently run that path')],
 );
 
 checks.push(['stock backend inherits the resolved Tanimoto default', readFileSync(path.join(root, 'server/index.js'), 'utf8').includes('stockSearchConfig({ ...process.env, TANIMOTO_API_BASE })')]);
 checks.push(['open compounds routes are registered', readFileSync(path.join(root, 'server/index.js'), 'utf8').includes("/api/open-compounds/similarity")]);
+checks.push(['open compounds AI route is registered', readFileSync(path.join(root, 'server/index.js'), 'utf8').includes("/api/open-compounds/ai-search")]);
 
 // Execute the actual request handlers with a rejected engine query. This catches
 // the failure-to-catalog transition, rather than only checking source strings.
@@ -196,9 +202,11 @@ const rejectedOpenContext = {
   getAuthToken: () => 'fixture',
   runStockSearch: async () => { throw new Error('should not run stock'); },
   runOpenSearch: async () => { throw new Error('ChEMBL rejected fixture'); },
+  runOpenAiSearch: async () => { throw new Error('should not run AI'); },
 };
 for (const name of new Set(searchBody.match(/\b\w+Ref\b/g))) rejectedOpenContext[name] = { current: null };
 rejectedOpenContext.searchSourceRef.current = 'open';
+rejectedOpenContext.openUseAiRef = { current: false };
 rejectedOpenContext.hasMoreRef.current = true;
 rejectedOpenContext.browseRequestIdRef.current = 0;
 rejectedOpenContext.searchRequestIdRef.current = 0;

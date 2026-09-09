@@ -43,9 +43,12 @@ execute the small slice.
   `GET /api/stock-search/status|similarity` proxy an internal tonomitosql
   dataset via `STOCK_SEARCH_BASE` / `STOCK_SEARCH_DATASET_ID` /
   `STOCK_SEARCH_DATASET_NAME`; unprovisioned = **503 `STOCK_SEARCH_UNAVAILABLE`**
-  (never a silent fallback to Asinex). Open compounds: ChEMBL retrieval + local
-  RDKit Morgan re-score via `GET /api/open-compounds/status|similarity|export`
-  (`docs/DATA-OPEN-COMPOUNDS.md`); never fall back to catalog or stock.
+  (never a silent fallback to Asinex). Open compounds: AI tool loop
+  (`POST /api/open-compounds/ai-search`) plus deterministic
+  `GET /api/open-compounds/status|similarity|export` — ChEMBL retrieval + local
+  RDKit Morgan re-score (`docs/DATA-OPEN-COMPOUNDS.md`); never fall back to
+  catalog or stock. Explicit “Search without AI” uses the deterministic path;
+  AI failures do not silently run it.
   Full stock contract in `docs/DATA-STOCK-COMPOUNDS.md`. Failed/new searches
   disable pagination and clear old rows; catalog browsing must reject stock/open
   mode so Asinex rows cannot appear as stock/open hits.
@@ -156,4 +159,4 @@ Do not spawn `pyxis-ops` for ordinary one-file work.
 
 Stock search: failed/new queries clear old rows and disable paging; catalog fetches refuse stock mode. Generic RDKit rejection explains charges/bonds without modifying the submitted structure.
 
-Integration (2026-09-09): completed stock, Open compounds, and staging/folding work is consolidated on main. Deployment remains separate. Open compounds AI settings are placeholders: no model tool loop exists and ai.enabled stays false.
+Integration (2026-09-09): completed stock, Open compounds, and staging/folding work is consolidated on main. Deployment remains separate. Open compounds AI is a real tool-calling loop when `OPEN_COMPOUNDS_AI_*` is provisioned (prefer free OpenRouter models with tools); otherwise use “Search without AI”.

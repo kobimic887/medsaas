@@ -62,8 +62,8 @@
     "services:mcp": "docker compose --profile mcp up -d mcp-server",
     "test:stock-search": "SERVER_RUNTIME=bun bun server/test/stock-search.test.mjs && SERVER_RUNTIME=bun bun server/test/stock-search-route.test.mjs",
     "test:stock-search:node": "node server/test/stock-search.test.mjs && node server/test/stock-search-route.test.mjs",
-    "test:open-compounds": "SERVER_RUNTIME=bun bun server/test/open-compounds.test.mjs && SERVER_RUNTIME=bun bun server/test/open-compounds-route.test.mjs",
-    "test:open-compounds:node": "node server/test/open-compounds.test.mjs && node server/test/open-compounds-route.test.mjs",
+    "test:open-compounds": "SERVER_RUNTIME=bun bun server/test/open-compounds.test.mjs && SERVER_RUNTIME=bun bun server/test/open-compounds-ai.test.mjs && SERVER_RUNTIME=bun bun server/test/open-compounds-route.test.mjs",
+    "test:open-compounds:node": "node server/test/open-compounds.test.mjs && node server/test/open-compounds-ai.test.mjs && node server/test/open-compounds-route.test.mjs",
     "test:staging-demo": "bun --cwd=server run test:staging-demo",
     "test:staging-simulation": "bun --cwd=server run test:staging-simulation"
   },

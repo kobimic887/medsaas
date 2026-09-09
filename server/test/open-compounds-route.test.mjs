@@ -139,6 +139,21 @@ async function main() {
     check('status declares external send', statusBody.sendsQueryExternally === true);
     check('AI disabled by default', statusBody.ai && statusBody.ai.enabled === false);
 
+    const aiUnauth = await fetch(`${BASE}/api/open-compounds/ai-search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ smiles: REF, threshold: 0.7, maxResults: 10 }),
+    });
+    check('ai-search requires auth (401)', aiUnauth.status === 401);
+
+    const aiOff = await fetch(`${BASE}/api/open-compounds/ai-search`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ smiles: REF, threshold: 0.7, maxResults: 10 }),
+    });
+    const aiOffBody = await aiOff.json().catch(() => ({}));
+    check('ai-search unavailable without AI config (503)', aiOff.status === 503 && aiOffBody.code === 'OPEN_COMPOUNDS_AI_UNAVAILABLE');
+
     const bad = await fetch(`${BASE}/api/open-compounds/similarity?threshold=0.7`, {
       headers: { Authorization: `Bearer ${token}` },
     });
