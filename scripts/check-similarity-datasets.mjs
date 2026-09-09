@@ -8,7 +8,7 @@ const element = (type, props, ...children) => ({ type, props: { ...props, ...(ch
 globalThis.__pickerHarness = {
   createElement: element, jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }), jsxDEV: (type, props) => ({ type, props }),
   useState(initial) { const i = cursor++; if (!(i in state)) state[i] = initial; return [state[i], value => { state[i] = typeof value === 'function' ? value(state[i]) : value; }]; },
-  useRef(initial) { const i = cursor++; return refs[i] ||= { current: initial }; },
+  useRef(initial) { const i = cursor++; refs[i] ||= { current: initial }; return refs[i]; },
   useEffect(fn, deps) { const i = cursor++; if (!effects[i] || deps.some((d, j) => d !== effects[i][j])) { effects[i] = deps; pending.push(fn); } },
 };
 const build = await Bun.build({
@@ -29,7 +29,7 @@ globalThis.fetch = async (url, options) => { requests.push({ url, options }); re
 const render = () => { cursor = 0; return DeepSimilarity(); };
 const nodes = tree => !tree || typeof tree !== 'object' ? [] : [tree, ...[tree.props?.children].flat(Infinity).flatMap(nodes)];
 const find = (tree, predicate) => { const node = nodes(tree).find(predicate); assert.ok(node, 'Control exists'); return node; };
-const flush = async () => { pending.splice(0).forEach(fn => fn()); await new Promise(r => setTimeout(r, 20)); };
+const flush = async () => { pending.splice(0).forEach(fn => { fn(); }); await new Promise(r => setTimeout(r, 20)); };
 try {
   responder = async () => Response.json({ datasets: [{ id: 10, name: 'Stock compounds — 2026-09-01', row_count: 630646 }] });
   render(); await flush();

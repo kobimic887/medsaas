@@ -24,6 +24,7 @@ import { API_CONFIG, getAuthToken } from "@/utils/constants";
 import { copyToClipboard } from '@/utils/copyToClipboard';
 import { clearViewerStorage, markViewerHandoff, normalizePdbId, rcsbPdbDownloadUrl } from '@/utils/viewerStorage';
 import { stockResultsFromPayload } from '@/utils/stockResults';
+import { openResultsFromPayload } from '@/utils/openResults';
 
 function catalogRowsFromResponse(result) {
   if (Array.isArray(result)) return result;
@@ -65,9 +66,10 @@ function normalizeCatalogMolecule(molecule = {}) {
 /** Prefer plain wording over bare "HTTP 502: Bad Gateway" (restart gap or upstream). */
 function describeUpstreamHttpError(status, statusText = '', bodyHint = '', kind = 'catalog') {
   if (status === 502 || status === 503 || status === 504) {
-    return kind === 'docking'
-      ? 'Upstream docking service failed. Please try again.'
-      : 'Catalog temporarily unavailable (redeploy or upstream). Please try again.';
+    if (kind === 'docking') return 'Upstream docking service failed. Please try again.';
+    if (kind === 'stock') return 'Stock-compound search is temporarily unavailable. Please try again.';
+    if (kind === 'open') return 'Open compounds search is temporarily unavailable. Please try again.';
+    return 'Catalog temporarily unavailable (redeploy or upstream). Please try again.';
   }
   const base = `HTTP ${status}${statusText ? `: ${statusText}` : ''}`;
   if (!bodyHint) return base;
@@ -126,9 +128,14 @@ export function Simulation() {
   const [searchSource, setSearchSource] = useState("asinex");
   const [stockStatus, setStockStatus] = useState(null); // null | { state: 'loading' } | { state: 'available', dataset } | { state: 'unavailable', reason }
   const stockStatusRequestRef = useRef(0);
-  // Stock pagination is by offset over the engine's stable ranking, never by a
+  const [openStatus, setOpenStatus] = useState(null); // null | loading | available | unavailable
+  const openStatusRequestRef = useRef(0);
+  // Stock/open pagination is by offset over a stable ranking, never by a
   // parsed compound code (ASINEX IDs like "ASN 04188606" are strings).
-  const [stockOffset, setStockOffset] = useState(0); // next offset for stock pages
+  const [stockOffset, setStockOffset] = useState(0); // next offset for stock/open pages
+  const [openMaxResults, setOpenMaxResults] = useState(100);
+  const openMaxResultsRef = useRef(100);
+  const [openExportKind, setOpenExportKind] = useState(''); // '' | 'csv' | 'sdf'
   const [queryType, setQueryType] = useState("draw"); // Default to Draw molecule
   const moleculeLimit = 30;
   const [similarityThreshold, setSimilarityThreshold] = useState(0.7); // Similarity threshold (0-1)
@@ -186,6 +193,7 @@ export function Simulation() {
   const searchTypeRef = useRef(searchType);
   const searchSourceRef = useRef(searchSource);
   const stockStatusRef = useRef(stockStatus);
+  const openStatusRef = useRef(openStatus);
   const stockOffsetRef = useRef(stockOffset);
   const pageSizeRef = useRef(pageSize);
   const similarityThresholdRef = useRef(similarityThreshold);
@@ -261,6 +269,14 @@ export function Simulation() {
   }, [stockStatus]);
 
   useEffect(() => {
+    openStatusRef.current = openStatus;
+  }, [openStatus]);
+
+  useEffect(() => {
+    openMaxResultsRef.current = openMaxResults;
+  }, [openMaxResults]);
+
+  useEffect(() => {
     stockOffsetRef.current = stockOffset;
   }, [stockOffset]);
 
@@ -268,8 +284,9 @@ export function Simulation() {
     browseControllerRef.current?.abort();
     searchControllerRef.current?.abort();
     resultDownloadControllerRef.current?.abort();
-    // Invalidate an in-flight stock availability check when leaving the page.
+    // Invalidate an in-flight stock/open availability check when leaving the page.
     stockStatusRequestRef.current += 1;
+    openStatusRequestRef.current += 1;
     if (messageTimerRef.current) window.clearTimeout(messageTimerRef.current);
     if (clipboardTimerRef.current) window.clearTimeout(clipboardTimerRef.current);
   }, []);
@@ -306,7 +323,7 @@ export function Simulation() {
 
   // Function to fetch molecules from /asinex/all/x_10
   const fetchAllMolecules = async (page = 0, append = false, requestedPageSize = pageSizeRef.current) => {
-    // Catalog browsing must never populate a stock result table, including after
+    // Catalog browsing must never populate a stock/open result table, including after
     // a rejected query or while a new search is still pending.
     if (searchSourceRef.current !== 'asinex' || searchControllerRef.current) return;
     // Only the infinite-scroll path needs this guard — it fires from a scroll handler
@@ -433,6 +450,47 @@ export function Simulation() {
     }
   };
 
+  const fetchOpenStatus = async () => {
+    const requestId = ++openStatusRequestRef.current;
+    setOpenStatus({ state: 'loading' });
+    const token = getAuthToken();
+    try {
+      const res = await fetch(API_CONFIG.buildApiUrl('/open-compounds/status'), {
+        headers: {
+          'accept': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+      });
+      const data = await res.json().catch(() => null);
+      if (openStatusRequestRef.current !== requestId) return;
+      if (!res.ok) {
+        setOpenStatus({
+          state: 'unavailable',
+          reason: data?.reason || data?.error || `Availability check failed (HTTP ${res.status}).`,
+        });
+        return;
+      }
+      if (data && data.available === true) {
+        setOpenStatus({
+          state: 'available',
+          sourceLabel: data.sourceLabel,
+          fingerprint: data.fingerprint,
+          attribution: data.attribution,
+          rankingNote: data.rankingNote,
+          sendsQueryExternally: data.sendsQueryExternally,
+          ai: data.ai,
+          maxResults: data.maxResults,
+          minThreshold: data.minThreshold,
+        });
+      } else {
+        setOpenStatus({ state: 'unavailable', reason: data?.reason || 'Open compounds search is not available.' });
+      }
+    } catch (err) {
+      if (openStatusRequestRef.current !== requestId) return;
+      setOpenStatus({ state: 'unavailable', reason: err.message || 'Availability check failed.' });
+    }
+  };
+
   // Switching the search corpus must never leave the other corpus' results on
   // screen or let a stale response from it land afterwards. Reset everything the
   // list, cursor, selection, and in-flight requests depend on.
@@ -440,7 +498,7 @@ export function Simulation() {
   // any pending page before allowing another search.
   const handleThresholdChange = (value) => {
     setSimilarityThreshold(value);
-    if (searchSourceRef.current !== 'stock') return;
+    if (searchSourceRef.current !== 'stock' && searchSourceRef.current !== 'open') return;
     searchControllerRef.current?.abort();
     searchControllerRef.current = null;
     searchRequestIdRef.current += 1;
@@ -466,6 +524,7 @@ export function Simulation() {
     browseRequestIdRef.current += 1;
     searchRequestIdRef.current += 1;
     stockStatusRequestRef.current += 1; // invalidate any in-flight status check
+    openStatusRequestRef.current += 1;
     setSearchSource(nextSource);
     setIsSearchActive(false);
     isSearchActiveRef.current = false;
@@ -485,6 +544,7 @@ export function Simulation() {
     setSelectedMolecules(new Set());
     setInitialLoading(false);
     setCatalogSettled(true);
+    setOpenExportKind('');
 
     if (nextSource === 'stock') {
       // Stock similarity is the only supported stock mode; the threshold slider
@@ -492,6 +552,10 @@ export function Simulation() {
       setSearchType('similarity');
       setSimilarityThreshold(value => Math.max(0.1, value));
       if (stockStatusRef.current?.state !== 'available') fetchStockStatus();
+    } else if (nextSource === 'open') {
+      setSearchType('similarity');
+      setSimilarityThreshold(value => Math.max(0.4, value));
+      if (openStatusRef.current?.state !== 'available') fetchOpenStatus();
     } else {
       // Back to the catalog: restore the normal browse entry state.
       fetchAllMolecules(0, false);
@@ -553,6 +617,103 @@ export function Simulation() {
     return true;
   };
 
+  // One page of open-compounds (ChEMBL → local Morgan re-score). Same offset
+  // pagination contract as stock; never falls back to catalog or stock.
+  const runOpenSearch = async (offsetStart, append, { token, rawQuery, controller, requestId }) => {
+    if (openStatusRef.current?.state !== 'available') {
+      throw new Error('Open compounds search is not available yet. See the availability note above.');
+    }
+    const activeThreshold = similarityThresholdRef.current;
+    const activePageSize = pageSizeRef.current;
+    const activeMaxResults = openMaxResultsRef.current;
+    const params = new URLSearchParams({
+      smiles: rawQuery,
+      threshold: String(activeThreshold),
+      offset: String(offsetStart),
+      limit: String(activePageSize),
+      maxResults: String(activeMaxResults),
+    });
+    const url = `${API_CONFIG.buildApiUrl('/open-compounds/similarity')}?${params.toString()}`;
+    const res = await fetchWithGatewayRetry(url, {
+      method: 'GET',
+      signal: controller.signal,
+      headers: {
+        'accept': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+    });
+    const responseText = await res.text();
+    if (!res.ok) {
+      let payload = null;
+      try { payload = responseText.trim() ? JSON.parse(responseText) : null; } catch { payload = null; }
+      if (payload && payload.code === 'OPEN_COMPOUNDS_UNAVAILABLE') {
+        throw new Error(`Open compounds search is not available: ${payload.error || 'service disabled'}.`);
+      }
+      if (payload && payload.code === 'OPEN_COMPOUNDS_PARTIAL') {
+        throw new Error(payload.error || 'Open compounds search returned a partial upstream failure.');
+      }
+      throw new Error(payload?.error || describeUpstreamHttpError(res.status, res.statusText, responseText, 'open'));
+    }
+    const payload = responseText.trim() ? JSON.parse(responseText) : { results: [] };
+    if (searchControllerRef.current !== controller || requestId !== searchRequestIdRef.current) {
+      return false;
+    }
+    const rows = openResultsFromPayload(payload);
+    if (append) {
+      setTopMolecules(prev => [...prev, ...rows]);
+    } else {
+      setTopMolecules(rows);
+      setSelectedMolecules(new Set());
+    }
+    const fullPage = rows.length >= pageSizeRef.current && Boolean(payload.hasMore);
+    setHasMore(fullPage || (Boolean(payload.hasMore) && rows.length > 0));
+    stockOffsetRef.current = offsetStart + rows.length;
+    setStockOffset(stockOffsetRef.current);
+    return true;
+  };
+
+  const downloadOpenExport = async (format) => {
+    if (openExportKind || searchSourceRef.current !== 'open') return;
+    const rawQuery = (searchCode || '').trim();
+    if (!rawQuery) {
+      showMessage('Enter a SMILES query before exporting.', 'error');
+      return;
+    }
+    const token = getAuthToken();
+    const params = new URLSearchParams({
+      smiles: rawQuery,
+      threshold: String(similarityThresholdRef.current),
+      maxResults: String(openMaxResultsRef.current),
+      format,
+    });
+    setOpenExportKind(format);
+    try {
+      const res = await fetch(`${API_CONFIG.buildApiUrl('/open-compounds/export')}?${params.toString()}`, {
+        headers: {
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(payload?.error || `Export failed (HTTP ${res.status})`);
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = format === 'sdf' ? 'open-compounds.sdf' : 'open-compounds.csv';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+      showMessage(`Downloaded open-compounds.${format}`);
+    } catch (err) {
+      showMessage(err.message || 'Export failed', 'error');
+    } finally {
+      setOpenExportKind('');
+    }
+  };
+
   const handleSearch = async () => {
     browseControllerRef.current?.abort();
     // Invalidate any response that was already past fetch cancellation before
@@ -601,6 +762,17 @@ export function Simulation() {
         // re-run against the ASINEX corpus.
         const progressed = await runStockSearch(0, false, { token, rawQuery, controller, requestId });
         if (progressed === false) return; // superseded by a newer request
+        isSearchActiveRef.current = true;
+        setIsSearchActive(true);
+        setLastSearchQuery(rawQuery);
+        return;
+      }
+
+      if (searchSourceRef.current === 'open') {
+        // Open compounds = ChEMBL retrieval + local Morgan re-score. Never fall
+        // back to Internal catalog or Stock compounds on failure.
+        const progressed = await runOpenSearch(0, false, { token, rawQuery, controller, requestId });
+        if (progressed === false) return;
         isSearchActiveRef.current = true;
         setIsSearchActive(true);
         setLastSearchQuery(rawQuery);
@@ -735,6 +907,10 @@ export function Simulation() {
         // shared caller resets the offset on every fresh search, so an append can
         // never trail into a newer query's results.
         await runStockSearch(stockOffsetRef.current, true, { token, rawQuery, controller, requestId });
+        return;
+      }
+      if (searchSourceRef.current === 'open') {
+        await runOpenSearch(stockOffsetRef.current, true, { token, rawQuery, controller, requestId });
         return;
       }
 
@@ -1410,10 +1586,12 @@ export function Simulation() {
     }
   };
 
-  // Stock searches are similarity-only and require a provisioned backend; the
+  // Stock/open searches are similarity-only and require a provisioned backend; the
   // catalog never stands in silently, so the Search button stays disabled until
-  // the stock availability check reports 'available'.
+  // the availability check reports 'available'.
   const stockSearchDisabled = searchSource === 'stock' && stockStatus?.state !== 'available';
+  const openSearchDisabled = searchSource === 'open' && openStatus?.state !== 'available';
+  const sourceSearchDisabled = stockSearchDisabled || openSearchDisabled;
 
   const handleCopySmiles = async () => {
     if (ketcherIframeRef.current) {
@@ -1531,6 +1709,16 @@ export function Simulation() {
             />
             <span>Stock compounds (similarity)</span>
           </label>
+          <label className="flex items-center gap-1 w-full sm:w-auto">
+            <input
+              type="radio"
+              name="searchSource"
+              value="open"
+              checked={searchSource === "open"}
+              onChange={() => handleSourceChange("open")}
+            />
+            <span>Open compounds (ChEMBL)</span>
+          </label>
         </div>
 
         {/* Staging-only note: what the data is and what costs money, so owner
@@ -1566,6 +1754,41 @@ export function Simulation() {
                 type="button"
                 className="w-fit shrink-0 text-sm font-semibold underline"
                 onClick={fetchStockStatus}
+              >
+                Check again
+              </button>
+            </div>
+          </Alert>
+        )}
+
+        {searchSource === "open" && openStatus && openStatus.state === "loading" && (
+          <div className="mb-2 flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/70 px-4 py-3" role="status" aria-live="polite">
+            <Spinner className="h-4 w-4 text-blue-500" />
+            <Typography variant="small" color="blue-gray">Checking open-compounds search availability…</Typography>
+          </div>
+        )}
+        {searchSource === "open" && openStatus && openStatus.state === "available" && (
+          <div className="mb-2 rounded-lg border border-indigo-100 bg-indigo-50/70 px-4 py-3 space-y-1">
+            <Typography variant="small" color="blue-gray">
+              Open compounds search is ready — query SMILES are sent to ChEMBL (EMBL-EBI), then re-scored locally with RDKit Morgan radius&nbsp;2 / 2048-bit Tanimoto (chirality off). Results are ranked among retrieved candidates, not guaranteed exhaustive database-wide top-N.
+            </Typography>
+            {openStatus.ai && !openStatus.ai.enabled && (
+              <Typography variant="small" className="text-blue-gray-500">
+                AI assist: {openStatus.ai.reason}
+              </Typography>
+            )}
+          </div>
+        )}
+        {searchSource === "open" && openStatus && openStatus.state === "unavailable" && (
+          <Alert color="amber" className="mb-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <Typography variant="small">
+                Open compounds search is not available: {openStatus.reason} Switch the source above — Internal catalog and Stock compounds are unchanged.
+              </Typography>
+              <button
+                type="button"
+                className="w-fit shrink-0 text-sm font-semibold underline"
+                onClick={fetchOpenStatus}
               >
                 Check again
               </button>
@@ -1662,6 +1885,11 @@ export function Simulation() {
             Stock search compares structures with RDKit fingerprints (Morgan/ECFP4, Tanimoto) computed the same way for the query and every compound. Substructure, BAS, and molecular-weight search stay available under the internal catalog source.
           </p>
         )}
+        {searchSource === "open" && (
+          <p className="mb-2 text-sm text-blue-gray-500">
+            Open compounds retrieves public ChEMBL structures for your drawn molecule or SMILES, then applies the declared RDKit Morgan score. Open compounds are not stocked or priced here — use selection for docking handoff only.
+          </p>
+        )}
         
         {/* Similarity Threshold Slider */}
         {searchType === "similarity" && (
@@ -1672,7 +1900,7 @@ export function Simulation() {
             <div className="flex items-center gap-4 w-full sm:w-auto flex-1">
               <input
                 type="range"
-                min={searchSource === "stock" ? "0.1" : "0"}
+                min={searchSource === "stock" ? "0.1" : searchSource === "open" ? "0.4" : "0"}
                 max="1"
                 step="0.1"
                 value={similarityThreshold}
@@ -1684,6 +1912,33 @@ export function Simulation() {
                 {similarityThreshold.toFixed(1)}
               </div>
             </div>
+          </div>
+        )}
+
+        {searchSource === "open" && searchType === "similarity" && (
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 mb-2 w-full p-4 bg-indigo-50 rounded-lg border border-indigo-200">
+            <Typography variant="small" color="blue-gray" className="font-semibold min-w-fit">
+              Max results:
+            </Typography>
+            <select
+              value={openMaxResults}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                setOpenMaxResults(next);
+                openMaxResultsRef.current = next;
+                if (searchSourceRef.current === 'open') {
+                  handleThresholdChange(similarityThresholdRef.current);
+                }
+              }}
+              className="px-3 py-2 border border-indigo-200 rounded-lg bg-white"
+            >
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+            <Typography variant="small" className="text-blue-gray-500">
+              Bounded requested count (server cap 100). Pagination stays inside this ranked set.
+            </Typography>
           </div>
         )}
 
@@ -1775,7 +2030,13 @@ export function Simulation() {
           {/* Search section */}
           <div id="molecule-search" className="flex flex-col sm:flex-row items-stretch gap-2 w-full lg:w-1/2"> {/* 50% width search bar */}
             <Input
-              label={searchSource === "stock" ? "SMILES of the molecule to search against the stock list" : "Add molecule ID, SMILES, CAS Number, IUPAC name, InChI or InChIKey here"}
+              label={
+                searchSource === "stock"
+                  ? "SMILES of the molecule to search against the stock list"
+                  : searchSource === "open"
+                    ? "SMILES of the molecule to search in ChEMBL (open compounds)"
+                    : "Add molecule ID, SMILES, CAS Number, IUPAC name, InChI or InChIKey here"
+              }
               value={searchCode}
               onChange={e => setSearchCode(e.target.value)}
               className="flex-1 min-w-0 w-full" // full width within the container
@@ -1783,7 +2044,7 @@ export function Simulation() {
             <Button
               size="lg"
               onClick={handleSearch}
-              disabled={searchLoading || !searchCode.trim() || selectedMolecules.size > 1 || stockSearchDisabled}
+              disabled={searchLoading || !searchCode.trim() || selectedMolecules.size > 1 || sourceSearchDisabled}
               className="flex items-center gap-3 px-6 py-3 text-lg font-semibold whitespace-nowrap bg-brand-500 text-white focus:opacity-[0.85] active:opacity-[0.85]"
             >
               {searchLoading ? <Spinner className="h-5 w-5" /> : <CloudIcon className="h-5 w-5" />}
@@ -1932,7 +2193,13 @@ export function Simulation() {
             <div className="flex flex-col gap-2">
               <Typography variant="h6" color="blue-gray">Search Molecules</Typography>
               <Input
-                label={searchSource === "stock" ? "SMILES of the molecule to search against the stock list" : "Add molecule ID, SMILES, CAS Number, IUPAC name, InChI or InChIKey here"}
+                label={
+                  searchSource === "stock"
+                    ? "SMILES of the molecule to search against the stock list"
+                    : searchSource === "open"
+                      ? "SMILES of the molecule to search in ChEMBL (open compounds)"
+                      : "Add molecule ID, SMILES, CAS Number, IUPAC name, InChI or InChIKey here"
+                }
                 value={searchCode}
                 onChange={e => setSearchCode(e.target.value)}
                 className="w-full"
@@ -1940,7 +2207,7 @@ export function Simulation() {
               <Button
                 size="lg"
                 onClick={handleSearch}
-                disabled={searchLoading || !searchCode || selectedMolecules.size > 1 || stockSearchDisabled}
+                disabled={searchLoading || !searchCode || selectedMolecules.size > 1 || sourceSearchDisabled}
                 className="flex items-center justify-center gap-3 w-full bg-brand-500 text-white focus:opacity-[0.85] active:opacity-[0.85]"
               >
                 {searchLoading ? <Spinner className="h-5 w-5" /> : <CloudIcon className="h-5 w-5" />}
@@ -2156,6 +2423,124 @@ export function Simulation() {
                 </table>
               </CardBody>
             </Card>
+          ) : searchSource === "open" ? (
+            <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
+              <CardBody className="p-0">
+                <div className="border-b border-indigo-100 bg-indigo-50/60 px-4 py-2 text-xs text-blue-gray-600 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <span>
+                    Source: ChEMBL open compounds. Scores are local RDKit Morgan (r=2, 2048-bit, chirality off) Tanimoto. Not stocked or priced — selection is for docking handoff only. Attribution: ChEMBL / EMBL-EBI.
+                  </span>
+                  <div className="flex gap-2 shrink-0">
+                    <button
+                      type="button"
+                      className="text-sm font-semibold underline disabled:opacity-50"
+                      disabled={Boolean(openExportKind)}
+                      onClick={() => downloadOpenExport('csv')}
+                    >
+                      {openExportKind === 'csv' ? 'Exporting CSV…' : 'Download CSV'}
+                    </button>
+                    <button
+                      type="button"
+                      className="text-sm font-semibold underline disabled:opacity-50"
+                      disabled={Boolean(openExportKind)}
+                      onClick={() => downloadOpenExport('sdf')}
+                    >
+                      {openExportKind === 'sdf' ? 'Exporting SDF…' : 'Download SDF'}
+                    </button>
+                  </div>
+                </div>
+                <table className="w-full text-left">
+                  <thead className="sticky top-0 z-10 bg-white">
+                    <tr>
+                      <th className="p-2 font-bold bg-white">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={getSelectAllState().checked}
+                            ref={(el) => {
+                              if (el) el.indeterminate = getSelectAllState().indeterminate;
+                            }}
+                            onChange={(e) => handleSelectAll(e.target.checked)}
+                            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                          />
+                          <span>Select</span>
+                        </div>
+                      </th>
+                      <th className="p-2 font-bold bg-white">#</th>
+                      <th className="p-2 font-bold bg-white">Similarity</th>
+                      <th className="p-2 font-bold bg-white">ChEMBL ID</th>
+                      <th className="p-2 font-bold bg-white">SMILES</th>
+                      <th className="p-2 font-bold bg-white">Source</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topMolecules.map((mol, idx) => {
+                      const openMoleculeId = moleculeSelectionId(mol, idx);
+                      const isChecked = selectedMolecules.has(openMoleculeId);
+                      const openSmiles = mol.SMILES_STRING || "";
+                      return (
+                        <tr key={`${openMoleculeId}-${idx}`} className="border-b">
+                          <td className="p-2">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => handleCheckboxChange(mol, idx, e.target.checked)}
+                              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                          </td>
+                          <td className="p-2">{mol.rank || (idx + 1)}</td>
+                          <td className="p-2 font-bold text-indigo-700" title={mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? `Morgan Tanimoto: ${mol.SIMILARITY}` : "N/A"}>
+                            {mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? parseFloat(mol.SIMILARITY).toFixed(3) : "N/A"}
+                          </td>
+                          <td
+                            className="p-2 font-mono text-xs whitespace-nowrap"
+                            title={mol.chemblId}
+                            onMouseEnter={(e) => handleMouseEnter(openSmiles, e, "Open compound")}
+                            onMouseLeave={handleMouseLeave}
+                          >
+                            {mol.sourceUrl ? (
+                              <a
+                                href={mol.sourceUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-indigo-700 underline"
+                              >
+                                {mol.chemblId}
+                              </a>
+                            ) : mol.chemblId}
+                          </td>
+                          <td className="p-0 font-mono text-xs">
+                            <button
+                              type="button"
+                              className="w-full p-2 text-left hover:bg-indigo-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500"
+                              title={openSmiles || "N/A"}
+                              onClick={async () => {
+                                setSearchCode(openSmiles);
+                                if (!openSmiles) return;
+                                try {
+                                  await copyToClipboard(openSmiles);
+                                  showClipboardConfirmation();
+                                } catch (err) {
+                                  console.error("Failed to copy SMILES:", err);
+                                  showMessage("SMILES could not be copied.", "error");
+                                }
+                              }}
+                              onMouseEnter={(e) => handleMouseEnter(openSmiles, e, "SMILES")}
+                              onMouseLeave={handleMouseLeave}
+                              onFocus={(e) => handleMouseEnter(openSmiles, e, "SMILES")}
+                              onBlur={handleMouseLeave}
+                            >
+                              {(openSmiles || "N/A").toString().slice(0, moleculeLimit)}{(openSmiles || "N/A").toString().length > moleculeLimit ? "..." : ""}
+                            </button>
+                          </td>
+                          <td className="p-2 text-xs text-blue-gray-600">{mol.sourceLabel || "ChEMBL"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </CardBody>
+            </Card>
           ) : (
             <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
@@ -2360,6 +2745,10 @@ export function Simulation() {
                   ? isSearchActive
                     ? "No stock compounds matched this structure at the current threshold. Lower the similarity threshold or try another molecule."
                     : "Search the stock list: enter a SMILES or draw a molecule, then select Search."
+                  : searchSource === "open"
+                    ? isSearchActive
+                      ? "No open compounds matched this structure at the current threshold among retrieved ChEMBL candidates. Lower the similarity threshold or try another molecule."
+                      : "Search open compounds: enter a SMILES or draw a molecule, then select Search. Your query is sent to ChEMBL."
                   : queryType === "text"
                     ? isSearchActive
                       ? "No molecules matched this search. Try another query or adjust the search options."

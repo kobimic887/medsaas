@@ -405,8 +405,9 @@ const ProteinFolding = () => {
     setError(null);
     setSampleNotice("");
     try {
+      const token = getAuthToken();
       const response = await fetch(API_CONFIG.buildApiUrl(`/folding-history/${run.runId}`), {
-        headers: apiHeaders(),
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       });
       if (!response.ok) {
         const body = await response.json().catch(() => null);

@@ -94,6 +94,14 @@ for (const dir of SCAN_DIRS) {
       const targetsOurApi = /buildApiUrl|buildUrl|["'`]\/api\//.test(expr);
       if (!targetsOurApi) continue;
       if (/Authorization/i.test(expr)) continue;
+      // Folding callers share local header factories. Inspect the factory body,
+      // not just its name, before accepting an indirect Authorization header.
+      const headerFactory = expr.match(/headers:\s*(apiHeaders|authHeaders)\(/)?.[1];
+      if (headerFactory) {
+        const factory = source.match(new RegExp(`function ${headerFactory}\\([^]*?\\n\\}`, 'm'))?.[0] || '';
+        if (/getAuthToken\(\)/.test(factory) && /Authorization:/.test(factory) && /Bearer/.test(factory)) continue;
+      }
+
       if (mentionsPublicRoute(expr)) continue;
 
       const line = source.slice(0, match.index).split('\n').length;

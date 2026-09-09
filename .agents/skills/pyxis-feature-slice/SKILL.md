@@ -76,4 +76,4 @@ A green `build` alone does not prove a dashboard flow.
 - Stacking many overlapping smokes for one assertion
 ---
 
-Simulation search regression: execute rejected-query handlers in `test:simulation-search`; prove old rows clear and catalog browsing cannot run in stock mode or during a pending search.
+Simulation search regression: execute rejected-query handlers in `test:simulation-search`; prove old rows clear and catalog browsing cannot run in stock/open mode or during a pending search. Open compounds: `bun run test:open-compounds`.
