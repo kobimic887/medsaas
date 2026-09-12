@@ -374,20 +374,19 @@ target: [`docs/REFERENCE-STOCK-FP-METRICS.md`](REFERENCE-STOCK-FP-METRICS.md)
   (`found`, `count`, `results`, `query_smiles`) unchanged and adds top-level
   `method: { fingerprint_type, similarity_metric, threshold }` (numbers as
   sent), with `results` sorted **stably per page**: similarity desc, then
-  `molecule_id` ascending. The live tonomitosql similarity query takes a
-  **bounded** GiST KNN candidate set (`ORDER BY q.qfp <%> / <#> f.col LIMIT
-  1000`), then ranks with `ORDER BY similarity DESC, id ASC` **before**
-  `OFFSET`/`LIMIT` (`kobimic887/tonomitosql` ≥ `b0f168f`, after `1e71b0c`,
-  2026-09-12). Unbounded
-  `ORDER BY <sml_func>(…) DESC, m.id ASC` over all threshold hits was
-  correct for ties but triggered Postgres parallel gather DiskFull on the
-  db container’s default 64MB `/dev/shm` (~50MB segment — not host disk).
-  Sessions also `SET max_parallel_workers_per_gather = 0`; compose
-  `shm_size: 1gb` is defense-in-depth when the db container is recreated.
-  Pyxis still re-sorts each relayed page and dedupes by `stockRowId` on
-  append as defense in depth. Do **not** append a secondary key onto the
-  KNN distance operator (`<%>` / `<#>`): that form breaks OFFSET pages
-  (duplicate/missing rows across ties).
+  `molecule_id` ascending. The live tonomitosql similarity query ranks with
+  global `ORDER BY <sml_func>(…) DESC, m.id ASC` **before** `OFFSET`/`LIMIT`
+  (`kobimic887/tonomitosql` ≥ post-`b0f168f` fix on top of `1e71b0c`,
+  2026-09-12). Sessions `SET max_parallel_workers_per_gather = 0` because
+  Docker’s default 64MB `/dev/shm` otherwise DiskFulls parallel gathers
+  (~50MB segment — **not** host disk). Compose `shm_size: 1gb` is
+  defense-in-depth when the db container is recreated. Do **not** KNN-LIMIT
+  candidates before the id tie-breaker (`b0f168f` did): equal-score ties past
+  that boundary are not globally deterministic and rows beyond the cap
+  disappear. Do **not** append a secondary key onto the KNN distance operator
+  (`<%>` / `<#>`): that form breaks OFFSET pages (duplicate/missing rows
+  across ties). Pyxis still re-sorts each relayed page and dedupes by
+  `stockRowId` on append as defense in depth.
 - Threshold bounds stay shared **[0.1, 1.0]** for both metrics: dice scores on
   the same 0..1 scale, but meaning-at-threshold differs by design — that is
   user-visible and documented, not a bug.
@@ -418,18 +417,19 @@ score as count-based):
 | Fingerprint | tanimoto | dice |
 |---|---|---|
 | morgan | **26** (reproduces her Pyxis report exactly) | ≥1000 (page-limited) |
-| maccs | DiskFull @0.3 pre-fix (64MB shm parallel); OK after hybrid+noparallel | DiskFull @0.3–0.5 pre-fix; OK after hybrid+noparallel |
+| maccs | DiskFull @0.3 with parallel+64MB shm; OK ~11s with noparallel+global ORDER BY | DiskFull @0.3–0.5 with parallel; OK ~11–12s noparallel |
 | feat_morgan | 858 | ≥1000 (page-limited) |
 | atom_pair | 231 | ≥1000 (page-limited) |
 | torsion | 102 | ≥1000 (page-limited) |
-| rdkit | ≥1000 (page-limited) | DiskFull @0.3 pre-fix; OK after hybrid+noparallel |
+| rdkit | ≥1000 (page-limited) | DiskFull @0.3 with parallel; OK with noparallel+global ORDER BY |
 
-Pre-fix “capacity fail” cells were **Postgres parallel gather DiskFull inside
-the db container’s 64MB `/dev/shm`** (error text “No space left on device”),
-exposed by unbounded `ORDER BY sml DESC, id` in `1e71b0c` — not host disk
-exhaustion and not missing fingerprint capability. Morgan/Tanimoto @0.1 often
-succeeded (~2.7s) even before the fix. Manual re-verification (never CI):
-`scripts/verify-stock-fp-metrics.mjs`.
+Pre-fix failures were **Postgres parallel gather DiskFull inside the db
+container’s 64MB `/dev/shm`** (error text “No space left on device”) — not
+host disk exhaustion and not missing fingerprint capability. Morgan/Tanimoto
+@0.1 succeeds (~7s) with the same noparallel+global sort. Engine regression
+for >1000 equal-score ties paging past offset 1000:
+`tonomitosql` `scripts/test_similarity_tie_pagination.py`. Manual matrix
+re-check (never CI): `scripts/verify-stock-fp-metrics.mjs`.
 
 ### Binary, not count — and what a count metric would cost
 
@@ -444,10 +444,10 @@ be implied by any label. Exposing a count-based score needs all of:
    never against production without explicit approval and a rollback plan.
 3. **Pyxis:** extend the allowlists + labels **only after live verification** of
    the new engine capability (same standard as this matrix).
-4. **Engine pagination:** KNN-bounded candidates (≤1000) then
-   `ORDER BY similarity DESC, id ASC` before OFFSET/LIMIT; parallel gather
-   disabled under default Docker shm (`tonomitosql` ≥ `b0f168f`). Re-verify
-   after any future change to the similarity SQL.
+4. **Engine pagination:** global `ORDER BY similarity DESC, m.id ASC` before
+   OFFSET/LIMIT; parallel gather disabled under default Docker shm. Do not
+   KNN-cap candidates before the id tie-breaker. Re-verify after any future
+   change to the similarity SQL (`scripts/test_similarity_tie_pagination.py`).
 
 ## Purchasable offers (2026-09-12)
 

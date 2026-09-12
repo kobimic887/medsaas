@@ -58,15 +58,17 @@ so "≥1000" means the limit-1000 page returned a full page.
 | Fingerprint | tanimoto | dice |
 |---|---|---|
 | morgan | **26** — reproduces her Pyxis report exactly | ≥1000 |
-| maccs | host capacity fail @0.3, verified @0.5 | host capacity fail @0.3, verified @0.5 |
+| maccs | DiskFull @0.3 (64MB shm parallel gather); OK with noparallel | DiskFull @0.3 (same); OK with noparallel |
 | feat_morgan | 858 | ≥1000 |
 | atom_pair | 231 | ≥1000 |
 | torsion | 102 | ≥1000 |
-| rdkit | ≥1000 | host capacity fail @0.3, verified @0.5 |
+| rdkit | ≥1000 | DiskFull @0.3 (64MB shm parallel gather); OK with noparallel |
 
-The three "host capacity fail" cells returned HTTP 500 with host DiskFull /
-statement-timeout at 0.3 — **capacity, not capability** — and all three returned
-200 with hits at threshold 0.5. (Re-verify manually with
+Those failures were **Postgres parallel gather DiskFull inside the db
+container’s 64MB `/dev/shm`** (“No space left on device”) — **not** host disk
+capacity and not missing fingerprint support. Fix: keep global
+`ORDER BY similarity DESC, id ASC` and `SET max_parallel_workers_per_gather = 0`
+(do not silently KNN-cap at 1000). (Re-verify manually with
 `scripts/verify-stock-fp-metrics.mjs`.)
 
 ### Overlap: our 26 (morgan/tanimoto) vs her 30 (btanimoto)
