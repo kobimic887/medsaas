@@ -39,19 +39,24 @@ execute the small slice.
 - Routes primarily in `server/index.js`; scientific proxies also in
   `server/routes/scientificServices.js`.
 - Stock-compound similarity lives **in Simulation** (source toggle `Internal
-  catalog | Stock compounds | Open compounds`), not the Deep Similarity picker. Server
-  `GET /api/stock-search/status|similarity` proxy an internal tonomitosql
-  dataset via `STOCK_SEARCH_BASE` / `STOCK_SEARCH_DATASET_ID` /
-  `STOCK_SEARCH_DATASET_NAME`; unprovisioned = **503 `STOCK_SEARCH_UNAVAILABLE`**
-  (never a silent fallback to Asinex). Open compounds: AI tool loop
-  (`POST /api/open-compounds/ai-search`) plus deterministic
-  `GET /api/open-compounds/status|similarity|export` — ChEMBL retrieval + local
-  RDKit Morgan re-score (`docs/DATA-OPEN-COMPOUNDS.md`); never fall back to
-  catalog or stock. Explicit “Search without AI” uses the deterministic path;
-  AI failures do not silently run it.
-  Full stock contract in `docs/DATA-STOCK-COMPOUNDS.md`. Failed/new searches
-  disable pagination and clear old rows; catalog browsing must reject stock/open
-  mode so Asinex rows cannot appear as stock/open hits.
+ catalog | Stock compounds | Open compounds`), not the Deep Similarity picker. Server
+ `GET /api/stock-search/status|similarity` proxy an internal tonomitosql
+ dataset via `STOCK_SEARCH_BASE` / `STOCK_SEARCH_DATASET_ID` /
+ `STOCK_SEARCH_DATASET_NAME`; unprovisioned = **503 `STOCK_SEARCH_UNAVAILABLE`**
+ (never a silent fallback to Asinex). Stock similarity accepts client
+ `fingerprint_type` / `similarity_metric` from the verified binary allowlist
+ (defaults `morgan`/`tanimoto`; unknown → **400**); labels mark scores
+ **(binary)** — no count/ctanimoto option. Contract:
+ `docs/DATA-STOCK-COMPOUNDS.md` (+ `docs/REFERENCE-STOCK-FP-METRICS.md`).
+ Open compounds: AI tool loop
+ (`POST /api/open-compounds/ai-search`) plus deterministic
+ `GET /api/open-compounds/status|similarity|export` — ChEMBL retrieval + local
+ RDKit Morgan re-score (`docs/DATA-OPEN-COMPOUNDS.md`); never fall back to
+ catalog or stock. Explicit “Search without AI” uses the deterministic path;
+ AI failures do not silently run it.
+ Full stock contract in `docs/DATA-STOCK-COMPOUNDS.md`. Failed/new searches
+ disable pagination and clear old rows; catalog browsing must reject stock/open
+ mode so Asinex rows cannot appear as stock/open hits.
 - Client routes: `client/src/routes.jsx`. Use `API_CONFIG.buildApiUrl()` for `/api/*`
   and `API_CONFIG.buildUrl()` for top-level routes.
 - Auth state: `client/src/context/auth.jsx`. Session logout interceptor:
