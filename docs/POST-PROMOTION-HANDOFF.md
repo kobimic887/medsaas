@@ -7,6 +7,43 @@ This document does **not** change DNS or authorize any destructive action. Re-co
 and service identity with live checks at the start of every session. Every copy
 (Mac / 84 / 151 / 83 / GitHub): [`WHERE.md`](./WHERE.md).
 
+## Release measured 2026-09-12: stock selectors and pack pricing
+
+- Public `pyxis-web :5174` deployed `b2d554f5c13ca177a60ead8442bba423a7746583`.
+  This has the same application code as combined browser-tested `f5c8a11`; subsequent
+  commits correct stock-engine documentation. Built on 151, installed with the frozen
+  server lockfile on 84. Existing environment files were preserved.
+- Live tonomitosql API on 151 `:8000` now runs `b36da33`: global similarity DESC / ID ASC
+  before pagination, with parallel gather disabled. No 1,000-candidate cutoff.
+  Only the API container was recreated; Postgres was not restarted/recreated, and its
+  proposed 1 GB shared-memory setting has **not** been applied.
+- Dataset 4 remains 630,646 rows; existing DATA dataset 3 remains 2,951,975 rows.
+- Fresh public HTTPS authenticated verification: stock capabilities (six binary
+  fingerprints / two metrics); Anna MACCS/Dice at 0.3 returned ten rows in 12.22 s;
+  stock pack offers for BAS 30906909 returned 1/2/5/10 mg at $170/$194/$218/$242.
+  Direct live engine: MACCS/Dice at 0.3 ~12.0 s; Morgan/Tanimoto at 0.1 ~6.28 s.
+- Fresh Safari production evidence: existing sign-in survived; Internal catalog loaded;
+  stock selectors rendered; benzoic-acid search returned BAS 30906909 at 1.000;
+  5 mg / $218 basket entry survived reload with its stock ID and amount intact.
+  The test item was removed. No checkout/payment or paid prediction was submitted
+  in this deployment pass (the agents' earlier isolated checkout evidence is separate).
+- Public root, health, folding route, and `/staging/` returned 200. This is not new
+  live-NVIDIA evidence. Open compounds status reports AI disabled; no credentials changed.
+- Other agents' verification services were not removed or promoted.
+
+Rollback is two independent layers, not a rollback to legacy :5173:
+
+1. App snapshot on 84: `/root/pyxis-rollback-7004271-20260912.tgz` (excludes `.env`).
+   Stop `pyxis-web`, restore this archive into `/root/pyxis-LIVE-5174`, start
+   `pyxis-web`, and verify `/health` plus `DEPLOYED_SHA=7004271...`.
+   Original dependencies also remain at `/root/pyxis-server-node_modules-7004271-20260912`.
+2. Engine rollback on 151: image `tonomitosql-api:rollback-1e71b0c-20260912`, rebuilt
+   from commit 1e71b0c because the running image's old Docker layers were missing.
+   In `/home/ubuntu/sql/tonomitosql`, tag that image `tonomitosql-api:latest`, then
+   `docker compose up -d --no-deps --no-build api`. Never recreate the db for this
+   rollback. This restores the prior shared-memory failure on broad queries, so use
+   only if a worse regression is found. Do not use capped b0f168f.
+
 ## Measured 2026-08-21 evening; re-checked 2026-08-23 (re-check before acting)
 
 | Check | Result |

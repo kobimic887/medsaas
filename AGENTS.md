@@ -170,3 +170,5 @@ Do not spawn `pyxis-ops` for ordinary one-file work.
 Stock search: failed/new queries clear old rows and disable paging; catalog fetches refuse stock mode. Generic RDKit rejection explains charges/bonds without modifying the submitted structure. Stock purchasable packs: `POST /api/stock-offers`; checkout re-prices molecule carts server-side.
 
 Integration (2026-09-09): completed stock, Open compounds, and staging/folding work is consolidated on main. Deployment remains separate. Open compounds AI is a real tool-calling loop when `OPEN_COMPOUNDS_AI_*` is provisioned (prefer free OpenRouter models with tools); otherwise use “Search without AI”.
+
+Release (2026-09-12): public pyxis-web now b2d554f; live tonomitosql API b36da33 (global ranking, parallel gather disabled, no candidate cap). AI remains disabled. Database container was not recreated. Fresh public stock search/pack/cart-reload evidence and rollback: docs/POST-PROMOTION-HANDOFF.md.
