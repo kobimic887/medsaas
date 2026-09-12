@@ -376,8 +376,8 @@ target: [`docs/REFERENCE-STOCK-FP-METRICS.md`](REFERENCE-STOCK-FP-METRICS.md)
   sent), with `results` sorted **stably per page**: similarity desc, then
   `molecule_id` ascending. The live tonomitosql similarity query ranks with
   global `ORDER BY <sml_func>(…) DESC, m.id ASC` **before** `OFFSET`/`LIMIT`
-  (`kobimic887/tonomitosql` ≥ post-`b0f168f` fix on top of `1e71b0c`,
-  2026-09-12). Sessions `SET max_parallel_workers_per_gather = 0` because
+  (`kobimic887/tonomitosql` ≥ `b36da33`, which restores `1e71b0c` ranking and
+  drops the `b0f168f` KNN cap, 2026-09-12). Sessions `SET max_parallel_workers_per_gather = 0` because
   Docker’s default 64MB `/dev/shm` otherwise DiskFulls parallel gathers
   (~50MB segment — **not** host disk). Compose `shm_size: 1gb` is
   defense-in-depth when the db container is recreated. Do **not** KNN-LIMIT
