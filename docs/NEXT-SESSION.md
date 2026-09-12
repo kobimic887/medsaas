@@ -1,62 +1,16 @@
-# What to do next
+# Standing decisions, do-nots, and traps
 
-> ## Post-promotion handoff
+**Ops authority:** [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md) — roles,
+paths, deploys, DNS, and the current release record. This file keeps what outlives a
+release: owner decisions, do-nots, residual risks, and method notes. Do not re-litigate
+them unless the owner changes them.
+
+> Historical session logs and flip-era state were pruned 2026-09-13. The pre-2026-08-01
+> log is recoverable with:
 >
-> **`oracleNew` (`84.13.81.51`) is the live production host (measured 2026-08-21).** Read
-> [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md) first for roles, path names, and
-> the measured DNS/product check. `oracleOld` (`151.145.91.17`) remains the temporary
-> Tanimoto source; Amsterdam is compute-only. Do not blindly run the old §8 port swap, change
-> DNS again, or delete anything from `oracleOld`.
->
-> **Host `83`:** **scheduled for imminent shutdown** (owner clarification 2026-08-21 — not
-> “retire someday”). **Measured same evening:** SSH still works; `83.229.87.94` is up (~50d),
-> nginx active, Pyxis on `:5173`/`:5174`/`:3000`/`:3001` and FinSrv on `:4000`. **Not** public
-> DNS (A → `84`). Do **not** treat as long-lived standby; do **not** shut it down from an agent
-> session. Before-kill checklist:
-> [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md) § “Before killing `83`”.
->
-> **Current as of 2026-08-23:** Soft flip **executed** — public `:443` → maintained
-> `:5174` (`pyxis-web`). JWT rotated on maintained. Rollback units **stopped**
-> (still **enabled**; trees stay). Stripe webhook **registered**
-> (`we_1U7Z6vAlVdO1Ab8fuM6HWROx`); secret on maintained only. Live checkout smoke
-> still owner-only ([`STRIPE_LIVE_CUTOVER.md`](./STRIPE_LIVE_CUTOVER.md) Step 4).
-> Checklist / rollback: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md).
->
-> **2026-08-23:** Interim SMILES→SDF converter live on `84`: docker `pyxis-convertstr`
-> (loopback `127.0.0.1:8001`, healthy), `SDF_CONVERTER_URL=http://127.0.0.1:8001/convertSTR`
-> in `/root/pyxis-LIVE-5174/server/.env`, image source kept at
-> `/root/pyxis-convertstr-src`. Now serves **public** maintained stack (post soft flip).
-> Replace with the Amsterdam box ingress (`https://<box-domain>/convertSTR`) when the box
-> arrives. Rollback: stop+rm the container, remove the env line, restart `pyxis-web`.
->
-> Everything older than the 2026-08-01 archive is recoverable from
-> the git tag `docs-archive-2026-08-01` — a ~1,130-line historical log used to live at the
-> bottom of this file and was deleted, not lost. Recover it with:
-
-```bash
-git show docs-archive-2026-08-01:docs/NEXT-SESSION.md
-```
-
----
-
-## The single most important fact
-
-**The GPU box is ORDERED (2026-08-01) and has not been delivered.** Nothing on it has been
-executed. The GPU question is closed — **4× RTX PRO 4000**.
-
-**While waiting, two things are worth doing and neither needs the box:** confirm the ~€5.2k VAT
-reverse charge landed on the invoice ([BOX-SPEC.md](./BOX-SPEC.md) §5), and transfer the Tanimoto
-dump off the owner's Mac (it is the **only copy** of a 2.9 M-molecule index and lives on one
-laptop — [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §1b). The `chem_beo` unauthenticated-route
-exposure was remediated by the **public flip** — settled 2026-08-01: **do not patch live
-`chem_beo`**. **2026-08-23:** soft flip executed (public → `:5174`); rollback would
-re-expose those routes — see [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md).
-
-⚠ **This runbook may be run from a fresh clone on another machine.** Four things it needs are
-not in git — the Tanimoto dump, `client/dist`, the `.env` files, and the DiffDock weights.
-[ARRIVAL-RUNBOOK.md §1b](./ARRIVAL-RUNBOOK.md) lists how to get each.
-
----
+> ```bash
+> git show docs-archive-2026-08-01:docs/NEXT-SESSION.md
+> ```
 
 ## Owner decisions (2026-08-21 evening grilling)
 
@@ -77,145 +31,6 @@ Concise product/ops answers — do not re-litigate unless the owner changes them
 | **PubMed** | Exists **only on maintained**. A `:5174` literature 404 was **deploy/route presence**, not legacy deleting git. |
 | **Bare Molstar** | Visiting Molstar with no handoff/result **stays empty** — expected, not a bug to “fix” with demo content. |
 
-## State of production
-
-`app.pyxis-discovery.com` → **`84.13.81.51`**, public product = **maintained `pyxis-web`
-on `:5174`** (soft flip 2026-08-23). Energy stays on this stack. Rollback trees stay
-on disk; units **stopped** (still **enabled**) 2026-08-23.
-Checklist / rollback: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md).
-
-| Port | Unit | What on `84` | Reachable |
-|---|---|---|---|
-| **5173** | `pyxis-vite-legacy` | `/root/pyxis-ROLLBACK-frontend-5173` (`material-tailwind-dashboard-react`, Vite) → legacy API on `:3000` | **stopped** (enabled; start only for nginx rollback) |
-| **5174** | `pyxis-web` | `/root/pyxis-LIVE-5174` (this repo, Bun + `client/dist`) → **MongoDB Atlas** | **public** via nginx `:443`; also `:8443` side door |
-| 3000 | `pyxis-api-legacy` | `/root/pyxis-ROLLBACK-backend-3000` (`chem_beo`) | **stopped** (enabled; rollback only) |
-| 3001 | `pyxis-stripe` | `stripe-server.cjs` (from the legacy frontend tree) | **stopped** (enabled; rollback only) |
-
-`/home/ubuntu` on `84` has symlinks to those four trees (plus `~/finsrv-4000` → `/opt/finsrv`).
-On `83` (still reachable until imminent shutdown; **not** a long-lived standby), older path
-names (`/root/chem_beo`, `/root/material-tailwind-dashboard-react` or
-`/root/pyxis-OLD-LIVE-5173`) may still appear — measure before editing; do not mutate `83`
-toward kill.
-
-All four Pyxis units are under systemd (`deploy/83/systemd/`) and `enabled`.
-Public after reboot is **`pyxis-web`**. Rollback units stay enabled so
-`systemctl start` is enough; they do **not** need to be running for public
-`:5174`. `Conflicts=` was removed because the ports differ.
-
-**Public flip** — soft flip **executed 2026-08-23** on `84` (nginx `:443` → `:5174`, JWT
-rotated). Stripe webhook **registered** ([`STRIPE_LIVE_CUTOVER.md`](./STRIPE_LIVE_CUTOVER.md)); checkout smoke open.
-Rollback + residual checklist: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md). ⚠ Older lines
-that say “mirror config to `83`” need **owner confirmation after shutdown** — there will be no
-long-lived `83` rollback host; confirm the post-kill rollback target (likely on-disk /
-snapshot on `84` only).
-
-**Why docs once said `BIND_HOST=127.0.0.1` on standby:** intent was to avoid cleartext
-public HTTP on Atlas-backed `:5174`. **Measured 2026-08-22:** live unit has **no**
-`BIND_HOST`; `server/index.js` listens `0.0.0.0`. Reach deliberately (tunnel or `:8443`) and
-treat open `:5174` as hygiene to fix around flip — not a reason to delay the approved product
-switch:
-
-```bash
-ssh -N -L 5174:127.0.0.1:5174 ubuntu@84.13.81.51
-# if 83 is still up and you need its loopback copy:
-# ssh -N -L 5174:127.0.0.1:5174 root@83.229.87.94
-```
-**What legacy lacked (historical):** mail, response compression, asset caching, PubMed,
-the docked-pose overlay, the wrong-protein fix, and the RDKit loader fix. Those exist on
-public `:5174`. Do not re-open them as live bugs. A literature 404 is deploy/route presence,
-not leftover Vite deleting git.
-
-### Deploying the 5174 version
-
-Live tree on **`84`** is **`/root/pyxis-LIVE-5174`** (rename from `pyxis-new-standby-5174`
-is permanent — that old path is gone). `83` is imminent shutdown — do not plan new deploys
-there.
-
-**Do not rename or move the live tree under public traffic.** A `mv` + `systemctl restart`
-leaves nginx `:443` with nothing on `:5174` → public **502** (catalog looked like ASINEX
-failure at 2026-08-23 ~10:19 UTC; it was the restart gap). Extract **in place**, restart
-once, then wait for health before calling the deploy done.
-
-```bash
-# In-place refresh on 84 (never mv/rename /root/pyxis-LIVE-5174 while public)
-git archive HEAD | ssh ubuntu@84.13.81.51 'sudo tar -x -C /root/pyxis-LIVE-5174'
-# only if client changed:
-tar -C client -cf - dist | ssh ubuntu@84.13.81.51 'sudo tar -x -C /root/pyxis-LIVE-5174/client'
-ssh ubuntu@84.13.81.51 'sudo bash -lc "
-  set -e
-  cd /root/pyxis-LIVE-5174/server && bun install
-  systemctl restart pyxis-web
-  # bun is down for a few seconds — poll loopback health, not nginx, until ready
-  for i in \$(seq 1 30); do
-    code=\$(curl -sS -m 2 -o /dev/null -w \"%{http_code}\" http://127.0.0.1:5174/health || echo 000)
-    [ \"\$code\" = \"200\" ] && exit 0
-    sleep 1
-  done
-  echo \"pyxis-web failed to answer /health after restart\" >&2
-  exit 1
-"'
-git rev-parse HEAD | ssh ubuntu@84.13.81.51 'sudo tee /root/pyxis-LIVE-5174/DEPLOYED_SHA >/dev/null'
-```
-
-Stamp `/root/pyxis-LIVE-5174/DEPLOYED_SHA` and verify with a real request, not only an exit
-code. **Always read `DEPLOYED_SHA` before assuming what is running** — it is written by hand
-and has been wrong before.
-
-Nginx notes (do **not** change without owner yes): default `proxy_pass` to a single upstream
-has no retry while the sole backend is restarting. Prefer the health-wait above over editing
-nginx. If ever adding an upstream block, `fail_timeout=0` / short `max_fails` still cannot
-serve traffic with zero backends — the gap is process uptime, not proxy knobs alone.
-
-### companyId readiness (2026-08-21 night)
-
-Prefer **ensure-on-login** over bulk Atlas surgery: `/api/signin` and `/api/demo-session` call
-`ensureUserTenantOnLogin` (`server/utils/ensureUserTenant.js`). When exactly one company exists,
-missing `companyId` / `role` / `active` are stamped on the user document before the JWT is
-issued. No `JWT_SECRET` rotation. No invented credits. No `companyName` stamp (branding stays
-`PLATFORM_NAME`).
-
-Bulk path remains `scripts/migrate-legacy-users.mjs` (dry-run by default). Do **not** `--apply`
-unless the owner has a backup and has confirmed the sole-company assumption.
-
-**Measured dry-run counts on shared Atlas (`test` DB) 2026-08-21 night (read-only):**
-`companyCount=1` (`kobi inc` / `6a083a49…`), `users=54`, `noCompanyId=4`, `badTokens=3`
-(missing or string `simulationTokens`). Sole-company assumption holds → ensure-on-login will
-stamp those 4 as they sign in. Do **not** bulk-apply until owner backs up; tokens are a
-separate migrate concern (defaults to 0, never invent credits).
-
-### History parity soak (`simulation_logs`)
-
-Dual-shape filter lives in `server/utils/simulationLogs.js` (`buildTenantFilter` /
-`buildSimulationLogOwnership`). Covered by `server/test/simulation-logs-tenant.test.mjs`.
-
-Readers that must stay dual-shape: `/api/simulation-logs`, docking cache lookup, sanitized
-PDB/SDF, `/api/activity` (Notifications). Activity projection includes both top-level
-`username` and nested `user.username` so maintained-only rows do not render as “Unknown”.
-
-Manual soak on public `:5174` after deploy: sign in as a legacy-shaped user → Control Panel
-shows old nested rows **and** a new dock → Notifications lists both → re-dock of a prior pair
-hits cache (no second credit charge).
-
-### Boss click-test checklist (owner / boss — not automated)
-
-Public is already `https://app.pyxis-discovery.com` (soft flip executed 2026-08-23). Tunnel
-only if checking the process off-nginx: `ssh -N -L 5174:127.0.0.1:5174 ubuntu@84.13.81.51`.
-
-1. Sign in (or demo) — JWT / account menu shows a session; no surprise logout.
-2. Dashboard home loads counts without hanging.
-3. Simulation: search → one-click dock → results → Open Viewer → Clear → hard refresh empty.
-4. Control Panel: historical run opens; legacy + new rows both visible for the same user.
-5. Literature: example query returns results; empty query and a nonsense query show honest empty/error.
-6. Deep Similarity: one similarity search returns rows or an honest empty state.
-7. Plans & Credits: page renders catalog; optional owner Standard checkout + refund after webhook (Step 4).
-8. Dark mode smoke: sidebar + one results page readable.
-
-Stripe webhook registered 2026-08-23. Leftover: owner live checkout smoke if desired
-([`STRIPE_LIVE_CUTOVER.md`](./STRIPE_LIVE_CUTOVER.md) Step 4). Do not re-flip without
-a new owner ask. Rollback: [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md).
-
----
-
 ## The one job only the owner can do
 
 **Rotate the mail password** for `contact@pyxis-discovery.com` at **yourhosting.nl**. It was
@@ -227,8 +42,6 @@ Checked 2026-07-31: **not yet rotated.** Whether the current string is the same 
 exposed cannot be determined from the box — the exposed value was never recorded — so treat it
 as still exposed. It needs the provider login; an agent must not attempt it, and must not nag
 about it.
-
----
 
 ## Do NOT do these — each looks correct and is not
 
@@ -326,37 +139,6 @@ the public flip was worth.
 2. **⚠ Rolling back re-opens all of it.** [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) §8 /
    [`PYXIS-WEB-FLIP.md`](./PYXIS-WEB-FLIP.md) rollback returns to `chem_beo`, permanently
    unpatched. Emergency measure, not a resting state.
-
----
-
-## The prompt to paste on arrival day (pre-promotion only)
-
-> **If `84` is already production, use [`POST-PROMOTION-HANDOFF.md`](./POST-PROMOTION-HANDOFF.md)
-> instead. The prompt below assumes the older state in which `83` is public and `84` is standby.**
->
-> Copy this verbatim into a fresh session once the box is powered, on the network and reachable
-> by SSH:
-
-> The Amsterdam GPU box has arrived and I can SSH to it. Read `docs/ARRIVAL-RUNBOOK.md`, then
-> `docs/BOX-ARCHITECTURE.md`.
->
-> Goal for today: get docking running on the box and repoint production at it, and nothing
-> else. Compute only. Do not touch the database (Atlas stays), nginx, TLS, DNS or Stripe.
->
-> Build the ligand services natively on the box — do not cross-build. Bring up AutoDock and
-> OSS DiffDock plus convertSTR, put Caddy on :443 with a Let's Encrypt cert for the box
-> hostname, bind every service to 127.0.0.1, and let the host firewall admit only
-> 83.229.87.94. No VPN and no tunnel — that was considered and rejected.
->
-> Validate against `scripts/verify-docking-response.mjs` before touching the live site. Then do
-> the port swap in §8, then cut over one URL at a time via
-> `PATCH /api/company/ligand-service-config`, verifying a real dock between each. If anything
-> misbehaves, put the Asinex hostnames back — that is the whole rollback.
->
-> Verify by measurement, not by reasoning, and tell me plainly if something does not work. Do
-> not spawn workflows or subagent fleets.
-
-Tanimoto, GROMACS, ADMET and glioblastoma move **after** docking is proven, not alongside it.
 
 ---
 

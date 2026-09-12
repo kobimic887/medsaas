@@ -221,7 +221,7 @@ ships a source archive to the Oracle VPS, and builds the Docker image there.
 at a non-production Oracle path. Live deploys are manual to **`84`**: refresh
 `/root/pyxis-LIVE-5174` **in place** via `git archive` / `tar` (never rename the live tree
 under traffic), `systemctl restart pyxis-web`, then poll `http://127.0.0.1:5174/health`
-until 200 — see [docs/NEXT-SESSION.md](./docs/NEXT-SESSION.md). Do not deploy new work to
+until 200 — see [docs/POST-PROMOTION-HANDOFF.md](./docs/POST-PROMOTION-HANDOFF.md). Do not deploy new work to
 the rollback trees.
 Pushing runs CI and deploys nothing.
 

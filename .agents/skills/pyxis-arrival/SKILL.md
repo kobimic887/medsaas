@@ -13,8 +13,8 @@ polish the rollback stack.
 
 1. Read `GOAL.md` and inspect `git status`.
 2. Resolve `app.pyxis-discovery.com`; do not infer the live application host from an old prompt.
-3. If DNS resolves to `84.13.81.51`, read `docs/POST-PROMOTION-HANDOFF.md` first. Otherwise read
-   `docs/NEXT-SESSION.md` first.
+3. Read `docs/POST-PROMOTION-HANDOFF.md` first — it is the ops authority. `docs/NEXT-SESSION.md`
+   holds standing owner decisions and do-nots.
 4. Read `docs/ARRIVAL-RUNBOOK.md`, `docs/BOX-ARCHITECTURE.md`, and the specific service contract.
 5. Summarize the measured host roles, approved scope, next gate, rollback, and stop condition before
    any mutation.

@@ -6,13 +6,12 @@ The maintained frontend should stay recognizably Pyxis, deliver the best user
 experience, and keep the Amsterdam compute-box cutover simple. That is not a
 license to rewrite the product.
 
-Git, Mac↔oracleOld sync, production approval, start mode, voice, and
+Git, Mac↔oracleOld sync, production approval, start mode, and
 diagnose-vs-execute live in `~/.codex/AGENTS.md`. Do not create `LANDMINES.md`
 here — encode traps in code and keep this file updated **in the same change**
 when a path or trap moves.
 
-**Voice:** `~/.codex/AGENTS.md` — normal readable English. Diagnose fully;
-execute the small slice.
+**Diagnose fully; execute the small slice.**
 
 ## Invariants
 
@@ -97,14 +96,13 @@ Do not open these unless the task is prod, deploy, continuation, or box work.
 1. Resolve `app.pyxis-discovery.com` and inspect the working tree when identity matters.
 2. **Where is X / leftover copies:** [`docs/WHERE.md`](docs/WHERE.md) first.
 3. If DNS points at oracleNew (`84.13.81.51`), read `docs/POST-PROMOTION-HANDOFF.md`.
-4. Otherwise, for box/cutover continuation, read `docs/NEXT-SESSION.md`.
-5. For box work, then `docs/ARRIVAL-RUNBOOK.md` and `docs/BOX-ARCHITECTURE.md`.
-6. `docs/README.md` is an index. Measure live state. After DNS → `84`, the
-   post-promotion handoff outranks older “`83` is production” prose.
-7. Roadmap / unclear priority only: `GOAL.md`. Not for a narrow bugfix or API slice.
-8. Architecture relationships: global `graphify` skill if `graphify-out/` exists
+4. For box work: `docs/ARRIVAL-RUNBOOK.md` and `docs/BOX-ARCHITECTURE.md`.
+5. `docs/README.md` is an index. Measure live state. The post-promotion handoff
+   outranks older “`83` is production” prose.
+6. Roadmap / unclear priority only: `GOAL.md`. Not for a narrow bugfix or API slice.
+7. Architecture relationships: global `graphify` skill if `graphify-out/` exists
    (confirm live facts in files). Docking contract: `docs/DOCKING-CONTRACT.md`.
-9. Staging / demo-mode / folding-history work: `docs/STAGING.md` +
+8. Staging / demo-mode / folding-history work: `docs/STAGING.md` +
    `deploy/staging/README.md` (isolated `/staging/` preview — never point it at
    production Atlas; real docking on staging is authorized only from the demo
    router under the synthetic account, everything else paid stays refused).
@@ -163,7 +161,7 @@ Subagent limits: `~/.codex/AGENTS.md` (Skills, subagents, cheap mode). Use the n
 | Product change that needs client + server + the right test harness | `pyxis-feature-slice` |
 | Session start / bun missing / lockfile or local-mongo confusion | `pyxis-dev-ready` (user-only) |
 | Read-only topology / runbook / deploy-risk / live-identity audit | `pyxis_ops` (Codex) / `pyxis-ops` (Claude) |
-| Improvements everywhere / vibe coding / agent setup (in this repo) | `claude-automation-recommender` + `mac-oracleold-sync`. Usual: this repo’s product leftovers **and** AGENTS.md / skills / hooks **and** Mac+151 files that serve medsaas. Not FinSrv product, Hermes, or 83-kill. “Agent setups for everything” also covers globals + `finbs` agent files — how in `~/.codex/AGENTS.md`. A product-only ask stays product-only. Recommend 1–2 per type, then implement. |
+| Improvements everywhere / vibe coding / agent setup (in this repo) | `mac-oracleold-sync`. Usual: this repo’s product leftovers **and** AGENTS.md / skills / hooks **and** Mac+151 files that serve medsaas. Not FinSrv product, Hermes, or 83-kill. “Agent setups for everything” also covers globals + `finbs` agent files — how in `~/.codex/AGENTS.md`. A product-only ask stays product-only. Recommend 1–2 per type, then implement. |
 
 Do not spawn `pyxis-ops` for ordinary one-file work.
 

@@ -12,12 +12,12 @@ Longer-form reference for Pyxis Discovery. Shared agent instructions:
 
 | Situation | Read |
 |---|---|
-| **Simulation stock search (live state)** | [NEXT-SESSION-SEARCH-REVIEW.md](./NEXT-SESSION-SEARCH-REVIEW.md) · [DATA-STOCK-COMPOUNDS.md](./DATA-STOCK-COMPOUNDS.md) |
+| **Simulation stock search (contract)** | [DATA-STOCK-COMPOUNDS.md](./DATA-STOCK-COMPOUNDS.md) — live release state in [POST-PROMOTION-HANDOFF.md](./POST-PROMOTION-HANDOFF.md) |
 | **Staging / demo mode / folding history** | [STAGING.md](./STAGING.md) (runbook: `deploy/staging/README.md`) |
 | **Protein-design research / folding next steps** | [PROTEIN-DESIGN-RESEARCH.md](./PROTEIN-DESIGN-RESEARCH.md) |
 | **Where is this copy / leftover?** | [WHERE.md](./WHERE.md) |
 | **Any ops / fresh agent** | [POST-PROMOTION-HANDOFF.md](./POST-PROMOTION-HANDOFF.md) |
-| **What to do while waiting / owner decisions** | [NEXT-SESSION.md](./NEXT-SESSION.md) |
+| **Standing owner decisions / do-nots** | [NEXT-SESSION.md](./NEXT-SESSION.md) |
 | **Public flip (executed) / rollback / Stripe-after** | [PYXIS-WEB-FLIP.md](./PYXIS-WEB-FLIP.md) |
 | **Box has arrived / cutover day** | [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) (after the handoff) |
 
@@ -41,8 +41,8 @@ Full table in [NEXT-SESSION.md](./NEXT-SESSION.md) § Owner decisions. Short for
 | Document | Role |
 |---|---|
 | [WHERE.md](./WHERE.md) | **Authority** — every measured copy (Mac / 84 / 151 / 83 / GitHub / leftovers) |
-| [POST-PROMOTION-HANDOFF.md](./POST-PROMOTION-HANDOFF.md) | **Authority** — host roles, `84` paths, before-kill `83`, arrival prompt |
-| [NEXT-SESSION.md](./NEXT-SESSION.md) | **Authority** — backlog, owner decisions, do-nots, deploy to `:5174` |
+| [POST-PROMOTION-HANDOFF.md](./POST-PROMOTION-HANDOFF.md) | **Authority** — host roles, `84` paths, deploy procedure, before-kill `83`, arrival prompt |
+| [NEXT-SESSION.md](./NEXT-SESSION.md) | **Authority** — owner decisions, do-nots, residual risks, method notes |
 | [PYXIS-WEB-FLIP.md](./PYXIS-WEB-FLIP.md) | **Flip executed 2026-08-23** — rollback + Stripe-after remaining |
 | [ARRIVAL-RUNBOOK.md](./ARRIVAL-RUNBOOK.md) | Box-day sequence (pre-promotion body; handoff overrides host roles; §8 product swap superseded by flip doc when soft-flipping pre-box) |
 | [BOX-ARCHITECTURE.md](./BOX-ARCHITECTURE.md) | Compute-only topology decision record |
@@ -58,7 +58,7 @@ Full table in [NEXT-SESSION.md](./NEXT-SESSION.md) § Owner decisions. Short for
 | [IMPROVEMENTS.md](./IMPROVEMENTS.md) | Optional backlog (not critical path) |
 | [ASINEX-ESHOP-HANDOFF.md](./ASINEX-ESHOP-HANDOFF.md) / [ASINEX-ESHOP-REVERSE-ENGINEERING.md](./ASINEX-ESHOP-REVERSE-ENGINEERING.md) | External catalog/storefront reference |
 | [DATA-STOCK-COMPOUNDS.md](./DATA-STOCK-COMPOUNDS.md) | Anna's stock-compound dataset (inspection, import contract, Simulation search integration + env contract) |
-| [archive/](./archive/) | Superseded plans (quality roadmap, Neurosnap, Bun↔Node rollback) |
+| [archive/](./archive/) | Superseded plans (quality roadmap, Neurosnap, Bun↔Node rollback, stock-search review) |
 
 ### Deploy trees agents trip on
 

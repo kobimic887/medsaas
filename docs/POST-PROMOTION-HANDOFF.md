@@ -69,6 +69,43 @@ Rollback is two independent layers, not a rollback to legacy :5173:
 kill) the legacy trees may still use older names (`/root/chem_beo`,
 `/root/pyxis-OLD-LIVE-5173`); measure read-only only — do not mutate toward shutdown.
 
+## Deploying the live tree on `84` (standing procedure)
+
+**Do not rename or move the live tree under public traffic.** A `mv` + `systemctl restart`
+leaves nginx `:443` with nothing on `:5174` → public **502** (the catalog looked like an
+ASINEX failure at 2026-08-23 ~10:19 UTC; it was the restart gap). Extract **in place**,
+restart once, then wait for health before calling the deploy done.
+
+```bash
+# In-place refresh on 84 (never mv/rename /root/pyxis-LIVE-5174 while public)
+git archive HEAD | ssh ubuntu@84.13.81.51 'sudo tar -x -C /root/pyxis-LIVE-5174'
+# only if client changed:
+tar -C client -cf - dist | ssh ubuntu@84.13.81.51 'sudo tar -x -C /root/pyxis-LIVE-5174/client'
+ssh ubuntu@84.13.81.51 'sudo bash -lc "
+  set -e
+  cd /root/pyxis-LIVE-5174/server && bun install
+  systemctl restart pyxis-web
+  # bun is down for a few seconds — poll loopback health, not nginx, until ready
+  for i in \$(seq 1 30); do
+    code=\$(curl -sS -m 2 -o /dev/null -w \"%{http_code}\" http://127.0.0.1:5174/health || echo 000)
+    [ \"\$code\" = \"200\" ] && exit 0
+    sleep 1
+  done
+  echo \"pyxis-web failed to answer /health after restart\" >&2
+  exit 1
+"'
+git rev-parse HEAD | ssh ubuntu@84.13.81.51 'sudo tee /root/pyxis-LIVE-5174/DEPLOYED_SHA >/dev/null'
+```
+
+Stamp `/root/pyxis-LIVE-5174/DEPLOYED_SHA` and verify with a real request, not only an exit
+code. **Always read `DEPLOYED_SHA` before assuming what is running** — it is written by hand
+and has been wrong before.
+
+Nginx notes (do **not** change without owner yes): default `proxy_pass` to a single upstream
+has no retry while the sole backend is restarting. Prefer the health-wait above over editing
+nginx. If ever adding an upstream block, `fail_timeout=0` / short `max_fails` still cannot
+serve traffic with zero backends — the gap is process uptime, not proxy knobs alone.
+
 ## Owner decisions (2026-08-21 evening + 2026-08-22 flip approval)
 
 See also [`NEXT-SESSION.md`](./NEXT-SESSION.md) § “Owner decisions” and the flip checklist

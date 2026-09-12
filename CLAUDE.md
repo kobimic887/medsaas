@@ -8,10 +8,7 @@ Start mode, git, sync, and prod live in `~/.codex/AGENTS.md`. Use the named Pyxi
 skill when the trigger fits. Small one-pass work may stay inline; use subagents
 when independent lanes add value (default fleet **4**; bigger only with explicit
 authorization this turn). UltraCode explicitly calls dynamic Workflow orchestration.
-Voice is normal
-readable English (complete sentences; pretty English allowed); do not dump
-GOAL. Diagnose fully, execute small.
-Do not open `GOAL.md` or handoff/runbooks unless this task needs them.
+Diagnose fully, execute small.
 
 Project skills: `.agents/skills/` (linked into `.claude/skills/`).
 Project subagents: `.claude/agents/`.
