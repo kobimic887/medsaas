@@ -30,11 +30,12 @@
 // (StockSearchUnavailableError → HTTP 503) — the caller must surface that as a
 // distinct state and never silently fall back to the ASINEX corpus.
 //
-// Search contract (tonomitosql, measured against the isolated scratch stack
-// 2026-09-06): ranked similarity paginates by OFFSET/LIMIT over a stable KNN
-// ordering — same-query pages do not repeat or skip rows. There is no fromId
-// and no total count; the page tells you when it ends by returning fewer than
-// `limit` rows.
+// Search contract (tonomitosql, measured against the live stock dataset
+// 2026-09-12): ranked similarity paginates by OFFSET/LIMIT over
+// `ORDER BY <sml_func> DESC, m.id ASC` — deterministic before the page slice
+// (engine ≥ 1e71b0c). Same-query pages do not repeat or skip rows. There is no
+// fromId and no total count; the page tells you when it ends by returning fewer
+// than `limit` rows.
 
 export const DEFAULT_STOCK_DATASET_NAME = 'Stock compounds — 2026-09-01';
 export const STOCK_SIMILARITY_MIN_THRESHOLD = 0.1;

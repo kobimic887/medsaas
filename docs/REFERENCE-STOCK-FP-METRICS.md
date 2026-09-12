@@ -126,9 +126,11 @@ reproduce ctanimoto, and no UI label may call a score count-based.
   RDKit-query × MOE-library comparison is therefore **impossible and forbidden**
   — different implementations, different hash spaces, different (partly
   unknown) settings.
-- Engine `ORDER BY q.qfp <op> f.col` has **no tie-breaker**; per-page stable
-  sort + client dedupe in Pyxis is the mitigation (engine-side tie-breaker is a
-  recommended fix, see DATA-STOCK-COMPOUNDS.md).
+- Engine `ORDER BY <sml_func>(…) DESC, m.id ASC` ranks **before**
+  `OFFSET`/`LIMIT` (`tonomitosql` ≥ `1e71b0c`). Equal similarity is ordered by
+  `m.id` ascending. Do not restore KNN-operator ordering with a secondary key —
+  that breaks OFFSET pages. Per-page stable sort + client dedupe in Pyxis remain
+  defense in depth.
 
 ## Questions Anna must answer before any MOE-parity work
 

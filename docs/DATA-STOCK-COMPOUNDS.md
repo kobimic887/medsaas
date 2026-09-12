@@ -374,9 +374,13 @@ target: [`docs/REFERENCE-STOCK-FP-METRICS.md`](REFERENCE-STOCK-FP-METRICS.md)
   (`found`, `count`, `results`, `query_smiles`) unchanged and adds top-level
   `method: { fingerprint_type, similarity_metric, threshold }` (numbers as
   sent), with `results` sorted **stably per page**: similarity desc, then
-  `molecule_id` ascending — the engine `ORDER BY` has no tie-breaker, so the
-  server-side stable sort plus client dedupe is the mitigation against
-  duplicate/missing rows across offset pages.
+  `molecule_id` ascending. The live tonomitosql similarity query ranks with
+  `ORDER BY <sml_func>(…) DESC, m.id ASC` **before** `OFFSET`/`LIMIT`
+  (`kobimic887/tonomitosql` ≥ `1e71b0c`, 2026-09-12) — that is the
+  deterministic pagination contract. Pyxis still re-sorts each relayed page and
+  dedupes by `stockRowId` on append as defense in depth. Do **not** append a
+  secondary key onto the KNN distance operator (`<%>` / `<#>`): that form
+  breaks OFFSET pages (duplicate/missing rows across ties).
 - Threshold bounds stay shared **[0.1, 1.0]** for both metrics: dice scores on
   the same 0..1 scale, but meaning-at-threshold differs by design — that is
   user-visible and documented, not a bug.
@@ -430,9 +434,9 @@ be implied by any label. Exposing a count-based score needs all of:
    never against production without explicit approval and a rollback plan.
 3. **Pyxis:** extend the allowlists + labels **only after live verification** of
    the new engine capability (same standard as this matrix).
-4. **While anyone is in the engine:** add an `ORDER BY` tie-breaker
-   (e.g. `, m.id`) so pagination is stable engine-side, retiring the per-page
-   sort + client-dedupe mitigation above.
+4. **Engine pagination:** already addressed — `ORDER BY similarity DESC, m.id
+   ASC` before OFFSET/LIMIT (`tonomitosql` ≥ `1e71b0c`). Re-verify after any
+   future change to the similarity SQL.
 
 ## Purchasable offers (2026-09-12)
 

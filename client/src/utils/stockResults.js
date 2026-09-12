@@ -80,10 +80,11 @@ export function stockResultsFromPayload(payload) {
 
 /**
  * Rows to append to already-rendered stock rows, with duplicates of anything
- * already shown dropped by engine row id (molecule_id). The engine's ORDER BY
- * has no tie-breaker, so equal-scoring hits can shift between pages; without
- * this a tie across a page boundary would render twice. Fresh searches replace
- * the list wholesale and are unaffected.
+ * already shown dropped by engine row id (molecule_id). The live engine now
+ * orders ties by m.id before OFFSET, but equal-scoring hits can still appear
+ * twice if a page boundary races a transient upstream reshuffle; without this
+ * a duplicate would render twice. Fresh searches replace the list wholesale
+ * and are unaffected.
  */
 export function appendUniqueStockRows(existingRows, newRows) {
   if (!Array.isArray(newRows) || newRows.length === 0) return [];

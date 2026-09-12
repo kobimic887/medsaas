@@ -5281,10 +5281,10 @@ app.get('/api/stock-search/similarity', ensureMongoConnected, authenticateToken,
       res.setHeader('Content-Type', response.headers.get('content-type'));
     }
     if (typeof data === 'object' && data !== null) {
-      // The engine ranks rows but has NO per-page tie-breaker; re-sort each page
-      // deterministically (similarity desc, then molecule_id asc) so a page is
-      // stable, and echo the searched method so the client can label the results
-      // with what was actually searched (not what the UI happens to show).
+      // Engine ranks with similarity DESC, m.id ASC before OFFSET (tonomitosql
+      // ≥ 1e71b0c). Re-sort each relayed page the same way as defense in depth,
+      // and echo the searched method so the client can label results with what
+      // was actually searched (not what the UI happens to show).
       if (Array.isArray(data.results)) {
         data.results = [...data.results].sort((a, b) => {
           const bySimilarity = (b?.similarity ?? 0) - (a?.similarity ?? 0);
