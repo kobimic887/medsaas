@@ -23,8 +23,29 @@ import { convertPriceToEuro, formatPrice } from '@/utils/algo/algo';
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 import { copyToClipboard } from '@/utils/copyToClipboard';
 import { clearViewerStorage, markViewerHandoff, normalizePdbId, rcsbPdbDownloadUrl } from '@/utils/viewerStorage';
-import { stockResultsFromPayload } from '@/utils/stockResults';
+import { stockResultsFromPayload, appendUniqueStockRows } from '@/utils/stockResults';
 import { openResultsFromPayload } from '@/utils/openResults';
+
+// Local mirror of the server allowlist labels (docs/DATA-STOCK-COMPOUNDS.md).
+// Prefer stockStatus.capabilities when the status probe succeeded; these keep
+// the selects honest before/without a status payload.
+const STOCK_FP_FALLBACK_OPTIONS = Object.freeze([
+  { value: 'morgan', label: 'Morgan (ECFP4)' },
+  { value: 'maccs', label: 'MACCS keys (166-bit)' },
+  { value: 'feat_morgan', label: 'Feature Morgan (FCFP4)' },
+  { value: 'atom_pair', label: 'Atom pair' },
+  { value: 'torsion', label: 'Topological torsion' },
+  { value: 'rdkit', label: 'RDKit path' },
+]);
+const STOCK_METRIC_FALLBACK_OPTIONS = Object.freeze([
+  { value: 'tanimoto', label: 'Tanimoto (binary)' },
+  { value: 'dice', label: 'Dice (binary)' },
+]);
+
+function stockChoiceLabel(options, value, fallback) {
+  const match = Array.isArray(options) ? options.find((o) => o && o.value === value) : null;
+  return (match && match.label) || fallback;
+}
 
 function catalogRowsFromResponse(result) {
   if (Array.isArray(result)) return result;
@@ -147,6 +168,10 @@ export function Simulation() {
   const [queryType, setQueryType] = useState("draw"); // Default to Draw molecule
   const moleculeLimit = 30;
   const [similarityThreshold, setSimilarityThreshold] = useState(0.7); // Similarity threshold (0-1)
+  // Stock fingerprint + metric (binary RDKit only). Defaults match the server
+  // and the engine; changing either invalidates the current ranking like threshold.
+  const [stockFingerprintType, setStockFingerprintType] = useState('morgan');
+  const [stockSimilarityMetric, setStockSimilarityMetric] = useState('tanimoto');
   const [molWeightMin, setMolWeightMin] = useState(0); // Molecular weight minimum (0-1000)
   const [molWeightMax, setMolWeightMax] = useState(1000); // Molecular weight maximum (0-1000)
   const [lastFromId, setLastFromId] = useState(0); // Track last fromId for pagination
@@ -205,6 +230,11 @@ export function Simulation() {
   const stockOffsetRef = useRef(stockOffset);
   const pageSizeRef = useRef(pageSize);
   const similarityThresholdRef = useRef(similarityThreshold);
+  const stockFingerprintTypeRef = useRef(stockFingerprintType);
+  const stockSimilarityMetricRef = useRef(stockSimilarityMetric);
+  // Method actually used for the visible stock result set (set on first page of
+  // a fresh search). Banners for results read this snapshot, not the live selects.
+  const lastStockMethodRef = useRef(null);
   const molWeightMinRef = useRef(molWeightMin);
   const molWeightMaxRef = useRef(molWeightMax);
   const browseControllerRef = useRef(null);
@@ -268,9 +298,11 @@ export function Simulation() {
     searchSourceRef.current = searchSource;
     pageSizeRef.current = pageSize;
     similarityThresholdRef.current = similarityThreshold;
+    stockFingerprintTypeRef.current = stockFingerprintType;
+    stockSimilarityMetricRef.current = stockSimilarityMetric;
     molWeightMinRef.current = molWeightMin;
     molWeightMaxRef.current = molWeightMax;
-  }, [lastSearchQuery, lastFromId, searchType, searchSource, pageSize, similarityThreshold, molWeightMin, molWeightMax]);
+  }, [lastSearchQuery, lastFromId, searchType, searchSource, pageSize, similarityThreshold, stockFingerprintType, stockSimilarityMetric, molWeightMin, molWeightMax]);
 
   useEffect(() => {
     stockStatusRef.current = stockStatus;
@@ -456,7 +488,13 @@ export function Simulation() {
         return;
       }
       if (data && data.available === true && data.dataset && data.dataset.id !== undefined && data.dataset.id !== null) {
-        setStockStatus({ state: 'available', dataset: data.dataset, fingerprintType: data.fingerprintType, similarityMetric: data.similarityMetric });
+        setStockStatus({
+          state: 'available',
+          dataset: data.dataset,
+          fingerprintType: data.fingerprintType,
+          similarityMetric: data.similarityMetric,
+          capabilities: data.capabilities || null,
+        });
       } else {
         setStockStatus({ state: 'unavailable', reason: data?.reason || 'Stock-compound search is not provisioned.' });
       }
@@ -538,6 +576,36 @@ export function Simulation() {
     setOpenAiExplanation('');
   };
 
+  // Changing fingerprint or metric defines a new ranking — same reset as a
+  // threshold change for stock. Do not route through handleSourceChange.
+  const handleStockMethodChange = (field, value) => {
+    if (field === 'fingerprint') {
+      setStockFingerprintType(value);
+      stockFingerprintTypeRef.current = value;
+    } else {
+      setStockSimilarityMetric(value);
+      stockSimilarityMetricRef.current = value;
+    }
+    if (searchSourceRef.current !== 'stock' && searchSourceRef.current !== 'open') return;
+    searchControllerRef.current?.abort();
+    searchControllerRef.current = null;
+    searchRequestIdRef.current += 1;
+    isSearchActiveRef.current = false;
+    isLoadingPageRef.current = false;
+    stockOffsetRef.current = 0;
+    setStockOffset(0);
+    setIsSearchActive(false);
+    setSearchLoading(false);
+    setTopLoading(false);
+    setHasMore(false);
+    setTopMolecules([]);
+    setSelectedMolecules(new Set());
+    setSearchError("");
+    openRankedCacheRef.current = null;
+    setOpenAiStage('');
+    setOpenAiExplanation('');
+  };
+
   const handleSourceChange = (nextSource) => {
     if (nextSource === searchSourceRef.current) return;
     searchSourceRef.current = nextSource;
@@ -590,9 +658,10 @@ export function Simulation() {
 
   // One page of stock-compound similarity search. offsetStart is a page cursor
   // (0 for a fresh search); append controls whether rows are replaced or added.
-  // The engine ranks by RDKit Tanimoto similarity (stable KNN order), so pages
-  // advance by offset without repeats or skips — never by a parsed compound code.
-  // Throws on failure so the caller's shared catch keeps the error visible.
+  // The engine ranks by the selected binary fingerprint + metric (stable KNN
+  // order), so pages advance by offset without repeats or skips — never by a
+  // parsed compound code. Throws on failure so the caller's shared catch keeps
+  // the error visible.
   const runStockSearch = async (offsetStart, append, { token, rawQuery, controller, requestId }) => {
     if (stockStatusRef.current?.state !== 'available') {
       throw new Error('Stock-compound search is not available yet. See the availability note above.');
@@ -604,6 +673,8 @@ export function Simulation() {
       threshold: String(activeThreshold),
       offset: String(offsetStart),
       limit: String(activePageSize),
+      fingerprint_type: stockFingerprintTypeRef.current,
+      similarity_metric: stockSimilarityMetricRef.current,
     });
     const url = `${API_CONFIG.buildApiUrl('/stock-search/similarity')}?${params.toString()}`;
     const res = await fetchWithGatewayRetry(url, {
@@ -629,8 +700,15 @@ export function Simulation() {
     }
     const rows = stockResultsFromPayload(payload);
     if (append) {
-      setTopMolecules(prev => [...prev, ...rows]);
+      setTopMolecules(prev => [...prev, ...appendUniqueStockRows(prev, rows)]);
     } else {
+      // Snapshot the method that produced this result set so banners stay honest
+      // if the user changes the selects before clearing.
+      lastStockMethodRef.current = {
+        fingerprintType: stockFingerprintTypeRef.current,
+        similarityMetric: stockSimilarityMetricRef.current,
+        threshold: activeThreshold,
+      };
       setTopMolecules(rows);
       setSelectedMolecules(new Set());
     }
@@ -1733,6 +1811,26 @@ export function Simulation() {
   // Stock/open searches are similarity-only and require a provisioned backend; the
   // catalog never stands in silently, so the Search button stays disabled until
   // the availability check reports 'available'.
+  const stockFpOptions = (
+    stockStatus?.state === 'available'
+    && Array.isArray(stockStatus.capabilities?.fingerprintTypes)
+    && stockStatus.capabilities.fingerprintTypes.length > 0
+  ) ? stockStatus.capabilities.fingerprintTypes : STOCK_FP_FALLBACK_OPTIONS;
+  const stockMetricOptions = (
+    stockStatus?.state === 'available'
+    && Array.isArray(stockStatus.capabilities?.similarityMetrics)
+    && stockStatus.capabilities.similarityMetrics.length > 0
+  ) ? stockStatus.capabilities.similarityMetrics : STOCK_METRIC_FALLBACK_OPTIONS;
+  const stockFpLabel = stockChoiceLabel(stockFpOptions, stockFingerprintType, 'Morgan (ECFP4)');
+  const stockMetricLabel = stockChoiceLabel(stockMetricOptions, stockSimilarityMetric, 'Tanimoto (binary)');
+  const snapMethod = lastStockMethodRef.current;
+  const snapFpLabel = snapMethod
+    ? stockChoiceLabel(stockFpOptions, snapMethod.fingerprintType, snapMethod.fingerprintType)
+    : stockFpLabel;
+  const snapMetricLabel = snapMethod
+    ? stockChoiceLabel(stockMetricOptions, snapMethod.similarityMetric, snapMethod.similarityMetric)
+    : stockMetricLabel;
+
   const stockSearchDisabled = searchSource === 'stock' && stockStatus?.state !== 'available';
   const openSearchDisabled = searchSource === 'open' && (
     openStatus?.state !== 'available'
@@ -1887,7 +1985,7 @@ export function Simulation() {
         {searchSource === "stock" && stockStatus && stockStatus.state === "available" && (
           <div className="mb-2 rounded-lg border border-teal-100 bg-teal-50/70 px-4 py-3">
             <Typography variant="small" color="blue-gray">
-              Stock-compound search is ready — {stockStatus.dataset.rowCount ? `${stockStatus.dataset.rowCount.toLocaleString()} compounds` : "the imported dataset"}, ranked by RDKit Morgan (ECFP4) Tanimoto similarity.
+              Stock-compound search is ready — {stockStatus.dataset.rowCount ? `${stockStatus.dataset.rowCount.toLocaleString()} compounds` : "the imported dataset"}, ranked by {stockFpLabel} {stockMetricLabel} similarity.
             </Typography>
           </div>
         )}
@@ -2079,9 +2177,41 @@ export function Simulation() {
           )}
         </div>
         {searchSource === "stock" && (
-          <p className="mb-2 text-sm text-blue-gray-500">
-            Stock search compares structures with RDKit fingerprints (Morgan/ECFP4, Tanimoto) computed the same way for the query and every compound. Substructure, BAS, and molecular-weight search stay available under the internal catalog source.
-          </p>
+          <div className="mb-2 w-full space-y-3 rounded-lg border border-teal-100 bg-teal-50/40 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
+              <label className="block min-w-[12rem] flex-1">
+                <span className="mb-1 block text-xs font-semibold text-blue-gray-700">Fingerprint</span>
+                <select
+                  aria-label="Stock fingerprint"
+                  value={stockFingerprintType}
+                  onChange={(e) => handleStockMethodChange('fingerprint', e.target.value)}
+                  className="h-10 w-full rounded-lg border border-teal-200 bg-white px-3 text-sm text-blue-gray-800 outline-none"
+                >
+                  {stockFpOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block min-w-[12rem] flex-1">
+                <span className="mb-1 block text-xs font-semibold text-blue-gray-700">Metric</span>
+                <select
+                  aria-label="Stock metric"
+                  value={stockSimilarityMetric}
+                  onChange={(e) => handleStockMethodChange('metric', e.target.value)}
+                  className="h-10 w-full rounded-lg border border-teal-200 bg-white px-3 text-sm text-blue-gray-800 outline-none"
+                >
+                  {stockMetricOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <p className="text-sm text-blue-gray-500">
+              Stock search compares structures with RDKit {stockFpLabel} fingerprints and {stockMetricLabel} similarity, computed the same way for the query and every compound.
+              All options are binary fingerprints; count-based (MOE ctanimoto-style) searching is not available.
+              Substructure, BAS, and molecular-weight search stay available under the internal catalog source.
+            </p>
+          </div>
         )}
         {searchSource === "open" && (
           <p className="mb-2 text-sm text-blue-gray-500">
@@ -2528,7 +2658,7 @@ export function Simulation() {
             <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
                 <div className="border-b border-blue-gray-100 bg-blue-gray-50/60 px-4 py-2 text-xs text-blue-gray-600 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-400">
-                  Source: stock compounds, ranked by RDKit Morgan (ECFP4) Tanimoto similarity. µmol / mg are dated snapshot quantities from the supplier export — not live availability — and stock rows are not purchasable in this flow.
+                  Source: stock compounds, ranked by {snapFpLabel} {snapMetricLabel} similarity. µmol / mg are dated snapshot quantities from the supplier export — not live availability — and stock rows are not purchasable in this flow.
                 </div>
                 <table className="w-full text-left">
                   <thead className="sticky top-0 z-10 bg-white">
@@ -2941,8 +3071,8 @@ export function Simulation() {
               <Typography variant="small" color="gray">
                 {searchSource === "stock"
                   ? isSearchActive
-                    ? "No stock compounds matched this structure at the current threshold. Lower the similarity threshold or try another molecule."
-                    : "Search the stock list: enter a SMILES or draw a molecule, then select Search."
+                    ? `No stock compounds matched this structure at the current ${stockMetricLabel} threshold (${similarityThreshold.toFixed(1)}) with ${stockFpLabel}. Lower the similarity threshold or try another molecule.`
+                    : "Search the stock list: choose fingerprint and metric, enter a SMILES or draw a molecule, then select Search."
                   : searchSource === "open"
                     ? isSearchActive
                       ? "No open compounds matched this structure at the current threshold among retrieved ChEMBL candidates. Lower the similarity threshold or try another molecule."

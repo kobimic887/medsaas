@@ -6,6 +6,14 @@
 // from SMILES for library AND query molecules — MOE FP:* columns stay archived
 // in the source TSV, they are never compared against RDKit query fingerprints.
 //
+// The client selects fingerprint + similarity metric per search from the
+// verified allowlist below (STOCK_FINGERPRINT_TYPES / STOCK_SIMILARITY_METRICS,
+// measured live against the stock dataset 2026-09-12). Every option is a
+// BINARY RDKit bit-vector fingerprint computed engine-side and both metrics
+// are binary formulas — there is NO count-vector option and none may be
+// exposed (MOE's count-based btanimoto/ctanimoto numbers are not reproducible
+// from the archived columns and were never a target).
+//
 // Config contract (server env — never hardcoded, never per-company):
 //   STOCK_SEARCH_BASE        tonomitosql base URL holding the stock dataset.
 //                            Unset → the shared TANIMOTO_API_BASE service, so a
@@ -33,6 +41,52 @@ export const STOCK_SIMILARITY_MIN_THRESHOLD = 0.1;
 export const STOCK_SIMILARITY_MAX_THRESHOLD = 1.0;
 export const STOCK_SIMILARITY_MAX_LIMIT = 100;
 export const STOCK_DATASET_CACHE_TTL_MS = 5 * 60 * 1000;
+
+// Verified engine allowlist (tonomitosql FP_CONFIG / SIM_CONFIG; all values
+// confirmed against the stock dataset 2026-09-12). All six fingerprints are
+// BINARY RDKit bit vectors computed engine-side from SMILES (the morganbv_fp
+// family); tanimoto and dice are the two binary similarity formulas. Absent
+// params fall back to morgan + tanimoto — the engine defaults — so old callers
+// keep byte-identical wire behavior.
+export const STOCK_FINGERPRINT_TYPES = Object.freeze([
+  'morgan',
+  'maccs',
+  'feat_morgan',
+  'atom_pair',
+  'torsion',
+  'rdkit',
+]);
+export const STOCK_SIMILARITY_METRICS = Object.freeze(['tanimoto', 'dice']);
+export const DEFAULT_STOCK_FINGERPRINT_TYPE = 'morgan';
+export const DEFAULT_STOCK_SIMILARITY_METRIC = 'tanimoto';
+
+// "(binary)" is deliberate: a binary score must never read as count-based.
+export const STOCK_FINGERPRINT_LABELS = {
+  morgan: 'Morgan (ECFP4)',
+  maccs: 'MACCS keys (166-bit)',
+  feat_morgan: 'Feature Morgan (FCFP4)',
+  atom_pair: 'Atom pair',
+  torsion: 'Topological torsion',
+  rdkit: 'RDKit path',
+};
+export const STOCK_SIMILARITY_METRIC_LABELS = {
+  tanimoto: 'Tanimoto (binary)',
+  dice: 'Dice (binary)',
+};
+
+/** Selector options the client may offer for stock similarity searches. */
+export function stockSearchCapabilities() {
+  return {
+    fingerprintTypes: STOCK_FINGERPRINT_TYPES.map((value) => ({
+      value,
+      label: STOCK_FINGERPRINT_LABELS[value],
+    })),
+    similarityMetrics: STOCK_SIMILARITY_METRICS.map((value) => ({
+      value,
+      label: STOCK_SIMILARITY_METRIC_LABELS[value],
+    })),
+  };
+}
 
 export class StockSearchUnavailableError extends Error {
   constructor(reason) {
@@ -165,6 +219,20 @@ export function createStockDatasetResolver({
 }
 
 /**
+ * Validate one allowlisted selector (fingerprint_type / similarity_metric).
+ * Absent or blank → default; a value outside the allowlist → 400 with the
+ * supported values listed so the client can correct the request.
+ */
+function parseStockSearchChoice(raw, allowed, fallback, field) {
+  const value = typeof raw === 'string' ? raw.trim() : '';
+  if (!value) return fallback;
+  if (allowed.includes(value)) return value;
+  throw new StockSearchValidationError(
+    `Unsupported ${field}: "${value.slice(0, 60)}". Supported values: ${allowed.join(', ')}`
+  );
+}
+
+/**
  * Validate a similarity-search query object (from req.query) and return
  * normalized parameters. Throws StockSearchValidationError (HTTP 400) on
  * bad input. Values mirror the tonomitosql /v1/search/similarity endpoint.
@@ -201,16 +269,45 @@ export function parseStockSearchQuery(query = {}) {
     throw new StockSearchValidationError('limit must be a positive integer');
   }
 
+  const fingerprintType = parseStockSearchChoice(
+    query.fingerprint_type,
+    STOCK_FINGERPRINT_TYPES,
+    DEFAULT_STOCK_FINGERPRINT_TYPE,
+    'fingerprint_type',
+  );
+  const similarityMetric = parseStockSearchChoice(
+    query.similarity_metric,
+    STOCK_SIMILARITY_METRICS,
+    DEFAULT_STOCK_SIMILARITY_METRIC,
+    'similarity_metric',
+  );
+
   return {
     smiles: rawSmiles,
     threshold,
     offset,
     limit: Math.min(limit, STOCK_SIMILARITY_MAX_LIMIT),
+    fingerprintType,
+    similarityMetric,
   };
 }
 
-/** Build the upstream similarity-search URL for one page of ranked results. */
-export function buildStockSimilarityUrl({ baseUrl, datasetId, smiles, threshold, offset, limit }) {
+/**
+ * Build the upstream similarity-search URL for one page of ranked results.
+ * fingerprint_type + similarity_metric are ALWAYS appended: the engine
+ * defaults are identical, so wiring behavior is unchanged for callers that
+ * omit them, but the searched method is pinned in the URL instead of assumed.
+ */
+export function buildStockSimilarityUrl({
+  baseUrl,
+  datasetId,
+  smiles,
+  threshold,
+  offset,
+  limit,
+  fingerprintType = DEFAULT_STOCK_FINGERPRINT_TYPE,
+  similarityMetric = DEFAULT_STOCK_SIMILARITY_METRIC,
+}) {
   if (!baseUrl) throw new StockSearchUnavailableError('No stock-compound search service is configured');
   if (!Number.isInteger(datasetId) || datasetId <= 0) {
     throw new StockSearchUnavailableError('The stock dataset is not provisioned');
@@ -221,10 +318,8 @@ export function buildStockSimilarityUrl({ baseUrl, datasetId, smiles, threshold,
     offset: String(offset),
     limit: String(limit),
     dataset_id: String(datasetId),
-    // Morgan/ECFP4 + Tanimoto are the engine defaults and match the declared,
-    // consistent RDKit fingerprint method for both library and query.
-    fingerprint_type: 'morgan',
-    similarity_metric: 'tanimoto',
+    fingerprint_type: fingerprintType,
+    similarity_metric: similarityMetric,
   });
   return `${baseUrl}/v1/search/similarity?${params.toString()}`;
 }

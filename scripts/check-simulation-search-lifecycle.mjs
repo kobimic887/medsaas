@@ -91,8 +91,19 @@ checks.push(
   ['unprovisioned stock search is a visible state, not a fallback', simulation.includes('Stock-compound search is not available yet') && simulation.includes('switch the source above')],
   ['stock rows are clearly labelled as not purchasable here', simulation.includes('not purchasable in this flow')],
   ['stock snapshot quantities are labelled as dated snapshots', simulation.includes('Dated snapshot quantity from the supplier export')],
-  ['stock empty/error states are distinct from the catalog', simulation.includes('No stock compounds matched this structure at the current threshold')],
+  ['stock empty/error states are distinct from the catalog', simulation.includes('No stock compounds matched this structure at the current')],
   ['stock row checkboxes share moleculeSelectionId with the docking handoff', simulation.includes('const stockMoleculeId = moleculeSelectionId(mol, idx)')],
+  // Fingerprint / metric selectors (binary RDKit only; no count/ctanimoto)
+  ['stock fingerprint select is labelled for a11y', simulation.includes('aria-label="Stock fingerprint"')],
+  ['stock metric select is labelled for a11y', simulation.includes('aria-label="Stock metric"')],
+  ['stock fingerprint/metric state defaults to morgan/tanimoto', simulation.includes("useState('morgan')") && simulation.includes("useState('tanimoto')")],
+  ['stock fingerprint/metric refs mirror state', simulation.includes('stockFingerprintTypeRef') && simulation.includes('stockSimilarityMetricRef')],
+  ['stock method snapshot ref exists for result banners', simulation.includes('lastStockMethodRef')],
+  ['runStockSearch forwards fingerprint_type and similarity_metric', simulation.includes('fingerprint_type: stockFingerprintTypeRef.current') && simulation.includes('similarity_metric: stockSimilarityMetricRef.current')],
+  ['stock metric fallback label is Tanimoto (binary)', simulation.includes("'Tanimoto (binary)'")],
+  ['stock UI states count-based searching is unavailable', simulation.includes('count-based (MOE ctanimoto-style) searching is not available')],
+  ['stock pagination dedupes by stockRowId via appendUniqueStockRows', simulation.includes('appendUniqueStockRows(prev, rows)')],
+  ['hardcoded Morgan/Tanimoto results banner is gone', !simulation.includes('ranked by RDKit Morgan (ECFP4) Tanimoto similarity')],
 );
 
 // Pure row-mapping checks against REAL engine payloads captured 2026-09-06 from
@@ -100,7 +111,7 @@ checks.push(
 // server/test/stock-search-route.test.mjs for the provenance note. This proves
 // the client mapper preserves stock codes/IDs as strings and never invents
 // Asinex fields, without needing a browser.
-const { stockResultsFromPayload } = await import(
+const { stockResultsFromPayload, appendUniqueStockRows } = await import(
   pathToFileURL(path.join(root, 'client/src/utils/stockResults.js')).href
 );
 const fixtureDir = path.join(root, 'server/test/fixtures');
@@ -153,6 +164,48 @@ checks.push(
   ['returning to stock retries unfinished availability', simulation.includes("if (stockStatusRef.current?.state !== 'available') fetchStockStatus()")],
   ['stock threshold matches API minimum', simulation.includes('searchSource === "stock" ? "0.1"') && simulation.includes('Math.max(0.1, value)')],
 );
+
+// Execute handleStockMethodChange the same way — fingerprint/metric changes must
+// invalidate the ranking exactly like a threshold change (stock/open reset body).
+{
+  const methodBody = simulation.split('const handleStockMethodChange = (field, value) => {')[1].split('\n  };')[0];
+  const methodCalls = [];
+  const methodCtx = {
+    searchSourceRef: { current: 'stock' },
+    searchControllerRef: { current: { abort() { methodCalls.push('abort'); } } },
+    searchRequestIdRef: { current: 3 }, isSearchActiveRef: { current: true },
+    isLoadingPageRef: { current: true }, stockOffsetRef: { current: 100 },
+    stockFingerprintTypeRef: { current: 'morgan' },
+    stockSimilarityMetricRef: { current: 'tanimoto' },
+    openRankedCacheRef: { current: [{ chemblId: 'stale' }] },
+  };
+  for (const name of ['setStockFingerprintType', 'setStockSimilarityMetric', 'setStockOffset', 'setIsSearchActive', 'setSearchLoading', 'setTopLoading', 'setHasMore', 'setTopMolecules', 'setSelectedMolecules', 'setSearchError', 'setOpenAiStage', 'setOpenAiExplanation']) {
+    methodCtx[name] = value => methodCalls.push([name, value]);
+  }
+  new Function(...Object.keys(methodCtx), 'field', 'value', methodBody)(...Object.values(methodCtx), 'fingerprint', 'maccs');
+  checks.push(
+    ['stock method change aborts the old ranking', methodCalls.includes('abort') && methodCtx.searchRequestIdRef.current === 4],
+    ['stock method change resets paging and old rows', methodCtx.stockOffsetRef.current === 0 && !methodCtx.isSearchActiveRef.current && methodCalls.some(c => c[0] === 'setTopMolecules' && c[1].length === 0)],
+    ['stock method change updates fingerprint state+ref', methodCalls.some(c => c[0] === 'setStockFingerprintType' && c[1] === 'maccs') && methodCtx.stockFingerprintTypeRef.current === 'maccs'],
+    ['stock method change clears open AI cache', methodCtx.openRankedCacheRef.current === null],
+  );
+}
+
+{
+  const existing = [
+    { stockRowId: 1, stockCode: 'ASN 1' },
+    { stockRowId: 2, stockCode: 'ASN 2' },
+  ];
+  const incoming = [
+    { stockRowId: 2, stockCode: 'ASN 2 dup' },
+    { stockRowId: 3, stockCode: 'ASN 3' },
+  ];
+  const unique = appendUniqueStockRows(existing, incoming);
+  checks.push(
+    ['appendUniqueStockRows drops duplicate stockRowId across pages', unique.length === 1 && unique[0].stockRowId === 3],
+    ['appendUniqueStockRows keeps novel rows', unique[0].stockCode === 'ASN 3'],
+  );
+}
 
 checks.push(
   ['open source posts to the authenticated open-compounds endpoint', simulation.includes("/open-compounds/similarity")],

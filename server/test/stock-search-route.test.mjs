@@ -45,6 +45,22 @@ const FIXTURES = {
   invalidSmiles: JSON.parse(readFileSync(path.join(__dirname, 'fixtures/stock-similarity-invalid-smiles-400.json'), 'utf8')),
 };
 
+// Crafted page (NOT a captured fixture): deliberately unsorted so the route's
+// per-page re-sort (similarity desc, then molecule_id asc) is provable from data
+// it did not receive pre-ranked. Kept in this file on purpose — the captured
+// fixture files stay untouched. Expected order after sort: ids [3, 12, 7, 30].
+const MACCS_DICE_UNSORTED_PAGE = {
+  found: 4,
+  count: 4,
+  query_smiles: 'c1ccccc1',
+  results: [
+    { molecule_id: 30, canonical_smiles: 'Cc1ccccc1C', similarity: 0.5, metadata: { ID: '0000030' } },
+    { molecule_id: 12, canonical_smiles: 'c1ccc(O)cc1', similarity: 0.9, metadata: { ID: '0000012' } },
+    { molecule_id: 7, canonical_smiles: 'Cc1ccccc1', similarity: 0.5, metadata: { ID: '0000007' } },
+    { molecule_id: 3, canonical_smiles: 'O=C(O)c1ccccc1', similarity: 0.9, metadata: { ID: '0000003' } },
+  ],
+};
+
 // LIVE_STOCK_VERIFY=1 runs the same authenticated proxy assertions against a REAL
 // configured backend (STOCK_SEARCH_BASE), e.g. through an SSH tunnel to the
 // isolated scratch stack: LIVE_STOCK_VERIFY=1 STOCK_SEARCH_BASE=http://127.0.0.1:8011
@@ -101,6 +117,11 @@ function startStub({ datasetName }) {
       }
       const threshold = Number(url.searchParams.get('threshold') || 0.5);
       const page = threshold >= 0.9 ? FIXTURES.empty : (offset >= 50 ? FIXTURES.page2 : FIXTURES.page1);
+      if (url.searchParams.get('fingerprint_type') === 'maccs' && url.searchParams.get('similarity_metric') === 'dice') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(MACCS_DICE_UNSORTED_PAGE));
+        return;
+      }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(page));
       return;
@@ -257,6 +278,32 @@ async function main() {
       check('forwards morgan/tanimoto explicitly', q2.fingerprint_type === 'morgan' && q2.similarity_metric === 'tanimoto');
     }
 
+    console.log('\nTest 4b — explicit fingerprint/metric selection is forwarded, echoed, and sorted:\n');
+    // Stub-only: the sort proof uses a crafted unsorted page that only the stub
+    // serves for this selector combination (captured fixtures stay untouched).
+    if (!LIVE_VERIFY) {
+      const selRes = await fetch(`${BASE}/api/stock-search/similarity?smiles=${encodeURIComponent('c1ccccc1')}&threshold=0.5&offset=0&limit=8&fingerprint_type=maccs&similarity_metric=dice`, { headers: auth });
+      const sel = await selRes.json();
+      check('explicit maccs/dice search returns 200', selRes.status === 200, `(got ${selRes.status})`);
+      const selCalls = requests.filter((r) => r.path === '/v1/search/similarity'
+        && r.query.fingerprint_type === 'maccs' && r.query.similarity_metric === 'dice');
+      check('stub received fingerprint_type=maccs & similarity_metric=dice', selCalls.length === 1);
+      check('method echoes the searched selector and threshold',
+        sel.method?.fingerprint_type === 'maccs'
+        && sel.method?.similarity_metric === 'dice'
+        && sel.method?.threshold === 0.5,
+        `(got ${JSON.stringify(sel.method)})`);
+      check('payload still carries found/count/results/query_smiles',
+        sel.found !== undefined && sel.count !== undefined
+        && Array.isArray(sel.results) && sel.query_smiles !== undefined);
+      const sortedIds = sel.results.map((r) => r.molecule_id);
+      check('page re-sorted by similarity desc then molecule_id asc',
+        JSON.stringify(sortedIds) === JSON.stringify([3, 12, 7, 30]),
+        `(got ${JSON.stringify(sortedIds)})`);
+      check('sorted similarities are non-increasing',
+        sel.results.every((r, i) => i === 0 || sel.results[i - 1].similarity >= r.similarity));
+    }
+
     console.log('\nTest 5 — empty page ends cleanly:\n');
     // Live engine: an exact-only probe (phenol, absent from the stock set) at
     // threshold 1.0 returns zero rows — distinct from an error. Stub: benzoic
@@ -273,6 +320,11 @@ async function main() {
     check('threshold below 0.1 → 400 (client validation, no upstream call)', badThreshold.status === 400, `(got ${badThreshold.status})`);
     const missingSmiles = await fetch(`${BASE}/api/stock-search/similarity`, { headers: auth });
     check('missing smiles → 400', missingSmiles.status === 400, `(got ${missingSmiles.status})`);
+    const badSelector = await fetch(`${BASE}/api/stock-search/similarity?smiles=c1ccccc1&fingerprint_type=ctanimoto`, { headers: auth });
+    const badSelectorBody = await badSelector.json().catch(() => ({}));
+    check('unknown fingerprint_type=ctanimoto → 400 naming supported values',
+      badSelector.status === 400 && /Supported values:/.test(badSelectorBody.error || ''),
+      `(got ${badSelector.status} ${JSON.stringify(badSelectorBody)})`);
   } catch (err) {
     console.error('[stock-route] test error:', err);
     console.error(serverLog.slice(-4000));

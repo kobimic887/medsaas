@@ -8,10 +8,17 @@ import {
   describeStockUpstreamError,
   parseStockSearchQuery,
   relayStockUpstreamStatus,
+  stockSearchCapabilities,
   stockSearchConfig,
   StockSearchUnavailableError,
   StockSearchValidationError,
+  DEFAULT_STOCK_FINGERPRINT_TYPE,
+  DEFAULT_STOCK_SIMILARITY_METRIC,
   STOCK_DATASET_CACHE_TTL_MS,
+  STOCK_FINGERPRINT_LABELS,
+  STOCK_FINGERPRINT_TYPES,
+  STOCK_SIMILARITY_METRIC_LABELS,
+  STOCK_SIMILARITY_METRICS,
 } from '../utils/stockSearch.js';
 
 let passed = 0;
@@ -164,6 +171,39 @@ check('fractional offset is 400', throwsValidation(() => parseStockSearchQuery({
 check('zero limit is 400', throwsValidation(() => parseStockSearchQuery({ smiles: 'c1ccccc1', limit: '0' })));
 check('limit clamps to 100', parseStockSearchQuery({ smiles: 'c1ccccc1', limit: '9999' }).limit === 100);
 
+console.log('\nstockSearch fingerprint/metric selectors:\n');
+
+{
+  const params = parseStockSearchQuery({ smiles: 'c1ccccc1' });
+  check('selectors default to morgan + tanimoto',
+    params.fingerprintType === DEFAULT_STOCK_FINGERPRINT_TYPE
+    && params.similarityMetric === DEFAULT_STOCK_SIMILARITY_METRIC);
+}
+{
+  const params = parseStockSearchQuery({ smiles: 'c1ccccc1', fingerprint_type: '   ', similarity_metric: '' });
+  check('blank/whitespace selectors fall back to defaults',
+    params.fingerprintType === 'morgan' && params.similarityMetric === 'tanimoto');
+}
+{
+  const params = parseStockSearchQuery({ smiles: 'c1ccccc1', fingerprint_type: ' maccs ', similarity_metric: 'dice' });
+  check('selectors are trimmed and accepted verbatim',
+    params.fingerprintType === 'maccs' && params.similarityMetric === 'dice');
+}
+for (const [field, bad] of [
+  ['fingerprint_type', 'foo'],
+  ['fingerprint_type', 'ecfp4'],
+  ['similarity_metric', 'ctanimoto'],
+  ['similarity_metric', 'COUNT_TANIMOTO'],
+]) {
+  let error = null;
+  try { parseStockSearchQuery({ smiles: 'c1ccccc1', [field]: bad }); } catch (err) { error = err; }
+  check(`${field}="${bad}" is 400 listing supported values`,
+    error instanceof StockSearchValidationError && error.status === 400
+    && error.message.includes(`Unsupported ${field}`)
+    && error.message.includes('Supported values:'),
+    error ? `(got: ${error.message})` : '(no error thrown)');
+}
+
 function throwsValidation(fn) {
   try { fn(); return false; } catch (err) { return err instanceof StockSearchValidationError && err.status === 400; }
 }
@@ -182,10 +222,86 @@ console.log('\nstockSearch URL building:\n');
   check('fingerprint defaults are morgan + tanimoto',
     parsed.searchParams.get('fingerprint_type') === 'morgan' && parsed.searchParams.get('similarity_metric') === 'tanimoto');
 }
+{
+  // Both params are ALWAYS appended — the searched method is pinned in the URL,
+  // never assumed by the engine.
+  const url = buildStockSimilarityUrl({
+    baseUrl: 'http://stock:8010', datasetId: 10, smiles: 'c1ccccc1', threshold: 0.35, offset: 50, limit: 25,
+    fingerprintType: 'atom_pair', similarityMetric: 'dice',
+  });
+  const parsed = new URL(url);
+  check('chosen fingerprint/metric are forwarded verbatim',
+    parsed.searchParams.get('fingerprint_type') === 'atom_pair' && parsed.searchParams.get('similarity_metric') === 'dice');
+}
 check('no baseUrl is unavailable', (() => {
   try { buildStockSimilarityUrl({ baseUrl: '', datasetId: 10, smiles: 'x', threshold: 0.5, offset: 0, limit: 10 }); return false; }
   catch (err) { return err instanceof StockSearchUnavailableError; }
 })());
+
+console.log('\nstockSearch capabilities (selector allowlist):\n');
+
+{
+  const caps = stockSearchCapabilities();
+  check('capabilities shape: fingerprintTypes [{value,label}]',
+    Array.isArray(caps.fingerprintTypes)
+    && caps.fingerprintTypes.length === STOCK_FINGERPRINT_TYPES.length
+    && caps.fingerprintTypes.every((o) => typeof o.value === 'string' && typeof o.label === 'string'));
+  check('capabilities shape: similarityMetrics [{value,label}]',
+    Array.isArray(caps.similarityMetrics)
+    && caps.similarityMetrics.length === STOCK_SIMILARITY_METRICS.length
+    && caps.similarityMetrics.every((o) => typeof o.value === 'string' && typeof o.label === 'string'));
+  check('fingerprint labels are exact',
+    STOCK_FINGERPRINT_LABELS.morgan === 'Morgan (ECFP4)'
+    && STOCK_FINGERPRINT_LABELS.maccs === 'MACCS keys (166-bit)'
+    && STOCK_FINGERPRINT_LABELS.feat_morgan === 'Feature Morgan (FCFP4)'
+    && STOCK_FINGERPRINT_LABELS.atom_pair === 'Atom pair'
+    && STOCK_FINGERPRINT_LABELS.torsion === 'Topological torsion'
+    && STOCK_FINGERPRINT_LABELS.rdkit === 'RDKit path');
+  check('metric labels are exact and marked binary',
+    STOCK_SIMILARITY_METRIC_LABELS.tanimoto === 'Tanimoto (binary)'
+    && STOCK_SIMILARITY_METRIC_LABELS.dice === 'Dice (binary)');
+  check('allowlists are frozen and defaults are morgan/tanimoto',
+    Object.isFrozen(STOCK_FINGERPRINT_TYPES) && Object.isFrozen(STOCK_SIMILARITY_METRICS)
+    && DEFAULT_STOCK_FINGERPRINT_TYPE === 'morgan' && DEFAULT_STOCK_SIMILARITY_METRIC === 'tanimoto');
+  check('six verified binary fingerprints, exact order',
+    STOCK_FINGERPRINT_TYPES.join(',') === 'morgan,maccs,feat_morgan,atom_pair,torsion,rdkit');
+  check('NO count metric is exposed (no value contains count/ctanimoto)',
+    STOCK_SIMILARITY_METRICS.every((m) => !/count|ctanimoto/i.test(m)));
+}
+
+console.log('\nformula reference — binary vs count similarity (engine-side math, pinned here):\n');
+
+{
+  // Binary reference: A=[1,0,1,0], B=[1,1,0,0]. c = shared 1-bits, a = |A|, b = |B|.
+  // These formulas run in the ENGINE (tonomitosql tanimoto_sml / dice_sml); this
+  // block pins the constants our labels and threshold semantics rely on, and
+  // shows why no count variant may be exposed (it is a DIFFERENT score).
+  const A = [1, 0, 1, 0];
+  const B = [1, 1, 0, 0];
+  const c = A.reduce((sum, v, i) => sum + (v === 1 && B[i] === 1 ? 1 : 0), 0);
+  const a = A.reduce((s, v) => s + v, 0);
+  const b = B.reduce((s, v) => s + v, 0);
+  const binaryTanimoto = c / (a + b - c); // c/(a+b−c)
+  const binaryDice = (2 * c) / (a + b);   // 2c/(a+b)
+  check('binary Tanimoto c/(a+b−c) = 1/3 (c=1, a=2, b=2)',
+    c === 1 && a === 2 && b === 2 && binaryTanimoto === 1 / 3);
+  check('binary Dice 2c/(a+b) = 1/2', binaryDice === 1 / 2);
+
+  // Count reference (Anna's MOE ctanimoto definition): x=[2,0,1], y=[1,1,0].
+  const x = [2, 0, 1];
+  const y = [1, 1, 0];
+  const sumXY = x.reduce((s, v, i) => s + v * y[i], 0); // Σxy
+  const sumX2 = x.reduce((s, v) => s + v * v, 0);       // Σx²
+  const sumY2 = y.reduce((s, v) => s + v * v, 0);       // Σy²
+  const countTanimoto = sumXY / (sumX2 + sumY2 - sumXY);
+  check("Anna count formula Σxy/(Σx²+Σy²−Σxy) = 2/5 (Σxy=2, Σx²=5, Σy²=2) — NOT the binary score",
+    sumXY === 2 && sumX2 === 5 && sumY2 === 2 && countTanimoto === 2 / 5);
+  const bx = x.map((v) => (v > 0 ? 1 : 0));
+  const by = y.map((v) => (v > 0 ? 1 : 0));
+  const bc = bx.reduce((s, v, i) => s + (v === 1 && by[i] === 1 ? 1 : 0), 0);
+  const binaryReduction = bc / (bx.reduce((s, v) => s + v, 0) + by.reduce((s, v) => s + v, 0) - bc);
+  check('the count vector binarized reduces to binary Tanimoto = 1/3', binaryReduction === 1 / 3);
+}
 
 console.log('\nstockSearch status relay + error text:\n');
 

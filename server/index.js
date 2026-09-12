@@ -35,9 +35,12 @@ import { normalizeShopSearchResponse } from './utils/asinexCompound.js';
 import {
   buildStockSimilarityUrl,
   createStockDatasetResolver,
+  DEFAULT_STOCK_FINGERPRINT_TYPE,
+  DEFAULT_STOCK_SIMILARITY_METRIC,
   describeStockUpstreamError,
   parseStockSearchQuery,
   relayStockUpstreamStatus,
+  stockSearchCapabilities,
   stockSearchConfig,
   StockSearchUnavailableError,
   StockSearchValidationError,
@@ -5010,8 +5013,11 @@ app.get('/api/stock-search/status', ensureMongoConnected, authenticateToken, req
       },
       // The engine computes RDKit fingerprints from SMILES for both library and
       // query; morgan (ECFP4) + tanimoto are the defaults we search with.
-      fingerprintType: 'morgan',
-      similarityMetric: 'tanimoto',
+      fingerprintType: DEFAULT_STOCK_FINGERPRINT_TYPE,
+      similarityMetric: DEFAULT_STOCK_SIMILARITY_METRIC,
+      // Fingerprint/metric options the Simulation client may offer — all binary
+      // RDKit bit vectors computed engine-side.
+      capabilities: stockSearchCapabilities(),
     });
   } catch (error) {
     if (error instanceof StockSearchUnavailableError) {
@@ -5040,7 +5046,10 @@ app.get('/api/stock-search/status', ensureMongoConnected, authenticateToken, req
  *         schema:
  *           type: number
  *           default: 0.5
- *           description: Minimum RDKit Tanimoto similarity (0.1-1.0)
+ *           description: >
+ *             Minimum similarity (0.1-1.0). Bounds are shared by both metrics
+ *             (both are 0..1 binary scores); the meaning of a given threshold
+ *             differs by metric by design.
  *       - in: query
  *         name: offset
  *         schema:
@@ -5053,14 +5062,34 @@ app.get('/api/stock-search/status', ensureMongoConnected, authenticateToken, req
  *           type: integer
  *           default: 50
  *           description: Page size (max 100)
+ *       - in: query
+ *         name: fingerprint_type
+ *         schema:
+ *           type: string
+ *           enum: [morgan, maccs, feat_morgan, atom_pair, torsion, rdkit]
+ *           default: morgan
+ *         description: >
+ *           RDKit fingerprint computed engine-side from SMILES for library and
+ *           query. All options are binary bit vectors; there is no count-vector
+ *           option.
+ *       - in: query
+ *         name: similarity_metric
+ *         schema:
+ *           type: string
+ *           enum: [tanimoto, dice]
+ *           default: tanimoto
+ *         description: Binary similarity formula over the chosen fingerprint.
  *     responses:
  *       200:
- *         description: Engine payload { found, count, results, query_smiles } — each
- *           result { molecule_id, canonical_smiles, similarity, metadata } with
- *           metadata { ID, MAIN_BAS, compound_id, CURRENT_TOT_AMOUNT_UM,
- *           CURRENT_TOT_NETTO_MG } from the import.
+ *         description: >
+ *           Engine payload { found, count, results, query_smiles } plus
+ *           method { fingerprint_type, similarity_metric, threshold } echoing
+ *           the searched method — each result { molecule_id, canonical_smiles,
+ *           similarity, metadata } with metadata { ID, MAIN_BAS, compound_id,
+ *           CURRENT_TOT_AMOUNT_UM, CURRENT_TOT_NETTO_MG } from the import.
+ *           Results are sorted per page by similarity desc, then molecule_id.
  *       400:
- *         description: Invalid smiles/threshold/offset/limit (validation)
+ *         description: Invalid smiles/threshold/offset/limit/fingerprint_type/similarity_metric (validation)
  *       503:
  *         description: Stock dataset not provisioned (STOCK_SEARCH_UNAVAILABLE)
  *       502:
@@ -5095,6 +5124,8 @@ app.get('/api/stock-search/similarity', ensureMongoConnected, authenticateToken,
     threshold: params.threshold,
     offset: params.offset,
     limit: params.limit,
+    fingerprintType: params.fingerprintType,
+    similarityMetric: params.similarityMetric,
   });
 
   try {
@@ -5116,8 +5147,28 @@ app.get('/api/stock-search/similarity', ensureMongoConnected, authenticateToken,
     if (response.headers.get('content-type')) {
       res.setHeader('Content-Type', response.headers.get('content-type'));
     }
-    if (typeof data === 'object') {
-      return res.json(data);
+    if (typeof data === 'object' && data !== null) {
+      // The engine ranks rows but has NO per-page tie-breaker; re-sort each page
+      // deterministically (similarity desc, then molecule_id asc) so a page is
+      // stable, and echo the searched method so the client can label the results
+      // with what was actually searched (not what the UI happens to show).
+      if (Array.isArray(data.results)) {
+        data.results = [...data.results].sort((a, b) => {
+          const bySimilarity = (b?.similarity ?? 0) - (a?.similarity ?? 0);
+          if (bySimilarity !== 0) return bySimilarity;
+          const aId = a?.molecule_id ?? '';
+          const bId = b?.molecule_id ?? '';
+          return aId < bId ? -1 : aId > bId ? 1 : 0;
+        });
+      }
+      return res.json({
+        ...data,
+        method: {
+          fingerprint_type: params.fingerprintType,
+          similarity_metric: params.similarityMetric,
+          threshold: params.threshold,
+        },
+      });
     }
     return res.send(data);
   } catch (error) {

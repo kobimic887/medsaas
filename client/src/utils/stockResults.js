@@ -76,3 +76,27 @@ export function stockResultsFromPayload(payload) {
   if (!payload || typeof payload !== 'object' || !Array.isArray(payload.results)) return [];
   return payload.results.map(stockResultFromItem).filter(Boolean);
 }
+
+/**
+ * Rows to append to already-rendered stock rows, with duplicates of anything
+ * already shown dropped by engine row id (molecule_id). The engine's ORDER BY
+ * has no tie-breaker, so equal-scoring hits can shift between pages; without
+ * this a tie across a page boundary would render twice. Fresh searches replace
+ * the list wholesale and are unaffected.
+ */
+export function appendUniqueStockRows(existingRows, newRows) {
+  if (!Array.isArray(newRows) || newRows.length === 0) return [];
+  if (!Array.isArray(existingRows) || existingRows.length === 0) return newRows;
+  const seen = new Set(
+    existingRows
+      .map((row) => (row && row.stockRowId !== null && row.stockRowId !== undefined ? String(row.stockRowId) : null))
+      .filter(Boolean),
+  );
+  return newRows.filter((row) => {
+    const key = row && row.stockRowId !== null && row.stockRowId !== undefined ? String(row.stockRowId) : null;
+    if (key === null) return true; // unusable identity — keep, rendering already handles it
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
