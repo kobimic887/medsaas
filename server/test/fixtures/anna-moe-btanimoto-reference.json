@@ -1,0 +1,127 @@
+{
+  "title": "Anna's MOE btanimoto/ctanimoto reference vs Pyxis stock search (attributed record, not a reproducibility target)",
+  "attributedTo": "Anna (CompChem), reported 2026-09-12 via email quoted by the product owner",
+  "reportedDate": "2026-09-12",
+  "querySmiles": "O=C1NC2C(NCCC2)CC1",
+  "moe": {
+    "btanimoto": {
+      "threshold": 0.3,
+      "hitCount": 30,
+      "ids": [
+        "BBF 26741742",
+        "BDF 25209134",
+        "BBF 26741743",
+        "ART 22406379",
+        "LEG 22406373",
+        "BAS 02785771",
+        "BDE 33851247",
+        "BAS 15430487",
+        "ART 13378607",
+        "LAS 33849678",
+        "BDF 26741673",
+        "LAS 33959485",
+        "BDG 24428593",
+        "LOL 35614412",
+        "LEG 22406385",
+        "BDE 22406382",
+        "LAS 33818212",
+        "LAS 34068237",
+        "ASN 15425097",
+        "BBF 25514934",
+        "ASN 33720967",
+        "ASN 30011914",
+        "BBF 25209133",
+        "ASN 33727025",
+        "ASN 33717623",
+        "ASN 31037608",
+        "ASN 29760245",
+        "ASN 33727021",
+        "LAS 33959489",
+        "BBF 25209170"
+      ],
+      "fingerprintIdentified": false
+    },
+    "ctanimoto": {
+      "threshold": 0.3,
+      "hitCountApprox": 2000,
+      "ids": null
+    }
+  },
+  "pyxis": {
+    "threshold": 0.3,
+    "hitCount": 26,
+    "method": "morgan + tanimoto (RDKit binary, engine default)"
+  },
+  "liveVerification": {
+    "date": "2026-09-12",
+    "service": "tonomitosql dataset 4 (630,646 rows)",
+    "morganTanimoto030": {
+      "hitCount": 26
+    },
+    "overlapWithMoeBtanimoto": {
+      "sharedCount": 13,
+      "sharedIds": [
+        "ART 22406379",
+        "LEG 22406373",
+        "BAS 02785771",
+        "BAS 15430487",
+        "LEG 22406385",
+        "BDE 22406382",
+        "ASN 15425097",
+        "ASN 33720967",
+        "ASN 30011914",
+        "ASN 33727025",
+        "ASN 33717623",
+        "ASN 29760245",
+        "ASN 33727021"
+      ],
+      "absentFromRdkit26": [
+        "BBF 26741742",
+        "BDF 25209134",
+        "BBF 26741743",
+        "BDE 33851247",
+        "ART 13378607",
+        "LAS 33849678",
+        "BDF 26741673",
+        "LAS 33959485",
+        "BDG 24428593",
+        "LOL 35614412",
+        "LAS 33818212",
+        "LAS 34068237",
+        "BBF 25514934",
+        "BBF 25209133",
+        "ASN 31037608",
+        "LAS 33959489",
+        "BBF 25209170"
+      ],
+      "notInAnna30": [
+        "ASN 33717614",
+        "ASN 33717624",
+        "ASN 13858508",
+        "ASN 29760234",
+        "RFN 29801174",
+        "BAS 23531158",
+        "BAS 08767683",
+        "ASN 33727023",
+        "BBC 26580122",
+        "ASN 33721197",
+        "BBD 27288885",
+        "BAS 00025753",
+        "LAS 30979215"
+      ]
+    }
+  },
+  "metricDefinitions": {
+    "btanimoto": "Deduplicate the feature lists, then set Jaccard.",
+    "ctanimoto": "Sum(x_i*y_i) / (Sum(x_i^2) + Sum(y_i^2) - Sum(x_i*y_i)) using feature frequencies."
+  },
+  "notes": [
+    "Her MOE btanimoto hit count was reported as ~30; ids above are the 30 she listed, in her given order.",
+    "Anna's exact MOE fingerprint definition is UNKNOWN (no MOE version or settings metadata exists anywhere; the source TSV carries 11 FP:* columns and none is identified as the searched one), so fingerprintIdentified is false.",
+    "MOE FP:ECFP4/FCFP4 archived columns carry multiplicity (count fingerprints, repeated keys in MOE 15-bit hash space, 0-32767; _2048 = mod-2048 fold of the same list); FP:MACCS is binary. The engine recomputes RDKit binary fingerprints from SMILES for both library and query and never imports any FP:* column.",
+    "btanimoto/ctanimoto are reference data only - they are NOT reproducible targets and the 26-vs-30 delta is not an error to fix: different fingerprint definition AND unknown MOE settings.",
+    "Subsets preserve their source ordering: sharedIds and absentFromRdkit26 follow her given order; notInAnna30 follows the engine result order (similarity desc).",
+    "Pyxis reported result was quoted by the product owner from the Pyxis UI; the 2026-09-12 live re-run of morgan/tanimoto @0.3 reproduced it exactly (26 hits, 13 shared with her list).",
+    "The engine echoes the canonicalized query as query_smiles O=C1CCC2NCCCC2N1 - the same molecule as Anna's reported string."
+  ]
+}

@@ -334,3 +334,102 @@ A rejected stock query previously left pagination enabled, allowing the scroll h
 Generic RDKit invalid-SMILES errors now explain charges/bond orders and the distinction between rendering and chemical validation. No automatic structure repair or sanitization bypass is performed.
 
 Deployment verified 2026-09-08: production scoped release `7d0cd6e` on 84, based on `c9a4cff`; staging unchanged. Public authenticated API returned 400 with the new explanation for `Cc1nonc1OCC[n]1c([N+2]([O-])=O)cnc1C`, and 200 with one hit for the original `[N+]` form. 52 lifecycle checks, 39 utility checks and scoped build passed. Browser scroll verification remains unproved this turn (no browser available). Rollback: extract `/root/pyxis-stock-validation-rollback-20260908.tgz` into `/root/pyxis-LIVE-5174` and restart only `pyxis-web`; archive contains the previous affected sources, client/dist and DEPLOYED_SHA. No database/configuration changes.
+
+## Fingerprint and metric selectors (2026-09-12)
+
+The Simulation stock search now exposes the engine's fingerprint and similarity
+metric as client-selectable options instead of a hardcoded Morgan/Tanimoto pair
+(the static "ranked by RDKit Morgan (ECFP4) Tanimoto similarity" banner above is
+superseded by labels derived from the actual selection). Attributed evidence for
+why the selectors are honest and why Anna's MOE numbers are context, not a
+target: [`docs/REFERENCE-STOCK-FP-METRICS.md`](REFERENCE-STOCK-FP-METRICS.md)
+(+ fixture `server/test/fixtures/anna-moe-btanimoto-reference.json`).
+
+### Contract
+
+- Client query params are **`fingerprint_type`** / **`similarity_metric`**
+  (snake_case, matching the upstream engine and the Deep Similarity picker).
+  Defaults **`morgan` / `tanimoto`** — absent or empty params produce
+  byte-identical upstream behavior to before this feature.
+- Allowlist (all engine-verified live): `fingerprint_type` ∈ `morgan | maccs |
+  feat_morgan | atom_pair | torsion | rdkit`; `similarity_metric` ∈ `tanimoto |
+  dice`. All six fingerprints are **binary bit vectors** engine-side
+  (`morganbv_fp` family); both metrics are binary formulas. There is **no
+  count-vector option and none may be exposed**.
+- Validation: values are trimmed; empty string = absent (default); unknown
+  value → `StockSearchValidationError` → **HTTP 400** (validation is never
+  401/403).
+- `server/utils/stockSearch.js` exports `STOCK_FINGERPRINT_TYPES` /
+  `STOCK_SIMILARITY_METRICS` (frozen arrays), `DEFAULT_STOCK_FINGERPRINT_TYPE` /
+  `DEFAULT_STOCK_SIMILARITY_METRIC`, `STOCK_FINGERPRINT_LABELS` /
+  `STOCK_SIMILARITY_METRIC_LABELS`, and `stockSearchCapabilities()`;
+  `parseStockSearchQuery` additionally returns `fingerprintType` /
+  `similarityMetric`; `buildStockSimilarityUrl` **always** appends both params
+  upstream (identical to the engine defaults, so old callers see no wire
+  change).
+- `GET /api/stock-search/status` (available) gains
+  `capabilities: { fingerprintTypes: [{value,label}], similarityMetrics:
+  [{value,label}] }`. The similarity success payload keeps the engine fields
+  (`found`, `count`, `results`, `query_smiles`) unchanged and adds top-level
+  `method: { fingerprint_type, similarity_metric, threshold }` (numbers as
+  sent), with `results` sorted **stably per page**: similarity desc, then
+  `molecule_id` ascending — the engine `ORDER BY` has no tie-breaker, so the
+  server-side stable sort plus client dedupe is the mitigation against
+  duplicate/missing rows across offset pages.
+- Threshold bounds stay shared **[0.1, 1.0]** for both metrics: dice scores on
+  the same 0..1 scale, but meaning-at-threshold differs by design — that is
+  user-visible and documented, not a bug.
+- Open compounds are **out of scope** (`OPEN_COMPOUNDS_FINGERPRINT`, open
+  search params and the open banner untouched). Auth/middleware unchanged
+  (401 dead session / 403 authz / 400 validation / 503 unavailable / 502
+  upstream).
+
+Labels (exact; the "(binary)" wording is deliberate — never label a binary
+score as count-based):
+
+| Value | Fingerprint label |
+|---|---|
+| `morgan` | Morgan (ECFP4) |
+| `maccs` | MACCS keys (166-bit) |
+| `feat_morgan` | Feature Morgan (FCFP4) |
+| `atom_pair` | Atom pair |
+| `torsion` | Topological torsion |
+| `rdkit` | RDKit path |
+
+| Value | Metric label |
+|---|---|
+| `tanimoto` | Tanimoto (binary) |
+| `dice` | Dice (binary) |
+
+### Verified live matrix (2026-09-12, dataset 4, 630,646 rows, Anna's query `O=C1NC2C(NCCC2)CC1`, threshold 0.3)
+
+| Fingerprint | tanimoto | dice |
+|---|---|---|
+| morgan | **26** (reproduces her Pyxis report exactly) | ≥1000 (page-limited) |
+| maccs | host capacity fail @0.3; 200 @0.5 | host capacity fail @0.3; 200 @0.5 |
+| feat_morgan | 858 | ≥1000 (page-limited) |
+| atom_pair | 231 | ≥1000 (page-limited) |
+| torsion | 102 | ≥1000 (page-limited) |
+| rdkit | ≥1000 (page-limited) | host capacity fail @0.3; 200 @0.5 |
+
+The three "capacity fail" cells are host DiskFull / statement-timeout at 0.3 —
+**capacity, not capability**; all three returned 200 at threshold 0.5. Manual
+re-verification (never CI): `scripts/verify-stock-fp-metrics.mjs`.
+
+### Binary, not count — and what a count metric would cost
+
+ctanimoto (Anna's frequency-weighted formula) is **not available** and must not
+be implied by any label. Exposing a count-based score needs all of:
+
+1. **Engine:** a count-vector fingerprint column (e.g. a cartridge Morgan count
+   variant) **and** a count-Tanimoto metric — no cartridge operator for it
+   exists today, so this is engine-side implementation in `kobimic887/tonomitosql`.
+2. **Data:** a full re-import (cold-stack upload→commit measured ≈ **12.5 h** on
+   oracleOld arm64, importer header; the warm live import measured ≈ 1.25 h) —
+   never against production without explicit approval and a rollback plan.
+3. **Pyxis:** extend the allowlists + labels **only after live verification** of
+   the new engine capability (same standard as this matrix).
+4. **While anyone is in the engine:** add an `ORDER BY` tie-breaker
+   (e.g. `, m.id`) so pagination is stable engine-side, retiring the per-page
+   sort + client-dedupe mitigation above.
+
