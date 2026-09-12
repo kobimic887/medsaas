@@ -49,6 +49,7 @@ const REFUSED_EXACT = [
   "/api/claim-trial",
   "/api/generate-molecules", // NVIDIA MolMIM
   "/api/shop",
+  "/api/stock-offers", // live pack quotes — demo has no stock purchase path
   "/send-email",
 ];
 const REFUSED_PREFIXES = [

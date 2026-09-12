@@ -1,0 +1,81 @@
+{
+  "_comment": "REAL response captured 2026-09-12 from POST {ASINEX_API_BASE}/api4/bas (dev.asinex.com:58181) with body {fromId:1,pageSize:10,bas:\"ASN 33727025,BAS 30906909,LAS 30881879,ASN 06978457,BAS 00500692\"}. Read-only supplier evidence for the stock-offers adapter; codes, leading zeros and per-compound prices are verbatim. See docs/DATA-STOCK-COMPOUNDS.md.",
+  "found": 5,
+  "results": [
+    {
+      "id": 134,
+      "bas_code": "BAS 30906909",
+      "fast_netto": 0,
+      "tot_netto": 167900,
+      "price_1mg": 170,
+      "price_2mg": 194,
+      "price_5mg": 218,
+      "price_10mg": 242,
+      "smiles_string": "c1ccc(cc1)C(=O)O",
+      "mol_weight": 122.12,
+      "brutto_formula": "C7 H6 O2",
+      "inchikey": "WPYMKLBDIGXBTP-UHFFFAOYSA-N",
+      "similarity": 0
+    },
+    {
+      "id": 388,
+      "bas_code": "LAS 30881879",
+      "fast_netto": 208.6,
+      "tot_netto": 24725.8,
+      "price_1mg": 226,
+      "price_2mg": 254,
+      "price_5mg": 281,
+      "price_10mg": 309,
+      "smiles_string": "Cc1ccc(cc1)C(=O)O",
+      "mol_weight": 136.15,
+      "brutto_formula": "C8 H8 O2",
+      "inchikey": "LPNBBFKOUUSUDB-UHFFFAOYSA-N",
+      "similarity": 0
+    },
+    {
+      "id": 2081,
+      "bas_code": "ASN 33727025",
+      "fast_netto": 0,
+      "tot_netto": 196.1,
+      "price_1mg": 170,
+      "price_2mg": 194,
+      "price_5mg": 218,
+      "price_10mg": 242,
+      "smiles_string": "C1CCC(=O)NC2CCNC2C1",
+      "mol_weight": 168.24,
+      "brutto_formula": "C9 H16 N2 O",
+      "inchikey": "CFQLBWYEOVMEMD-UHFFFAOYSA-N",
+      "similarity": 0
+    },
+    {
+      "id": 32336,
+      "bas_code": "ASN 06978457",
+      "fast_netto": 2.1,
+      "tot_netto": 9.4,
+      "price_1mg": 170,
+      "price_2mg": 194,
+      "price_5mg": 218,
+      "price_10mg": 242,
+      "smiles_string": "CCOCCCNCC(=O)Nc1ccccc1N2CCOCC2",
+      "mol_weight": 321.42,
+      "brutto_formula": "C17 H27 N3 O3",
+      "inchikey": "QTWXJHFONBBPCO-UHFFFAOYSA-N",
+      "similarity": 0
+    },
+    {
+      "id": 52723,
+      "bas_code": "BAS 00500692",
+      "fast_netto": 0,
+      "tot_netto": 79.4,
+      "price_1mg": 170,
+      "price_2mg": 194,
+      "price_5mg": 218,
+      "price_10mg": 242,
+      "smiles_string": "c1ccc(cc1)C(=O)N2CCN(CC2)c3ccccc3",
+      "mol_weight": 266.34,
+      "brutto_formula": "C17 H18 N2 O",
+      "inchikey": "PIGJYCFPOKYNLL-UHFFFAOYSA-N",
+      "similarity": 0
+    }
+  ]
+}

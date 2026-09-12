@@ -38,7 +38,18 @@ It should not be copied into this monorepo or deployed unchanged.
 
 It cannot be proven from source alone that the production ASINEX stock host is
 running this exact commit. Treat eShop as the contract's legacy source lineage,
-not as a verified production deployment snapshot.
+not as a live deployment certificate.
+
+### Measured 2026-09-12 — pack offers use `/api4/bas`, not eShop
+
+Read-only probe against the configured catalog host (`ASINEX_API_BASE`,
+`dev.asinex.com:58181`): `POST /api4/bas` with a comma-separated `bas` list of
+in-stock codes returned live `price_1|2|5|10mg` rows (captured in
+`server/test/fixtures/api4-bas-stock-codes.json`). The deployed eShop
+`/api/Shop` path returned **empty** for the same codes. Pyxis stock pack offers
+therefore resolve through `/api4/bas` (`POST /api/stock-offers` + checkout
+re-price). Do not silently fall back to `/api/Shop` or `mol_price` for stock
+packs. See `docs/DATA-STOCK-COMPOUNDS.md` § Purchasable offers.
 
 ## System Relationship
 

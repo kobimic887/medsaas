@@ -89,7 +89,7 @@ checks.push(
   ['score-ranked similarity is not paged by an unproven id cursor', simulation.includes("method !== 'similarity' && formattedMolecules.length >= pageSize")],
   ['switching the corpus aborts in-flight work and clears results', simulation.includes('const handleSourceChange = (nextSource) =>') && simulation.includes('searchControllerRef.current?.abort();') && simulation.includes('setTopMolecules([]);')],
   ['unprovisioned stock search is a visible state, not a fallback', simulation.includes('Stock-compound search is not available yet') && simulation.includes('switch the source above')],
-  ['stock rows are clearly labelled as not purchasable here', simulation.includes('not purchasable in this flow')],
+  ['stock rows expose a Purchase column from live offers', simulation.includes('>Purchase</') && simulation.includes('stockOffersByCode')],
   ['stock snapshot quantities are labelled as dated snapshots', simulation.includes('Dated snapshot quantity from the supplier export')],
   ['stock empty/error states are distinct from the catalog', simulation.includes('No stock compounds matched this structure at the current')],
   ['stock row checkboxes share moleculeSelectionId with the docking handoff', simulation.includes('const stockMoleculeId = moleculeSelectionId(mol, idx)')],
@@ -154,13 +154,16 @@ const context = {
   searchRequestIdRef: { current: 7 }, isSearchActiveRef: { current: true },
   isLoadingPageRef: { current: true }, stockOffsetRef: { current: 50 },
   openRankedCacheRef: { current: [{ chemblId: 'stale' }] },
+  stockOffersInFlightRef: { current: new Set(['stale']) },
+  stockOffersRequestRef: { current: 3 },
 };
-for (const name of ['setSimilarityThreshold', 'setStockOffset', 'setIsSearchActive', 'setSearchLoading', 'setTopLoading', 'setHasMore', 'setTopMolecules', 'setSelectedMolecules', 'setSearchError', 'setOpenAiStage', 'setOpenAiExplanation']) context[name] = value => calls.push([name, value]);
+for (const name of ['setSimilarityThreshold', 'setStockOffset', 'setIsSearchActive', 'setSearchLoading', 'setTopLoading', 'setHasMore', 'setTopMolecules', 'setSelectedMolecules', 'setSearchError', 'setOpenAiStage', 'setOpenAiExplanation', 'setStockOffersByCode']) context[name] = value => calls.push([name, value]);
 new Function(...Object.keys(context), 'value', handlerBody)(...Object.values(context), 0.7);
 checks.push(
   ['threshold change aborts the old stock ranking', calls.includes('abort') && context.searchRequestIdRef.current === 8],
   ['threshold change resets paging and old rows', context.stockOffsetRef.current === 0 && !context.isSearchActiveRef.current && calls.some(c => c[0] === 'setTopMolecules' && c[1].length === 0)],
   ['threshold change clears open AI cache', context.openRankedCacheRef.current === null],
+  ['threshold change clears stale pack offers', calls.some(c => c[0] === 'setStockOffersByCode') && context.stockOffersInFlightRef.current.size === 0 && context.stockOffersRequestRef.current === 4],
   ['returning to stock retries unfinished availability', simulation.includes("if (stockStatusRef.current?.state !== 'available') fetchStockStatus()")],
   ['stock threshold matches API minimum', simulation.includes('searchSource === "stock" ? "0.1"') && simulation.includes('Math.max(0.1, value)')],
 );

@@ -24,6 +24,7 @@ import { API_CONFIG, getAuthToken } from "@/utils/constants";
 import { copyToClipboard } from '@/utils/copyToClipboard';
 import { clearViewerStorage, markViewerHandoff, normalizePdbId, rcsbPdbDownloadUrl } from '@/utils/viewerStorage';
 import { stockResultsFromPayload, appendUniqueStockRows } from '@/utils/stockResults';
+import { cartItemFromStockOffer, packsFromStockOffer } from '@/utils/stockOffers';
 import { openResultsFromPayload } from '@/utils/openResults';
 
 // Local mirror of the server allowlist labels (docs/DATA-STOCK-COMPOUNDS.md).
@@ -149,6 +150,11 @@ export function Simulation() {
   const [searchSource, setSearchSource] = useState("asinex");
   const [stockStatus, setStockStatus] = useState(null); // null | { state: 'loading' } | { state: 'available', dataset } | { state: 'unavailable', reason }
   const stockStatusRequestRef = useRef(0);
+  // Live pack quotes keyed by stock code. Values: offer object | null (resolved
+  // absence / quote required). Missing key = not fetched yet (show "…").
+  const [stockOffersByCode, setStockOffersByCode] = useState({});
+  const stockOffersInFlightRef = useRef(new Set());
+  const stockOffersRequestRef = useRef(0);
   const [openStatus, setOpenStatus] = useState(null); // null | loading | available | unavailable
   const openStatusRequestRef = useRef(0);
   // Stock/open pagination is by offset over a stable ranking, never by a
@@ -328,6 +334,65 @@ export function Simulation() {
     stockOffsetRef.current = stockOffset;
   }, [stockOffset]);
 
+  // Resolve live pack quotes for visible stock rows (batch POST /api/stock-offers).
+  // Unresolved codes are stored as null → "Quote required". Failed batches leave
+  // codes unmarked so a later page/search can retry; no tight retry loop.
+  useEffect(() => {
+    if (searchSource !== 'stock') return;
+    const codes = [];
+    const inFlight = stockOffersInFlightRef.current;
+    for (const mol of topMolecules) {
+      const code = typeof mol?.stockCode === 'string' ? mol.stockCode.trim() : '';
+      if (!code || code === 'N/A') continue;
+      if (Object.prototype.hasOwnProperty.call(stockOffersByCode, code)) continue;
+      if (inFlight.has(code)) continue;
+      codes.push(code);
+    }
+    if (codes.length === 0) return;
+
+    const batch = codes.slice(0, 50);
+    for (const code of batch) inFlight.add(code);
+    const requestId = ++stockOffersRequestRef.current;
+    const token = getAuthToken();
+
+    (async () => {
+      try {
+        const res = await fetch(API_CONFIG.buildApiUrl('/stock-offers'), {
+          method: 'POST',
+          headers: {
+            accept: 'application/json',
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ codes: batch }),
+        });
+        if (stockOffersRequestRef.current !== requestId) return;
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+          showMessage(data?.error || 'Pack prices could not be loaded for some stock rows.', 'error');
+          return;
+        }
+        const next = {};
+        for (const offer of data?.offers || []) {
+          if (offer?.code) next[offer.code] = offer;
+        }
+        for (const code of data?.unresolvedCodes || []) {
+          next[code] = null;
+        }
+        // Any batch code not in either list is treated as unresolved.
+        for (const code of batch) {
+          if (!Object.prototype.hasOwnProperty.call(next, code)) next[code] = null;
+        }
+        setStockOffersByCode((prev) => ({ ...prev, ...next }));
+      } catch (err) {
+        if (stockOffersRequestRef.current !== requestId) return;
+        showMessage(err.message || 'Pack prices could not be loaded.', 'error');
+      } finally {
+        for (const code of batch) inFlight.delete(code);
+      }
+    })();
+  }, [searchSource, topMolecules, stockOffersByCode]);
+
   useEffect(() => () => {
     browseControllerRef.current?.abort();
     searchControllerRef.current?.abort();
@@ -335,6 +400,7 @@ export function Simulation() {
     // Invalidate an in-flight stock/open availability check when leaving the page.
     stockStatusRequestRef.current += 1;
     openStatusRequestRef.current += 1;
+    stockOffersRequestRef.current += 1;
     if (messageTimerRef.current) window.clearTimeout(messageTimerRef.current);
     if (clipboardTimerRef.current) window.clearTimeout(clipboardTimerRef.current);
   }, []);
@@ -571,6 +637,9 @@ export function Simulation() {
     setTopMolecules([]);
     setSelectedMolecules(new Set());
     setSearchError("");
+    setStockOffersByCode({});
+    stockOffersInFlightRef.current = new Set();
+    stockOffersRequestRef.current += 1;
     openRankedCacheRef.current = null;
     setOpenAiStage('');
     setOpenAiExplanation('');
@@ -616,6 +685,7 @@ export function Simulation() {
     searchRequestIdRef.current += 1;
     stockStatusRequestRef.current += 1; // invalidate any in-flight status check
     openStatusRequestRef.current += 1;
+    stockOffersRequestRef.current += 1;
     setSearchSource(nextSource);
     setIsSearchActive(false);
     isSearchActiveRef.current = false;
@@ -639,6 +709,8 @@ export function Simulation() {
     setOpenAiStage('');
     setOpenAiExplanation('');
     openRankedCacheRef.current = null;
+    setStockOffersByCode({});
+    stockOffersInFlightRef.current = new Set();
 
     if (nextSource === 'stock') {
       // Stock similarity is the only supported stock mode; the threshold slider
@@ -955,6 +1027,10 @@ export function Simulation() {
     // so a previous query's cursor can never continue into new results.
     setStockOffset(0);
     stockOffsetRef.current = 0;
+    // Fresh ranking → re-resolve pack quotes for the new visible codes only.
+    setStockOffersByCode({});
+    stockOffersInFlightRef.current = new Set();
+    stockOffersRequestRef.current += 1;
     
     // Clear selected molecules when doing a new search
     setSelectedMolecules(new Set());
@@ -1585,8 +1661,17 @@ export function Simulation() {
       console.error('Error saving cart to storage:', error);
     }
   };
-  const addToCart = (molecule, amount, price) => {
+  const addToCart = (molecule, amount, price, offer = null) => {
     if (!molecule || !price) return;
+    if (offer) {
+      const stockItem = cartItemFromStockOffer(molecule, amount, price, offer);
+      if (!stockItem) return;
+      const updatedCart = [...cart, stockItem];
+      setCart(updatedCart);
+      saveCartToStorage(updatedCart);
+      showMessage(`Added ${amount} mg of ${stockItem.stockCode} to cart`);
+      return;
+    }
     const priceNum = typeof price === 'number' ? price : Number(price) || 0;
     const cartItem = {
       name: molecule.BRUTTO_FORMULA || molecule.formula || molecule.SMILES_STRING || molecule.smiles || molecule.ASINEX_ID || 'Molecule',
@@ -2658,7 +2743,7 @@ export function Simulation() {
             <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
                 <div className="border-b border-blue-gray-100 bg-blue-gray-50/60 px-4 py-2 text-xs text-blue-gray-600 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-400">
-                  Source: stock compounds, ranked by {snapFpLabel} {snapMetricLabel} similarity. µmol / mg are dated snapshot quantities from the supplier export — not live availability — and stock rows are not purchasable in this flow.
+                  Source: stock compounds, ranked by {snapFpLabel} {snapMetricLabel} similarity. µmol / mg are dated snapshot quantities from the supplier export — not live availability. Purchase packs are live supplier quotes when the stock code resolves in the catalog; unresolved codes need a quote.
                 </div>
                 <table className="w-full text-left">
                   <thead className="sticky top-0 z-10 bg-white">
@@ -2683,6 +2768,7 @@ export function Simulation() {
                       <th className="p-2 font-bold bg-white">SMILES</th>
                       <th className="p-2 font-bold bg-white" title="Dated snapshot quantity from the supplier export — not live availability">µmol</th>
                       <th className="p-2 font-bold bg-white" title="Dated snapshot quantity from the supplier export — not live availability">mg</th>
+                      <th className="p-2 font-bold bg-white">Purchase</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2692,6 +2778,10 @@ export function Simulation() {
                       const stockMoleculeId = moleculeSelectionId(mol, idx);
                       const isChecked = selectedMolecules.has(stockMoleculeId);
                       const stockSmiles = mol.SMILES_STRING || "";
+                      const offerKey = typeof mol.stockCode === 'string' ? mol.stockCode.trim() : '';
+                      const offerResolved = Object.prototype.hasOwnProperty.call(stockOffersByCode, offerKey);
+                      const offer = offerResolved ? stockOffersByCode[offerKey] : undefined;
+                      const packs = offer ? packsFromStockOffer(offer) : [];
                       return (
                         <tr key={`${stockMoleculeId}-${idx}`} className="border-b">
                           <td className="p-2">
@@ -2743,6 +2833,30 @@ export function Simulation() {
                           </td>
                           <td className="p-2" title={mol.STOCK_MG !== null && mol.STOCK_MG !== undefined ? String(mol.STOCK_MG) : "not in snapshot"}>
                             {mol.STOCK_MG !== null && mol.STOCK_MG !== undefined ? formatNumericValue(mol.STOCK_MG) : "—"}
+                          </td>
+                          <td className="p-2 align-top">
+                            {!offerResolved ? (
+                              <span className="text-xs text-blue-gray-400" aria-label="Loading pack prices">…</span>
+                            ) : offer === null ? (
+                              <span className="text-xs text-blue-gray-500">Quote required</span>
+                            ) : packs.length === 0 ? (
+                              <span className="text-xs text-blue-gray-500">Price unavailable</span>
+                            ) : (
+                              <div className="flex flex-col gap-1">
+                                {packs.map((pack) => (
+                                  <button
+                                    key={`${offerKey}-${pack.amountMg}`}
+                                    type="button"
+                                    className="group flex w-full items-center justify-between gap-2 rounded px-1 py-0.5 text-left text-xs hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 dark:hover:bg-slate-800"
+                                    onClick={() => addToCart(mol, pack.amountMg, pack.priceUSD, offer)}
+                                    aria-label={`Add ${pack.amountMg} mg of ${offerKey} to cart for ${formatPriceWithCurrency(pack.priceUSD)}`}
+                                  >
+                                    <span>{pack.amountMg} mg · {formatPriceWithCurrency(pack.priceUSD)}</span>
+                                    <ShoppingCartIcon className="h-4 w-4 shrink-0 text-brand-600 opacity-70 group-hover:opacity-100" aria-hidden="true" />
+                                  </button>
+                                ))}
+                              </div>
+                            )}
                           </td>
                         </tr>
                       );

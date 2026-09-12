@@ -33,6 +33,13 @@ import {
 } from './utils/admetQueue.js';
 import { normalizeShopSearchResponse } from './utils/asinexCompound.js';
 import {
+  parseStockOfferCodes,
+  resolveStockOffers,
+  priceMoleculeCartFromOffers,
+  StockOffersValidationError,
+  StockOffersUpstreamError,
+} from './utils/stockOffers.js';
+import {
   buildStockSimilarityUrl,
   createStockDatasetResolver,
   DEFAULT_STOCK_FINGERPRINT_TYPE,
@@ -2012,9 +2019,75 @@ app.post('/create-checkout-session-onetime', checkoutRateLimit, ensureMongoConne
       return res.json({ url: session.url, sessionId: session.id });
     }
 
+    // Molecule cart: server re-prices from live /api4/bas offers. Client totals
+    // and names are discarded (docs/DATA-STOCK-COMPOUNDS.md — Purchasable offers).
+    if (Array.isArray(cartItems) && cartItems.length > 0) {
+      try {
+        const { catalogApiBase } = await getRequestLigandServiceConfig(req);
+        const { lineItems, totalCents } = await priceMoleculeCartFromOffers(cartItems, {
+          catalogApiBase,
+          fetchImpl: fetchAsinexUpstream,
+        });
+
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ['card'],
+          line_items: lineItems,
+          mode: 'payment',
+          success_url: `${appUrl}/dashboard/simulation?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${appUrl}/dashboard/simulation?payment=canceled`,
+          metadata: {
+            purchaseType: 'molecule_order',
+            product: 'Molecule order',
+            username: req.user.username,
+            userId: req.user.userId || '',
+            companyId: req.user.companyId || '',
+            companyName: req.user.companyName || '',
+          },
+        });
+
+        await billingEventsCollection.updateOne(
+          { stripeSessionId: session.id },
+          {
+            $set: {
+              stripeSessionId: session.id,
+              status: 'pending',
+              purchaseType: 'molecule_order',
+              username: req.user.username,
+              companyId: req.user.companyId || null,
+              amountTotal: totalCents,
+              currency: 'usd',
+              updatedAt: new Date(),
+            },
+            $setOnInsert: { createdAt: new Date() },
+          },
+          { upsert: true }
+        );
+
+        return res.json({ url: session.url, sessionId: session.id });
+      } catch (error) {
+        if (error instanceof StockOffersValidationError) {
+          return res.status(400).json({ error: error.message });
+        }
+        if (error instanceof StockOffersUpstreamError) {
+          console.error('Molecule checkout offer lookup failed:', error.message || error);
+          return res.status(502).json({
+            error: 'Offer lookup failed',
+            code: 'STOCK_OFFERS_UNAVAILABLE',
+            details: error.message,
+          });
+        }
+        // priceMoleculeCart / normalizeMoleculeCartRequest throw plain Errors for
+        // empty carts, unknown codes, or missing pack prices.
+        if (error instanceof Error && /cart|catalog|package|price|SMILES/i.test(error.message)) {
+          return res.status(400).json({ error: error.message });
+        }
+        throw error;
+      }
+    }
+
     const productName = (typeof description === 'string' && description.trim())
       ? description.trim()
-      : (Array.isArray(cartItems) && cartItems.length > 0 ? 'Molecule order' : null);
+      : null;
 
     let amount = totalAmount;
     if (typeof amount === 'string') amount = parseFloat(amount);
@@ -2022,7 +2095,7 @@ app.post('/create-checkout-session-onetime', checkoutRateLimit, ensureMongoConne
     if (!productName || !Number.isFinite(amount) || amount <= 0) {
       return res.status(400).json({
         error: 'Invalid request body',
-        details: 'Provide a known planName or { description, totalAmount } with a positive amount.'
+        details: 'Provide a known planName, a molecule cartItems array, or { description, totalAmount } with a positive amount.'
       });
     }
     const session = await stripe.checkout.sessions.create({
@@ -4975,6 +5048,66 @@ app.post('/api/api4/mw', ensureMongoConnected, authenticateToken, requireActiveU
   } catch (error) {
     console.error(`Asinex API proxy error (/api4/mw) url=${safeUpstreamUrl(upstreamUrl)}:`, error.message || error);
     res.status(502).json({ error: 'Failed to connect to Asinex API', details: error.message });
+  }
+});
+
+// ── Stock purchasable pack offers ───────────────────────────────────────────
+// MAIN_BAS / bas_code → live /api4/bas prices. Read-only (no charge). Checkout
+// re-resolves the same codes server-side — never trust client totals. Staging
+// refuses this path. See docs/DATA-STOCK-COMPOUNDS.md § Purchasable offers.
+
+/**
+ * @swagger
+ * /api/stock-offers:
+ *   post:
+ *     summary: Resolve live pack prices for stock compound codes
+ *     tags: [Stock Search]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               codes:
+ *                 type: array
+ *                 items: { type: string }
+ *                 description: Stock codes (MAIN_BAS / bas_code), max 50
+ *     responses:
+ *       200:
+ *         description: '{ offers, unresolvedCodes } — packs only when supplier lists the code'
+ *       400:
+ *         description: Invalid codes payload
+ *       502:
+ *         description: STOCK_OFFERS_UNAVAILABLE — upstream catalog failure
+ */
+app.post('/api/stock-offers', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+  try {
+    const codes = parseStockOfferCodes(req.body);
+    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
+    const { offers, unresolvedCodes } = await resolveStockOffers(codes, {
+      catalogApiBase,
+      fetchImpl: fetchAsinexUpstream,
+    });
+    return res.json({ offers, unresolvedCodes });
+  } catch (error) {
+    if (error instanceof StockOffersValidationError) {
+      return res.status(400).json({ error: error.message });
+    }
+    if (error instanceof StockOffersUpstreamError) {
+      console.error('Stock offers upstream error:', error.message || error);
+      return res.status(502).json({
+        error: 'Offer lookup failed',
+        code: 'STOCK_OFFERS_UNAVAILABLE',
+        details: error.message,
+      });
+    }
+    console.error('Stock offers error:', error.message || error);
+    return res.status(502).json({
+      error: 'Offer lookup failed',
+      code: 'STOCK_OFFERS_UNAVAILABLE',
+      details: error.message,
+    });
   }
 });
 

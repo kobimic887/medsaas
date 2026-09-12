@@ -240,8 +240,9 @@ metadata carries `ID`, `MAIN_BAS`, `compound_id`, `CURRENT_TOT_AMOUNT_UM`,
 identity**, keeps `molecule_id` as the separate engine row id, and deliberately
 invents **no** Asinex fields: no IUPAC/InChI/formula/MW, no prices, no
 availability — the table shows a Stock ID, SMILES, similarity, and the µmol/mg
-values labelled as **dated snapshot quantities** (not purchasable in this flow).
-Ranked pagination is by **offset/limit** over the engine's stable KNN ordering
+values labelled as **dated snapshot quantities**. Purchasable packs are resolved
+separately via `POST /api/stock-offers` (live `/api4/bas` quotes) — see
+**Purchasable offers** below. Ranked pagination is by **offset/limit** over the engine's stable KNN ordering
 (measured 2026-09-06 against scratch: same-query offset pages share no rows and
 keep the ranking; the engine exposes no total count, so the page end is "fewer
 than limit rows returned"). A fresh search resets the offset, so new queries can
@@ -433,3 +434,38 @@ be implied by any label. Exposing a count-based score needs all of:
    (e.g. `, m.id`) so pagination is stable engine-side, retiring the per-page
    sort + client-dedupe mitigation above.
 
+## Purchasable offers (2026-09-12)
+
+Stock search still returns **structure + similarity + dated snapshot µmol/mg only**.
+Purchasable packs are a separate authenticated lookup:
+
+| | |
+|---|---|
+| Route | `POST /api/stock-offers` `{ codes: string[] }` (max 50) |
+| Auth | `ensureMongoConnected` → `authenticateToken` → `requireActiveUser` |
+| Upstream | `POST {ASINEX_API_BASE}/api4/bas` with `{ fromId, pageSize, bas: "CODE1,CODE2,..." }` |
+| Success | `{ offers: [{ offerId, code, packs: [{ amountMg, priceUSD }], … }], unresolvedCodes: string[] }` |
+| Validation | **400** — empty/invalid codes |
+| Upstream failure | **502 `STOCK_OFFERS_UNAVAILABLE`** (never same-origin 401) |
+| Staging | **403 `DEMO_MODE_DISABLED`** — refused exact path |
+
+**Identity:** codes are `MAIN_BAS` / `bas_code` strings with spaces and leading zeros intact
+(e.g. `ASN 06978457`). Cart items keep `stockCode` / `catalogId` / `name` = that code.
+Unresolved codes are not purchasable in-app (“Quote required”); enquiry remains the
+manual path. Resolved offers with no positive pack prices show “Price unavailable”.
+
+**Checkout:** `POST /create-checkout-session-onetime` with `cartItems` discards client
+totals and re-resolves packs through the same `/api4/bas` adapter +
+`priceMoleculeCart` (cents). Legacy `mol_price` Mongo mirror is untouched and is
+not consulted for stock packs. Local `mol_price` remains a separate legacy surface.
+
+**Live evidence (read-only, 2026-09-12):** five in-stock codes returned
+`price_1|2|5|10mg` from `dev.asinex.com:58181` `/api4/bas` (fixture
+`server/test/fixtures/api4-bas-stock-codes.json`). Deployed eShop `/api/Shop`
+returned empty for the same codes — do not fall back to it.
+
+**Open decisions (business, not blocked for this slice):** quote-request flow for
+unresolved codes; whether snapshot µmol/mg should gate pack availability.
+
+Verification: `bun run test:stock-offers` (unit + route + lifecycle),
+`bun run test:simulation-search`, `bun run test:asinex`, `bun run test:staging-demo`.

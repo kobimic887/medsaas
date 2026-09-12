@@ -39,24 +39,27 @@ execute the small slice.
 - Routes primarily in `server/index.js`; scientific proxies also in
   `server/routes/scientificServices.js`.
 - Stock-compound similarity lives **in Simulation** (source toggle `Internal
- catalog | Stock compounds | Open compounds`), not the Deep Similarity picker. Server
- `GET /api/stock-search/status|similarity` proxy an internal tonomitosql
- dataset via `STOCK_SEARCH_BASE` / `STOCK_SEARCH_DATASET_ID` /
- `STOCK_SEARCH_DATASET_NAME`; unprovisioned = **503 `STOCK_SEARCH_UNAVAILABLE`**
- (never a silent fallback to Asinex). Stock similarity accepts client
- `fingerprint_type` / `similarity_metric` from the verified binary allowlist
- (defaults `morgan`/`tanimoto`; unknown → **400**); labels mark scores
- **(binary)** — no count/ctanimoto option. Contract:
- `docs/DATA-STOCK-COMPOUNDS.md` (+ `docs/REFERENCE-STOCK-FP-METRICS.md`).
- Open compounds: AI tool loop
- (`POST /api/open-compounds/ai-search`) plus deterministic
- `GET /api/open-compounds/status|similarity|export` — ChEMBL retrieval + local
- RDKit Morgan re-score (`docs/DATA-OPEN-COMPOUNDS.md`); never fall back to
- catalog or stock. Explicit “Search without AI” uses the deterministic path;
- AI failures do not silently run it.
- Full stock contract in `docs/DATA-STOCK-COMPOUNDS.md`. Failed/new searches
- disable pagination and clear old rows; catalog browsing must reject stock/open
- mode so Asinex rows cannot appear as stock/open hits.
+  catalog | Stock compounds | Open compounds`), not the Deep Similarity picker. Server
+  `GET /api/stock-search/status|similarity` proxy an internal tonomitosql
+  dataset via `STOCK_SEARCH_BASE` / `STOCK_SEARCH_DATASET_ID` /
+  `STOCK_SEARCH_DATASET_NAME`; unprovisioned = **503 `STOCK_SEARCH_UNAVAILABLE`**
+  (never a silent fallback to Asinex). Stock similarity accepts client
+  `fingerprint_type` / `similarity_metric` from the verified binary allowlist
+  (defaults `morgan`/`tanimoto`; unknown → **400**); labels mark scores
+  **(binary)** — no count/ctanimoto option. Contract:
+  `docs/DATA-STOCK-COMPOUNDS.md` (+ `docs/REFERENCE-STOCK-FP-METRICS.md`).
+  Open compounds: AI tool loop
+  (`POST /api/open-compounds/ai-search`) plus deterministic
+  `GET /api/open-compounds/status|similarity|export` — ChEMBL retrieval + local
+  RDKit Morgan re-score (`docs/DATA-OPEN-COMPOUNDS.md`); never fall back to
+  catalog or stock. Explicit “Search without AI” uses the deterministic path;
+  AI failures do not silently run it.
+  Full stock contract in `docs/DATA-STOCK-COMPOUNDS.md`. Failed/new searches
+  disable pagination and clear old rows; catalog browsing must reject stock/open
+  mode so Asinex rows cannot appear as stock/open hits. Stock rows resolve
+  purchasable packs via authenticated `POST /api/stock-offers` (live `/api4/bas`
+  quotes keyed by `MAIN_BAS` / `bas_code`); molecule checkout re-prices from the
+  same offers server-side (never client totals). Staging refuses `/api/stock-offers`.
 - Client routes: `client/src/routes.jsx`. Use `API_CONFIG.buildApiUrl()` for `/api/*`
   and `API_CONFIG.buildUrl()` for top-level routes.
 - Auth state: `client/src/context/auth.jsx`. Session logout interceptor:
@@ -72,7 +75,8 @@ execute the small slice.
   catalog and — owner-authorized — docking/DiffDock forward to the real
   providers from the demo router (`server/routes/stagingDemo.js`,
   `server/utils/demoSimStore.js`); stock search answers
-  `503 STOCK_SEARCH_UNAVAILABLE` (separate stock deployment's dataset). Separate
+  `503 STOCK_SEARCH_UNAVAILABLE` (separate stock deployment's dataset) and
+  `/api/stock-offers` is refused (`DEMO_MODE_DISABLED`). Separate
   signing secret, Vite `--mode staging` build, nginx `location /staging/` only.
   Contract, traps and rollback: `docs/STAGING.md` + `deploy/staging/README.md`.
   Public Pyxis is systemd + Bun **`pyxis-web` `:5174`** (nginx `:443` → `127.0.0.1:5174`).
@@ -116,6 +120,7 @@ bun run ci                # full gate
 bun run test:staging-demo # demo/staging server contract (fixtures, privacy, refusals)
 bun run test:staging-simulation # staging Simulation: catalog/search/docking/artifacts against fixture upstreams
 bun run test:staging-build# staging client build scoping checks
+bun run test:stock-offers # pack offers unit + route + Simulation lifecycle
 ```
 
 Staging build (never for the live tree): `bun --cwd=client run build:staging`
@@ -162,6 +167,6 @@ Subagent limits: `~/.codex/AGENTS.md` (Skills, subagents, cheap mode). Use the n
 
 Do not spawn `pyxis-ops` for ordinary one-file work.
 
-Stock search: failed/new queries clear old rows and disable paging; catalog fetches refuse stock mode. Generic RDKit rejection explains charges/bonds without modifying the submitted structure.
+Stock search: failed/new queries clear old rows and disable paging; catalog fetches refuse stock mode. Generic RDKit rejection explains charges/bonds without modifying the submitted structure. Stock purchasable packs: `POST /api/stock-offers`; checkout re-prices molecule carts server-side.
 
 Integration (2026-09-09): completed stock, Open compounds, and staging/folding work is consolidated on main. Deployment remains separate. Open compounds AI is a real tool-calling loop when `OPEN_COMPOUNDS_AI_*` is provisioned (prefer free OpenRouter models with tools); otherwise use “Search without AI”.

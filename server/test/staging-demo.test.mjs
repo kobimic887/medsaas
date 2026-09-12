@@ -305,6 +305,7 @@ async function main() {
       ['POST', '/create-checkout-session', { plan: 'Standard' }],
       ['POST', '/create-checkout-session-onetime', { plan: 'Standard' }],
       ['POST', '/api/shop', {}],
+      ['POST', '/api/stock-offers', { codes: ['ASN 33727025'] }],
       ['POST', '/send-email', {}],
       ['POST', '/api/diffdock/generate_file', {}], // local-script flow stays off
     ]) {

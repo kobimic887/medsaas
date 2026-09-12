@@ -15,9 +15,10 @@
 //
 // The Simulation page needs: a recognizable stock code, the structure, and the
 // similarity score for ranking and the docking/DiffDock handoff. Stock rows
-// must NOT be dressed up as Asinex catalog rows: no IUPAC/InChI/formula/MW, no
-// prices, no "available" amounts, and no cart affordance (there is no
-// authoritative pricing for the stock list yet — purchasing stays Asinex-side).
+// must NOT invent Asinex IUPAC/InChI/formula/MW on the search hit itself —
+// purchasable packs come from a separate /api/stock-offers lookup keyed by
+// stock code (docs/DATA-STOCK-COMPOUNDS.md § Purchasable offers). Snapshot
+// µmol/mg remain dated export quantities, never live availability.
 // Database row id (molecule_id), stock code (MAIN_BAS/compound_id) and the
 // pagination cursor (offset, kept in the page) are deliberately separate.
 
