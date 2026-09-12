@@ -11,6 +11,7 @@ import {
   validateToolArgumentsAgainstLock,
   executeSearchTool,
   runOpenCompoundsAiSearch,
+  callChatCompletions,
   OpenCompoundsAiError,
   OPEN_COMPOUNDS_AI_TOOL_NAME,
   sanitizeProviderError,
@@ -255,6 +256,160 @@ console.log('[open-ai] stubbed tool loop with fixture ChEMBL');
 
   // Model-written scores in a tool payload are irrelevant — tool builds its own.
   check('tool results ignore invented model numbers', toolOk.results.every((r) => typeof r.similarity === 'number'));
+}
+
+console.log('[open-ai] repeated tool calls are bounded');
+{
+  const config = openCompoundsConfig({
+    OPEN_COMPOUNDS_ENABLED: 'true',
+    OPEN_COMPOUNDS_BASE: 'https://chembl.test/api/data',
+  });
+  const runtime = {
+    enabled: true,
+    reason: 'test',
+    provider: 'openrouter',
+    model: 'stub-model',
+    apiKey: 'sk-test',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    allowPaid: false,
+  };
+  const locked = { smiles: REF, threshold: 0.7, maxResults: 10 };
+  const fetchImpl = async (url) => {
+    if (String(url).includes('/similarity/')) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify(FIXTURE),
+      };
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  };
+  const calls = [1, 2, 3].map((i) => ({
+    id: `call_${i}`,
+    type: 'function',
+    function: {
+      name: OPEN_COMPOUNDS_AI_TOOL_NAME,
+      arguments: JSON.stringify(locked),
+    },
+  }));
+  try {
+    await runOpenCompoundsAiSearch({
+      config,
+      runtime,
+      params: { ...locked, offset: 0, limit: 10 },
+      fetchImpl,
+      chatCompletionsImpl: async () => ({
+        model: 'stub-model',
+        message: { role: 'assistant', content: null, tool_calls: calls },
+      }),
+    });
+    check('tool-call burst over limit fails', false);
+  } catch (e) {
+    check('tool-call burst over limit fails', e instanceof OpenCompoundsAiError && e.code === 'OPEN_COMPOUNDS_AI_TOOL_LIMIT');
+  }
+
+  // Unknown tool names are refused, never executed.
+  let unknownExecuted = false;
+  try {
+    await runOpenCompoundsAiSearch({
+      config,
+      runtime,
+      params: { ...locked, offset: 0, limit: 10 },
+      fetchImpl: async () => {
+        unknownExecuted = true;
+        throw new Error('no chemical search should run');
+      },
+      chatCompletionsImpl: async () => ({
+        model: 'stub-model',
+        message: {
+          role: 'assistant',
+          content: null,
+          tool_calls: [{
+            id: 'call_x',
+            type: 'function',
+            function: { name: 'fetch_url', arguments: JSON.stringify({ url: 'https://evil.test' }) },
+          }],
+        },
+      }),
+    });
+    check('unknown tool refused', false);
+  } catch (e) {
+    check('unknown tool refused', e instanceof OpenCompoundsAiError && !unknownExecuted
+      && ['OPEN_COMPOUNDS_AI_TOOL_FAILED', 'OPEN_COMPOUNDS_AI_NO_TOOL', 'OPEN_COMPOUNDS_AI_TOOL_LIMIT'].includes(e.code));
+  }
+}
+
+console.log('[open-ai] provider failure mapping');
+{
+  const chatRuntime = {
+    enabled: true,
+    provider: 'openrouter',
+    model: 'stub-model',
+    apiKey: 'sk-test',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    allowPaid: false,
+  };
+  const baseArgs = {
+    runtime: chatRuntime,
+    messages: [{ role: 'user', content: 'test' }],
+    tools: [],
+    fetchImpl: async () => ({ ok: false, status: 500, text: async () => 'boom' }),
+  };
+
+  const rateLimited = await callChatCompletions({
+    ...baseArgs,
+    fetchImpl: async () => ({ ok: false, status: 429, text: async () => '{"error":{"message":"rate limited"}}' }),
+  }).then(
+    () => null,
+    (e) => e
+  );
+  check('429 maps to 503 RATE_LIMIT', rateLimited instanceof OpenCompoundsAiError
+    && rateLimited.status === 503 && rateLimited.code === 'OPEN_COMPOUNDS_AI_RATE_LIMIT');
+
+  const upstreamAuth = await callChatCompletions({
+    ...baseArgs,
+    fetchImpl: async () => ({ ok: false, status: 401, text: async () => '{"error":{"message":"bad key sk-secret"}}' }),
+  }).then(
+    () => null,
+    (e) => e
+  );
+  check('401 maps to 502 UPSTREAM and redacts key', upstreamAuth instanceof OpenCompoundsAiError
+    && upstreamAuth.status === 502 && upstreamAuth.code === 'OPEN_COMPOUNDS_AI_UPSTREAM'
+    && !String(upstreamAuth.message).includes('sk-secret'));
+
+  const unreachable = await callChatCompletions({
+    ...baseArgs,
+    fetchImpl: async () => { throw new Error('connect ECONNREFUSED'); },
+  }).then(
+    () => null,
+    (e) => e
+  );
+  check('unreachable provider maps to 502', unreachable instanceof OpenCompoundsAiError
+    && unreachable.status === 502 && unreachable.code === 'OPEN_COMPOUNDS_AI_UPSTREAM');
+
+  const timedOut = await callChatCompletions({
+    ...baseArgs,
+    fetchImpl: async () => {
+      const err = new Error('The operation was aborted');
+      err.name = 'AbortError';
+      throw err;
+    },
+  }).then(
+    () => null,
+    (e) => e
+  );
+  check('timeout maps to 504 TIMEOUT', timedOut instanceof OpenCompoundsAiError
+    && timedOut.status === 504 && timedOut.code === 'OPEN_COMPOUNDS_AI_TIMEOUT');
+
+  const noMessage = await callChatCompletions({
+    ...baseArgs,
+    fetchImpl: async () => ({ ok: true, status: 200, text: async () => '{"choices":[]}' }),
+  }).then(
+    () => null,
+    (e) => e
+  );
+  check('empty choices fail honestly', noMessage instanceof OpenCompoundsAiError
+    && noMessage.code === 'OPEN_COMPOUNDS_AI_UPSTREAM');
 }
 
 console.log(`\n[open-ai] ${passed} passed, ${failed} failed`);
