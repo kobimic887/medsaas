@@ -7,7 +7,38 @@ This document does **not** change DNS or authorize any destructive action. Re-co
 and service identity with live checks at the start of every session. Every copy
 (Mac / 84 / 151 / 83 / GitHub): [`WHERE.md`](./WHERE.md).
 
-## Working tree 2026-09-13: catalog live pricing + checkout price review — **undeployed**
+## Release 2026-09-13: authoritative prices and working hosted checkout
+
+Owner-authorized deployment: public `pyxis-web :5174` now `0e932a1`
+(includes `4b285aa` pricing/review and removal of the unnecessary browser
+publishable-key guard). DNS rechecked at `84.13.81.51`; source and built index
+SHA256 matched the Mac artifact. Public health returned 200 after restart.
+Mac and oracleOld source are synced; engine source remains `b36da33` and was not deployed.
+Atlas and existing Stripe secrets were preserved.
+
+Fresh Safari evidence as TESTER123: Internal catalog BAS 00132206 displayed
+$170/$218/$242 for 1/5/10 mg. Existing basket retained BAS 00132206, 1 mg,
+$170. Clicking Checkout issued public POST `/create-checkout-session-onetime`
+HTTP 200 at 09:13:33 UTC and opened live Stripe hosted review showing
+`BAS 00132206 · 1 mg`, `US$170.00`, formula `C12 H12 N4 O2`.
+No payment details entered, Pay not clicked, no paid order or enquiry submitted.
+Returned through Stripe's Back to Pyxis link; basket still contains one item.
+Creating review creates an unpaid Stripe session and pending billing event.
+Payment completion/webhook fulfillment is deliberately unproved.
+
+Verification: stock offers 31 unit + 21 route + 64 lifecycle checks, including
+actual navbar-handler execution without a publishable key; server compile and
+production client build pass. Lint exits successfully with 13 existing warnings.
+409 review and pack/quantity rejection covered by focused fixture-backed tests;
+no live price drift was manufactured for this deployment.
+
+Rollback: `/root/pyxis-rollback-b2d554f-20260913-checkout.tgz` on 84, archive
+validated before deployment. Stop `pyxis-web`, extract in place into
+`/root/pyxis-LIVE-5174`, start `pyxis-web`, wait for `/health` and confirm restored
+`DEPLOYED_SHA=b2d554f...`. Archive excludes env files and node_modules;
+server lockfiles did not change. No nginx, DNS, database, or engine changes.
+
+## Earlier pre-deploy evidence 2026-09-13 (superseded by release above)
 
 Verified and committed on `main`; **`84` still runs the 2026-09-12 release above**
 (deploy is a separate owner-approved step). Contract: [`DATA-STOCK-COMPOUNDS.md`](./DATA-STOCK-COMPOUNDS.md)

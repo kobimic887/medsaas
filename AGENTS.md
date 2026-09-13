@@ -180,3 +180,5 @@ Stock search: failed/new queries clear old rows and disable paging; catalog fetc
 Integration (2026-09-09): completed stock, Open compounds, and staging/folding work is consolidated on main. Deployment remains separate. Open compounds AI is a real tool-calling loop when `OPEN_COMPOUNDS_AI_*` is provisioned (prefer free OpenRouter models with tools); otherwise use “Search without AI”.
 
 Release (2026-09-12): public pyxis-web now b2d554f; live tonomitosql API b36da33 (global ranking, parallel gather disabled, no candidate cap). AI remains disabled. Database container was not recreated. Fresh public stock search/pack/cart-reload evidence and rollback: docs/POST-PROMOTION-HANDOFF.md.
+
+Release (2026-09-13): public `pyxis-web` now `0e932a1` with catalog/Stock `/api4/bas` pricing and 409 review. Hosted Stripe checkout verified through unpaid review ($170, BAS 00132206 1 mg); browser publishable key is not required. Payment completion is untested. Evidence/rollback: `docs/POST-PROMOTION-HANDOFF.md`.
