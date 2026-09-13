@@ -35,11 +35,26 @@ Verified and committed on `main`; **`84` still runs the 2026-09-12 release above
   (BAS 30906909 $170/$194/$218/$242), basket-reload survival, earlier isolated
   checkout evidence; owner-card Standard payment smoke still open
   ([`NEXT-SESSION.md`](./NEXT-SESSION.md)).
-- **Not verified this pass:** an interactive hosted-checkout review on
-  production — ZCode Computer Use held no Accessibility/Screen Recording grant
-  for Safari, so no checkout click was made (no session, no billing event, no
-  enquiry sent). The 409 guard itself is browser-verifiable only after the
-  next deploy; until then production checkout continues to silently re-price.
+- **Interactive checkout verification (2026-09-13, Safari, TESTER123 —
+  accessibility-only, no screen recording):** session alive; the preserved
+  basket showed **BAS 00132206 · 1 mg · $170.00** (untouched after); the
+  catalog still displayed the stale snapshot $28/$84/$224 for that code
+  (expected pre-deploy). Clicking *Checkout with Stripe* (twice, clean) sent
+  **no API call at all**: nginx shows **zero `POST /create-checkout-session-onetime`
+  on the live site since the 2026-08-23 promotion** (only a Sep 7 `/staging/`
+  403 probe). Root cause, measured on `84`: the deployed `client/dist` bundle
+  contains **no `VITE_STRIPE_PUBLISHABLE_KEY`** (no `pk_live`/`pk_test`
+  anywhere in the assets), so `handleCheckout`'s first guard fails, shows the
+  6-second "Checkout is temporarily unavailable" toast, and returns before the
+  fetch. Server side is provisioned (`STRIPE_SECRET_KEY` +
+  `STRIPE_WEBHOOK_SECRET` present in `/root/pyxis-LIVE-5174/server/.env`). So
+  **hosted checkout is unreachable from the public UI as deployed — a
+  build-configuration gap, not an API regression**; the earlier "isolated
+  checkout evidence" above did not go through this client build. Fix is an
+  owner decision to fold into the next deploy: build the client with
+  `VITE_STRIPE_PUBLISHABLE_KEY` set, or relax the client guard (redirect-based
+  Checkout does not need the publishable key server-side). No payment, order,
+  or enquiry was made; the 409 guard is browser-verifiable only after deploy.
 
 ## Release measured 2026-09-12: stock selectors and pack pricing
 
