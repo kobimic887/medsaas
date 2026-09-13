@@ -7,9 +7,10 @@
 //     /api/openfold3/predict is answered from the server-side fixture with NO
 //     outbound call and no production NVIDIA credentials.
 //   - Simulation is usable for owner testing and mirrors production:
-//       * catalog browse + BAS/structure/substructure/similarity/molecular-
-//         weight search proxy the same read-only external ASINEX catalog
-//         production uses (ASINEX_API_BASE),
+//       * catalog browse + structure/substructure/similarity/molecular-weight
+//         search proxy the same read-only external ASINEX catalog production
+//         uses (ASINEX_API_BASE); BAS-code search resolves each code on
+//         GET /api/id (upstream /api4/bas is retired — no runtime calls),
 //       * /api/simulation and /api/diffdock/generate forward to the real
 //         docking providers (ASINEX_DOCKING_API_URL / DIFFDOCK_API_URL) — real,
 //         paid execution, authorized for the synthetic demo account,
@@ -38,6 +39,10 @@ import jwt from "jsonwebtoken";
 import { buildFixtureFoldResponse } from "../utils/foldFixture.js";
 import { demoStore } from "../utils/foldDemoStore.js";
 import { createDemoSimStore } from "../utils/demoSimStore.js";
+import {
+  parseBasSearchCodes,
+  searchCatalogRowsByBasCodes,
+} from "../utils/catalogPricing.js";
 
 // Outbound/paid/unsupported endpoints that stay blocked in demo mode. Exact and
 // prefix matches only — a prefix like "/api/simulation/" must NOT swallow
@@ -436,8 +441,12 @@ export function createStagingDemoRouter({ jwtSecret, jwtExpiresIn = "7d" }) {
   });
 
   // Whitelisted /api4 search methods (same route names the Simulation page
-  // uses). The query body is forwarded untouched so search genuinely runs
-  // against the live catalog — no canned results, no invented scores.
+  // uses). Structure/substructure/similarity/mw forward the query body
+  // untouched so search genuinely runs against the live catalog — no canned
+  // results, no invented scores. BAS-code search does NOT forward: owner
+  // decision 2026-09-13 retired upstream /api4/bas with zero runtime calls,
+  // so it resolves each code on GET /api/id via the shared pricing util —
+  // the same verified wrapper production uses.
   const API4_METHODS = new Set(["bas", "structure", "substructure", "similarity", "mw"]);
   router.post("/api/api4/:method", demoAuth, async (req, res) => {
     const { method } = req.params;
@@ -445,6 +454,20 @@ export function createStagingDemoRouter({ jwtSecret, jwtExpiresIn = "7d" }) {
       return res.status(400).json({ error: `Unsupported search method: ${method}` });
     }
     const { catalogApiBase } = ligandServiceConfig();
+    if (method === "bas") {
+      try {
+        const rows = await searchCatalogRowsByBasCodes(parseBasSearchCodes(req.body?.bas), {
+          catalogApiBase,
+          fetchImpl: (url, opts) => fetchWithTimeout(url, opts),
+          fromId: req.body?.fromId,
+          pageSize: req.body?.pageSize,
+        });
+        return res.json(rows);
+      } catch (error) {
+        console.error("[staging] BAS catalog search failed:", error.message || error);
+        return res.status(502).json({ error: "Failed to connect to Asinex API", details: error.message });
+      }
+    }
     const upstreamUrl = `${catalogApiBase}/api4/${method}`;
     await relayCatalogUpstream(res, upstreamUrl, {
       method: "POST",

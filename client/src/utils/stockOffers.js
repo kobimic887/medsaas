@@ -1,38 +1,24 @@
-// Client helpers for supplier pack offers → cart items, shared by the Stock
-// source and the Internal catalog. Server /api/stock-offers is authoritative
-// for packs and USD prices; this module only shapes UI/cart payloads. Checkout
-// discards client totals and re-prices via the same bas_code lookup.
+// Client helpers for Internal-catalog basket items.
+//
+// Owner decision 2026-09-13 supersedes the earlier live-quote pricing: the
+// Internal catalog displays and baskets the ORIGINAL catalog API's
+// per-compound pack prices carried on its own browse/search responses
+// (browse rows: price_1mg/5mg/10mg; /api4 search rows add price_2mg — the
+// page normalizer maps both spellings onto PRICE_*MG). The browser never
+// calls POST /api/stock-offers or /api4/bas for pricing, and stock-source
+// rows carry no prices at all (server /api/stock-offers answers
+// 503 STOCK_OFFERS_DISABLED and checkout refuses stock-origin basket rows
+// with MOLECULE_STOCK_ITEMS_UNSUPPORTED).
+// Checkout remains server-owned: it validates the basket against the
+// catalog's current prices and answers 409 MOLECULE_PRICES_CHANGED when
+// they moved.
 
-export const STOCK_OFFER_WEIGHTS_MG = Object.freeze([1, 2, 5, 10]);
-
-/** Positive packs only, amounts restricted to the supplier set. */
-export function packsFromStockOffer(offer) {
-  if (!offer || typeof offer !== 'object') return [];
-  if (!Array.isArray(offer.packs)) return [];
-  return offer.packs.filter((pack) => {
-    if (!pack || typeof pack !== 'object') return false;
-    const amountMg = Number(pack.amountMg);
-    const priceUSD = Number(pack.priceUSD);
-    return (
-      Number.isInteger(amountMg)
-      && STOCK_OFFER_WEIGHTS_MG.includes(amountMg)
-      && Number.isFinite(priceUSD)
-      && priceUSD > 0
-    );
-  });
-}
-
-/** Live USD price for one pack amount from a resolved offer; null when absent. */
-export function priceFromStockOffer(offer, amountMg) {
-  const amount = Number(amountMg);
-  const pack = packsFromStockOffer(offer).find((entry) => entry.amountMg === amount);
-  return pack ? pack.priceUSD : null;
-}
+export const CATALOG_PACK_WEIGHTS_MG = Object.freeze([1, 2, 5, 10]);
 
 /**
- * The supplier code an Internal-catalog row is quoted and checked out by.
- * BAS-first chain, matching the server cart normalizer so the displayed quote
- * is guaranteed to be the code checkout re-prices. Never a snapshot price.
+ * The supplier code an Internal-catalog row is identified and checked out by.
+ * BAS-first chain, matching the server cart normalizer so the displayed code
+ * is the code checkout verifies. Identity only — never a price source.
  */
 export function catalogOfferCode(molecule) {
   const raw = molecule
@@ -45,50 +31,16 @@ export function catalogOfferCode(molecule) {
 }
 
 /**
- * Build a cart entry from a resolved stock offer + chosen pack.
- * Retains the original stock code as name/catalogId/stockCode.
+ * Build a cart entry from a catalog row's displayed pack price. One pack per
+ * basket row (no quantity field); a missing or non-positive price can never
+ * be added, so stock rows and price-less catalog rows stay out of the basket.
  */
-export function cartItemFromStockOffer(molecule, amountMg, priceUSD, offer) {
-  const code = String(
-    offer?.code
-      || molecule?.stockCode
-      || molecule?.ASINEX_ID
-      || '',
-  ).trim();
-  if (!code || code === 'N/A') return null;
-  const amount = Number(amountMg);
-  const price = Number(priceUSD);
-  if (!Number.isInteger(amount) || !STOCK_OFFER_WEIGHTS_MG.includes(amount)) return null;
-  if (!Number.isFinite(price) || price <= 0) return null;
-
-  return {
-    name: code,
-    stockCode: code,
-    amount,
-    price,
-    pricePerMg: price,
-    totalPrice: price,
-    id: code,
-    catalogId: code,
-    offerId: offer?.offerId ?? null,
-    currency: 'usd',
-    source: 'stock',
-    smiles: molecule?.SMILES_STRING || molecule?.smiles || offer?.smiles || '',
-    formula: offer?.formula || molecule?.BRUTTO_FORMULA || molecule?.formula || '',
-  };
-}
-
-/**
- * Build a cart entry for an Internal-catalog row priced from a live offer.
- * Same pack rules as stock; snapshot PRICE_* fields are never read, so a
- * failed quote can only block the add — never fall back to an old price.
- */
-export function cartItemFromCatalogOffer(molecule, amountMg, priceUSD, offer) {
+export function cartItemFromCatalogPrice(molecule, amountMg, priceUSD) {
   const code = catalogOfferCode(molecule);
   if (!code) return null;
   const amount = Number(amountMg);
   const price = Number(priceUSD);
-  if (!Number.isInteger(amount) || !STOCK_OFFER_WEIGHTS_MG.includes(amount)) return null;
+  if (!Number.isInteger(amount) || !CATALOG_PACK_WEIGHTS_MG.includes(amount)) return null;
   if (!Number.isFinite(price) || price <= 0) return null;
 
   return {
@@ -99,7 +51,6 @@ export function cartItemFromCatalogOffer(molecule, amountMg, priceUSD, offer) {
     totalPrice: price,
     id: code,
     catalogId: code,
-    offerId: offer?.offerId ?? null,
     currency: 'usd',
     source: 'catalog',
     smiles: molecule?.SMILES_STRING || molecule?.smiles || '',

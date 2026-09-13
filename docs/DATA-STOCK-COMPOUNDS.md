@@ -240,9 +240,9 @@ metadata carries `ID`, `MAIN_BAS`, `compound_id`, `CURRENT_TOT_AMOUNT_UM`,
 identity**, keeps `molecule_id` as the separate engine row id, and deliberately
 invents **no** Asinex fields: no IUPAC/InChI/formula/MW, no prices, no
 availability — the table shows a Stock ID, SMILES, similarity, and the µmol/mg
-values labelled as **dated snapshot quantities**. Purchasable packs are resolved
-separately via `POST /api/stock-offers` (live `/api4/bas` quotes) — see
-**Purchasable offers** below. Ranked pagination is by **offset/limit** over the engine's stable KNN ordering
+values labelled as **dated snapshot quantities**. Stock rows carry **no prices
+and no purchase controls** — `POST /api/stock-offers` answers 503
+`STOCK_OFFERS_DISABLED` (see **Purchasable offers** below). Ranked pagination is by **offset/limit** over the engine's stable KNN ordering
 (measured 2026-09-06 against scratch: same-query offset pages share no rows and
 keep the ranking; the engine exposes no total count, so the page end is "fewer
 than limit rows returned"). A fresh search resets the offset, so new queries can
@@ -449,64 +449,80 @@ be implied by any label. Exposing a count-based score needs all of:
    KNN-cap candidates before the id tie-breaker. Re-verify after any future
    change to the similarity SQL (`scripts/test_similarity_tie_pagination.py`).
 
-## Purchasable offers (2026-09-12)
+## Purchasable offers — stock pricing DISABLED (owner decision 2026-09-13)
 
 Stock search still returns **structure + similarity + dated snapshot µmol/mg only**.
-Purchasable packs are a separate authenticated lookup:
+Stock compounds have **no pricing and no purchases**: the owner retired the
+`POST {ASINEX_API_BASE}/api4/bas` quote source for everything money-related, and
+stock-source basket rows are refused at checkout (below). The historical quote
+contract (2026-09-12, fixture `server/test/fixtures/api4-bas-stock-codes.json`)
+is retained here as evidence only — do not re-wire it.
 
 | | |
 |---|---|
-| Route | `POST /api/stock-offers` `{ codes: string[] }` (max 50) |
-| Auth | `ensureMongoConnected` → `authenticateToken` → `requireActiveUser` |
-| Upstream | `POST {ASINEX_API_BASE}/api4/bas` with `{ fromId, pageSize, bas: "CODE1,CODE2,..." }` |
-| Success | `{ offers: [{ offerId, code, packs: [{ amountMg, priceUSD }], … }], unresolvedCodes: string[] }` |
-| Validation | **400** — empty/invalid codes |
-| Upstream failure | **502 `STOCK_OFFERS_UNAVAILABLE`** (never same-origin 401) |
-| Staging | **403 `DEMO_MODE_DISABLED`** — refused exact path |
+| Route | `POST /api/stock-offers` — **refusal, no quotes** |
+| Success path | none — answers **503 `STOCK_OFFERS_DISABLED`** ("Stock compounds are not purchasable right now.") |
+| Auth | `ensureMongoConnected` → `authenticateToken` → `requireActiveUser` (unauthenticated stays 401) |
+| Upstream | none — the route makes no supplier call |
+| Staging | **403 `DEMO_MODE_DISABLED`** — refused exact path, unchanged |
 
-**Identity:** codes are `MAIN_BAS` / `bas_code` strings with spaces and leading zeros intact
-(e.g. `ASN 06978457`). Cart items keep `stockCode` / `catalogId` / `name` = that code.
-Unresolved codes are not purchasable in-app (“Quote required”); enquiry remains the
-manual path. Resolved offers with no positive pack prices show “Price unavailable”.
+**Internal catalog pricing (2026-09-13, owner decision):** the Internal catalog
+displays and purchases the ORIGINAL catalog API's per-compound prices carried on
+its own browse/search rows. Checkout re-prices server-side from the same source:
 
-**Internal catalog display + basket (2026-09-13):** the Simulation *Internal catalog*
-source uses the same route for pricing. Catalog rows are quoted in batches keyed by the
-BAS-first code (`catalogOfferCode`: `BAS_CODE → bas_code → basCode → ASINEX_ID →
-id_number → id` — the same identity checkout re-prices). Price cells are live-quote
-only: loading “…” while the batch is in flight, “Quote required” for unresolved codes,
-“–” when the batch failed (retry banner) or no live pack exists for that amount. The
-dated catalog snapshot `PRICE_*MG` fields are dropped by the page normalizer and are
-never displayed or added to the basket — **a failed quote must never fall back to an
-old catalog price** (`cartItemFromCatalogOffer` rejects non-positive prices, so there
-is no fallback path). Regression: BAS 00132206 shows/baskets $170/$218/$242 for
-1/5/10 mg, superseding the stale snapshot $28/$84/$224
-(`bun run test:stock-offers` lifecycle).
+| | |
+|---|---|
+| Lookup | `GET {ASINEX_API_BASE}/api/id/{code}` — code = the row's `id_number`, prefix + inner space intact, URL-encoded |
+| Row shape | `{ id, id_number, smiles_string, available_mg, brutto_formula, price_1mg, price_5mg, price_10mg }` |
+| Pack set | measured rows carry **1/5/10 mg only** (no `price_2mg` anywhere in `/api/all`); a 2 mg cart row without an upstream price fails with 400, never an invented price |
+| Unknown code | HTTP **200 with an empty body** → treated as unresolved → 400 "no longer in the catalog" (never a zero price) |
+| Upstream failure | **502 `CATALOG_PRICING_UNAVAILABLE`** — checkout aborts, no session |
+| Identity | same BAS-first chain as display (`catalogOfferCode`: `BAS_CODE → bas_code → basCode → ASINEX_ID → id_number → id`) |
 
-**Checkout:** `POST /create-checkout-session-onetime` with `cartItems` discards client
-totals and re-resolves packs through the same `/api4/bas` adapter +
-`priceMoleculeCart` (cents). Legacy `mol_price` Mongo mirror is untouched and is
-not consulted for stock packs. Local `mol_price` remains a separate legacy surface.
+`server/utils/catalogPricing.js` owns this (`resolveCatalogCompoundsByCode`,
+`priceMoleculeCartFromCatalog`, bounded per-code concurrency). Legacy
+`mol_price` Mongo mirror remains a separate legacy surface and is not consulted.
 
-**Price review before Stripe (409, 2026-09-13):** after re-pricing, the server
-compares each row's displayed total (`totalPrice ?? price`) with the fresh
-authoritative quote. A changed, missing, or unparsable total answers
-**409 `MOLECULE_PRICES_CHANGED`** with `updatedCartItems` (the submitted rows with
-authoritative USD re-carried into `price` / `pricePerMg` / `totalPrice` — the
-alias holds the pack price, not a per-mg figure) and `totalAmount` (USD); **no
-Stripe session is created and no billing event is written**. An explicit
-`quantity` other than numeric 1 is a 400 — every basket row is one pack. The
-navbar persists the refreshed basket (keeping the stored array / `{items,total}`
-shape), shows a sticky amber review notice with the new total, and only a new
-deliberate checkout click re-sends the refreshed prices.
+**Checkout (`POST /create-checkout-session-onetime`):** client totals and names
+are discarded; prices come only from `/api/id`. Two explicit basket rules:
 
-**Live evidence (read-only, 2026-09-12):** five in-stock codes returned
-`price_1|2|5|10mg` from `dev.asinex.com:58181` `/api4/bas` (fixture
-`server/test/fixtures/api4-bas-stock-codes.json`). Deployed eShop `/api/Shop`
-returned empty for the same codes — do not fall back to it.
+- **Stock-origin rows are refused**: any item with `source: 'stock'` (or a
+  source-less row carrying the stock-only `stockCode` marker) answers
+  **400 `MOLECULE_STOCK_ITEMS_UNSUPPORTED`** with `unsupportedItems`
+  (`{ index, catalogId, name }`, cart-order indexes) and **no Stripe session,
+  no upstream calls, no billing event**. Legacy baskets without a `source`
+  field are catalog rows (they predate stock adds) and are re-priced normally —
+  absence of `source` never means stock, and stock rows are never silently
+  converted into catalog purchases. The navbar removes the offending rows,
+  keeps the rest, shows the removal message, and requires a fresh checkout click.
+- **Price review before Stripe (409)**: after re-pricing, the server compares
+  each row's displayed total (`totalPrice ?? price`) with the fresh catalog
+  price. A changed, missing, or unparsable total answers
+  **409 `MOLECULE_PRICES_CHANGED`** with `updatedCartItems` (the submitted rows
+  with authoritative USD re-carried into `price` / `pricePerMg` / `totalPrice` —
+  the alias holds the pack price, not a per-mg figure) and `totalAmount` (USD);
+  **no Stripe session is created and no billing event is written**. An explicit
+  `quantity` other than numeric 1 is a 400 — every basket row is one pack. The
+  navbar persists the refreshed basket (keeping the stored array / `{items,total}`
+  shape), shows a sticky amber review notice with the new total, and only a new
+  deliberate checkout click re-sends the refreshed prices. Hosted Stripe
+  Checkout still redirects to the server-created URL with no browser
+  publishable key.
 
-**Open decisions (business, not blocked for this slice):** quote-request flow for
-unresolved codes; whether snapshot µmol/mg should gate pack availability.
+**Live evidence (read-only, 2026-09-13):** `GET /api/all/1_2` rows
+(`BAS 00293357` 22/66/176, `BAS 00928797` 11/33/88 for 1/5/10 mg) match the
+same codes' `GET /api/id/…` rows exactly; unknown and prefix-less codes return
+an empty body. Regression: BAS 00132206 shows/baskets the catalog prices
+$28/$84/$224 for 1/5/10 mg, superseding the retired 2026-09-12 `/api4/bas`
+quotes $170/$218/$242.
 
-Verification: `bun run test:stock-offers` (unit + route + lifecycle),
-`bun run test:simulation-search`, `bun run test` (includes the
+**Open decisions (integration):** upstream `/api4/bas` has **zero runtime
+callers** — checkout pricing uses `GET /api/id/<code>`, and BAS-code search kept
+the `POST /api/api4/bas` client contract but now answers from the same wrapper
+(`searchCatalogRowsByBasCodes` in `server/utils/catalogPricing.js`; staging demo
+updated the same way). Catalog display must not offer 2 mg packs from `/api4`
+search rows because `/api/id` cannot price them.
+
+Verification: `bun run test:catalog-pricing` (unit + route + both lifecycle
+gates), `bun run test:simulation-search`, `bun run test` (includes the
 `asinex-compound` price-review + quantity unit matrix), `bun run test:staging-demo`.

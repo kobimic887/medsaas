@@ -33,12 +33,13 @@ import {
 } from './utils/admetQueue.js';
 import { normalizeShopSearchResponse, moleculeCartPriceReview } from './utils/asinexCompound.js';
 import {
-  parseStockOfferCodes,
-  resolveStockOffers,
-  priceMoleculeCartFromOffers,
-  StockOffersValidationError,
-  StockOffersUpstreamError,
-} from './utils/stockOffers.js';
+  parseBasSearchCodes,
+  priceMoleculeCartFromCatalog,
+  searchCatalogRowsByBasCodes,
+  CatalogPricingValidationError,
+  CatalogPricingUpstreamError,
+  MoleculeCartStockItemsError,
+} from './utils/catalogPricing.js';
 import {
   buildStockSimilarityUrl,
   createStockDatasetResolver,
@@ -2019,12 +2020,14 @@ app.post('/create-checkout-session-onetime', checkoutRateLimit, ensureMongoConne
       return res.json({ url: session.url, sessionId: session.id });
     }
 
-    // Molecule cart: server re-prices from live /api4/bas offers. Client totals
-    // and names are discarded (docs/DATA-STOCK-COMPOUNDS.md — Purchasable offers).
+    // Molecule cart: server re-prices from the original catalog API's
+    // per-compound prices (GET /api/id/<code>). Client totals and names are
+    // discarded; stock-origin rows are refused (owner: stock is not
+    // purchasable and /api4/bas pricing is retired).
     if (Array.isArray(cartItems) && cartItems.length > 0) {
       try {
         const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-        const priced = await priceMoleculeCartFromOffers(cartItems, {
+        const priced = await priceMoleculeCartFromCatalog(cartItems, {
           catalogApiBase,
           fetchImpl: fetchAsinexUpstream,
         });
@@ -2077,19 +2080,26 @@ app.post('/create-checkout-session-onetime', checkoutRateLimit, ensureMongoConne
 
         return res.json({ url: session.url, sessionId: session.id });
       } catch (error) {
-        if (error instanceof StockOffersValidationError) {
+        if (error instanceof MoleculeCartStockItemsError) {
+          return res.status(400).json({
+            code: 'MOLECULE_STOCK_ITEMS_UNSUPPORTED',
+            error: error.message,
+            unsupportedItems: error.unsupportedItems,
+          });
+        }
+        if (error instanceof CatalogPricingValidationError) {
           return res.status(400).json({ error: error.message });
         }
-        if (error instanceof StockOffersUpstreamError) {
-          console.error('Molecule checkout offer lookup failed:', error.message || error);
+        if (error instanceof CatalogPricingUpstreamError) {
+          console.error('Molecule checkout catalog pricing failed:', error.message || error);
           return res.status(502).json({
-            error: 'Offer lookup failed',
-            code: 'STOCK_OFFERS_UNAVAILABLE',
+            error: 'Catalog price lookup failed',
+            code: 'CATALOG_PRICING_UNAVAILABLE',
             details: error.message,
           });
         }
-        // priceMoleculeCart / normalizeMoleculeCartRequest throw plain Errors for
-        // empty carts, unknown codes, or missing pack prices.
+        // normalizeMoleculeCartRequest / priceMoleculeCart throw plain Errors
+        // for empty carts, unknown codes, or missing pack prices.
         if (error instanceof Error && /cart|catalog|package|price|SMILES/i.test(error.message)) {
           return res.status(400).json({ error: error.message });
         }
@@ -4688,11 +4698,19 @@ app.get('/api/id/:id_number', ensureMongoConnected, authenticateToken, requireAc
   }
 });
 
+// ── BAS-code search (Simulation searchType 'bas') ────────────────────────────
+// Owner decision 2026-09-13 retired upstream /api4/bas outright — no runtime
+// call may target it, pricing or search. BAS search is preserved on the
+// verified read-only catalog wrapper: every requested code is looked up on
+// GET {catalogApiBase}/api/id/<code> (the same endpoint as /api/asinex/id and
+// checkout pricing — see server/utils/catalogPricing.js). Rows carry numeric
+// ids, so the Simulation id-cursor pagination contract (fromId = last row id)
+// is unchanged.
 /**
  * @swagger
  * /api/api4/bas:
  *   post:
- *     summary: Direct proxy to Asinex API /api4/bas
+ *     summary: BAS-code search over the catalog wrapper (GET /api/id lookups — upstream /api4/bas is retired)
  *     tags: [Asinex Direct API]
  *     requestBody:
  *       required: true
@@ -4707,59 +4725,29 @@ app.get('/api/id/:id_number', ensureMongoConnected, authenticateToken, requireAc
  *                 type: integer
  *               bas:
  *                 type: string
- *               smiles:
- *                 type: string
- *               similarity:
- *                 type: number
- *               mwFrom:
- *                 type: number
- *               mwTo:
- *                 type: number
  *           example:
- *             fromId: 1
+ *             fromId: 0
  *             pageSize: 10
- *             bas: "ASN 10347642,ASN 10344384,ASN 06978457"
- *            
- *             similarity: 0
- *             mwFrom: 0
- *             mwTo: 0
+ *             bas: "BAS 00132206,BAS 00293357"
  *     responses:
  *       200:
- *         description: Asinex API response
+ *         description: Array of catalog rows (unlisted codes are skipped)
+ *       502:
+ *         description: Catalog wrapper unreachable
  */
 app.post('/api/api4/bas', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  let upstreamUrl;
   try {
     const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    upstreamUrl = `${catalogApiBase}/api4/bas`;
-    const response = await fetchAsinexUpstream(upstreamUrl, {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(req.body)
+    const rows = await searchCatalogRowsByBasCodes(parseBasSearchCodes(req.body?.bas), {
+      catalogApiBase,
+      fetchImpl: fetchAsinexUpstream,
+      fromId: req.body?.fromId,
+      pageSize: req.body?.pageSize,
     });
-
-    const text = await response.text();
-    let data;
-    try { data = JSON.parse(text); } catch { data = text; }
-
-    if (response.status >= 500) {
-      console.error(`Asinex API upstream status=${response.status} url=${safeUpstreamUrl(upstreamUrl)}`);
-    }
-    res.status(relayUpstreamStatus(response.status));
-    if (response.headers.get('content-type')) {
-      res.setHeader('Content-Type', response.headers.get('content-type'));
-    }
-    if (typeof data === 'object') {
-      res.json(data);
-    } else {
-      res.send(data);
-    }
+    return res.json(rows);
   } catch (error) {
-    console.error(`Asinex API proxy error (/api4/bas) url=${safeUpstreamUrl(upstreamUrl)}:`, error.message || error);
-    res.status(502).json({ error: 'Failed to connect to Asinex API', details: error.message });
+    console.error('Catalog BAS search failed:', error.message || error);
+    return res.status(502).json({ error: 'Failed to connect to Asinex API', details: error.message });
   }
 });
 
@@ -5063,64 +5051,30 @@ app.post('/api/api4/mw', ensureMongoConnected, authenticateToken, requireActiveU
   }
 });
 
-// ── Stock purchasable pack offers ───────────────────────────────────────────
-// MAIN_BAS / bas_code → live /api4/bas prices. Read-only (no charge). Checkout
-// re-resolves the same codes server-side — never trust client totals. Staging
-// refuses this path. See docs/DATA-STOCK-COMPOUNDS.md § Purchasable offers.
+// ── Stock purchasable pack offers (DISABLED) ────────────────────────────────
+// Owner decision 2026-09-13: stock compounds are not purchasable and /api4/bas
+// pricing is retired, so this route no longer resolves quotes. It stays
+// registered as an explicit refusal (not a 404) so stale clients get a
+// definitive "disabled" signal. Staging refuses earlier with DEMO_MODE_DISABLED.
+// See docs/DATA-STOCK-COMPOUNDS.md § Purchasable offers (disabled).
 
 /**
  * @swagger
  * /api/stock-offers:
  *   post:
- *     summary: Resolve live pack prices for stock compound codes
+ *     summary: Disabled — stock compound pricing was retired by owner decision
  *     tags: [Stock Search]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               codes:
- *                 type: array
- *                 items: { type: string }
- *                 description: Stock codes (MAIN_BAS / bas_code), max 50
  *     responses:
- *       200:
- *         description: '{ offers, unresolvedCodes } — packs only when supplier lists the code'
- *       400:
- *         description: Invalid codes payload
- *       502:
- *         description: STOCK_OFFERS_UNAVAILABLE — upstream catalog failure
+ *       401:
+ *         description: Missing or invalid session
+ *       503:
+ *         description: STOCK_OFFERS_DISABLED — stock compounds are not purchasable
  */
-app.post('/api/stock-offers', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  try {
-    const codes = parseStockOfferCodes(req.body);
-    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    const { offers, unresolvedCodes } = await resolveStockOffers(codes, {
-      catalogApiBase,
-      fetchImpl: fetchAsinexUpstream,
-    });
-    return res.json({ offers, unresolvedCodes });
-  } catch (error) {
-    if (error instanceof StockOffersValidationError) {
-      return res.status(400).json({ error: error.message });
-    }
-    if (error instanceof StockOffersUpstreamError) {
-      console.error('Stock offers upstream error:', error.message || error);
-      return res.status(502).json({
-        error: 'Offer lookup failed',
-        code: 'STOCK_OFFERS_UNAVAILABLE',
-        details: error.message,
-      });
-    }
-    console.error('Stock offers error:', error.message || error);
-    return res.status(502).json({
-      error: 'Offer lookup failed',
-      code: 'STOCK_OFFERS_UNAVAILABLE',
-      details: error.message,
-    });
-  }
+app.post('/api/stock-offers', ensureMongoConnected, authenticateToken, requireActiveUser, (_req, res) => {
+  return res.status(503).json({
+    error: 'Stock compounds are not purchasable right now.',
+    code: 'STOCK_OFFERS_DISABLED',
+  });
 });
 
 // ── Stock-compound similarity search (Simulation) ───────────────────────────

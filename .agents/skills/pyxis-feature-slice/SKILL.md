@@ -78,4 +78,4 @@ A green `build` alone does not prove a dashboard flow.
 
 Simulation search regression: execute rejected-query handlers in `test:simulation-search`; prove old rows clear and catalog browsing cannot run in stock/open mode or during a pending search. Open compounds: `bun run test:open-compounds`.
 
-Molecule basket checkout redirects to the server-created Stripe URL: no client publishable-key guard. Verify the actual navbar handler reaches the authenticated endpoint without VITE_STRIPE_PUBLISHABLE_KEY in `test:stock-offers`.
+Molecule basket checkout redirects to the server-created Stripe URL: no client publishable-key guard. Verify the actual navbar handler reaches the authenticated endpoint without VITE_STRIPE_PUBLISHABLE_KEY in `test:catalog-pricing` (checkout re-prices from the original catalog API `GET /api/id/{code}`; stock-origin rows are refused).

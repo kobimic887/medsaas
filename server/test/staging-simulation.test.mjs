@@ -8,6 +8,8 @@
 //   2. BAS / substructure / similarity / molecular-weight search genuinely
 //      operate on the upstream collection — no canned results, no invented
 //      scores; an arbitrary query returns [] exactly like the upstream.
+//      BAS search resolves codes on GET /api/id: upstream /api4/bas is retired
+//      and the fixture counts any /api4/bas hit as a regression.
 //   3. Unsupported /api4 methods are rejected; stock search honestly reports
 //      503 STOCK_SEARCH_UNAVAILABLE (never a silent Asinex fallback).
 //   4. Real docking POST /api/simulation stores a run in the in-process store
@@ -126,7 +128,7 @@ const ROWS = Array.from({ length: 25 }, (_, i) => makeRow(i));
 // each env URL distinct: ASINEX_API_BASE = http://127.0.0.1:<port>,
 // ASINEX_DOCKING_API_URL = .../dock, DIFFDOCK_API_URL = .../diffdock,
 // SDF_CONVERTER_URL = .../convertSTR.
-const hits = { dock: 0 };
+const hits = { dock: 0, api4bas: 0 };
 let lastDockBody = null;
 
 function rowMatchesCode(row, code) {
@@ -201,6 +203,7 @@ const fixtureServer = http.createServer((req, res) => {
     return readBody((body) => {
       const method = api4[1];
       if (method === 'bas') {
+        hits.api4bas += 1;
         const codes = String(body.bas || '').split(',').map((s) => s.trim()).filter(Boolean);
         const rows = codes.flatMap((code) => ROWS.filter((r) => rowMatchesCode(r, code)));
         return send(200, rows);
@@ -331,6 +334,10 @@ async function main() {
     check('BAS lookup returns exactly the requested codes', r.status === 200 && r.json?.length === 2 && [1, 3].every((id) => r.json.some((row) => row.id === id)), `got ${r.status} ${r.text.slice(0, 160)}`);
     r = await api('POST', '/api/api4/bas', { token: demoToken, body: { bas: 'ASN 99999999' } });
     check('unknown BAS code -> empty, not canned', r.status === 200 && Array.isArray(r.json) && r.json.length === 0);
+    // Owner decision 2026-09-13: upstream /api4/bas is retired with zero
+    // runtime callers — staging BAS search resolves codes on GET /api/id.
+    // The fixture still implements /api4/bas, so any hit here is a regression.
+    check('BAS search never called upstream /api4/bas', hits.api4bas === 0, `hits=${hits.api4bas}`);
 
     r = await api('POST', '/api/api4/substructure', { token: demoToken, body: { fromId: 0, pageSize: 10, smiles: 'c1ccccc1' } });
     const benzeneRows = ROWS.filter((row) => row.SMILES_STRING.includes('c1ccccc1'));

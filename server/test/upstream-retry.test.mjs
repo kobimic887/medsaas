@@ -79,7 +79,7 @@ check(
 {
   let calls = 0;
   const response = await fetchWithUpstreamRetry(
-    'http://example.test/api4/bas',
+    'http://example.test/api/id/BAS%2000293357',
     { method: 'POST' },
     {
       maxAttempts: 3,

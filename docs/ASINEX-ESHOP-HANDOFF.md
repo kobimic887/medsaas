@@ -42,14 +42,23 @@ not as a live deployment certificate.
 
 ### Measured 2026-09-12 — pack offers use `/api4/bas`, not eShop
 
+> **Superseded 2026-09-13 (owner decision):** `/api4/bas` is retired for
+> pricing. Internal-catalog purchases re-price from the original catalog API's
+> per-compound prices (`GET /api/id/<code>`), stock compounds are not
+> purchasable (`POST /api/stock-offers` → 503 `STOCK_OFFERS_DISABLED`), and
+> stock-origin basket rows are refused at checkout. See
+> `docs/DATA-STOCK-COMPOUNDS.md` § Purchasable offers and
+> `server/utils/catalogPricing.js`. The measurement below is historical
+> evidence only.
+
 Read-only probe against the configured catalog host (`ASINEX_API_BASE`,
 `dev.asinex.com:58181`): `POST /api4/bas` with a comma-separated `bas` list of
 in-stock codes returned live `price_1|2|5|10mg` rows (captured in
 `server/test/fixtures/api4-bas-stock-codes.json`). The deployed eShop
-`/api/Shop` path returned **empty** for the same codes. Pyxis stock pack offers
-therefore resolve through `/api4/bas` (`POST /api/stock-offers` + checkout
-re-price). Do not silently fall back to `/api/Shop` or `mol_price` for stock
-packs. See `docs/DATA-STOCK-COMPOUNDS.md` § Purchasable offers.
+`/api/Shop` path returned **empty** for the same codes. ~~Pyxis stock pack
+offers therefore resolve through `/api4/bas` (`POST /api/stock-offers` + checkout
+re-price).~~ Do not silently fall back to `/api/Shop` or `mol_price` for stock
+packs.
 
 ## System Relationship
 

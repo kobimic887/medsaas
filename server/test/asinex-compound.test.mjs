@@ -174,21 +174,22 @@ check('absent quantity accepted (existing rows are one pack)', normalizeMolecule
   { catalogId: 'BAS 00132206', amount: 5 },
 ]).length === 1);
 
-// --- 409 price review: displayed totals vs authoritative /api4/bas quotes ---
-// Old eShop-mirror prices ($39.02 legacy 5 mg, $320 old category-3 10 mg) are
-// compared against the measured live /api4/bas shape ($218 / $309).
-const liveBasRows = [
+// --- 409 price review: displayed totals vs authoritative catalog prices ---
+// Old displayed totals ($39.02 stale 5 mg, $320 stale 10 mg) are compared
+// against the original catalog API's per-compound prices (measured live
+// 2026-09-13, docs/DATA-STOCK-COMPOUNDS.md § Catalog pricing).
+const liveCatalogRows = [
   {
     id: 17529,
+    id_number: 'BAS 00132206',
     bas_code: 'BAS 00132206',
-    price_1mg: 170,
-    price_2mg: 194,
-    price_5mg: 218,
-    price_10mg: 242,
+    price_1mg: 28,
+    price_5mg: 84,
+    price_10mg: 224,
     smiles_string: 'COc1cc(ncn1)N/N=C/c2ccccc2O',
     brutto_formula: 'C12 H12 N4 O2',
   },
-  { bas_code: 'LAS 30881879', price_1mg: 226, price_2mg: 254, price_5mg: 281, price_10mg: 309 },
+  { id: 19009, id_number: 'LAS 30881879', bas_code: 'LAS 30881879', price_1mg: 20, price_5mg: 60, price_10mg: 160 },
 ];
 const staleCart = [
   // Simulation/catalog shape: price + pricePerMg + totalPrice all pack price.
@@ -196,36 +197,36 @@ const staleCart = [
   // controlpanel shape: no `price` field at all.
   { name: 'LAS 30881879', catalogId: 'LAS 30881879', amount: 10, pricePerMg: 320, totalPrice: 320 },
 ];
-const stalePriced = priceMoleculeCart(staleCart, liveBasRows);
-check('authoritative quotes replace stale displayed totals', stalePriced.totalCents === 21800 + 30900);
+const stalePriced = priceMoleculeCart(staleCart, liveCatalogRows);
+check('authoritative catalog prices replace stale displayed totals', stalePriced.totalCents === 8400 + 16000);
 const staleReview = moleculeCartPriceReview(staleCart, stalePriced);
 check('stale displayed totals trigger review', staleReview.changed === true);
 check(
   'reviewed row re-carries the authoritative pack price in every cart field',
-  staleReview.updatedCartItems[0].totalPrice === 218
-    && staleReview.updatedCartItems[0].price === 218
-    && staleReview.updatedCartItems[0].pricePerMg === 218,
+  staleReview.updatedCartItems[0].totalPrice === 84
+    && staleReview.updatedCartItems[0].price === 84
+    && staleReview.updatedCartItems[0].pricePerMg === 84,
   JSON.stringify(staleReview.updatedCartItems[0]),
 );
-check('pricePerMg alias keeps pack-price semantics (not a per-mg figure)', staleReview.updatedCartItems[0].pricePerMg !== 218 / 5);
+check('pricePerMg alias keeps pack-price semantics (not a per-mg figure)', staleReview.updatedCartItems[0].pricePerMg !== 84 / 5);
 check('review keeps customer identity fields', staleReview.updatedCartItems[0].name === 'C10H12O' && staleReview.updatedCartItems[0].amount === 5);
-check('row without `price` still reviewed via totalPrice', staleReview.updatedCartItems[1].totalPrice === 309);
-const resubmitPriced = priceMoleculeCart(staleReview.updatedCartItems, liveBasRows);
+check('row without `price` still reviewed via totalPrice', staleReview.updatedCartItems[1].totalPrice === 160);
+const resubmitPriced = priceMoleculeCart(staleReview.updatedCartItems, liveCatalogRows);
 check('resubmitting the reviewed basket passes review unchanged', moleculeCartPriceReview(staleReview.updatedCartItems, resubmitPriced).changed === false);
 
-const matchedCart = [{ catalogId: 'BAS 00132206', amount: 5, price: 218, pricePerMg: 218, totalPrice: 218 }];
-check('matching displayed total does not trigger review', moleculeCartPriceReview(matchedCart, priceMoleculeCart(matchedCart, liveBasRows)).changed === false);
+const matchedCart = [{ catalogId: 'BAS 00132206', amount: 5, price: 84, pricePerMg: 84, totalPrice: 84 }];
+check('matching displayed total does not trigger review', moleculeCartPriceReview(matchedCart, priceMoleculeCart(matchedCart, liveCatalogRows)).changed === false);
 check('unpriced cart item forces review', moleculeCartPriceReview(
   [{ catalogId: 'BAS 00132206', amount: 1 }],
-  priceMoleculeCart([{ catalogId: 'BAS 00132206', amount: 1 }], liveBasRows),
+  priceMoleculeCart([{ catalogId: 'BAS 00132206', amount: 1 }], liveCatalogRows),
 ).changed === true);
 check('unparsable displayed total forces review', moleculeCartPriceReview(
   [{ catalogId: 'BAS 00132206', amount: 1, totalPrice: 'free' }],
-  priceMoleculeCart([{ catalogId: 'BAS 00132206', amount: 1 }], liveBasRows),
+  priceMoleculeCart([{ catalogId: 'BAS 00132206', amount: 1 }], liveCatalogRows),
 ).changed === true);
 check('legacy row missing totalPrice falls back to price for review', moleculeCartPriceReview(
-  [{ catalogId: 'BAS 00132206', amount: 1, price: 170 }],
-  priceMoleculeCart([{ catalogId: 'BAS 00132206', amount: 1 }], liveBasRows),
+  [{ catalogId: 'BAS 00132206', amount: 1, price: 28 }],
+  priceMoleculeCart([{ catalogId: 'BAS 00132206', amount: 1 }], liveCatalogRows),
 ).changed === false);
 
 const fracRow = { bas_code: 'FRAC 0001', price_5mg: 87.55 };

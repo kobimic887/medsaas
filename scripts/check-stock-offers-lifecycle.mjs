@@ -11,25 +11,12 @@ const stockOffersUtil = readFileSync(
   path.join(root, 'client/src/utils/stockOffers.js'),
   'utf8',
 );
-const serverOffers = readFileSync(
-  path.join(root, 'server/utils/stockOffers.js'),
-  'utf8',
-);
-const asinexCompound = readFileSync(
-  path.join(root, 'server/utils/asinexCompound.js'),
-  'utf8',
-);
-const indexJs = readFileSync(path.join(root, 'server/index.js'), 'utf8');
 const stagingDemo = readFileSync(
   path.join(root, 'server/routes/stagingDemo.js'),
   'utf8',
 );
 const dashboardNavbar = readFileSync(
   path.join(root, 'client/src/widgets/layout/dashboard-navbar.jsx'),
-  'utf8',
-);
-const moleculeCartUtil = readFileSync(
-  path.join(root, 'client/src/utils/moleculeCart.js'),
   'utf8',
 );
 
@@ -45,136 +32,82 @@ function check(label, condition, extra = '') {
   }
 }
 
-console.log('Stock offers lifecycle (Simulation purchase + cart, stock + Internal catalog):\n');
+// Owner decision 2026-09-13: the Internal catalog displays and baskets the
+// original catalog API's per-compound pack prices from its own browse/search
+// responses; stock compounds carry no prices; the browser never prices via
+// POST /api/stock-offers (or /api4/bas). Checkout review stays server-owned.
+console.log('Simulation pricing lifecycle (catalog pack prices, stock unpriced):\n');
 
-check('simulation imports stockOffers helpers', simulation.includes("from '@/utils/stockOffers'"));
-check('purchase column header present', simulation.includes('>Purchase</'));
-check('offers fetched via authenticated /stock-offers', simulation.includes("/stock-offers") && simulation.includes('Authorization'));
-check('offers state map drives purchase cells', simulation.includes('stockOffersByCode'));
-check('pack buttons use packsFromStockOffer', simulation.includes('packsFromStockOffer(offer)'));
-check('addToCart accepts offer for stock packs', simulation.includes('addToCart(mol, pack.amountMg, pack.priceUSD, offer)'));
-check('unresolved codes show Quote required', simulation.includes('Quote required'));
-check('resolved empty packs show Price unavailable', simulation.includes('Price unavailable'));
-check('header no longer claims stock is not purchasable', !simulation.includes('not purchasable in this flow'));
-check('header mentions live supplier quotes', simulation.includes('live supplier quotes'));
-check('quote effect covers stock AND asinex sources', simulation.includes("searchSource !== 'stock' && searchSource !== 'asinex'"));
-check('catalog quote codes use the BAS-first catalogOfferCode', simulation.includes(': catalogOfferCode(mol)'));
-check('catalog price cells render from live offers', simulation.includes('catalogPriceCell(mol, 1)') && simulation.includes('catalogPriceCell(mol, 5)') && simulation.includes('catalogPriceCell(mol, 10)'));
-check('catalog basket add uses the quoted price', simulation.includes('addToCart(mol, amountMg, packPrice, offer, { catalogRow: true })'));
-check('catalog loading state is visible per cell', simulation.includes('aria-label="Loading live prices"'));
-check('failed quote batch shows retry banner, never old prices', simulation.includes('Retry live prices') && simulation.includes('Old snapshot prices are never shown instead'));
-check('retry refetches unresolved codes', simulation.includes('setOffersRetryTick') && simulation.includes('offersRetryTick]'));
-check('snapshot PRICE_* cart buttons are gone', !simulation.includes('addToCart(mol, 1, mol.PRICE_1MG)') && !simulation.includes('addToCart(mol, 5, mol.PRICE_5MG)') && !simulation.includes('addToCart(mol, 10, mol.PRICE_10MG)'));
-check('catalog row normalizer drops snapshot prices', !simulation.includes('PRICE_1MG: molecule.PRICE_1MG'));
-check('cartItemFromStockOffer keeps stockCode', stockOffersUtil.includes('stockCode: code') && stockOffersUtil.includes("source: 'stock'"));
-check('cartItemFromCatalogOffer keeps BAS code + source', stockOffersUtil.includes('catalogOfferCode(molecule)') && stockOffersUtil.includes("source: 'catalog'"));
-check('priceFromStockOffer reads one pack price', stockOffersUtil.includes('export function priceFromStockOffer'));
-check('server resolveStockOffers posts /api4/bas', serverOffers.includes('/api4/bas'));
-check('checkout re-prices via priceMoleculeCartFromOffers', indexJs.includes('priceMoleculeCartFromOffers'));
-check('checkout blocks stale basket with 409 MOLECULE_PRICES_CHANGED', indexJs.includes('moleculeCartPriceReview') && indexJs.includes('MOLECULE_PRICES_CHANGED'));
-// The 409 return must sit between the offer re-pricing and this route's Stripe
-// call, so a review block can never create a Stripe session.
-const reviewIdx = indexJs.indexOf("code: 'MOLECULE_PRICES_CHANGED'");
-const stripeAfterReviewIdx = reviewIdx > -1 ? indexJs.indexOf('stripe.checkout.sessions.create', reviewIdx) : -1;
-check('409 review precedes the molecule Stripe session call', reviewIdx > -1 && stripeAfterReviewIdx > -1);
-check('POST /api/stock-offers route registered', indexJs.includes("app.post('/api/stock-offers'"));
-check('staging refuses /api/stock-offers', stagingDemo.includes('"/api/stock-offers"'));
-check('navbar keys the review branch on 409 + MOLECULE_PRICES_CHANGED', dashboardNavbar.includes("response.status === 409 && errorData.code === 'MOLECULE_PRICES_CHANGED'"));
-check('navbar adopts re-priced rows via the moleculeCart util', dashboardNavbar.includes('cartItemsFromPriceReview') && dashboardNavbar.includes('persistMoleculeCart') && moleculeCartUtil.includes('updatedCartItems'));
-check('navbar persists refreshed basket and notifies views', dashboardNavbar.includes("dispatchEvent(new Event('cartUpdated'))"));
-check('navbar review notice is sticky and never auto-continues', dashboardNavbar.includes("'warning', 0)") && dashboardNavbar.includes('color={actionMessageType === "error" ? "red" : actionMessageType === "warning" ? "amber" : "green"}'));
-check('server rejects explicit quantity other than numeric 1', asinexCompound.includes('item.quantity !== undefined && item.quantity !== 1'));
+check('simulation imports the catalog price cart helper', simulation.includes("cartItemFromCatalogPrice } from '@/utils/stockOffers'"));
+check('no automatic offer lookups remain on the page', !simulation.includes('/stock-offers'));
+check('offer state map is gone', !simulation.includes('stockOffersByCode') && !simulation.includes('stockOffersRequestRef'));
+check('catalog price cell / retry banner machinery is gone', !simulation.includes('catalogPriceCell') && !simulation.includes('Retry live prices') && !simulation.includes('Quote required'));
+check('stock table has no Purchase column', !simulation.includes('>Purchase</'));
+check('stock banner states rows are not priced or purchasable', simulation.includes('not priced or purchasable here'));
+check('catalog normalizer maps the catalog pack prices (both spellings)', simulation.includes('PRICE_1MG: molecule.PRICE_1MG ?? molecule.price_1mg') && simulation.includes('PRICE_5MG: molecule.PRICE_5MG ?? molecule.price_5mg') && simulation.includes('PRICE_10MG: molecule.PRICE_10MG ?? molecule.price_10mg'));
+check('catalog price headers are the plain pack columns', simulation.includes('>Price 1mg</') && simulation.includes('>Price 5mg</') && simulation.includes('>Price 10mg</'));
+check('catalog cells basket the displayed pack prices', simulation.includes('addToCart(mol, 1, mol.PRICE_1MG)') && simulation.includes('addToCart(mol, 5, mol.PRICE_5MG)') && simulation.includes('addToCart(mol, 10, mol.PRICE_10MG)'));
+check('unpriced cells are disabled, not dropped', simulation.includes('disabled={!mol.PRICE_1MG}'));
+check('addToCart prices every add through cartItemFromCatalogPrice', simulation.includes('const cartItem = cartItemFromCatalogPrice(molecule, amount, price);'));
+check('helper has no offer/quote lookup path', !stockOffersUtil.includes('fetch('));
+check('BAS-first checkout identity chain kept in the shared helper', stockOffersUtil.includes('molecule.BAS_CODE || molecule.bas_code || molecule.basCode') && stockOffersUtil.includes('|| molecule.ASINEX_ID || molecule.id_number || molecule.id'));
+check('staging still refuses /api/stock-offers', stagingDemo.includes('"/api/stock-offers"'));
 
 const {
-  cartItemFromStockOffer,
-  cartItemFromCatalogOffer,
+  cartItemFromCatalogPrice,
   catalogOfferCode,
-  packsFromStockOffer,
-  priceFromStockOffer,
+  CATALOG_PACK_WEIGHTS_MG,
 } = await import(pathToFileURL(path.join(root, 'client/src/utils/stockOffers.js')).href);
 
-const offer = {
-  offerId: 2081,
-  code: 'ASN 33727025',
-  packs: [
-    { amountMg: 1, priceUSD: 170 },
-    { amountMg: 5, priceUSD: 218 },
-    { amountMg: 3, priceUSD: 99 },
-    { amountMg: 10, priceUSD: 0 },
-  ],
-  smiles: 'C1CCC(=O)NC2CCNC2C1',
-  formula: 'C9 H16 N2 O',
-};
-const packs = packsFromStockOffer(offer);
-check('client packs filter to positive 1/2/5/10 only', packs.length === 2 && packs[0].amountMg === 1 && packs[1].amountMg === 5);
+check('pack weights stay the supplier set 1/2/5/10', CATALOG_PACK_WEIGHTS_MG.length === 4 && CATALOG_PACK_WEIGHTS_MG.join(',') === '1,2,5,10');
 
-const item = cartItemFromStockOffer(
-  { stockCode: 'ASN 33727025', SMILES_STRING: 'CCO' },
-  5,
-  218,
-  offer,
-);
-check('cart item retains original stock code', item?.catalogId === 'ASN 33727025' && item?.name === 'ASN 33727025' && item?.source === 'stock');
-check('cart item keeps pack USD without multiplying', item?.totalPrice === 218 && item?.amount === 5);
-check('invalid pack amount rejected', cartItemFromStockOffer({ stockCode: 'ASN 1' }, 3, 10, offer) === null);
-
-// ── Internal catalog priced from the same live offers ────────────────────────
-// Regression 2026-09-13: BAS 00132206 must show/basket the authoritative
-// /api4/bas quote $170/$218/$242 (1/5/10 mg), superseding the stale snapshot
-// $28/$84/$224. A failed quote must never fall back to the snapshot prices.
-const catalogMolecule = {
-  BAS_CODE: 'BAS 00132206',
-  ASINEX_ID: 'BAS 00132206',
-  SMILES_STRING: 'CCOCCCNCC(=O)Nc1ccccc1N2CCOCC2',
-  BRUTTO_FORMULA: 'C17 H27 N3 O3',
-  // Stale snapshot fields the row must ignore even if upstream still sends them.
-  PRICE_1MG: 28,
-  PRICE_5MG: 84,
-  PRICE_10MG: 224,
+// ── Internal catalog priced from its own browse/search responses ────────────
+// Measured live 2026-09-13 against the unchanged supplier API:
+//   GET /api/all/0_5        → row id_number "BAS 00132206", price_1mg 28,
+//                             price_5mg 84, price_10mg 224 (no price_2mg)
+//   POST /api4/bas          → same compound, price_1mg 170, price_2mg 194,
+//                             price_5mg 218, price_10mg 242
+// The page displays whichever response the row arrived in; nothing here is
+// hardcoded — these fixtures mirror the measured payloads.
+const browseRow = {
+  id: 1,
+  id_number: 'BAS 00132206',
+  smiles_string: 'COc1cc(ncn1)N/N=C/c2ccccc2O',
+  brutto_formula: 'C12 H12 N4 O2',
+  price_1mg: 28,
+  price_5mg: 84,
+  price_10mg: 224,
 };
-const catalogOffer = {
-  offerId: 32336,
-  code: 'BAS 00132206',
-  packs: [
-    { amountMg: 1, priceUSD: 170 },
-    { amountMg: 5, priceUSD: 218 },
-    { amountMg: 10, priceUSD: 242 },
-  ],
+// The page normalizer (simulation.jsx normalizeCatalogMolecule) owns field
+// mapping; the cart helper receives its output.
+const normalizedRow = {
+  ...browseRow,
+  ASINEX_ID: browseRow.id_number,
+  SMILES_STRING: browseRow.smiles_string,
+  BRUTTO_FORMULA: browseRow.brutto_formula,
 };
-
-check('catalogOfferCode prefers the BAS code', catalogOfferCode(catalogMolecule) === 'BAS 00132206');
+check('catalogOfferCode prefers the BAS code', catalogOfferCode({ BAS_CODE: 'BAS 00132206' }) === 'BAS 00132206');
+check('catalogOfferCode falls back to id_number for browse rows', catalogOfferCode(browseRow) === 'BAS 00132206');
 check('catalogOfferCode trims and rejects N/A/empty', catalogOfferCode({ BAS_CODE: '  BAS 00500692 ' }) === 'BAS 00500692' && catalogOfferCode({ BAS_CODE: 'N/A' }) === '' && catalogOfferCode({}) === '');
-check('catalogOfferCode falls back to ASINEX_ID then id_number', catalogOfferCode({ ASINEX_ID: 'ASN 04188606' }) === 'ASN 04188606' && catalogOfferCode({ id_number: 12345 }) === '12345');
 
-check('live 1 mg quote is 170', priceFromStockOffer(catalogOffer, 1) === 170);
-check('live 5 mg quote is 218', priceFromStockOffer(catalogOffer, 5) === 218);
-check('live 10 mg quote is 242', priceFromStockOffer(catalogOffer, 10) === 242);
-check('missing 2 mg pack reads as null (no invented price)', priceFromStockOffer(catalogOffer, 2) === null);
-check('null offer reads as null (failed/unresolved quote)', priceFromStockOffer(null, 5) === null);
-
-const catalogItems = [1, 5, 10].map((amountMg) => cartItemFromCatalogOffer(
-  catalogMolecule,
+const browseItems = [1, 5, 10].map((amountMg) => cartItemFromCatalogPrice(
+  normalizedRow,
   amountMg,
-  priceFromStockOffer(catalogOffer, amountMg),
-  catalogOffer,
+  normalizedRow[`price_${amountMg}mg`],
 ));
-check(
-  'BAS 00132206 baskets authoritative $170/$218/$242 for 1/5/10 mg',
-  catalogItems[0]?.totalPrice === 170 && catalogItems[1]?.totalPrice === 218 && catalogItems[2]?.totalPrice === 242,
-  JSON.stringify(catalogItems.map((i) => i?.totalPrice)),
-);
-check('stale snapshot $28/$84/$224 never reach the basket', catalogItems.every((i) => ![28, 84, 224].includes(i?.totalPrice)));
-check('catalog cart item checks out by the quoted BAS code', catalogItems.every((i) => i?.catalogId === 'BAS 00132206' && i?.id === 'BAS 00132206'));
-check('catalog cart item is labelled source: catalog', catalogItems.every((i) => i?.source === 'catalog' && i?.offerId === 32336));
-check('catalog cart item keeps pack USD without multiplying', catalogItems[1]?.amount === 5 && catalogItems[1]?.price === 218 && catalogItems[1]?.pricePerMg === 218);
-check('catalog cart item keeps formula name + structure', catalogItems[0]?.name === 'C17 H27 N3 O3' && catalogItems[0]?.smiles.includes('CCOCCCNCC'));
-check('zero-price quote cannot be added (no fallback path)', cartItemFromCatalogOffer(catalogMolecule, 1, 0, catalogOffer) === null);
-check('snapshot price passed as price is still rejected when non-positive', cartItemFromCatalogOffer(catalogMolecule, 1, -28, catalogOffer) === null);
-check('row without a supplier code cannot be quoted or added', cartItemFromCatalogOffer({ PRICE_1MG: 28 }, 1, 170, catalogOffer) === null);
+check('browse row baskets the catalog prices $28/$84/$224 for 1/5/10 mg', browseItems[0]?.totalPrice === 28 && browseItems[1]?.totalPrice === 84 && browseItems[2]?.totalPrice === 224, JSON.stringify(browseItems.map((i) => i?.totalPrice)));
+check('cart item checks out by the catalog BAS code', browseItems.every((i) => i?.catalogId === 'BAS 00132206' && i?.id === 'BAS 00132206'));
+check('cart item is labelled source: catalog', browseItems.every((i) => i?.source === 'catalog'));
+check('cart item keeps pack USD without multiplying', browseItems[1]?.amount === 5 && browseItems[1]?.price === 84 && browseItems[1]?.pricePerMg === 84);
+check('cart item keeps formula name + structure', browseItems[0]?.name === 'C12 H12 N4 O2' && browseItems[0]?.smiles.startsWith('COc1cc'));
+check('missing pack price cannot be added (browse rows have no 2 mg)', cartItemFromCatalogPrice(normalizedRow, 2, undefined) === null);
+check('zero or negative price cannot be added', cartItemFromCatalogPrice(normalizedRow, 1, 0) === null && cartItemFromCatalogPrice(normalizedRow, 1, -28) === null);
+check('off-allowlist pack amount rejected', cartItemFromCatalogPrice(normalizedRow, 3, 50) === null);
+check('row without a catalog code cannot be added', cartItemFromCatalogPrice({ PRICE_1MG: 28 }, 1, 28) === null);
 
 // ── Navbar 409 price-review behaviour (client/src/utils/moleculeCart.js) ─────
-// Real behaviour of the helpers the navbar's checkout error path calls, run
-// against an injected storage so no browser is needed.
+// Source-agnostic: whatever the server validates prices against, a changed
+// basket answers 409 MOLECULE_PRICES_CHANGED and the navbar adopts the rows.
 const {
   cartItemsFromPriceReview,
   persistMoleculeCart,
@@ -191,18 +124,18 @@ const storageStub = (initial) => {
 const reviewPayload = {
   code: 'MOLECULE_PRICES_CHANGED',
   error: 'Supplier prices have changed. Review the updated basket before continuing to checkout.',
-  totalAmount: 436,
+  totalAmount: 112,
   updatedCartItems: [
-    { name: 'BAS 00132206', catalogId: 'BAS 00132206', amount: 5, price: 218, pricePerMg: 218, totalPrice: 218, source: 'catalog', offerId: 32336 },
-    { name: 'ASN 33727025', catalogId: 'ASN 33727025', amount: 1, price: 170, pricePerMg: 170, totalPrice: 170, source: 'stock' },
+    { name: 'C12 H12 N4 O2', catalogId: 'BAS 00132206', amount: 1, price: 28, pricePerMg: 28, totalPrice: 28, source: 'catalog' },
+    { name: 'C7 H6 O2', catalogId: 'BAS 30906909', amount: 5, price: 84, pricePerMg: 84, totalPrice: 84, source: 'catalog' },
   ],
 };
 const reviewed = cartItemsFromPriceReview(reviewPayload);
-check('review helper adopts the re-priced rows', reviewed?.items?.length === 2 && reviewed?.items[0]?.totalPrice === 218);
-check('review helper uses the authoritative server total', reviewed?.total === 436);
+check('review helper adopts the re-priced rows', reviewed?.items?.length === 2 && reviewed?.items[0]?.totalPrice === 28);
+check('review helper uses the authoritative server total', reviewed?.total === 112);
 check('review helper falls back to the displayed sum without totalAmount', cartItemsFromPriceReview({
   updatedCartItems: reviewPayload.updatedCartItems,
-})?.total === 388);
+})?.total === 112);
 check(
   'review helper rejects unusable payloads',
   cartItemsFromPriceReview(null) === null
@@ -212,16 +145,16 @@ check(
 );
 
 const arrayStore = storageStub({ moleculeCart: JSON.stringify([{ totalPrice: 1 }]) });
-check('persist keeps array-shaped carts array-shaped', persistMoleculeCart(arrayStore, reviewPayload.updatedCartItems, 436) && Array.isArray(JSON.parse(arrayStore.getItem('moleculeCart'))));
+check('persist keeps array-shaped carts array-shaped', persistMoleculeCart(arrayStore, reviewPayload.updatedCartItems, 112) && Array.isArray(JSON.parse(arrayStore.getItem('moleculeCart'))));
 const objectStore = storageStub({ moleculeCart: JSON.stringify({ items: [{ totalPrice: 1 }], total: 1 }) });
-const persistedObject = persistMoleculeCart(objectStore, reviewPayload.updatedCartItems, 436)
+const persistedObject = persistMoleculeCart(objectStore, reviewPayload.updatedCartItems, 112)
   ? JSON.parse(objectStore.getItem('moleculeCart'))
   : null;
-check('persist keeps {items,total}-shaped carts and refreshes the total', Array.isArray(persistedObject?.items) && persistedObject?.total === 436);
+check('persist keeps {items,total}-shaped carts and refreshes the total', Array.isArray(persistedObject?.items) && persistedObject?.total === 112);
 const emptyStore = storageStub();
-persistMoleculeCart(emptyStore, reviewPayload.updatedCartItems, 436);
+persistMoleculeCart(emptyStore, reviewPayload.updatedCartItems, 112);
 const emptyStored = JSON.parse(emptyStore.getItem('moleculeCart'));
-check('empty storage defaults to the navbar object shape', !Array.isArray(emptyStored) && emptyStored?.total === 436);
+check('empty storage defaults to the navbar object shape', !Array.isArray(emptyStored) && emptyStored?.total === 112);
 check('storage failures are reported, not thrown', persistMoleculeCart({ getItem: () => { throw new Error('quota'); }, setItem: () => {} }, [], 0) === false);
 
 // Execute the actual navbar handler without a browser publishable key.
@@ -230,12 +163,12 @@ const checkoutWindow = { location: { href: '' }, clearTimeout() {}, setTimeout()
 let checkoutRequest;
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const runCheckout = new AsyncFunction('cartItems', 'window', 'cartRequestControllerRef', 'cartTimeoutRef', 'CART_FETCH_TIMEOUT_MS', 'setCartAction', 'getAuthToken', 'API_CONFIG', 'fetch', 'showActionMessage', handlerSource);
-await runCheckout([{ catalogId: 'BAS 00132206', amount: 1, totalPrice: 170 }], checkoutWindow, { current: null }, { current: null }, 30000, () => {}, () => 'fixture-token', { buildUrl: p => p }, async (url, options) => {
+await runCheckout([{ catalogId: 'BAS 00132206', amount: 1, totalPrice: 28 }], checkoutWindow, { current: null }, { current: null }, 30000, () => {}, () => 'fixture-token', { buildUrl: p => p }, async (url, options) => {
   checkoutRequest = { url, options };
   return { ok: true, json: async () => ({ url: 'https://checkout.stripe.com/fixture-review' }) };
 }, () => {});
 check('checkout without a publishable key reaches authenticated server endpoint', checkoutRequest?.url === '/create-checkout-session-onetime' && checkoutRequest.options.headers.Authorization === 'Bearer fixture-token');
 check('checkout redirects to server-created hosted review URL', checkoutWindow.location.href === 'https://checkout.stripe.com/fixture-review');
 
-console.log(`\nstock-offers lifecycle: ${passed} passed, ${failed} failed`);
+console.log(`\nsimulation pricing lifecycle: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

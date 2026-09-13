@@ -55,20 +55,38 @@ when a path or trap moves.
   AI failures do not silently run it.
   Full stock contract in `docs/DATA-STOCK-COMPOUNDS.md`. Failed/new searches
   disable pagination and clear old rows; catalog browsing must reject stock/open
-  mode so Asinex rows cannot appear as stock/open hits. Stock rows resolve
-  purchasable packs via authenticated `POST /api/stock-offers` (live `/api4/bas`
-  quotes keyed by `MAIN_BAS` / `bas_code`); molecule checkout re-prices from the
-  same offers server-side (never client totals). A changed/absent displayed
-  price answers **409 `MOLECULE_PRICES_CHANGED`** with re-priced
+  mode so Asinex rows cannot appear as stock/open hits. **Owner decision
+  2026-09-13 supersedes the 4b285aa live-quote pricing: the browser never
+  prices via `POST /api/stock-offers` or `/api4/bas`.** Stock rows carry **no
+  prices** in Simulation — no Purchase column, no basket adds; selection stays
+  docking-handoff only. Internal catalog price columns and basket adds come
+  from the catalog's **own browse/search response**: the page normalizer maps
+  `PRICE_*MG` / `price_*mg` per row, and a row without a positive pack price
+  cannot be added. Measured live 2026-09-13, BAS 00132206 answers $28/$84/$224
+  (1/5/10 mg) on `/api/all` browse rows and $170/$194/$218/$242 (1/2/5/10 mg)
+  on `/api4/bas` search rows — display what the row's own response carried,
+  never a hardcoded amount. Checkout stays server-owned: it re-prices from the
+  **original catalog API per compound** — `GET /api/id/{code}` in
+  `server/utils/catalogPricing.js` (code = `id_number`, prefix + space intact,
+  URL-encoded; rows carry `price_1mg/5mg/10mg`, **no `price_2mg`**; unknown
+  code = 200 + empty body → unresolved → 400, never a zero price; upstream
+  failure = 502 `CATALOG_PRICING_UNAVAILABLE`). Stock-origin basket rows are
+  refused with **400 `MOLECULE_STOCK_ITEMS_UNSUPPORTED`** + `unsupportedItems`
+  (navbar removes them and requires a fresh click); legacy baskets without a
+  `source` field are catalog rows — absence of `source` never means stock, and
+  stock rows are never silently converted into catalog purchases.
+  `POST /api/stock-offers` is an explicit refusal: **503 `STOCK_OFFERS_DISABLED`**,
+  no upstream call. A changed/absent
+  displayed price answers **409 `MOLECULE_PRICES_CHANGED`** with re-priced
   `updatedCartItems` before any Stripe session (navbar persists them and
   requires a fresh checkout click); explicit `quantity` ≠ numeric 1 is a 400 —
   each row is one pack. Hosted Stripe Checkout redirects to the server-created
-  URL and must not require `VITE_STRIPE_PUBLISHABLE_KEY` in the browser. Staging refuses `/api/stock-offers`.
-  Internal catalog price columns and basket adds are **live-quote only** through
-  the same route (BAS-first `catalogOfferCode`): snapshot `PRICE_*MG` catalog
-  fields are dropped by the page normalizer and a failed/unresolved quote shows
-  “–”/“Quote required” + retry — **never** an old catalog price
-  (regression BAS 00132206: $170/$218/$242, not $28/$84/$224).
+  URL and must not require `VITE_STRIPE_PUBLISHABLE_KEY` in the browser.
+  Staging still refuses `/api/stock-offers`. Upstream `/api4/bas` has **zero
+  runtime callers**: BAS-code search keeps the `POST /api/api4/bas` client
+  contract but answers from the same `GET /api/id` wrapper
+  (`searchCatalogRowsByBasCodes`); because `/api/id` cannot price
+  2 mg, catalog display must not offer 2 mg packs from `/api4` search rows.
 - Client routes: `client/src/routes.jsx`. Use `API_CONFIG.buildApiUrl()` for `/api/*`
   and `API_CONFIG.buildUrl()` for top-level routes.
 - Auth state: `client/src/context/auth.jsx`. Session logout interceptor:
@@ -128,7 +146,7 @@ bun run ci                # full gate
 bun run test:staging-demo # demo/staging server contract (fixtures, privacy, refusals)
 bun run test:staging-simulation # staging Simulation: catalog/search/docking/artifacts against fixture upstreams
 bun run test:staging-build# staging client build scoping checks
-bun run test:stock-offers # pack offers unit + route + Simulation lifecycle
+bun run test:catalog-pricing # checkout catalog re-pricing + stock refusal + pricing lifecycles
 ```
 
 Staging build (never for the live tree): `bun --cwd=client run build:staging`
@@ -175,10 +193,12 @@ Subagent limits: `~/.codex/AGENTS.md` (Skills, subagents, cheap mode). Use the n
 
 Do not spawn `pyxis-ops` for ordinary one-file work.
 
-Stock search: failed/new queries clear old rows and disable paging; catalog fetches refuse stock mode. Generic RDKit rejection explains charges/bonds without modifying the submitted structure. Stock purchasable packs: `POST /api/stock-offers`; checkout re-prices molecule carts server-side.
+Stock search: failed/new queries clear old rows and disable paging; catalog fetches refuse stock mode. Generic RDKit rejection explains charges/bonds without modifying the submitted structure. Stock rows are unpriced (no pack offers in the client); checkout price review stays server-owned.
 
 Integration (2026-09-09): completed stock, Open compounds, and staging/folding work is consolidated on main. Deployment remains separate. Open compounds AI is a real tool-calling loop when `OPEN_COMPOUNDS_AI_*` is provisioned (prefer free OpenRouter models with tools); otherwise use “Search without AI”.
 
 Release (2026-09-12): public pyxis-web now b2d554f; live tonomitosql API b36da33 (global ranking, parallel gather disabled, no candidate cap). AI remains disabled. Database container was not recreated. Fresh public stock search/pack/cart-reload evidence and rollback: docs/POST-PROMOTION-HANDOFF.md.
 
 Release (2026-09-13): public `pyxis-web` now `0e932a1` with catalog/Stock `/api4/bas` pricing and 409 review. Hosted Stripe checkout verified through unpaid review ($170, BAS 00132206 1 mg); browser publishable key is not required. Payment completion is untested. Evidence/rollback: `docs/POST-PROMOTION-HANDOFF.md`.
+
+Working tree (2026-09-13, **NOT deployed**): owner supersedes `/api4/bas` pricing — checkout re-prices from the original catalog API (`GET /api/id/{code}`, `server/utils/catalogPricing.js`), stock is unpurchasable (`/api/stock-offers` → 503 `STOCK_OFFERS_DISABLED`; stock-origin basket rows → 400 `MOLECULE_STOCK_ITEMS_UNSUPPORTED`), 409 review and the no-publishable-key hosted redirect are preserved. Upstream `/api4/bas` now has zero runtime callers — BAS search also serves from the `/api/id` wrapper. Gate: `bun run test:catalog-pricing`.

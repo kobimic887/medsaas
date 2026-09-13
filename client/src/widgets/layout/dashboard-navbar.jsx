@@ -33,6 +33,7 @@ import { API_CONFIG, getAuthToken } from "@/utils/constants";
 import { withAppBase } from "@/utils/appEnv";
 import {
   cartItemsFromPriceReview,
+  cartTotalFromItems,
   persistMoleculeCart,
 } from "@/utils/moleculeCart";
 
@@ -444,6 +445,27 @@ Please contact the customer at ${userEmail} to process this order.
             ? ` New total: $${reviewed.total.toFixed(2)}.`
             : '';
           showActionMessage(`${reviewMessage}${totalLabel}`, 'warning', 0);
+          return;
+        }
+        if (errorData.code === 'MOLECULE_STOCK_ITEMS_UNSUPPORTED') {
+          // Owner 2026-09-13: stock compounds are not purchasable, and the
+          // server refuses the whole basket while one is present. Drop the
+          // offending rows (the server echoes their cart-order indexes), keep
+          // the rest, and require a fresh checkout click.
+          const badIndexes = new Set(
+            (Array.isArray(errorData.unsupportedItems) ? errorData.unsupportedItems : [])
+              .map((entry) => Number(entry?.index))
+              .filter((i) => Number.isInteger(i) && i >= 0 && i < cartItems.length),
+          );
+          const surviving = cartItems.filter((_, index) => !badIndexes.has(index));
+          persistMoleculeCart(window.localStorage, surviving, cartTotalFromItems(surviving));
+          loadCartFromStorage();
+          window.dispatchEvent(new Event('cartUpdated'));
+          const removalMessage = errorData.error || 'Stock compounds are no longer purchasable.';
+          const removedLabel = badIndexes.size > 0
+            ? ` ${badIndexes.size} basket item${badIndexes.size === 1 ? ' was' : 's were'} removed.`
+            : '';
+          showActionMessage(`${removalMessage}${removedLabel}`, 'warning', 0);
           return;
         }
         throw new Error(errorData.error || 'Failed to create checkout session');
