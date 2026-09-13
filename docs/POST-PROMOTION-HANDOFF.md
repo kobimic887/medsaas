@@ -7,9 +7,46 @@ This document does **not** change DNS or authorize any destructive action. Re-co
 and service identity with live checks at the start of every session. Every copy
 (Mac / 84 / 151 / 83 / GitHub): [`WHERE.md`](./WHERE.md).
 
+## Release 2026-09-13 (later): catalog-authoritative pricing, /api4/bas retired
+
+Owner-approved deployment: public `pyxis-web :5174` now `916ea57`
+(catalog-authoritative pricing; stock unpurchasable; zero `/api4/bas` runtime
+callers). DNS `app.pyxis-discovery.com` → `84.13.81.51` rechecked immediately
+before deploy. Deployed in place per the standing procedure (source `git archive`
++ fresh production `client/dist`, one `systemctl restart pyxis-web`, loopback
+`/health` answered 200 after 4 s). `DEPLOYED_SHA=916ea5739cdf4141fa709053da31126772c24f83`.
+Deployed `assets/simulation-BGR73lCz.js` SHA256 `9beb41b4…158840` matched the Mac
+build byte-for-byte; the served bundle contains **zero** `stock-offers`
+references and carries the catalog `PRICE_1MG` display path and the "not priced
+or purchasable" stock banner. Public checks: home 200, `/health` 200,
+`POST /api/stock-offers` unauthenticated → 401 (route is an auth-gated refusal;
+authenticated answers 503 `STOCK_OFFERS_DISABLED`).
+
+Pre-deploy gates (all green on the combined tree): `bun run check`, lint (14
+pre-existing warnings), `bun run test:catalog-pricing` bun+node (38 unit + 23
+route + 24 + 37 lifecycle), full server suite (incl. staging-simulation 40 with
+the new zero-`/api4/bas` fixture counter), `test:simulation-search` 88.
+Browser-verified by the display slice before integration: catalog browse rows
+show the catalog's own prices (BAS 00132206 $28/$84/$224), basket add works,
+zero offer calls and zero long tasks while scrolling.
+
+Live pricing evidence (read-only upstream probes): `GET /api/all` and
+`GET /api/id/BAS 00132206` both answer $28/$84/$224 (1/5/10 mg); `/api/id`
+accepts BAS/ASN-prefixed and bare codes; unknown code = 200 + empty body.
+`POST /api/api4/bas` (BAS search) now answers from `/api/id` lookups — the
+upstream `/api4/bas` endpoint has no runtime callers. Payment completion
+remains untested (unchanged); no payment, order, or enquiry was submitted.
+
+Rollback: `/root/pyxis-rollback-0e932a1-20260913-catalog-pricing.tgz` on 84,
+validated (17168 entries, dist included, `.env` excluded) before deployment.
+Stop `pyxis-web`, extract in place into `/root/pyxis-LIVE-5174`, restart, wait
+for `/health`, confirm restored `DEPLOYED_SHA=0e932a1…`. Server lockfiles did
+not change; no nginx, DNS, database, or engine changes.
+
 ## Release 2026-09-13: authoritative prices and working hosted checkout
 
 Owner-authorized deployment: public `pyxis-web :5174` now `0e932a1`
+(superseded later the same day by `916ea57` — see the release section above)
 (includes `4b285aa` pricing/review and removal of the unnecessary browser
 publishable-key guard). DNS rechecked at `84.13.81.51`; source and built index
 SHA256 matched the Mac artifact. Public health returned 200 after restart.
