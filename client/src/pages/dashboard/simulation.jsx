@@ -24,7 +24,7 @@ import { API_CONFIG, getAuthToken } from "@/utils/constants";
 import { copyToClipboard } from '@/utils/copyToClipboard';
 import { clearViewerStorage, markViewerHandoff, normalizePdbId, rcsbPdbDownloadUrl } from '@/utils/viewerStorage';
 import { stockResultsFromPayload, appendUniqueStockRows } from '@/utils/stockResults';
-import { cartItemFromStockOffer, packsFromStockOffer } from '@/utils/stockOffers';
+import { cartItemFromCatalogOffer, cartItemFromStockOffer, catalogOfferCode, packsFromStockOffer, priceFromStockOffer } from '@/utils/stockOffers';
 import { openResultsFromPayload } from '@/utils/openResults';
 
 // Local mirror of the server allowlist labels (docs/DATA-STOCK-COMPOUNDS.md).
@@ -74,10 +74,8 @@ function normalizeCatalogMolecule(molecule = {}) {
     BRUTTO_FORMULA: molecule.BRUTTO_FORMULA || molecule.brutto_formula || molecule.formula,
     MW_STRUCTURE: molecule.MW_STRUCTURE ?? molecule.mol_weight ?? molecule.molecular_weight,
     AVAILABLE_MG: molecule.AVAILABLE_MG ?? molecule.available_mg,
-    PRICE_1MG: molecule.PRICE_1MG ?? molecule.price_1mg,
-    PRICE_2MG: molecule.PRICE_2MG ?? molecule.price_2mg,
-    PRICE_5MG: molecule.PRICE_5MG ?? molecule.price_5mg,
-    PRICE_10MG: molecule.PRICE_10MG ?? molecule.price_10mg,
+    // Snapshot PRICE_*MG fields are deliberately dropped: prices shown here and
+    // added to the basket come only from live /api/stock-offers quotes.
     IUPAC_NAME: molecule.IUPAC_NAME || molecule.iupac_name || "N/A",
     INCHI: molecule.INCHI || molecule.inchi || "N/A",
     INCHIKEY: molecule.INCHIKEY || molecule.inchikey || "N/A",
@@ -150,11 +148,17 @@ export function Simulation() {
   const [searchSource, setSearchSource] = useState("asinex");
   const [stockStatus, setStockStatus] = useState(null); // null | { state: 'loading' } | { state: 'available', dataset } | { state: 'unavailable', reason }
   const stockStatusRequestRef = useRef(0);
-  // Live pack quotes keyed by stock code. Values: offer object | null (resolved
-  // absence / quote required). Missing key = not fetched yet (show "…").
+  // Live pack quotes keyed by supplier code. Values: offer object | null
+  // (resolved absence / quote required). Missing key = not fetched yet (show "…").
+  // Used by both the stock source (stockCode) and the Internal catalog
+  // (BAS-first catalogOfferCode) — the two are never on screen together.
   const [stockOffersByCode, setStockOffersByCode] = useState({});
   const stockOffersInFlightRef = useRef(new Set());
   const stockOffersRequestRef = useRef(0);
+  // True while the last quote batch failed. Failed codes stay unmarked (no
+  // stale price is ever shown); the catalog table shows a retry banner instead.
+  const [catalogOffersError, setCatalogOffersError] = useState(false);
+  const [offersRetryTick, setOffersRetryTick] = useState(0);
   const [openStatus, setOpenStatus] = useState(null); // null | loading | available | unavailable
   const openStatusRequestRef = useRef(0);
   // Stock/open pagination is by offset over a stable ranking, never by a
@@ -334,17 +338,20 @@ export function Simulation() {
     stockOffsetRef.current = stockOffset;
   }, [stockOffset]);
 
-  // Resolve live pack quotes for visible stock rows (batch POST /api/stock-offers).
-  // Unresolved codes are stored as null → "Quote required". Failed batches leave
-  // codes unmarked so a later page/search can retry; no tight retry loop.
+  // Resolve live pack quotes for visible stock AND catalog rows (batch
+  // POST /api/stock-offers). Unresolved codes are stored as null → "Quote
+  // required". Failed batches leave codes unmarked so a later page/search or
+  // the retry banner can refetch — old snapshot prices are never a fallback.
   useEffect(() => {
-    if (searchSource !== 'stock') return;
+    if (searchSource !== 'stock' && searchSource !== 'asinex') return;
     const codes = [];
     const inFlight = stockOffersInFlightRef.current;
     for (const mol of topMolecules) {
-      const code = typeof mol?.stockCode === 'string' ? mol.stockCode.trim() : '';
+      const code = searchSource === 'stock'
+        ? (typeof mol?.stockCode === 'string' ? mol.stockCode.trim() : '')
+        : catalogOfferCode(mol);
       if (!code || code === 'N/A') continue;
-      if (Object.prototype.hasOwnProperty.call(stockOffersByCode, code)) continue;
+      if (Object.hasOwn(stockOffersByCode, code)) continue;
       if (inFlight.has(code)) continue;
       codes.push(code);
     }
@@ -369,7 +376,8 @@ export function Simulation() {
         if (stockOffersRequestRef.current !== requestId) return;
         const data = await res.json().catch(() => null);
         if (!res.ok) {
-          showMessage(data?.error || 'Pack prices could not be loaded for some stock rows.', 'error');
+          setCatalogOffersError(true);
+          showMessage(data?.error || 'Pack prices could not be loaded for some rows.', 'error');
           return;
         }
         const next = {};
@@ -381,17 +389,19 @@ export function Simulation() {
         }
         // Any batch code not in either list is treated as unresolved.
         for (const code of batch) {
-          if (!Object.prototype.hasOwnProperty.call(next, code)) next[code] = null;
+          if (!Object.hasOwn(next, code)) next[code] = null;
         }
         setStockOffersByCode((prev) => ({ ...prev, ...next }));
+        setCatalogOffersError(false);
       } catch (err) {
         if (stockOffersRequestRef.current !== requestId) return;
+        setCatalogOffersError(true);
         showMessage(err.message || 'Pack prices could not be loaded.', 'error');
       } finally {
         for (const code of batch) inFlight.delete(code);
       }
     })();
-  }, [searchSource, topMolecules, stockOffersByCode]);
+  }, [searchSource, topMolecules, stockOffersByCode, offersRetryTick]);
 
   useEffect(() => () => {
     browseControllerRef.current?.abort();
@@ -711,6 +721,7 @@ export function Simulation() {
     openRankedCacheRef.current = null;
     setStockOffersByCode({});
     stockOffersInFlightRef.current = new Set();
+    setCatalogOffersError(false);
 
     if (nextSource === 'stock') {
       // Stock similarity is the only supported stock mode; the threshold slider
@@ -1661,29 +1672,16 @@ export function Simulation() {
       console.error('Error saving cart to storage:', error);
     }
   };
-  const addToCart = (molecule, amount, price, offer = null) => {
+  // Every add-to-basket on this page is priced from a live /api/stock-offers
+  // quote — stock rows via cartItemFromStockOffer, Internal catalog rows via
+  // cartItemFromCatalogOffer. There is deliberately no snapshot-price path:
+  // when a quote is missing the cells are inert instead of falling back.
+  const addToCart = (molecule, amount, price, offer = null, { catalogRow = false } = {}) => {
     if (!molecule || !price) return;
-    if (offer) {
-      const stockItem = cartItemFromStockOffer(molecule, amount, price, offer);
-      if (!stockItem) return;
-      const updatedCart = [...cart, stockItem];
-      setCart(updatedCart);
-      saveCartToStorage(updatedCart);
-      showMessage(`Added ${amount} mg of ${stockItem.stockCode} to cart`);
-      return;
-    }
-    const priceNum = typeof price === 'number' ? price : Number(price) || 0;
-    const cartItem = {
-      name: molecule.BRUTTO_FORMULA || molecule.formula || molecule.SMILES_STRING || molecule.smiles || molecule.ASINEX_ID || 'Molecule',
-      amount,
-      price: priceNum,
-      pricePerMg: priceNum, // for compatibility with dashboard-navbar
-      totalPrice: priceNum, // Do not multiply by amount - just use the price as is
-      id: molecule.ASINEX_ID || molecule.id || Math.random().toString(36).slice(2),
-      catalogId: molecule.BAS_CODE || molecule.bas_code || molecule.basCode || molecule.ASINEX_ID || molecule.id_number || molecule.id,
-      smiles: molecule.SMILES_STRING || molecule.smiles || '',
-      formula: molecule.BRUTTO_FORMULA || molecule.formula || '',
-    };
+    const cartItem = catalogRow
+      ? cartItemFromCatalogOffer(molecule, amount, price, offer)
+      : cartItemFromStockOffer(molecule, amount, price, offer);
+    if (!cartItem) return;
     const updatedCart = [...cart, cartItem];
     setCart(updatedCart);
     saveCartToStorage(updatedCart);
@@ -1763,6 +1761,65 @@ export function Simulation() {
     
     const convertedPrice = numPrice * exchangeRate;
     return formatPrice(convertedPrice, currency);
+  };
+
+  // One Internal-catalog price cell from the live offer map. States: loading
+  // "…", "Quote required" (code absent upstream), "-" (no live pack for this
+  // amount, or quote failed — never the snapshot catalog price), or a buy
+  // button carrying the quoted USD price.
+  const catalogPriceCell = (mol, amountMg) => {
+    const offerCode = catalogOfferCode(mol);
+    const offerResolved = offerCode !== ''
+      && Object.hasOwn(stockOffersByCode, offerCode);
+    const offer = offerResolved ? stockOffersByCode[offerCode] : undefined;
+    const packPrice = offer ? priceFromStockOffer(offer, amountMg) : null;
+
+    if (!offerCode || (catalogOffersError && !offerResolved) || (offerResolved && offer === null)) {
+      const hint = !offerCode
+        ? 'No supplier code on this row'
+        : (catalogOffersError && !offerResolved)
+          ? 'Live price could not be loaded — use Retry live prices'
+          : 'Not resolved in the supplier catalog; a quote is required';
+      return (
+        <td className="p-0" title={hint}>
+          <span className={`p-2 inline-block text-xs ${offerResolved && offer === null ? 'text-blue-gray-500' : 'text-blue-gray-400'}`}>
+            {offerResolved && offer === null ? 'Quote required' : '-'}
+          </span>
+        </td>
+      );
+    }
+    if (!offerResolved) {
+      return (
+        <td className="p-0" title="Loading live supplier price">
+          <span className="p-2 inline-block text-xs text-blue-gray-400" role="status" aria-label="Loading live prices">…</span>
+        </td>
+      );
+    }
+    if (packPrice === null) {
+      return (
+        <td className="p-0" title={`No live ${amountMg} mg pack price`}>
+          <span className="p-2 inline-block text-xs text-blue-gray-500">-</span>
+        </td>
+      );
+    }
+    return (
+      <td className="p-0" title={formatPriceWithCurrency(packPrice)}>
+        <button
+          type="button"
+          className="group w-full p-2 text-left hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 disabled:cursor-default dark:hover:bg-slate-800"
+          onClick={() => addToCart(mol, amountMg, packPrice, offer, { catalogRow: true })}
+          aria-label={`Add ${amountMg} mg to cart for ${formatPriceWithCurrency(packPrice)}`}
+        >
+          <span>{formatPriceWithCurrency(packPrice).toString().slice(0, moleculeLimit)}</span>
+          <ShoppingCartIcon className="ml-2 inline-block h-5 w-5 text-brand-600 opacity-70 group-hover:opacity-100" aria-hidden="true" />
+        </button>
+      </td>
+    );
+  };
+
+  const retryCatalogOffers = () => {
+    setCatalogOffersError(false);
+    setOffersRetryTick((tick) => tick + 1);
   };
 
   const moleculeSelectionId = (molecule, index) => molecule.ASINEX_ID || molecule.id || `molecule-${index}`;
@@ -2779,7 +2836,7 @@ export function Simulation() {
                       const isChecked = selectedMolecules.has(stockMoleculeId);
                       const stockSmiles = mol.SMILES_STRING || "";
                       const offerKey = typeof mol.stockCode === 'string' ? mol.stockCode.trim() : '';
-                      const offerResolved = Object.prototype.hasOwnProperty.call(stockOffersByCode, offerKey);
+                      const offerResolved = Object.hasOwn(stockOffersByCode, offerKey);
                       const offer = offerResolved ? stockOffersByCode[offerKey] : undefined;
                       const packs = offer ? packsFromStockOffer(offer) : [];
                       return (
@@ -2836,7 +2893,7 @@ export function Simulation() {
                           </td>
                           <td className="p-2 align-top">
                             {!offerResolved ? (
-                              <span className="text-xs text-blue-gray-400" aria-label="Loading pack prices">…</span>
+                              <span className="text-xs text-blue-gray-400" role="status" aria-label="Loading pack prices">…</span>
                             ) : offer === null ? (
                               <span className="text-xs text-blue-gray-500">Quote required</span>
                             ) : packs.length === 0 ? (
@@ -2986,6 +3043,21 @@ export function Simulation() {
           ) : (
             <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
+                <div className="border-b border-blue-gray-100 bg-blue-gray-50/60 px-4 py-2 text-xs text-blue-gray-600 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-400">
+                  Source: Internal catalog. Prices are live supplier quotes resolved per row — dated catalog snapshot prices are not shown. Rows that do not resolve upstream are not purchasable here (quote required).
+                </div>
+                {catalogOffersError && (
+                  <div className="flex flex-col gap-2 border-b border-amber-100 bg-amber-50/70 px-4 py-2 text-xs text-amber-800 sm:flex-row sm:items-center sm:justify-between dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200" role="alert">
+                    <span>Live prices could not be loaded for some catalog rows. Old snapshot prices are never shown instead.</span>
+                    <button
+                      type="button"
+                      className="shrink-0 rounded border border-amber-500 px-2 py-1 font-semibold text-amber-700 transition hover:bg-amber-100 dark:border-amber-400 dark:text-amber-200 dark:hover:bg-amber-900/40"
+                      onClick={retryCatalogOffers}
+                    >
+                      Retry live prices
+                    </button>
+                  </div>
+                )}
                 <table className="w-full text-left">
                   <thead className="sticky top-0 z-10 bg-white">
                     <tr>
@@ -3013,9 +3085,9 @@ export function Simulation() {
                       <th className="p-2 font-bold bg-white">Formula</th>
                       <th className="p-2 font-bold bg-white">MW</th>
                       <th className="p-2 font-bold bg-white">Available (mg)</th>
-                      <th className="p-2 font-bold bg-white">Price 1mg</th>
-                      <th className="p-2 font-bold bg-white">Price 5mg</th>
-                      <th className="p-2 font-bold bg-white">Price 10mg</th>
+                      <th className="p-2 font-bold bg-white" title="Live supplier quote for the 1 mg pack">Price 1mg</th>
+                      <th className="p-2 font-bold bg-white" title="Live supplier quote for the 5 mg pack">Price 5mg</th>
+                      <th className="p-2 font-bold bg-white" title="Live supplier quote for the 10 mg pack">Price 10mg</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3135,24 +3207,9 @@ export function Simulation() {
                         <td className="p-2" title={mol.BRUTTO_FORMULA || "N/A"}>{(mol.BRUTTO_FORMULA || "N/A").toString().slice(0,moleculeLimit)}{(mol.BRUTTO_FORMULA || "N/A").toString().length > moleculeLimit ? '...' : ''}</td>
                         <td className="p-2" title={formatNumericValue(mol.MW_STRUCTURE)}>{formatNumericValue(mol.MW_STRUCTURE).toString().slice(0,moleculeLimit)}{formatNumericValue(mol.MW_STRUCTURE).toString().length > moleculeLimit ? '...' : ''}</td>
                         <td className="p-2" title={formatNumericValue(mol.AVAILABLE_MG)}>{formatNumericValue(mol.AVAILABLE_MG).toString().slice(0,moleculeLimit)}{formatNumericValue(mol.AVAILABLE_MG).toString().length > moleculeLimit ? '...' : ''}</td>
-                        <td className="p-0" title={mol.PRICE_1MG ? formatPriceWithCurrency(mol.PRICE_1MG) : "-"}>
-                          <button type="button" disabled={!mol.PRICE_1MG} className="group w-full p-2 text-left hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 disabled:cursor-default dark:hover:bg-slate-800" onClick={() => addToCart(mol, 1, mol.PRICE_1MG)} aria-label={mol.PRICE_1MG ? `Add 1 mg to cart for ${formatPriceWithCurrency(mol.PRICE_1MG)}` : "1 mg unavailable"}>
-                            <span>{(mol.PRICE_1MG ? formatPriceWithCurrency(mol.PRICE_1MG) : "-").toString().slice(0,moleculeLimit)}{(mol.PRICE_1MG ? formatPriceWithCurrency(mol.PRICE_1MG) : "-").toString().length > moleculeLimit ? '...' : ''}</span>
-                            {mol.PRICE_1MG && <ShoppingCartIcon className="ml-2 inline-block h-5 w-5 text-brand-600 opacity-70 group-hover:opacity-100" aria-hidden="true" />}
-                          </button>
-                        </td>
-                        <td className="p-0" title={mol.PRICE_5MG ? formatPriceWithCurrency(mol.PRICE_5MG) : "-"}>
-                          <button type="button" disabled={!mol.PRICE_5MG} className="group w-full p-2 text-left hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 disabled:cursor-default dark:hover:bg-slate-800" onClick={() => addToCart(mol, 5, mol.PRICE_5MG)} aria-label={mol.PRICE_5MG ? `Add 5 mg to cart for ${formatPriceWithCurrency(mol.PRICE_5MG)}` : "5 mg unavailable"}>
-                            <span>{(mol.PRICE_5MG ? formatPriceWithCurrency(mol.PRICE_5MG) : "-").toString().slice(0,moleculeLimit)}{(mol.PRICE_5MG ? formatPriceWithCurrency(mol.PRICE_5MG) : "-").toString().length > moleculeLimit ? '...' : ''}</span>
-                            {mol.PRICE_5MG && <ShoppingCartIcon className="ml-2 inline-block h-5 w-5 text-brand-600 opacity-70 group-hover:opacity-100" aria-hidden="true" />}
-                          </button>
-                        </td>
-                        <td className="p-0" title={mol.PRICE_10MG ? formatPriceWithCurrency(mol.PRICE_10MG) : "-"}>
-                          <button type="button" disabled={!mol.PRICE_10MG} className="group w-full p-2 text-left hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 disabled:cursor-default dark:hover:bg-slate-800" onClick={() => addToCart(mol, 10, mol.PRICE_10MG)} aria-label={mol.PRICE_10MG ? `Add 10 mg to cart for ${formatPriceWithCurrency(mol.PRICE_10MG)}` : "10 mg unavailable"}>
-                            <span>{(mol.PRICE_10MG ? formatPriceWithCurrency(mol.PRICE_10MG) : "-").toString().slice(0,moleculeLimit)}{(mol.PRICE_10MG ? formatPriceWithCurrency(mol.PRICE_10MG) : "-").toString().length > moleculeLimit ? '...' : ''}</span>
-                            {mol.PRICE_10MG && <ShoppingCartIcon className="ml-2 inline-block h-5 w-5 text-brand-600 opacity-70 group-hover:opacity-100" aria-hidden="true" />}
-                          </button>
-                        </td>
+                        {catalogPriceCell(mol, 1)}
+                        {catalogPriceCell(mol, 5)}
+                        {catalogPriceCell(mol, 10)}
                       </tr>
                     )
                     })}

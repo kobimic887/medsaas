@@ -102,6 +102,13 @@ export function normalizeMoleculeCartRequest(cartItems) {
       throw new Error(`Cart item ${index + 1} has no valid catalog ID`);
     }
 
+    // Each basket row buys one pack. Only the number 1 is accepted — clients
+    // never send a quantity (existing rows represent one pack), so anything
+    // else is an explicit unsupported order ("1" as a string included) and
+    // must fail validation rather than be silently repeated or dropped.
+    if (item.quantity !== undefined && item.quantity !== 1) {
+      throw new Error(`Cart item ${index + 1} has an unsupported quantity; use one pack per item`);
+    }
     const amount = Number(item.amount);
     if (!Number.isInteger(amount) || !ASINEX_WEIGHTS_MG.includes(amount)) {
       throw new Error(`Cart item ${index + 1} has an unsupported package size`);
@@ -182,4 +189,27 @@ export function priceMoleculeCart(cartItems, compounds) {
     throw new Error('The molecule order total is invalid');
   }
   return { requestedItems, lineItems, totalCents };
+}
+
+// Compare the totals the customer reviewed with the fresh supplier quote before
+// creating any Stripe session. A missing or unparsable displayed total also
+// forces review, so a client that never prices the cart cannot skip straight
+// to payment. priceMoleculeCart maps line items 1:1 in cart order, so index
+// alignment holds. Updated items re-carry the pack price into every field the
+// cart UI reads: totalPrice, price, and the legacy pricePerMg alias — that
+// alias holds the pack price, not a per-mg figure (see addToCart in Simulation
+// and controlpanel; controlpanel rows have no `price`, navbar rows read
+// `totalPrice || price`).
+export function moleculeCartPriceReview(cartItems, priced) {
+  if (!Array.isArray(priced?.lineItems) || priced.lineItems.length !== cartItems.length) {
+    throw new Error('Molecule cart pricing did not return one line per cart item');
+  }
+  let changed = false;
+  const updatedCartItems = cartItems.map((item, index) => {
+    const cents = priced.lineItems[index].price_data.unit_amount;
+    const displayed = Number(item.totalPrice ?? item.price);
+    if (!Number.isFinite(displayed) || Math.round(displayed * 100) !== cents) changed = true;
+    return { ...item, price: cents / 100, pricePerMg: cents / 100, totalPrice: cents / 100 };
+  });
+  return { changed, updatedCartItems };
 }

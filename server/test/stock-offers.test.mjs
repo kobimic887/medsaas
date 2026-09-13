@@ -18,7 +18,7 @@ import {
   StockOffersUpstreamError,
   StockOffersValidationError,
 } from '../utils/stockOffers.js';
-import { priceMoleculeCart } from '../utils/asinexCompound.js';
+import { moleculeCartPriceReview, priceMoleculeCart } from '../utils/asinexCompound.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixture = JSON.parse(
@@ -87,6 +87,26 @@ check(
   priceMoleculeCart([{ catalogId: 'BAS 30906909', amount: 5 }], [compound]).totalCents === 21800,
 );
 
+// --- basket price review: only the partial-drift case lives here; the full
+// review/quantity unit matrix is in asinex-compound.test.mjs and the offers-
+// pipeline round-trip in the checkout pipeline block below. ---
+const freshQuote = priceMoleculeCart([{ catalogId: 'BAS 30906909', amount: 5 }], [compound]);
+const freshCents = freshQuote.lineItems[0].price_data.unit_amount;
+const mixed = moleculeCartPriceReview(
+  [
+    { catalogId: 'BAS 30906909', amount: 5, totalPrice: freshCents / 100 },
+    { catalogId: 'ASN 33727025', amount: 1, totalPrice: 0.01 },
+  ],
+  priceMoleculeCart(
+    [
+      { catalogId: 'BAS 30906909', amount: 5 },
+      { catalogId: 'ASN 33727025', amount: 1 },
+    ],
+    [compound, compoundRowFromOffer(normalizeStockOffer(fixture.results[2]))],
+  ),
+);
+check('one drifted row flags the whole basket', mixed.changed === true);
+
 // --- resolveStockOffers with injected fetch ---
 const calls = [];
 const stubFetch = async (url, opts) => {
@@ -125,6 +145,51 @@ const priced = await priceMoleculeCartFromOffers(
 );
 check('checkout discards forged client totals', priced.totalCents === 17000 + 24200);
 check('checkout line names use stock codes', priced.lineItems[0].price_data.product_data.name === 'ASN 33727025 · 1 mg');
+
+// --- checkout pipeline: quantity rule + review round-trip before Stripe ---
+try {
+  await priceMoleculeCartFromOffers(
+    [{ catalogId: 'ASN 33727025', amount: 1, quantity: 2 }],
+    { catalogApiBase: 'http://catalog.test', fetchImpl: stubFetch },
+  );
+  check('explicit quantity 2 rejected at checkout', false);
+} catch (error) {
+  check('explicit quantity 2 rejected at checkout', /unsupported quantity/.test(error.message));
+}
+try {
+  await priceMoleculeCartFromOffers(
+    [{ catalogId: 'ASN 33727025', amount: 1, quantity: '1' }],
+    { catalogApiBase: 'http://catalog.test', fetchImpl: stubFetch },
+  );
+  check('quantity "1" string rejected at checkout', false);
+} catch (error) {
+  check('quantity "1" string rejected at checkout', /unsupported quantity/.test(error.message));
+}
+const qtyOnePriced = await priceMoleculeCartFromOffers(
+  [{ catalogId: 'ASN 33727025', amount: 1, quantity: 1, totalPrice: 170 }],
+  { catalogApiBase: 'http://catalog.test', fetchImpl: stubFetch },
+);
+check('quantity 1 checks out as one pack', qtyOnePriced.totalCents === 17000);
+
+const tamperedCart = [
+  { catalogId: 'ASN 33727025', amount: 1, totalPrice: 0.01, name: 'forged' },
+  { catalogId: 'BAS 30906909', amount: 10, totalPrice: 500 },
+];
+const tamperedPriced = await priceMoleculeCartFromOffers(tamperedCart, {
+  catalogApiBase: 'http://catalog.test',
+  fetchImpl: stubFetch,
+});
+const tamperedReview = moleculeCartPriceReview(tamperedCart, tamperedPriced);
+check('tampered totals across the offers pipeline force review', tamperedReview.changed === true);
+check(
+  'reviewed rows carry authoritative offer prices',
+  tamperedReview.updatedCartItems[0].totalPrice === 170 && tamperedReview.updatedCartItems[1].totalPrice === 242,
+  JSON.stringify(tamperedReview.updatedCartItems.map((i) => i.totalPrice)),
+);
+check(
+  'resubmitting reviewed rows passes review unchanged',
+  moleculeCartPriceReview(tamperedReview.updatedCartItems, tamperedPriced).changed === false,
+);
 
 try {
   await priceMoleculeCartFromOffers(

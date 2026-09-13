@@ -31,6 +31,10 @@ import { useThemeMode } from "@/context/theme";
 import { useState, useEffect, useRef } from "react";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 import { withAppBase } from "@/utils/appEnv";
+import {
+  cartItemsFromPriceReview,
+  persistMoleculeCart,
+} from "@/utils/moleculeCart";
 
 const NAVBAR_VALIDATE_TIMEOUT_MS = 15_000;
 const CART_FETCH_TIMEOUT_MS = 15_000;
@@ -111,14 +115,18 @@ export function DashboardNavbar() {
     label.toLowerCase().includes(pageQuery.trim().toLowerCase()),
   );
 
-  const showActionMessage = (message, type = "success") => {
+  // durationMs 0 keeps the message until dismissed or replaced — used for the
+  // checkout price-review notice, which must survive longer than a glance.
+  const showActionMessage = (message, type = "success", durationMs = 6000) => {
     if (actionMessageTimerRef.current) window.clearTimeout(actionMessageTimerRef.current);
     setActionMessage(message);
     setActionMessageType(type);
-    actionMessageTimerRef.current = window.setTimeout(() => {
-      setActionMessage("");
-      actionMessageTimerRef.current = null;
-    }, 6000);
+    actionMessageTimerRef.current = durationMs
+      ? window.setTimeout(() => {
+        setActionMessage("");
+        actionMessageTimerRef.current = null;
+      }, durationMs)
+      : null;
   };
 
   useEffect(() => {
@@ -422,7 +430,25 @@ Please contact the customer at ${userEmail} to process this order.
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
+        if (response.status === 409 && errorData.code === 'MOLECULE_PRICES_CHANGED') {
+          // Supplier prices moved since the basket was reviewed: adopt the
+          // re-priced rows and stop — checkout only continues through another
+          // deliberate button click, which re-sends the refreshed prices.
+          const reviewed = cartItemsFromPriceReview(errorData);
+          if (reviewed) {
+            persistMoleculeCart(window.localStorage, reviewed.items, reviewed.total);
+            loadCartFromStorage();
+            window.dispatchEvent(new Event('cartUpdated'));
+          }
+          const reviewMessage = errorData.error
+            || 'Supplier prices have changed. Please review your basket.';
+          const totalLabel = reviewed && Number.isFinite(reviewed.total)
+            ? ` New total: $${reviewed.total.toFixed(2)}.`
+            : '';
+          showActionMessage(`${reviewMessage}${totalLabel}`, 'warning', 0);
+          return;
+        }
         throw new Error(errorData.error || 'Failed to create checkout session');
       }
 
@@ -470,7 +496,7 @@ Please contact the customer at ${userEmail} to process this order.
       {actionMessage && (
         <div className="fixed right-4 top-20 z-[70] w-[min(24rem,calc(100vw-2rem))]" role="status" aria-live="polite">
           <Alert
-            color={actionMessageType === "error" ? "red" : "green"}
+            color={actionMessageType === "error" ? "red" : actionMessageType === "warning" ? "amber" : "green"}
             dismissible
             onClose={() => setActionMessage("")}
           >

@@ -7,6 +7,40 @@ This document does **not** change DNS or authorize any destructive action. Re-co
 and service identity with live checks at the start of every session. Every copy
 (Mac / 84 / 151 / 83 / GitHub): [`WHERE.md`](./WHERE.md).
 
+## Working tree 2026-09-13: catalog live pricing + checkout price review — **undeployed**
+
+Verified and committed on `main`; **`84` still runs the 2026-09-12 release above**
+(deploy is a separate owner-approved step). Contract: [`DATA-STOCK-COMPOUNDS.md`](./DATA-STOCK-COMPOUNDS.md)
+§ Purchasable offers / Price review.
+
+- **Identities re-measured this pass (not trusted from history):** DNS
+  `app.pyxis-discovery.com` → `84.13.81.51`; the deployed tree on `84`
+  content-matches the pack-offers runtime (`priceMoleculeCartFromOffers` in
+  `server/index.js`, `/api/stock-offers` route, `stock-offers` string in the
+  client bundle) — behaviorally the 2026-09-12 release; `151`
+  `/home/ubuntu/sql/tonomitosql` is at `b36da33` with `tonomitosql-api-1` up.
+- **New in the tree:** checkout answers **409 `MOLECULE_PRICES_CHANGED`** with
+  re-priced rows before any Stripe session (one pack per row; explicit
+  `quantity` ≠ numeric 1 → 400); the navbar adopts the refreshed basket through
+  `client/src/utils/moleculeCart.js`; Simulation *Internal catalog* price
+  columns are live-quote only (snapshot `PRICE_*MG` dropped, retry banner on
+  failed quote batches — regression BAS 00132206 $170/$218/$242 supersedes
+  stale $28/$84/$224).
+- **Local verification (2026-09-13):** `bun run test:stock-offers`
+  (31 unit + 21 route + 62 lifecycle — incl. real-server 409 route test with
+  in-memory Mongo: no billing event written when review blocks),
+  `bun run test:simulation-search` (89 invariants), `bun run test:brand`,
+  `bun run check` (server compile + client build), full `bun run test` green.
+- **Existing production evidence (unchanged, 2026-09-12):** live pack offers
+  (BAS 30906909 $170/$194/$218/$242), basket-reload survival, earlier isolated
+  checkout evidence; owner-card Standard payment smoke still open
+  ([`NEXT-SESSION.md`](./NEXT-SESSION.md)).
+- **Not verified this pass:** an interactive hosted-checkout review on
+  production — ZCode Computer Use held no Accessibility/Screen Recording grant
+  for Safari, so no checkout click was made (no session, no billing event, no
+  enquiry sent). The 409 guard itself is browser-verifiable only after the
+  next deploy; until then production checkout continues to silently re-price.
+
 ## Release measured 2026-09-12: stock selectors and pack pricing
 
 - Public `pyxis-web :5174` deployed `b2d554f5c13ca177a60ead8442bba423a7746583`.

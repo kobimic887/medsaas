@@ -31,7 +31,7 @@ import {
   createAdmetTask,
   getQueueStatus,
 } from './utils/admetQueue.js';
-import { normalizeShopSearchResponse } from './utils/asinexCompound.js';
+import { normalizeShopSearchResponse, moleculeCartPriceReview } from './utils/asinexCompound.js';
 import {
   parseStockOfferCodes,
   resolveStockOffers,
@@ -2024,10 +2024,22 @@ app.post('/create-checkout-session-onetime', checkoutRateLimit, ensureMongoConne
     if (Array.isArray(cartItems) && cartItems.length > 0) {
       try {
         const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-        const { lineItems, totalCents } = await priceMoleculeCartFromOffers(cartItems, {
+        const priced = await priceMoleculeCartFromOffers(cartItems, {
           catalogApiBase,
           fetchImpl: fetchAsinexUpstream,
         });
+        const { lineItems, totalCents } = priced;
+        // Review-before-payment: a changed or absent displayed total answers 409
+        // with refreshed items and never reaches the Stripe call below.
+        const review = moleculeCartPriceReview(cartItems, priced);
+        if (review.changed) {
+          return res.status(409).json({
+            code: 'MOLECULE_PRICES_CHANGED',
+            error: 'Supplier prices have changed. Review the updated basket before continuing to checkout.',
+            updatedCartItems: review.updatedCartItems,
+            totalAmount: totalCents / 100,
+          });
+        }
 
         const session = await stripe.checkout.sessions.create({
           payment_method_types: ['card'],

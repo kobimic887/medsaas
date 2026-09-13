@@ -7,6 +7,10 @@ const simulation = readFileSync(
   path.join(root, 'client/src/pages/dashboard/simulation.jsx'),
   'utf8',
 );
+const stockOffersUtil = readFileSync(
+  path.join(root, 'client/src/utils/stockOffers.js'),
+  'utf8',
+);
 const emptyResponseFallbacks = (
   simulation.match(/responseText\.trim\(\) \? JSON\.parse\(responseText\) : \[\]/g) || []
 ).length;
@@ -23,7 +27,11 @@ const checks = [
   ['search errors remain visible until the next search', !simulation.includes('setSearchError("");\n      }, 2000')],
   ['wrapped result arrays stay arrays', simulation.includes('Array.isArray(result.data)')],
   ['catalog result shapes share one normalizer', simulation.includes('resultRows.map(normalizeCatalogMolecule)')],
-  ['BAS codes outrank numeric row IDs for checkout', simulation.includes('molecule.BAS_CODE || molecule.bas_code || molecule.basCode || molecule.ASINEX_ID')],
+  // The BAS-first checkout chain moved into the shared offers util
+  // (catalogOfferCode / cartItemFromCatalogOffer); the page must use it and
+  // must not re-derive catalog identity inline.
+  ['BAS codes outrank numeric row IDs for checkout (shared catalogOfferCode)', stockOffersUtil.includes('molecule.BAS_CODE || molecule.bas_code || molecule.basCode') && stockOffersUtil.includes('|| molecule.ASINEX_ID || molecule.id_number || molecule.id') && simulation.includes('cartItemFromCatalogOffer')],
+  ['catalog rows never carry snapshot prices into the page', !simulation.includes('PRICE_1MG: molecule.PRICE_1MG')],
   ['empty successful search pages are treated as no matches', emptyResponseFallbacks === 2],
   ['blank search queries stay disabled', simulation.includes('!searchCode.trim()')],
   ['pre-search and no-match states are distinct', simulation.includes('No molecules matched this search.') && simulation.includes('Enter a molecule identifier or structure above')],

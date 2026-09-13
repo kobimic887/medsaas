@@ -58,7 +58,16 @@ when a path or trap moves.
   mode so Asinex rows cannot appear as stock/open hits. Stock rows resolve
   purchasable packs via authenticated `POST /api/stock-offers` (live `/api4/bas`
   quotes keyed by `MAIN_BAS` / `bas_code`); molecule checkout re-prices from the
-  same offers server-side (never client totals). Staging refuses `/api/stock-offers`.
+  same offers server-side (never client totals). A changed/absent displayed
+  price answers **409 `MOLECULE_PRICES_CHANGED`** with re-priced
+  `updatedCartItems` before any Stripe session (navbar persists them and
+  requires a fresh checkout click); explicit `quantity` ≠ numeric 1 is a 400 —
+  each row is one pack. Staging refuses `/api/stock-offers`.
+  Internal catalog price columns and basket adds are **live-quote only** through
+  the same route (BAS-first `catalogOfferCode`): snapshot `PRICE_*MG` catalog
+  fields are dropped by the page normalizer and a failed/unresolved quote shows
+  “–”/“Quote required” + retry — **never** an old catalog price
+  (regression BAS 00132206: $170/$218/$242, not $28/$84/$224).
 - Client routes: `client/src/routes.jsx`. Use `API_CONFIG.buildApiUrl()` for `/api/*`
   and `API_CONFIG.buildUrl()` for top-level routes.
 - Auth state: `client/src/context/auth.jsx`. Session logout interceptor:

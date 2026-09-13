@@ -176,6 +176,79 @@ async function main() {
       stub.requests.some((r) => r.path === '/api4/bas' && String(r.body.bas).includes('ASN 33727025')),
     );
 
+    // Checkout price review: a basket priced below the live supplier quote must
+    // be refused with 409 + re-priced rows, and no Stripe session side effects.
+    const driftedCheckout = await fetch(`${BASE}/create-checkout-session-onetime`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({
+        cartItems: [{ catalogId: 'ASN 33727025', amount: 1, totalPrice: 1, name: 'stale basket' }],
+      }),
+    });
+    const driftBody = await driftedCheckout.json().catch(() => ({}));
+    check(
+      'drifted basket → 409 MOLECULE_PRICES_CHANGED',
+      driftedCheckout.status === 409 && driftBody.code === 'MOLECULE_PRICES_CHANGED',
+      `(got ${driftedCheckout.status}) ${JSON.stringify(driftBody).slice(0, 160)}`,
+    );
+    check('409 carries re-priced basket rows', driftBody.updatedCartItems?.[0]?.totalPrice === 170, JSON.stringify(driftBody.updatedCartItems || {}).slice(0, 160));
+    check('409 carries fresh total dollars', driftBody.totalAmount === 170);
+    check('409 creates no Stripe session (no url/sessionId)', driftBody.url === undefined && driftBody.sessionId === undefined);
+    check('409 kept the customer item fields', driftBody.updatedCartItems?.[0]?.name === 'stale basket' && driftBody.updatedCartItems?.[0]?.catalogId === 'ASN 33727025');
+    check('409 quote came from the upstream offers call', stub.requests.some((r) => r.path === '/api4/bas' && String(r.body.bas).includes('ASN 33727025')));
+
+    const staleEvents = await client.db(DB_NAME).collection('billing_events').find({}).toArray();
+    check('no billing event written when review blocks checkout', staleEvents.length === 0, `(found ${staleEvents.length})`);
+
+    const qtyCheckout = await fetch(`${BASE}/create-checkout-session-onetime`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({
+        cartItems: [{ catalogId: 'ASN 33727025', amount: 1, quantity: 2, totalPrice: 170 }],
+      }),
+    });
+    check('quantity other than 1 → 400', qtyCheckout.status === 400, `(got ${qtyCheckout.status})`);
+
+    const qtyString = await fetch(`${BASE}/create-checkout-session-onetime`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({
+        cartItems: [{ catalogId: 'ASN 33727025', amount: 1, quantity: '1', totalPrice: 170 }],
+      }),
+    });
+    check('quantity "1" as a string → 400 (only numeric 1)', qtyString.status === 400, `(got ${qtyString.status})`);
+
+    const unavailablePack = await fetch(`${BASE}/create-checkout-session-onetime`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({
+        cartItems: [{ catalogId: 'UNKNOWN 99999999', amount: 5, totalPrice: 218 }],
+      }),
+    });
+    const unavailableBody = await unavailablePack.json().catch(() => ({}));
+    check(
+      'unavailable pack code → 400, not 409/Stripe',
+      unavailablePack.status === 400 && /catalog/i.test(unavailableBody.error || ''),
+      `(got ${unavailablePack.status}) ${JSON.stringify(unavailableBody).slice(0, 160)}`,
+    );
+
+    const invalidSize = await fetch(`${BASE}/create-checkout-session-onetime`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({
+        cartItems: [{ catalogId: 'ASN 33727025', amount: 3, totalPrice: 99 }],
+      }),
+    });
+    const invalidSizeBody = await invalidSize.json().catch(() => ({}));
+    check(
+      'unsupported pack size → 400',
+      invalidSize.status === 400 && /package size/i.test(invalidSizeBody.error || ''),
+      `(got ${invalidSize.status}) ${JSON.stringify(invalidSizeBody).slice(0, 160)}`,
+    );
+
+    const afterRejections = await client.db(DB_NAME).collection('billing_events').find({}).toArray();
+    check('still no billing event after every rejected checkout', afterRejections.length === 0, `(found ${afterRejections.length})`);
+
     console.log(`\nstock-offers route: ${passed} passed, ${failed} failed`);
     if (failed > 0) {
       console.error(serverLog.slice(-2000));
