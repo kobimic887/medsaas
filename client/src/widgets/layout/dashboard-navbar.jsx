@@ -392,11 +392,8 @@ Please contact the customer at ${userEmail} to process this order.
     let controller = null;
     let timedOut = false;
     try {
-      // Check if Stripe is configured
-      if (!import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY) {
-        showActionMessage('Checkout is temporarily unavailable. Please send an enquiry instead.', 'error');
-        return;
-      }
+      // Hosted Checkout uses the server-created URL; no browser Stripe key is
+      // needed. Let the authenticated server validate pricing/configuration.
 
       if (cartItems.length === 0) {
         showActionMessage('Your cart is empty.', 'error');

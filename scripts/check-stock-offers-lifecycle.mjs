@@ -224,5 +224,18 @@ const emptyStored = JSON.parse(emptyStore.getItem('moleculeCart'));
 check('empty storage defaults to the navbar object shape', !Array.isArray(emptyStored) && emptyStored?.total === 436);
 check('storage failures are reported, not thrown', persistMoleculeCart({ getItem: () => { throw new Error('quota'); }, setItem: () => {} }, [], 0) === false);
 
+// Execute the actual navbar handler without a browser publishable key.
+const handlerSource = dashboardNavbar.split('  const handleCheckout = async () => {')[1].split('\n  const logout =')[0].trim().replace(/};$/, '');
+const checkoutWindow = { location: { href: '' }, clearTimeout() {}, setTimeout() { return 1; } };
+let checkoutRequest;
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+const runCheckout = new AsyncFunction('cartItems', 'window', 'cartRequestControllerRef', 'cartTimeoutRef', 'CART_FETCH_TIMEOUT_MS', 'setCartAction', 'getAuthToken', 'API_CONFIG', 'fetch', 'showActionMessage', handlerSource);
+await runCheckout([{ catalogId: 'BAS 00132206', amount: 1, totalPrice: 170 }], checkoutWindow, { current: null }, { current: null }, 30000, () => {}, () => 'fixture-token', { buildUrl: p => p }, async (url, options) => {
+  checkoutRequest = { url, options };
+  return { ok: true, json: async () => ({ url: 'https://checkout.stripe.com/fixture-review' }) };
+}, () => {});
+check('checkout without a publishable key reaches authenticated server endpoint', checkoutRequest?.url === '/create-checkout-session-onetime' && checkoutRequest.options.headers.Authorization === 'Bearer fixture-token');
+check('checkout redirects to server-created hosted review URL', checkoutWindow.location.href === 'https://checkout.stripe.com/fixture-review');
+
 console.log(`\nstock-offers lifecycle: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

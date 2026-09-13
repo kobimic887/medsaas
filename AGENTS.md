@@ -62,7 +62,8 @@ when a path or trap moves.
   price answers **409 `MOLECULE_PRICES_CHANGED`** with re-priced
   `updatedCartItems` before any Stripe session (navbar persists them and
   requires a fresh checkout click); explicit `quantity` ≠ numeric 1 is a 400 —
-  each row is one pack. Staging refuses `/api/stock-offers`.
+  each row is one pack. Hosted Stripe Checkout redirects to the server-created
+  URL and must not require `VITE_STRIPE_PUBLISHABLE_KEY` in the browser. Staging refuses `/api/stock-offers`.
   Internal catalog price columns and basket adds are **live-quote only** through
   the same route (BAS-first `catalogOfferCode`): snapshot `PRICE_*MG` catalog
   fields are dropped by the page normalizer and a failed/unresolved quote shows
