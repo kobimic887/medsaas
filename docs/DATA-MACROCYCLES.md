@@ -65,3 +65,33 @@ validation. Install the complete `*.fpb`, `*.rows.csv`, and `*.manifest.json`
 set into an isolated index directory, then start the loopback unit. See
 [`deploy/staging/README.md`](../deploy/staging/README.md) for staging install
 and rollback. Index data are artifacts, not source control files.
+
+## Not in this slice (open items from the September email)
+
+These were requested or implied by the email thread and are **not built**. Do
+not describe any of them as done, and do not approximate them from nearby data.
+
+- **MOE count `ctanimoto` (~2000 hits)** and MOE `btanimoto` parity. The engine
+  here is RDKit binary fingerprints with binary Tanimoto/Dice only; there is no
+  count-vector operator and no count-based metric to expose. Excluded by the
+  product owner's earlier decision for this slice. Blocked on Anna answering the
+  fingerprint/version questions in
+  [`REFERENCE-STOCK-FP-METRICS.md`](REFERENCE-STOCK-FP-METRICS.md).
+- **Prices, pack sizes, basket adds, and lead-time promises for the new sets.**
+  Neither dated export carries a pack price, so there is nothing honest to
+  display. Macrocycle source amounts and lead times are dated export fields,
+  not current offers. Stock rows also stay unpriced (owner decision
+  2026-09-13). Price columns and basket adds exist only for Internal catalog
+  rows, priced from that row's own response and re-priced at checkout.
+- **The Asinex catalog port itself.** `dev.asinex.com:58181` refused TCP
+  connections from Mac, oracleOld and 84 on 2026-09-24 while its DNS and web/
+  stock/docking hosts answered. This is an external outage the supplier must
+  clear or replace; do not substitute catalog, stock, or macrocycle rows for it.
+- **The reference-doc correction** for the MOE run pictured in the email thread
+  (fingerprint column and metric label). Pending the original MOE screenshot or
+  metadata; the current
+  [`REFERENCE-STOCK-FP-METRICS.md`](REFERENCE-STOCK-FP-METRICS.md) record stands
+  as measured.
+- **"New website functionality"** mentioned for the following days was never
+  specified beyond the Simulation layout. Nothing was inferred from the mockup
+  other than the query/results side-by-side layout.
