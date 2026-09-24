@@ -104,13 +104,13 @@ function normalizeCatalogMolecule(molecule = {}) {
   };
 }
 
-/** Prefer plain wording over bare "HTTP 502: Bad Gateway" (restart gap or upstream). */
+/** Prefer plain wording over bare "HTTP 502: Bad Gateway". */
 function describeUpstreamHttpError(status, statusText = '', bodyHint = '', kind = 'catalog') {
   if (status === 502 || status === 503 || status === 504) {
     if (kind === 'docking') return 'Upstream docking service failed. Please try again.';
     if (kind === 'stock') return 'Stock-compound search is temporarily unavailable. Please try again.';
     if (kind === 'open') return 'Open compounds search is temporarily unavailable. Please try again.';
-    return 'Catalog temporarily unavailable (redeploy or upstream). Please try again.';
+    return 'Catalog is temporarily unavailable. Please try again shortly.';
   }
   const base = `HTTP ${status}${statusText ? `: ${statusText}` : ''}`;
   if (!bodyHint) return base;
