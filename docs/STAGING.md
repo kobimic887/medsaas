@@ -158,6 +158,24 @@ external service recovers. This does not affect the local macrocycle index.
 Fixture-verified without any real outbound call in
 `server/test/staging-simulation.test.mjs` (48 checks under bun + node).
 
+### Macrocycle preview deployed 2026-09-24
+
+Staging runs source commit `84d1e13` with a separately imported index. Its
+manifest reports 18,171 searchable real structures from 18,190 export rows and
+2,347,736 searchable virtual structures from 2,350,440 export rows. In the
+public `/staging/dashboard/simulation` browser path, the real sample returned
+`RPX 202406561` at similarity 1.000 and could be selected; the virtual sample
+returned `VPX 900000001` at 1.000 and pagination completed at 12 results. The
+side-by-side query/results layout was inspected at desktop width. No paid
+docking call was made. The consumer `pyxis-web` bundle hash remained
+`c215f55254fa45d2ab855589c5ebb4b8a939271ee2f284c5db4871ce07dfddcd`.
+
+Staging rollback material is at
+`/root/pyxis-staging-macro-rollback-20260924/` on 84; the pre-macro and
+pre-default frontend builds remain beside the current staging `client/dist`.
+The external Asinex catalog supplier refused connections during this check;
+macrocycle search did not depend on that supplier.
+
 ## Status of integrations
 
 - **Verified:** staging routing + deep-link/API scoping (build checks +
