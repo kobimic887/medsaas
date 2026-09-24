@@ -55,6 +55,9 @@ when a path or trap moves.
   loopback `:8274`. Source IDs can repeat, so use the index row ID for
   selection. Both sources are unpriced and cannot enter the cart; source
   amounts/lead times are not verified offers. MOE count ctanimoto is excluded.
+  The staging build starts Simulation on Real macrocycles for owner review;
+  the consumer build still starts on Internal catalog. Staging catalog depends
+  on the separate supplier endpoint and may be unavailable independently.
   Open compounds: AI tool loop
   (`POST /api/open-compounds/ai-search`) plus deterministic
   `GET /api/open-compounds/status|similarity|export` — ChEMBL retrieval + local

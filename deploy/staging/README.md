@@ -161,6 +161,9 @@ consumer-facing Pyxis service on `:5174` has no macrocycle search environment
 setting and its nginx route is unchanged. Keep the existing staging stock
 search at `503 STOCK_SEARCH_UNAVAILABLE` until that separate dataset is
 provisioned for staging.
+The staging build opens Simulation on Real macrocycles; the consumer build
+continues to open on Internal catalog. Catalog requests still require the
+external supplier endpoint, which refused connections from 84 on 2026-09-24.
 
 > The deployed tree on 84 is **source + prebuilt dist**, like the live tree. The
 > staging tree keeps `server/.env` (created above) — source uploads via

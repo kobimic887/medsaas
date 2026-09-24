@@ -157,7 +157,9 @@ export function Simulation() {
   // (existing behavior), 'stock' = Anna's stock-compound dataset (RDKit-fingerprint
   // similarity through /api/stock-search/similarity). Stock is never a silent
   // fallback for Asinex or vice versa — switching clears the result list.
-  const [searchSource, setSearchSource] = useState("asinex");
+  // Owner-test staging opens on the newly imported corpus so the preview is
+  // useful even when the separate live catalog supplier endpoint is down.
+  const [searchSource, setSearchSource] = useState(IS_STAGING_BUILD ? "real" : "asinex");
   const [stockStatus, setStockStatus] = useState(null); // null | { state: 'loading' } | { state: 'available', dataset } | { state: 'unavailable', reason }
   const stockStatusRequestRef = useRef(0);
   const [openStatus, setOpenStatus] = useState(null); // null | loading | available | unavailable
@@ -1643,9 +1645,11 @@ export function Simulation() {
 
   // Auto-fetch on component mount
   useEffect(() => {
-    // Load initial molecules when component mounts
+    // Load the selected source when the component mounts. The consumer build
+    // retains its catalog browse default; staging probes its macrocycle index.
     setIsSearchActive(false); // Not in search mode initially
-    fetchAllMolecules(0, false);
+    if (searchSourceRef.current === 'asinex') fetchAllMolecules(0, false);
+    else if (MACROCYCLE_SOURCES[searchSourceRef.current]) fetchMacrocycleStatus(searchSourceRef.current);
   }, []); // Only run once on mount
 
   // Separate useEffect for scroll handling

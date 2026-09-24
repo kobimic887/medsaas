@@ -114,7 +114,14 @@ labelled as examples with provenance, never as new predictions.
 
 ## Simulation on staging (owner-tested with real data)
 
-Simulation is usable end-to-end, mirroring production:
+Simulation exposes these paths, with external-provider availability noted below:
+
+The staging build opens Simulation on **Real macrocycles** so the September 23
+preview is immediately usable. The consumer build still opens on Internal
+catalog. On 2026-09-24 the shared supplier endpoint
+`dev.asinex.com:58181` refused connections from 84; selecting Internal catalog
+on staging therefore shows its normal upstream-unavailable error until that
+external service recovers. This does not affect the local macrocycle index.
 
 - **Browse + search operate on the live read-only Asinex catalog** the same way
   production proxies it (`server/routes/stagingDemo.js` forwards to

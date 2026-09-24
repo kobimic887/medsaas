@@ -231,6 +231,7 @@ checks.push(
 
 checks.push(
   ['real and virtual macrocycle sources are visible', simulation.includes('Real macrocycles<span className="sr-only"> (18,190 source records)</span>') && simulation.includes('Virtual macrocycles<span className="sr-only"> (2,350,440 source records)</span>')],
+  ['staging opens the imported source while consumer catalog default stays intact', simulation.includes('useState(IS_STAGING_BUILD ? "real" : "asinex")') && simulation.includes('fetchMacrocycleStatus(searchSourceRef.current)')],
   ['macrocycle status and similarity use authenticated routes', simulation.includes("/macrocycles/status") && simulation.includes("/macrocycles/similarity")],
   ['macrocycle search uses a fixed Morgan Tanimoto method', simulation.includes("fingerprint_type: 'morgan'") && simulation.includes("similarity_metric: 'tanimoto'")],
   ['macrocycle rows have no cart or price controls', simulation.includes('No prices or cart purchases; select structures for docking handoff.')],
