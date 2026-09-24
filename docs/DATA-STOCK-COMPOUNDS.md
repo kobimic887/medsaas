@@ -473,7 +473,7 @@ is retained here as evidence only — do not re-wire it.
 | Success path | none — answers **503 `STOCK_OFFERS_DISABLED`** ("Stock compounds are not purchasable right now.") |
 | Auth | `ensureMongoConnected` → `authenticateToken` → `requireActiveUser` (unauthenticated stays 401) |
 | Upstream | none — the route makes no supplier call |
-| Staging | **403 `DEMO_MODE_DISABLED`** — refused exact path, unchanged |
+| Staging | The current full `/staging/` app shares the consumer refusal: authenticated requests answer **503 `STOCK_OFFERS_DISABLED`**. The retired demo-mode rollback answers 403 `DEMO_MODE_DISABLED`. |
 
 **Internal catalog pricing (2026-09-13, owner decision):** the Internal catalog
 displays and purchases the ORIGINAL catalog API's per-compound prices carried on

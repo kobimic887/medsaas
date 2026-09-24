@@ -262,9 +262,12 @@ email, and that is where they stay.)*
 | Catalog + structure search `dev.asinex.com:58181` | `catalogApiBase` | Not now, but **temporary**. Postgres + RDKit could do it; it needs the Asinex compound file — a licensing question, not a hardware one |
 | Stock & availability `stock.asinex.com:5443` | `stockApiUrl` | Not by this machine — no computer determines whether Asinex has 5 mg on a shelf. **Also temporary**: to be moved later by a data feed or a different supplier. Buyer has accepted the interim |
 
-Pricing is already half-local: the `mol_price` collection is imported from xlsx
-(`import:mol-price`, served at `server/index.js:2316` and `:5649`). What is genuinely
-missing without Asinex is **live availability**, not price.
+The legacy `mol_price` collection is imported from xlsx, but current Internal
+catalog checkout does **not** use it. Checkout re-prices each compound from
+Asinex's `GET /api/id/{code}` and refuses an unavailable price; see
+[`DATA-STOCK-COMPOUNDS.md`](DATA-STOCK-COMPOUNDS.md). Replacing the catalog
+requires both a licensed compound file and an authoritative current offer feed.
+Live stock availability separately needs a supplier feed or replacement supplier.
 
 ---
 

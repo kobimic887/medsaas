@@ -37,6 +37,15 @@ curl -I https://app.pyxis-discovery.com/
 
 A format-2 macrocycle index lists `metrics: [tanimoto, count_tanimoto, count_dice]` and needs `<source>.cnt` beside `<source>.fpb`; install the complete `*.fpb`, `*.rows.csv`, `*.cnt`, `*.manifest.json` set or the format check reports that dataset unavailable. A format-1 artifact stays valid and advertises `tanimoto` alone.
 
+The 2026-09-25 count-metric update has a staging-only rollback snapshot at
+`/root/pyxis-staging-count-rollback-20260925/` (`staging-before.tgz`,
+`index-before/`, and saved frontend bundles). Its real and virtual fingerprint
+and row files matched the previous index byte for byte, so only `.cnt` and
+`.manifest.json` changed in the deployed index. Restore the saved staging tree
+and index files, then restart only `pyxis-web-staging` and
+`pyxis-macrocycle-search-staging`. See [`docs/STAGING.md`](../../docs/STAGING.md)
+for deployed identities and browser evidence.
+
 `/api/staging/status` must say `demo:false` and `sharedProductionData:true`. Also check a real sign-in, existing history, macrocycle/stock source status, an Open compounds AI search, and the unchanged consumer service PID and bundle SHA. These read-only checks do not prove a completed payment or a paid scientific provider round trip.
 
 The external catalog endpoint `dev.asinex.com:58181` refused connections from Mac, oracleOld and 84 on 2026-09-24. Both sites use that endpoint. Its failure does not justify substituting stock or macrocycle records for catalog items or inventing prices. Ask Asinex for restored service or a replacement endpoint.

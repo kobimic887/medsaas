@@ -60,11 +60,10 @@ record was created. `noindex` is a search-engine hint, not access control.
   rows. **Virtual macrocycles:** 2,347,736 searchable structures from 2,350,440
   export rows. They use an independent read-only Morgan/ECFP4 index at
   `127.0.0.1:8274`; no pack prices or cart purchases. Source amounts and lead
-  times are dated export fields, not current offers. The deployed artifact is
-  **format 1**, so staging offers binary Tanimoto only; rebuilding both corpora
-  with the current builder writes the format-2 count stream and turns on the
-  frequency-weighted Count Tanimoto/Count Dice methods (a Pyxis method, not MOE
-  ctanimoto). See [`DATA-MACROCYCLES.md`](DATA-MACROCYCLES.md).
+  times are dated export fields, not current offers. Both deployed artifacts are
+  **format 2** and offer binary Tanimoto plus frequency-weighted Count Tanimoto
+  and Count Dice (a Pyxis method, not MOE ctanimoto). See
+  [`DATA-MACROCYCLES.md`](DATA-MACROCYCLES.md).
 - **Open compounds:** ChEMBL retrieval with local RDKit Morgan/Tanimoto
   ranking; AI tool loop is enabled only on staging via
   `openrouter/openrouter/free` through OmniRoute. An explicit **Search without
@@ -107,6 +106,28 @@ deterministic path or a paid model.
   bundle hash stayed unchanged. Earlier browser checks verified both macrocycle
   sources, selection, and virtual pagination to 12 results. The paid provider
   round trips and completed Stripe payment remain untested.
+
+## Staging update, 2026-09-25
+
+Staging source is `04ab46c` with the macrocycle count methods and a clearer
+Internal catalog outage message. Its frontend index SHA-256 is
+`85e625e9775d2d6eca3c7f93dbcba2621d7bad7efeae26015c7930c606d8f84e`.
+Both isolated macrocycle datasets now have format-2 count streams: real has
+18,171 searchable rows (1,215,118 count bytes), virtual has 2,347,736
+(180,702,401 count bytes). Each new fingerprint and metadata file matched the
+previous binary search artifact byte for byte; only counts and manifests were
+installed. The staging index advertises all three metrics for each source.
+Full-index exact searches found `RPX 202406561` and `VPX 900000001` at score
+1.000 under all three metrics. The signed-in staging browser also verified
+real and virtual metric choices and exact hits. Open compounds AI returned an
+exact ChEMBL result; Internal catalog displayed the supplier connection error.
+Focused repository tests and builds passed; no payment or paid docking job was
+submitted. The consumer process, source identity `22681ed`, and frontend index
+SHA-256 `c215f55254fa45d2ab855589c5ebb4b8a939271ee2f284c5db4871ce07dfddcd`
+remained unchanged. Current rollback snapshot is
+`/root/pyxis-staging-count-rollback-20260925/` on 84 (`staging-before.tgz`,
+`index-before/`, and both saved frontend bundles). Restore those staging-only
+files and restart the two staging units if this update must be reversed.
 
 ## Rollback and traps
 

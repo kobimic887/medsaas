@@ -113,9 +113,9 @@ publish something weaker:
   is refused with 400 for a count metric for the same reason; binary Tanimoto
   remains available for that query.
 
-A format-1 artifact (the deployed September 2026 set) stays valid and searchable
-without a counts file. Rebuilding both corpora is what turns the count metrics on
-in staging.
+A format-1 artifact stays valid and searchable without a counts file. Both
+corpora deployed to `/staging/` on 2026-09-25 are format 2, so both advertise
+all three metrics. The consumer app has no macrocycle index configuration.
 
 ## Not in this slice (open items from the September email)
 
