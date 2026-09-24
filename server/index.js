@@ -54,6 +54,17 @@ import {
   StockSearchValidationError,
 } from './utils/stockSearch.js';
 import {
+  buildMacrocycleSimilarityUrl,
+  createMacrocycleDatasetResolver,
+  MacrocycleSearchUnavailableError,
+  MacrocycleSearchValidationError,
+  macrocycleSearchConfig,
+  macrocycleStatusPayload,
+  parseMacrocycleSearchQuery,
+  parseMacrocycleSource,
+  tagMacrocycleResults,
+} from './utils/macrocycleSearch.js';
+import {
   buildOpenCompoundsStatus,
   OpenCompoundsUnavailableError,
   OpenCompoundsUpstreamError,
@@ -166,6 +177,11 @@ const stockSearchResolver = createStockDatasetResolver({
   config: STOCK_SEARCH_CONFIG,
   // The search service is internal + unauthenticated. Bound quickly so an
   // unreachable host surfaces as unavailable instead of hanging a user search.
+  fetchImpl: (url) => fetchWithTimeout(url, { timeoutMs: 10000 }),
+});
+const MACROCYCLE_SEARCH_CONFIG = macrocycleSearchConfig(process.env);
+const macrocycleSearchResolver = createMacrocycleDatasetResolver({
+  config: MACROCYCLE_SEARCH_CONFIG,
   fetchImpl: (url) => fetchWithTimeout(url, { timeoutMs: 10000 }),
 });
 const OPEN_COMPOUNDS_CONFIG = openCompoundsConfig(process.env);
@@ -5276,6 +5292,63 @@ app.get('/api/stock-search/similarity', ensureMongoConnected, authenticateToken,
       error: 'Stock search is temporarily unavailable',
       details: error.message,
     });
+  }
+});
+
+// September 23 macrocycle exports are independent datasets. A missing import
+// returns an explicit unavailable state; the older stock dataset is never a
+// substitute. Amount and lead-time metadata are informational, not prices.
+app.get('/api/macrocycles/status', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+  let source;
+  try { source = parseMacrocycleSource(req.query.source); }
+  catch (error) {
+    if (error instanceof MacrocycleSearchValidationError) return res.status(400).json({ error: error.message, code: error.code });
+    throw error;
+  }
+  try {
+    const dataset = await macrocycleSearchResolver.resolve(source);
+    return res.json(macrocycleStatusPayload(source, dataset));
+  } catch (error) {
+    if (error instanceof MacrocycleSearchUnavailableError) {
+      return res.json({ available: false, source, reason: error.message });
+    }
+    console.error('Macrocycle search status error:', error);
+    return res.json({ available: false, source, reason: 'Macrocycle search could not be checked right now.' });
+  }
+});
+
+app.get('/api/macrocycles/similarity', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+  let params;
+  try { params = parseMacrocycleSearchQuery(req.query); }
+  catch (error) {
+    if (error instanceof MacrocycleSearchValidationError) return res.status(400).json({ error: error.message, code: error.code });
+    throw error;
+  }
+  let dataset;
+  try { dataset = await macrocycleSearchResolver.resolve(params.source); }
+  catch (error) {
+    if (error instanceof MacrocycleSearchUnavailableError) {
+      return res.status(503).json({ error: error.message, code: error.code });
+    }
+    throw error;
+  }
+  const upstreamUrl = buildMacrocycleSimilarityUrl({ config: MACROCYCLE_SEARCH_CONFIG, dataset, params });
+  try {
+    const response = await fetchWithTimeout(upstreamUrl, { headers: { Accept: 'application/json' } });
+    const text = await response.text();
+    let data;
+    try { data = JSON.parse(text); } catch { data = text; }
+    if (!response.ok) {
+      const status = relayStockUpstreamStatus(response.status);
+      return res.status(status).json({
+        error: describeStockUpstreamError(response.status, data).replaceAll('Stock search', 'Macrocycle search'),
+        ...(status === 502 ? { details: `Upstream HTTP ${response.status}` } : {}),
+      });
+    }
+    return res.json(tagMacrocycleResults(data, params.source, dataset, params));
+  } catch (error) {
+    console.error(`Macrocycle search proxy error url=${safeUpstreamUrl(upstreamUrl)}:`, error.message || error);
+    return res.status(502).json({ error: 'Macrocycle search is temporarily unavailable' });
   }
 });
 

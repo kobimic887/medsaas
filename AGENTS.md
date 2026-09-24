@@ -47,6 +47,14 @@ when a path or trap moves.
   (defaults `morgan`/`tanimoto`; unknown → **400**); labels mark scores
   **(binary)** — no count/ctanimoto option. Contract:
   `docs/DATA-STOCK-COMPOUNDS.md` (+ `docs/REFERENCE-STOCK-FP-METRICS.md`).
+  The September 23 **Real macrocycles** and **Virtual macrocycles** are two
+  further independent Simulation sources (`docs/DATA-MACROCYCLES.md`). Their
+  authenticated `/api/macrocycles/status|similarity` routes use a separate
+  `MACROCYCLE_SEARCH_BASE`; missing datasets return 503, never catalog/stock
+  results. Staging's compact read-only RDKit Morgan/binary Tanimoto index is
+  loopback `:8274`. Source IDs can repeat, so use the index row ID for
+  selection. Both sources are unpriced and cannot enter the cart; source
+  amounts/lead times are not verified offers. MOE count ctanimoto is excluded.
   Open compounds: AI tool loop
   (`POST /api/open-compounds/ai-search`) plus deterministic
   `GET /api/open-compounds/status|similarity|export` — ChEMBL retrieval + local

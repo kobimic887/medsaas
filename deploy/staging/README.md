@@ -22,8 +22,9 @@ file copies — see the symlink warning below):
 process* on the same host (`oracleNew` / `84.13.81.51`), reached through an
 nginx `location /staging/` that forwards to a loopback-only staging server.
 
-Nothing here is production. Nothing here can touch the production API, the
-production MongoDB Atlas, real NVIDIA, Stripe, or email. See
+The staging process is separate from the consumer app. It does not use the
+production API or MongoDB Atlas, Stripe, or email. Docking/DiffDock are
+explicitly forwarded to real providers and can incur cost. See
 [`docs/STAGING.md`](../../docs/STAGING.md) for the isolation contract and the
 demo/fixture semantics.
 
@@ -47,6 +48,7 @@ demo/fixture semantics.
 - `pyxis-vite-legacy` `:5173`, `pyxis-api-legacy` `:3000`, `pyxis-stripe` `:3001` — stopped rollback
 - `pyxis-convertstr` docker `127.0.0.1:8001` — converter (production only)
 - **`pyxis-web-staging` `127.0.0.1:5274`** — this staging service (loopback)
+- **`pyxis-macrocycle-search-staging` `127.0.0.1:8274`** — read-only macrocycle index (loopback)
 - FinSrv `:4000` — unrelated
 
 ## Files
@@ -54,15 +56,17 @@ demo/fixture semantics.
 - `pyxis-web-staging.service` — systemd unit (install to `/etc/systemd/system/`)
 - `nginx-staging.conf` — server-block snippet for `app.pyxis-discovery.com`
 - `env.server.template` — non-secret env layout; secrets are generated on the host
+- `pyxis-macrocycle-search-staging.service` — separate loopback index unit
+- `10-macrocycle-search.conf` — staging-only web service drop-in
 - `deploy-staging.sh` — repeatable staging deploy (run on 84 as root)
 - `rollback-staging.sh` — remove routing + service + tree
 
 ## First install (one time, on 84, root)
 
 ```bash
-# 0. Back up the live nginx site file first (owner-approved action).
-cp -a /etc/nginx/sites-enabled/app.pyxis-discovery.com \
-      /root/pyxis-staging-nginx-backup.$(date +%Y%m%dT%H%M%S)
+# 0. Back up the nginx site file's content first (owner-approved action).
+sudo sh -c 'cat /etc/nginx/sites-enabled/app.pyxis-discovery.com > \
+      /root/pyxis-staging-nginx-backup.$(date +%Y%m%dT%H%M%S).original'
 
 # 1. Ship the tree + built staging frontend (run from the Mac, this branch).
 git archive --format=tar HEAD | ssh oracleNew \
@@ -113,8 +117,8 @@ curl -s -o /dev/null -w '%{http_code}\n' https://app.pyxis-discovery.com/api/hea
 ## Updating staging after code changes (Mac → 84)
 
 ```bash
-cd /Users/kobigenis/projects/medsaas   # on branch staging/folding-preview
-bun run build:staging   # client/dist now = staging build (base /staging/)
+cd /Users/kobigenis/projects/medsaas
+bun --cwd=client run build:staging   # client/dist now = staging build (base /staging/)
 git archive --format=tar HEAD | ssh oracleNew \
   'sudo tar -x -C /root/pyxis-STAGING-5274'
 tar -C client -cf - dist | ssh oracleNew \
@@ -124,6 +128,39 @@ ssh oracleNew 'sudo systemctl restart pyxis-web-staging'
 #   client/dist returns to the prod build:
 bun --cwd=client run build
 ```
+
+### Macrocycle preview configuration
+
+The September 23 real and virtual macrocycle sources use the separate,
+read-only compact search service (`pyxis-macrocycle-search-staging.service`)
+bound to `127.0.0.1:8274`. Install
+[`10-macrocycle-search.conf`](10-macrocycle-search.conf) as
+`/etc/systemd/system/pyxis-web-staging.service.d/10-macrocycle-search.conf`
+and run `systemctl daemon-reload` before restarting `pyxis-web-staging`.
+This non-secret systemd setting points only the staging process at the index;
+the app's `server/.env` holds its JWT secret and is not edited during preview
+updates. The search service must be running and must list both exact dataset
+names (`Macrocycles real stock — 2026-09-23` and
+`Macrocycles virtual — 2026-09-23`) before the Simulation source controls
+report them as available. If either is missing, its source reports unavailable
+without substituting the older stock corpus or the Asinex catalog.
+
+Copy the complete, validated index artifacts from the builder described in
+[`docs/DATA-MACROCYCLES.md`](../../docs/DATA-MACROCYCLES.md) into
+`/root/pyxis-macrocycle-index-staging` (six files: two each of `.fpb`,
+`.rows.csv`, and `.manifest.json`). Install the service unit to
+`/etc/systemd/system/pyxis-macrocycle-search-staging.service`. Check that
+`curl http://127.0.0.1:8274/health` and `/v1/datasets` succeed before
+restarting `pyxis-web-staging`. The unit starts neither automatically after a
+reboot nor through production `pyxis-web`. Keep a copy of the previous staging
+tree, `client/dist`, systemd fragments, and index directory for rollback;
+restore only those and restart the two staging units if verification fails.
+
+The preview index and staging API are separate loopback processes. The
+consumer-facing Pyxis service on `:5174` has no macrocycle search environment
+setting and its nginx route is unchanged. Keep the existing staging stock
+search at `503 STOCK_SEARCH_UNAVAILABLE` until that separate dataset is
+provisioned for staging.
 
 > The deployed tree on 84 is **source + prebuilt dist**, like the live tree. The
 > staging tree keeps `server/.env` (created above) — source uploads via

@@ -2,8 +2,9 @@
 #
 # - Loopback ONLY (BIND_HOST=127.0.0.1): nginx `location /staging/` is the only
 #   path to this process. Never bind 0.0.0.0.
-# - PYXIS_DEMO_MODE=true: no MongoDB, no Stripe, no NVIDIA; fixture results;
-#   paid/outbound endpoints refused by the demo router.
+# - PYXIS_DEMO_MODE=true: no MongoDB or Stripe. Folding is a labelled fixture;
+#   owner-authorized Simulation docking/DiffDock uses the real providers.
+#   Macrocycle searches read a separate loopback index when configured.
 # - JWT_SECRET lives in /root/pyxis-STAGING-5274/server/.env (root-owned,
 #   mode 600, generated at install). Production and staging use different
 #   secrets, so tokens never cross between the environments.

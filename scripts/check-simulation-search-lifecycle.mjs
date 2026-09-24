@@ -220,13 +220,39 @@ checks.push(
   ['open AI search posts to ai-search', simulation.includes("/open-compounds/ai-search")],
   ['open availability is probed via the status endpoint', simulation.includes("/open-compounds/status")],
   ['open search is similarity-only and restarts at offset zero', simulation.includes("runOpenSearch(0, false,") || simulation.includes("runOpenAiSearch({")],
-  ['open compounds radio is present', simulation.includes('Open compounds (ChEMBL)')],
+  ['open compounds radio is present', simulation.includes('Open compounds<span className="sr-only"> (ChEMBL)</span>')],
   ['open threshold floor is 0.4', simulation.includes('searchSource === "open" ? "0.4"') && simulation.includes('Math.max(0.4, value)')],
   ['open export uses authenticated export route', simulation.includes("/open-compounds/export")],
   ['open empty/error states are distinct', simulation.includes('No open compounds matched this structure')],
   ['open rows never claim purchase/stock', simulation.includes('Not stocked or priced')],
   ['explicit Search without AI control exists', simulation.includes('Search without AI')],
   ['AI failure does not pretend deterministic search ran', simulation.includes('did not silently run that path')],
+);
+
+checks.push(
+  ['real and virtual macrocycle sources are visible', simulation.includes('Real macrocycles<span className="sr-only"> (18,190 source records)</span>') && simulation.includes('Virtual macrocycles<span className="sr-only"> (2,350,440 source records)</span>')],
+  ['macrocycle status and similarity use authenticated routes', simulation.includes("/macrocycles/status") && simulation.includes("/macrocycles/similarity")],
+  ['macrocycle search uses a fixed Morgan Tanimoto method', simulation.includes("fingerprint_type: 'morgan'") && simulation.includes("similarity_metric: 'tanimoto'")],
+  ['macrocycle rows have no cart or price controls', simulation.includes('No prices or cart purchases; select structures for docking handoff.')],
+  ['query and results are adjacent columns from tablet width', simulation.includes('md:grid-cols-[minmax(14rem,17rem)_minmax(0,1fr)]') && simulation.includes('aria-labelledby="results-heading"')],
+  ['results offer explicit pagination in the two-column layout', simulation.includes('Load more results')],
+);
+
+const { macrocycleResultsFromPayload, appendUniqueMacrocycleRows } = await import(
+  pathToFileURL(path.join(root, 'client/src/utils/macrocycleResults.js')).href
+);
+const macroRows = macrocycleResultsFromPayload({ results: [
+  { molecule_id: 41, canonical_smiles: 'O=C1NC2C(NCCC2)CC1', similarity: 0.71, metadata: { MAIN_BAS: 'BAS 00132206', web_mg: '12.5', web_uM: '44', Lead_TIME: '28 days', source: 'macrocycle_real' } },
+] }, 'real');
+const virtualRows = macrocycleResultsFromPayload({ results: [
+  { molecule_id: 1, canonical_smiles: 'C1CCCCC1', similarity: 1, metadata: { MAIN_BAS: 'VPX 900000001', web_mg: '', web_uM: '', CURRENT_TOT_NETTO_MG: '5', CURRENT_TOT_AMOUNT_UM: '11.3', Lead_TIME: '28 days' } },
+] }, 'virtual');
+checks.push(
+  ['macrocycle hit preserves source, identity, structure, and numeric score', macroRows.length === 1 && macroRows[0].macrocycleSource === 'real' && macroRows[0].macrocycleCode === 'BAS 00132206' && macroRows[0].SMILES_STRING === 'O=C1NC2C(NCCC2)CC1' && macroRows[0].SIMILARITY === 0.71],
+  ['macrocycle dated quantities and lead time survive with caveated labels', macroRows[0].snapshotMg === '12.5' && macroRows[0].snapshotUm === '44' && macroRows[0].snapshotLeadTime === '28 days' && simulation.includes('Dated supplier export; amount and lead time are unverified now')],
+  ['virtual export amount fields appear when real-stock columns are blank', virtualRows[0].snapshotMg === '5' && virtualRows[0].snapshotUm === '11.3'],
+  ['macrocycle hit cannot enter catalog pricing through row fields', macroRows[0].isMacrocycleRow === true && macroRows[0].PRICE_1MG === undefined && macroRows[0].STOCK_MG === undefined],
+  ['macrocycle page append removes duplicate row IDs', appendUniqueMacrocycleRows(macroRows, [...macroRows, { ...macroRows[0], macrocycleRowId: 42 }]).length === 1],
 );
 
 checks.push(['stock backend inherits the resolved Tanimoto default', readFileSync(path.join(root, 'server/index.js'), 'utf8').includes('stockSearchConfig({ ...process.env, TANIMOTO_API_BASE })')]);
@@ -240,6 +266,7 @@ const searchBody = simulation.split('const handleSearch = async () => {')[1].spl
 const rejectedCalls = [];
 const rejectedContext = {
   AbortController, searchCode: '[N](C)(C)(C)C',
+  MACROCYCLE_SOURCES: { real: true, virtual: true },
   getAuthToken: () => 'fixture',
   runStockSearch: async () => { throw new Error('RDKit rejected fixture'); },
   runOpenSearch: async () => { throw new Error('should not run open'); },
@@ -260,6 +287,7 @@ checks.push(
 const rejectedOpenCalls = [];
 const rejectedOpenContext = {
   AbortController, searchCode: '[N](C)(C)(C)C',
+  MACROCYCLE_SOURCES: { real: true, virtual: true },
   getAuthToken: () => 'fixture',
   runStockSearch: async () => { throw new Error('should not run stock'); },
   runOpenSearch: async () => { throw new Error('ChEMBL rejected fixture'); },
@@ -277,6 +305,25 @@ checks.push(
   ['rejected open query clears previous visible rows', rejectedOpenCalls.some(([name, value]) => name === 'setTopMolecules' && value.length === 0)],
   ['rejected open query cannot keep pagination enabled', rejectedOpenContext.hasMoreRef.current === false && !rejectedOpenCalls.some(([name, value]) => name === 'setHasMore' && value === true)],
   ['rejected open query preserves the actual error', rejectedOpenCalls.some(([name, value]) => name === 'setSearchError' && value.includes('ChEMBL rejected fixture'))],
+);
+
+const rejectedMacroCalls = [];
+const rejectedMacroContext = {
+  AbortController, searchCode: '[N](C)(C)(C)C',
+  MACROCYCLE_SOURCES: { real: true, virtual: true },
+  getAuthToken: () => 'fixture',
+  runMacrocycleSearch: async () => { throw new Error('Macrocycle query rejected'); },
+};
+for (const name of new Set(searchBody.match(/\b\w+Ref\b/g))) rejectedMacroContext[name] = { current: null };
+rejectedMacroContext.searchSourceRef.current = 'real';
+rejectedMacroContext.hasMoreRef.current = true;
+rejectedMacroContext.browseRequestIdRef.current = 0;
+rejectedMacroContext.searchRequestIdRef.current = 0;
+for (const name of new Set(searchBody.match(/\bset[A-Z]\w*/g))) rejectedMacroContext[name] = value => rejectedMacroCalls.push([name, value]);
+await new AsyncFunction(...Object.keys(rejectedMacroContext), searchBody)(...Object.values(rejectedMacroContext));
+checks.push(
+  ['rejected macrocycle query clears results without fallback', rejectedMacroCalls.some(([name, value]) => name === 'setTopMolecules' && value.length === 0) && !rejectedMacroCalls.some(([name, value]) => name === 'setHasMore' && value === true)],
+  ['rejected macrocycle query shows its error', rejectedMacroCalls.some(([name, value]) => name === 'setSearchError' && value.includes('Macrocycle query rejected'))],
 );
 
 const { openResultsFromPayload } = await import(

@@ -64,8 +64,8 @@ These are enforced by code + config, not by convention:
    vice versa — no cross-authentication in either direction.
 4. **Demo mode is server-controlled.** `PYXIS_DEMO_MODE=true` changes the
    server, not just the UI: no Mongo client is created, no Stripe/NVIDIA keys
-   are read, and `/api/openfold3/predict` is answered by a labelled server
-   fixture. Simulation browsing/search proxy the **read-only** Asinex catalog
+   are read for folding, and `/api/openfold3/predict` is answered by a labelled
+   server fixture. Simulation browsing/search proxy the **read-only** Asinex catalog
    and, when the service envs are set (owner-authorized for the synthetic
    account), `/api/simulation` + `/api/diffdock/generate` forward to the real
    docking providers — those cost real money. Everything else paid (checkout,
@@ -139,20 +139,26 @@ Simulation is usable end-to-end, mirroring production:
   `503 STOCK_SEARCH_UNAVAILABLE`: the stock dataset is deployed by the separate
   Simulation stock service and is not provisioned for staging. The UI shows an
   explanatory note and disables that source — never a silent Asinex fallback.
+- **Real and virtual macrocycle search** use independent dated exports through
+  a separate read-only loopback index (`pyxis-macrocycle-search-staging`,
+  `127.0.0.1:8274`). The authenticated demo routes proxy only that index;
+  absent data returns 503 and cannot appear as catalog or old stock hits.
+  Results are unpriced and cannot be purchased. Source amounts and lead times
+  are not verified offers. See [`DATA-MACROCYCLES.md`](DATA-MACROCYCLES.md).
 - **Still blocked** with explanatory states (never 503 loops): checkout,
   billing, MolMIM, `diffdock/generate_file`, ADMET and other paid neighbours.
 
 Fixture-verified without any real outbound call in
-`server/test/staging-simulation.test.mjs` (39 checks under bun + node).
+`server/test/staging-simulation.test.mjs` (48 checks under bun + node).
 
 ## Status of integrations
 
 - **Verified:** staging routing + deep-link/API scoping (build checks +
   nginx contract), demo sign-in, fixture predict (PDB + mmCIF), viewer-test
   sample files, private folding history lifecycle + privacy negatives + size
-  limits (`server/test/staging-demo.test.mjs`, 57 checks), Simulation
+  limits (`server/test/staging-demo.test.mjs`, 58 checks), Simulation
   catalog/search/artifacts/docking-lifecycle + refusals against fixture
-  upstreams (`server/test/staging-simulation.test.mjs`, 39 checks), cross-secret
+  upstreams (`server/test/staging-simulation.test.mjs`, 48 checks), cross-secret
   token rejection, paid-endpoint refusal.
 - **Unverified by design:** any real NVIDIA folding prediction (fixture only),
   real docking/DiffDock round-trips against the live providers (fixture-verified

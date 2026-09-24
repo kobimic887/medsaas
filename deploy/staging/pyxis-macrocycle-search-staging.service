@@ -1,0 +1,23 @@
+[Unit]
+Description=Pyxis staging macrocycle similarity index
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/pyxis-STAGING-5274
+Environment=BIND_HOST=127.0.0.1
+Environment=PORT=8274
+Environment=MACROCYCLE_INDEX_DIR=/root/pyxis-macrocycle-index-staging
+ExecStart=/usr/local/bin/bun services/macrocycle-index/serve.mjs
+Restart=on-failure
+RestartSec=5
+CPUQuota=80%
+MemoryMax=1500M
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

@@ -43,6 +43,18 @@ import {
   parseBasSearchCodes,
   searchCatalogRowsByBasCodes,
 } from "../utils/catalogPricing.js";
+import {
+  buildMacrocycleSimilarityUrl,
+  createMacrocycleDatasetResolver,
+  macrocycleSearchConfig,
+  macrocycleStatusPayload,
+  MacrocycleSearchUnavailableError,
+  MacrocycleSearchValidationError,
+  parseMacrocycleSearchQuery,
+  parseMacrocycleSource,
+  tagMacrocycleResults,
+} from "../utils/macrocycleSearch.js";
+import { describeStockUpstreamError, relayStockUpstreamStatus } from "../utils/stockSearch.js";
 
 // Outbound/paid/unsupported endpoints that stay blocked in demo mode. Exact and
 // prefix matches only — a prefix like "/api/simulation/" must NOT swallow
@@ -219,6 +231,14 @@ const DEMO_IDENTITY = Object.freeze({
 export function createStagingDemoRouter({ jwtSecret, jwtExpiresIn = "7d" }) {
   const router = Router();
   const simStore = createDemoSimStore();
+  // Demo mode has no Mongo connection. Macrocycle reads go only to an
+  // explicitly configured search service and the shared resolver checks the
+  // dataset name before searching, so older stock rows cannot be mislabeled.
+  const macrocycleConfig = macrocycleSearchConfig(process.env);
+  const macrocycleResolver = createMacrocycleDatasetResolver({
+    config: macrocycleConfig,
+    fetchImpl: (url) => fetchWithTimeout(url),
+  });
 
   const signDemoToken = () =>
     jwt.sign(
@@ -492,6 +512,71 @@ export function createStagingDemoRouter({ jwtSecret, jwtExpiresIn = "7d" }) {
   });
   router.get("/api/stock-search/similarity", (_req, res) => {
     res.status(503).json(stockUnavailable());
+  });
+
+  // ---- Real + virtual macrocycles: isolated read-only search ---------------
+  router.get("/api/macrocycles/status", demoAuth, async (req, res) => {
+    let source;
+    try {
+      source = parseMacrocycleSource(req.query.source);
+    } catch (error) {
+      if (error instanceof MacrocycleSearchValidationError) {
+        return res.status(400).json({ error: error.message });
+      }
+      throw error;
+    }
+    try {
+      const dataset = await macrocycleResolver.resolve(source);
+      return res.json(macrocycleStatusPayload(source, dataset));
+    } catch (error) {
+      if (error instanceof MacrocycleSearchUnavailableError) {
+        return res.json({ available: false, source, reason: error.message });
+      }
+      console.error("[staging] macrocycle status failed:", error);
+      return res.json({ available: false, source, reason: "Macrocycle search could not be checked right now." });
+    }
+  });
+
+  router.get("/api/macrocycles/similarity", demoAuth, async (req, res) => {
+    let params;
+    try {
+      params = parseMacrocycleSearchQuery(req.query);
+    } catch (error) {
+      if (error instanceof MacrocycleSearchValidationError) {
+        return res.status(400).json({ error: error.message });
+      }
+      throw error;
+    }
+
+    let dataset;
+    try {
+      dataset = await macrocycleResolver.resolve(params.source);
+    } catch (error) {
+      if (error instanceof MacrocycleSearchUnavailableError) {
+        return res.status(503).json({ error: error.message, code: error.code });
+      }
+      console.error("[staging] macrocycle dataset resolution failed:", error);
+      return res.status(502).json({ error: "Macrocycle search service failed" });
+    }
+
+    const upstreamUrl = buildMacrocycleSimilarityUrl({ config: macrocycleConfig, dataset, params });
+    try {
+      const response = await fetchWithTimeout(upstreamUrl, { headers: { Accept: "application/json" } });
+      let data;
+      try { data = await response.json(); }
+      catch { return res.status(502).json({ error: "Macrocycle search service returned invalid results" }); }
+      if (!response.ok) {
+        const status = relayStockUpstreamStatus(response.status);
+        return res.status(status).json({
+          error: describeStockUpstreamError(response.status, data).replaceAll("Stock search", "Macrocycle search"),
+          ...(status === 502 ? { details: `Upstream HTTP ${response.status}` } : {}),
+        });
+      }
+      return res.json(tagMacrocycleResults(data, params.source, dataset, params));
+    } catch (error) {
+      console.error("[staging] macrocycle search failed:", error.message || error);
+      return res.status(502).json({ error: "Macrocycle search service failed" });
+    }
   });
 
   // ---- Simulation logs + artifact blobs (in-process store) ------------------

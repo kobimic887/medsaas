@@ -12,6 +12,8 @@
 //      and the fixture counts any /api4/bas hit as a regression.
 //   3. Unsupported /api4 methods are rejected; stock search honestly reports
 //      503 STOCK_SEARCH_UNAVAILABLE (never a silent Asinex fallback).
+//      The new real/virtual macrocycle sources use only explicitly configured
+//      read-only datasets and keep price/cart fields out of results.
 //   4. Real docking POST /api/simulation stores a run in the in-process store
 //      (simulation_logs ownership semantics), answers artifacts from it, and
 //      serves a cache hit WITHOUT a second provider call.
@@ -128,7 +130,7 @@ const ROWS = Array.from({ length: 25 }, (_, i) => makeRow(i));
 // each env URL distinct: ASINEX_API_BASE = http://127.0.0.1:<port>,
 // ASINEX_DOCKING_API_URL = .../dock, DIFFDOCK_API_URL = .../diffdock,
 // SDF_CONVERTER_URL = .../convertSTR.
-const hits = { dock: 0, api4bas: 0 };
+const hits = { dock: 0, api4bas: 0, macro: [] };
 let lastDockBody = null;
 
 function rowMatchesCode(row, code) {
@@ -172,6 +174,29 @@ const fixtureServer = http.createServer((req, res) => {
     req.on('data', (chunk) => { data += chunk; });
     req.on('end', () => { try { cb(JSON.parse(data || '{}')); } catch { cb({}); } });
   };
+
+  if (pathname === '/v1/datasets' && req.method === 'GET') {
+    return send(200, { datasets: [
+      { id: 4, name: 'Stock compounds — 2026-09-01', row_count: 630646 },
+      { id: 18, name: 'Macrocycles real stock — 2026-09-23', row_count: 18190 },
+      { id: 19, name: 'Macrocycles virtual — 2026-09-23', row_count: 2350440 },
+    ] });
+  }
+  if (pathname === '/v1/search/similarity' && req.method === 'GET') {
+    const datasetId = Number(url.searchParams.get('dataset_id'));
+    hits.macro.push({ datasetId, smiles: url.searchParams.get('smiles') });
+    if (![18, 19].includes(datasetId)) return send(400, { error: 'wrong dataset' });
+    if (url.searchParams.get('smiles') === 'AUTHFAIL') return send(401, { detail: 'upstream key rejected' });
+    const isReal = datasetId === 18;
+    return send(200, {
+      found: true, count: 1, query_smiles: url.searchParams.get('smiles'),
+      results: [{
+        molecule_id: isReal ? 181 : 191,
+        canonical_smiles: 'C1CCCCC1', similarity: 0.83,
+        metadata: { ID: isReal ? 'REAL-181' : 'VIRTUAL-191', PRICE_1MG: 123 },
+      }],
+    });
+  }
 
   // ---- catalog: /api/all/{page}_{size} --------------------------------------
   if (pathname.startsWith('/api/all/')) {
@@ -281,6 +306,7 @@ async function main() {
     ASINEX_DOCKING_API_URL: `${fixtureBase}/dock`,
     DIFFDOCK_API_URL: `${fixtureBase}/diffdock`,
     SDF_CONVERTER_URL: `${fixtureBase}/convertSTR`,
+    MACROCYCLE_SEARCH_BASE: fixtureBase,
   };
 
   const child = spawn(runtimeBin, ['index.js'], {
@@ -362,6 +388,22 @@ async function main() {
     check('stock status -> 503 STOCK_SEARCH_UNAVAILABLE', r.status === 503 && r.json?.code === 'STOCK_SEARCH_UNAVAILABLE', `got ${r.status} ${r.text.slice(0, 120)}`);
     r = await api('GET', '/api/stock-search/similarity?smiles=c1ccccc1', { token: demoToken });
     check('stock similarity -> 503 STOCK_SEARCH_UNAVAILABLE', r.status === 503 && r.json?.code === 'STOCK_SEARCH_UNAVAILABLE', `got ${r.status}`);
+    r = await api('GET', '/api/macrocycles/status?source=real', { token: demoToken });
+    check('real macrocycle status resolves only its named dataset', r.status === 200 && r.json?.available === true && r.json?.dataset?.id === 18 && r.json?.dataset?.rowCount === 18190, `got ${r.status} ${r.text.slice(0, 150)}`);
+    r = await api('GET', '/api/macrocycles/status?source=virtual', { token: demoToken });
+    check('virtual macrocycle status resolves only its named dataset', r.status === 200 && r.json?.available === true && r.json?.dataset?.id === 19 && r.json?.dataset?.rowCount === 2350440, `got ${r.status} ${r.text.slice(0, 150)}`);
+    r = await api('GET', '/api/macrocycles/similarity?source=real&smiles=C1CCCCC1&threshold=0.5', { token: demoToken });
+    check('real macrocycle search uses its dataset and no cart price', r.status === 200 && hits.macro.at(-1)?.datasetId === 18 && r.json?.results?.[0]?.metadata?.source === 'macrocycle_real' && !('price_1mg' in (r.json?.results?.[0]?.metadata || {})) && !('PRICE_1MG' in (r.json?.results?.[0]?.metadata || {})), `got ${r.status} ${r.text.slice(0, 230)}`);
+    r = await api('GET', '/api/macrocycles/similarity?source=virtual&smiles=C1CCCCC1&threshold=0.5', { token: demoToken });
+    check('virtual macrocycle search uses its separate dataset', r.status === 200 && hits.macro.at(-1)?.datasetId === 19 && r.json?.results?.[0]?.metadata?.source === 'macrocycle_virtual', `got ${r.status} ${r.text.slice(0, 230)}`);
+    r = await api('GET', '/api/macrocycles/similarity?source=virtual&smiles=C1CCCCC1&similarity_metric=ctanimoto', { token: demoToken });
+    check('unsupported count metric rejected before upstream request', r.status === 400 && hits.macro.length === 2, `got ${r.status}`);
+    r = await api('GET', '/api/macrocycles/similarity?source=stock&smiles=C1CCCCC1', { token: demoToken });
+    check('unknown macrocycle source cannot select stock dataset', r.status === 400 && hits.macro.length === 2, `got ${r.status}`);
+    r = await api('GET', '/api/macrocycles/similarity?source=real&smiles=AUTHFAIL', { token: demoToken });
+    check('upstream auth failure is 502, never a demo-session 401', r.status === 502, `got ${r.status}`);
+    r = await api('GET', '/api/macrocycles/status?source=real');
+    check('macrocycle status requires staging session', r.status === 401, `got ${r.status}`);
     r = await api('GET', '/api/simulation/whatever/admet', { token: demoToken });
     check('ADMET sub-route refused with explanation', r.status === 403 && r.json?.code === 'DEMO_MODE_DISABLED', `got ${r.status} ${r.text.slice(0, 120)}`);
     r = await api('POST', '/api/diffdock/generate_file', { token: demoToken, body: {} });

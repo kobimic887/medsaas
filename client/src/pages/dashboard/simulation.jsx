@@ -26,6 +26,12 @@ import { clearViewerStorage, markViewerHandoff, normalizePdbId, rcsbPdbDownloadU
 import { stockResultsFromPayload, appendUniqueStockRows } from '@/utils/stockResults';
 import { cartItemFromCatalogPrice } from '@/utils/stockOffers';
 import { openResultsFromPayload } from '@/utils/openResults';
+import { macrocycleResultsFromPayload, appendUniqueMacrocycleRows } from '@/utils/macrocycleResults';
+
+const MACROCYCLE_SOURCES = Object.freeze({
+  real: { label: 'Real macrocycles', count: 18190 },
+  virtual: { label: 'Virtual macrocycles', count: 2350440 },
+});
 
 // Local mirror of the server allowlist labels (docs/DATA-STOCK-COMPOUNDS.md).
 // Prefer stockStatus.capabilities when the status probe succeeded; these keep
@@ -156,6 +162,8 @@ export function Simulation() {
   const stockStatusRequestRef = useRef(0);
   const [openStatus, setOpenStatus] = useState(null); // null | loading | available | unavailable
   const openStatusRequestRef = useRef(0);
+  const [macrocycleStatus, setMacrocycleStatus] = useState({});
+  const macrocycleStatusRequestRef = useRef(0);
   // Stock/open pagination is by offset over a stable ranking, never by a
   // parsed compound code (ASINEX IDs like "ASN 04188606" are strings).
   const [stockOffset, setStockOffset] = useState(0); // next offset for stock/open pages
@@ -170,7 +178,8 @@ export function Simulation() {
   const [openAiExplanation, setOpenAiExplanation] = useState('');
   // Full ranked AI result set — pagination slices locally so we do not re-call the model.
   const openRankedCacheRef = useRef(null);
-  const [queryType, setQueryType] = useState("draw"); // Default to Draw molecule
+  const [queryType, setQueryType] = useState("text"); // Compact entry keeps results visible on first load
+  const [editorExpanded, setEditorExpanded] = useState(false);
   const moleculeLimit = 30;
   const [similarityThreshold, setSimilarityThreshold] = useState(0.7); // Similarity threshold (0-1)
   // Stock fingerprint + metric (binary RDKit only). Defaults match the server
@@ -232,6 +241,7 @@ export function Simulation() {
   const searchSourceRef = useRef(searchSource);
   const stockStatusRef = useRef(stockStatus);
   const openStatusRef = useRef(openStatus);
+  const macrocycleStatusRef = useRef(macrocycleStatus);
   const stockOffsetRef = useRef(stockOffset);
   const pageSizeRef = useRef(pageSize);
   const similarityThresholdRef = useRef(similarityThreshold);
@@ -318,6 +328,10 @@ export function Simulation() {
   }, [openStatus]);
 
   useEffect(() => {
+    macrocycleStatusRef.current = macrocycleStatus;
+  }, [macrocycleStatus]);
+
+  useEffect(() => {
     openMaxResultsRef.current = openMaxResults;
   }, [openMaxResults]);
 
@@ -345,6 +359,7 @@ export function Simulation() {
     // Invalidate an in-flight stock/open availability check when leaving the page.
     stockStatusRequestRef.current += 1;
     openStatusRequestRef.current += 1;
+    macrocycleStatusRequestRef.current += 1;
     if (messageTimerRef.current) window.clearTimeout(messageTimerRef.current);
     if (clipboardTimerRef.current) window.clearTimeout(clipboardTimerRef.current);
   }, []);
@@ -559,6 +574,32 @@ export function Simulation() {
     }
   };
 
+  const fetchMacrocycleStatus = async (source) => {
+    const requestId = ++macrocycleStatusRequestRef.current;
+    setMacrocycleStatus((previous) => ({ ...previous, [source]: { state: 'loading' } }));
+    const token = getAuthToken();
+    try {
+      const params = new URLSearchParams({ source });
+      const res = await fetch(`${API_CONFIG.buildApiUrl('/macrocycles/status')}?${params}`, {
+        headers: {
+          accept: 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      const data = await res.json().catch(() => null);
+      if (macrocycleStatusRequestRef.current !== requestId) return;
+      setMacrocycleStatus((previous) => ({
+        ...previous,
+        [source]: res.ok && data?.available === true
+          ? { state: 'available', dataset: data.dataset }
+          : { state: 'unavailable', reason: data?.reason || data?.error || `Availability check failed (HTTP ${res.status}).` },
+      }));
+    } catch (err) {
+      if (macrocycleStatusRequestRef.current !== requestId) return;
+      setMacrocycleStatus((previous) => ({ ...previous, [source]: { state: 'unavailable', reason: err.message || 'Availability check failed.' } }));
+    }
+  };
+
   // Switching the search corpus must never leave the other corpus' results on
   // screen or let a stale response from it land afterwards. Reset everything the
   // list, cursor, selection, and in-flight requests depend on.
@@ -566,7 +607,7 @@ export function Simulation() {
   // any pending page before allowing another search.
   const handleThresholdChange = (value) => {
     setSimilarityThreshold(value);
-    if (searchSourceRef.current !== 'stock' && searchSourceRef.current !== 'open') return;
+    if (searchSourceRef.current !== 'stock' && searchSourceRef.current !== 'open' && !MACROCYCLE_SOURCES[searchSourceRef.current]) return;
     searchControllerRef.current?.abort();
     searchControllerRef.current = null;
     searchRequestIdRef.current += 1;
@@ -626,6 +667,7 @@ export function Simulation() {
     searchRequestIdRef.current += 1;
     stockStatusRequestRef.current += 1; // invalidate any in-flight status check
     openStatusRequestRef.current += 1;
+    macrocycleStatusRequestRef.current += 1;
     setSearchSource(nextSource);
     setIsSearchActive(false);
     isSearchActiveRef.current = false;
@@ -660,10 +702,58 @@ export function Simulation() {
       setSearchType('similarity');
       setSimilarityThreshold(value => Math.max(0.4, value));
       if (openStatusRef.current?.state !== 'available') fetchOpenStatus();
+    } else if (MACROCYCLE_SOURCES[nextSource]) {
+      setSearchType('similarity');
+      setSimilarityThreshold(value => Math.max(0.1, value));
+      if (macrocycleStatusRef.current?.[nextSource]?.state !== 'available') fetchMacrocycleStatus(nextSource);
     } else {
       // Back to the catalog: restore the normal browse entry state.
       fetchAllMolecules(0, false);
     }
+  };
+
+  const runMacrocycleSearch = async (offsetStart, append, { token, rawQuery, controller, requestId }) => {
+    const source = searchSourceRef.current;
+    if (!MACROCYCLE_SOURCES[source] || macrocycleStatusRef.current?.[source]?.state !== 'available') {
+      throw new Error('Macrocycle search is not available yet. See the availability note above.');
+    }
+    const params = new URLSearchParams({
+      source,
+      smiles: rawQuery,
+      threshold: String(similarityThresholdRef.current),
+      offset: String(offsetStart),
+      limit: String(pageSizeRef.current),
+      fingerprint_type: 'morgan',
+      similarity_metric: 'tanimoto',
+    });
+    const url = `${API_CONFIG.buildApiUrl('/macrocycles/similarity')}?${params}`;
+    const res = await fetchWithGatewayRetry(url, {
+      method: 'GET',
+      signal: controller.signal,
+      headers: {
+        accept: 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+    const responseText = await res.text();
+    if (!res.ok) {
+      let payload = null;
+      try { payload = responseText.trim() ? JSON.parse(responseText) : null; } catch { payload = null; }
+      throw new Error(payload?.error || describeUpstreamHttpError(res.status, res.statusText, responseText, 'stock'));
+    }
+    const payload = responseText.trim() ? JSON.parse(responseText) : { results: [] };
+    if (searchControllerRef.current !== controller || requestId !== searchRequestIdRef.current) return false;
+    const rows = macrocycleResultsFromPayload(payload, source);
+    if (append) setTopMolecules((previous) => [...previous, ...appendUniqueMacrocycleRows(previous, rows)]);
+    else {
+      setTopMolecules(rows);
+      setSelectedMolecules(new Set());
+    }
+    const engineRowCount = Array.isArray(payload.results) ? payload.results.length : 0;
+    setHasMore(engineRowCount >= pageSizeRef.current && rows.length > 0);
+    stockOffsetRef.current = offsetStart + engineRowCount;
+    setStockOffset(stockOffsetRef.current);
+    return true;
   };
 
   // One page of stock-compound similarity search. offsetStart is a page cursor
@@ -986,6 +1076,15 @@ export function Simulation() {
         return;
       }
 
+      if (MACROCYCLE_SOURCES[searchSourceRef.current]) {
+        const progressed = await runMacrocycleSearch(0, false, { token, rawQuery, controller, requestId });
+        if (progressed === false) return;
+        isSearchActiveRef.current = true;
+        setIsSearchActive(true);
+        setLastSearchQuery(rawQuery);
+        return;
+      }
+
       if (searchSourceRef.current === 'open') {
         // Open compounds: AI tool-loop by default when enabled; otherwise the
         // explicit deterministic path. Failures never fall back across modes.
@@ -1128,6 +1227,10 @@ export function Simulation() {
         // shared caller resets the offset on every fresh search, so an append can
         // never trail into a newer query's results.
         await runStockSearch(stockOffsetRef.current, true, { token, rawQuery, controller, requestId });
+        return;
+      }
+      if (MACROCYCLE_SOURCES[searchSourceRef.current]) {
+        await runMacrocycleSearch(stockOffsetRef.current, true, { token, rawQuery, controller, requestId });
         return;
       }
       if (searchSourceRef.current === 'open') {
@@ -1684,7 +1787,9 @@ export function Simulation() {
     return formatPrice(convertedPrice, currency);
   };
 
-  const moleculeSelectionId = (molecule, index) => molecule.ASINEX_ID || molecule.id || `molecule-${index}`;
+  const moleculeSelectionId = (molecule, index) => molecule.isMacrocycleRow && molecule.macrocycleRowId !== null && molecule.macrocycleRowId !== undefined
+    ? `macrocycle-${molecule.macrocycleSource}-${molecule.macrocycleRowId}`
+    : molecule.ASINEX_ID || molecule.id || `molecule-${index}`;
 
   // Handle checkbox selection
   const handleCheckboxChange = (molecule, index, isChecked) => {
@@ -1840,7 +1945,8 @@ export function Simulation() {
     openStatus?.state !== 'available'
     || (openUseAi && openStatus?.ai?.enabled !== true)
   );
-  const sourceSearchDisabled = stockSearchDisabled || openSearchDisabled;
+  const macrocycleSearchDisabled = Boolean(MACROCYCLE_SOURCES[searchSource]) && macrocycleStatus[searchSource]?.state !== 'available';
+  const sourceSearchDisabled = stockSearchDisabled || openSearchDisabled || macrocycleSearchDisabled;
 
   const handleCopySmiles = async () => {
     if (ketcherIframeRef.current) {
@@ -1932,13 +2038,15 @@ export function Simulation() {
         </div>
       )}
 
-      <div className="mb-6 flex flex-col gap-2 w-full">
+      <div className="grid w-full min-w-0 gap-4 md:grid-cols-[minmax(14rem,17rem)_minmax(0,1fr)] xl:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)] md:items-start">
+      <div id="query-panel" className="min-w-0 rounded-2xl border border-blue-gray-100 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950 sm:p-4">
+      <div className="mb-4 flex flex-col gap-2 w-full">
         {/* Search source: live ASINEX catalog vs Anna's stock compounds. The two
             corpora are never mixed or silently substituted: switching clears the
             result list, and an unprovisioned stock search is shown as such. */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 mb-2 w-full">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2 w-full">
           <Typography variant="small" color="blue-gray" className="mr-2">Search in:</Typography>
-          <label className="flex items-center gap-1 w-full sm:w-auto">
+          <label className="flex items-center gap-1 w-auto">
             <input
               type="radio"
               name="searchSource"
@@ -1948,7 +2056,7 @@ export function Simulation() {
             />
             <span>Internal catalog</span>
           </label>
-          <label className="flex items-center gap-1 w-full sm:w-auto">
+          <label className="flex items-center gap-1 w-auto">
             <input
               type="radio"
               name="searchSource"
@@ -1956,9 +2064,17 @@ export function Simulation() {
               checked={searchSource === "stock"}
               onChange={() => handleSourceChange("stock")}
             />
-            <span>Stock compounds (similarity)</span>
+            <span>Stock compounds<span className="sr-only"> (similarity)</span></span>
           </label>
-          <label className="flex items-center gap-1 w-full sm:w-auto">
+          <label className="flex items-center gap-1 w-auto">
+            <input type="radio" name="searchSource" value="real" checked={searchSource === 'real'} onChange={() => handleSourceChange('real')} />
+            <span>Real macrocycles<span className="sr-only"> (18,190 source records)</span></span>
+          </label>
+          <label className="flex items-center gap-1 w-auto">
+            <input type="radio" name="searchSource" value="virtual" checked={searchSource === 'virtual'} onChange={() => handleSourceChange('virtual')} />
+            <span>Virtual macrocycles<span className="sr-only"> (2,350,440 source records)</span></span>
+          </label>
+          <label className="flex items-center gap-1 w-auto">
             <input
               type="radio"
               name="searchSource"
@@ -1966,7 +2082,7 @@ export function Simulation() {
               checked={searchSource === "open"}
               onChange={() => handleSourceChange("open")}
             />
-            <span>Open compounds (ChEMBL)</span>
+            <span>Open compounds<span className="sr-only"> (ChEMBL)</span></span>
           </label>
         </div>
 
@@ -2006,6 +2122,26 @@ export function Simulation() {
               >
                 Check again
               </button>
+            </div>
+          </Alert>
+        )}
+
+        {MACROCYCLE_SOURCES[searchSource] && macrocycleStatus[searchSource]?.state === 'loading' && (
+          <div className="mb-2 flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/70 px-4 py-3" role="status" aria-live="polite">
+            <Spinner className="h-4 w-4 text-blue-500" />
+            <Typography variant="small" color="blue-gray">Checking {MACROCYCLE_SOURCES[searchSource].label.toLowerCase()} search availability…</Typography>
+          </div>
+        )}
+        {MACROCYCLE_SOURCES[searchSource] && macrocycleStatus[searchSource]?.state === 'available' && (
+          <div className="mb-2 rounded-lg border border-teal-100 bg-teal-50/70 px-4 py-3 text-sm text-blue-gray-700">
+            {MACROCYCLE_SOURCES[searchSource].label}: {(macrocycleStatus[searchSource].dataset?.rowCount || MACROCYCLE_SOURCES[searchSource].count).toLocaleString()} searchable / {MACROCYCLE_SOURCES[searchSource].count.toLocaleString()} export rows. Morgan (ECFP4) binary Tanimoto. {searchSource === 'real' ? 'Current stock unverified.' : 'Virtual; not stocked.'} No pack prices or cart purchases.
+          </div>
+        )}
+        {MACROCYCLE_SOURCES[searchSource] && macrocycleStatus[searchSource]?.state === 'unavailable' && (
+          <Alert color="amber" className="mb-2">
+            <div className="flex items-center justify-between gap-2">
+              <span>{MACROCYCLE_SOURCES[searchSource].label} search is unavailable: {macrocycleStatus[searchSource].reason}</span>
+              <button type="button" className="shrink-0 text-sm font-semibold underline" onClick={() => fetchMacrocycleStatus(searchSource)}>Check again</button>
             </div>
           </Alert>
         )}
@@ -2097,9 +2233,9 @@ export function Simulation() {
         )}
         
         {/* Query type radio buttons above search box */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 mb-2 w-full">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2 w-full">
           <Typography variant="small" color="blue-gray" className="mr-2">Query:</Typography>
-          <label className="flex items-center gap-1 w-full sm:w-auto">
+          <label className="flex items-center gap-1 w-auto">
             <input
               type="radio"
               name="queryType"
@@ -2109,7 +2245,7 @@ export function Simulation() {
             />
             <span>Draw molecule</span>
           </label>
-          <label className="flex items-center gap-1 w-full sm:w-auto">
+          <label className="flex items-center gap-1 w-auto">
             <input
               type="radio"
               name="queryType"
@@ -2117,15 +2253,15 @@ export function Simulation() {
               checked={queryType === "text"}
               onChange={() => setQueryType("text")}
             />
-            <span>Molecule ID, SMILES, CAS Number, IUPAC name, InChI, InChIKey</span>
+            <span>Paste identifier or SMILES</span>
           </label>
         </div>
         {/* Search type radio buttons. Stock mode is similarity-only (ranked); the
             catalog modes (substructure/structure/BAS/molecular weight) stay
             available under the Asinex source exactly as before. */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 mb-2 w-full">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2 w-full">
           <Typography variant="small" color="blue-gray" className="mr-2">Search type:</Typography>
-          <label className="flex items-center gap-1 w-full sm:w-auto">
+          <label className="flex items-center gap-1 w-auto">
             <input
               type="radio"
               name="searchType"
@@ -2137,7 +2273,7 @@ export function Simulation() {
           </label>
           {searchSource === "asinex" && (
             <>
-              <label className="flex items-center gap-1 w-full sm:w-auto">
+              <label className="flex items-center gap-1 w-auto">
                 <input
                   type="radio"
                   name="searchType"
@@ -2157,7 +2293,7 @@ export function Simulation() {
                 />
                 <span>Structure</span>
               </label>
-              <label className="flex items-center gap-1 w-full sm:w-auto">
+              <label className="flex items-center gap-1 w-auto">
                 <input
                   type="radio"
                   name="searchType"
@@ -2167,7 +2303,7 @@ export function Simulation() {
                 />
                 <span>BAS</span>
               </label>
-              <label className="flex items-center gap-1 w-full sm:w-auto">
+              <label className="flex items-center gap-1 w-auto">
                 <input
                   type="radio"
                   name="searchType"
@@ -2182,8 +2318,8 @@ export function Simulation() {
         </div>
         {searchSource === "stock" && (
           <div className="mb-2 w-full space-y-3 rounded-lg border border-teal-100 bg-teal-50/40 p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
-              <label className="block min-w-[12rem] flex-1">
+            <div className="flex flex-col gap-3">
+              <label className="block min-w-0 flex-1">
                 <span className="mb-1 block text-xs font-semibold text-blue-gray-700">Fingerprint</span>
                 <select
                   aria-label="Stock fingerprint"
@@ -2196,7 +2332,7 @@ export function Simulation() {
                   ))}
                 </select>
               </label>
-              <label className="block min-w-[12rem] flex-1">
+              <label className="block min-w-0 flex-1">
                 <span className="mb-1 block text-xs font-semibold text-blue-gray-700">Metric</span>
                 <select
                   aria-label="Stock metric"
@@ -2225,20 +2361,19 @@ export function Simulation() {
         
         {/* Similarity Threshold Slider */}
         {searchType === "similarity" && (
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 mb-2 w-full p-4 bg-blue-50 rounded-lg border border-blue-200">
+          <div className="flex flex-col items-start gap-2 mb-2 w-full p-4 bg-blue-50 rounded-lg border border-blue-200">
             <Typography variant="small" color="blue-gray" className="font-semibold min-w-fit">
               Similarity Threshold:
             </Typography>
-            <div className="flex items-center gap-4 w-full sm:w-auto flex-1">
+            <div className="flex items-center gap-2 w-full min-w-0">
               <input
                 type="range"
-                min={searchSource === "stock" ? "0.1" : searchSource === "open" ? "0.4" : "0"}
+                min={searchSource === "stock" ? "0.1" : searchSource === "open" ? "0.4" : MACROCYCLE_SOURCES[searchSource] ? "0.1" : "0"}
                 max="1"
                 step="0.1"
                 value={similarityThreshold}
                 onChange={(e) => handleThresholdChange(parseFloat(e.target.value))}
-                className="flex-1 h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                style={{ minWidth: '150px' }}
+                className="min-w-0 flex-1 h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
               />
               <div className="flex items-center justify-center min-w-[60px] px-3 py-1 bg-blue-600 text-white rounded-lg font-bold text-lg">
                 {similarityThreshold.toFixed(1)}
@@ -2248,7 +2383,7 @@ export function Simulation() {
         )}
 
         {searchSource === "open" && searchType === "similarity" && (
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 mb-2 w-full p-4 bg-indigo-50 rounded-lg border border-indigo-200">
+          <div className="flex flex-col items-start gap-2 mb-2 w-full p-4 bg-indigo-50 rounded-lg border border-indigo-200">
             <Typography variant="small" color="blue-gray" className="font-semibold min-w-fit">
               Max results:
             </Typography>
@@ -2281,14 +2416,14 @@ export function Simulation() {
               Molecular Weight Range:
             </Typography>
             
-            <div className="flex items-center gap-4 w-full">
+            <div className="flex flex-col gap-3 w-full">
               {/* Min value display */}
               <div className="flex items-center justify-center min-w-[80px] px-3 py-1 bg-brand-600 text-white rounded-lg font-bold text-lg">
                 {parseFloat(molWeightMin).toFixed(2)}
               </div>
               
               {/* Dual range slider container */}
-              <div className="flex-1 relative" style={{ minWidth: '200px' }}>
+              <div className="w-full min-w-0 relative h-6">
                 {/* Background track */}
                 <div className="absolute w-full h-2 bg-brand-200 rounded-lg" style={{ top: '50%', transform: 'translateY(-50%)' }}></div>
                 
@@ -2358,21 +2493,16 @@ export function Simulation() {
         )}
         
         {queryType !== "draw" && (
-        <div className="flex flex-col lg:flex-row gap-4 w-full">
+        <div className="flex flex-col gap-4 w-full">
           {/* Search section */}
-          <div id="molecule-search" className="flex flex-col sm:flex-row items-stretch gap-2 w-full lg:w-1/2"> {/* 50% width search bar */}
+          <div id="molecule-search" className="flex flex-col items-stretch gap-2 w-full">
             <Input
-              label={
-                searchSource === "stock"
-                  ? "SMILES of the molecule to search against the stock list"
-                  : searchSource === "open"
-                    ? "SMILES of the molecule to search in ChEMBL (open compounds)"
-                    : "Add molecule ID, SMILES, CAS Number, IUPAC name, InChI or InChIKey here"
-              }
+              label={searchSource === "asinex" ? "ID, SMILES, or name" : "Query SMILES"}
               value={searchCode}
               onChange={e => setSearchCode(e.target.value)}
               className="flex-1 min-w-0 w-full" // full width within the container
             />
+            {searchSource === "asinex" && <p className="text-xs text-blue-gray-500">CAS, IUPAC name, InChI, and InChIKey also work.</p>}
             <Button
               size="lg"
               onClick={handleSearch}
@@ -2386,8 +2516,8 @@ export function Simulation() {
    
 
           {/* Docking section */}
-          <div className="w-full lg:w-1/2 flex flex-col gap-4 p-6 rounded-lg bg-gradient-to-br from-blue-50 via-blue-100 to-blue-200 border border-blue-300 self-start">
-            <div className="flex gap-4 items-center">
+          <div className="w-full flex flex-col gap-4 p-4 rounded-lg bg-gradient-to-br from-blue-50 via-blue-100 to-blue-200 border border-blue-300 self-start">
+            <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
               <button
                 type="button"
                 className="text-blue-700 underline text-left w-fit focus:outline-none hover:text-blue-900 transition-colors"
@@ -2495,22 +2625,28 @@ export function Simulation() {
       )}
 
       {queryType !== "text" && (
-        <div id="editor" className="flex w-full flex-col gap-4 lg:flex-row">
+        <div id="editor" className="flex w-full min-w-0 flex-col gap-3">
           {/* Ketcher Editor - responsive primary pane */}
           <div className="min-w-0 flex-1 rounded-2xl border-2 border-blue-gray-200 bg-blue-gray-50 p-1.5 transition-colors focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-950 dark:focus-within:border-brand-500">
+            <div className="flex items-center justify-between px-2 py-1 text-sm font-semibold text-blue-gray-700 dark:text-slate-200">
+              <span>Draw a structure</span>
+              <button type="button" className="text-brand-700 underline dark:text-brand-300" onClick={() => setEditorExpanded((value) => !value)}>
+                {editorExpanded ? 'Compact editor' : 'Expand editor'}
+              </button>
+            </div>
             <div className="overflow-hidden rounded-xl border border-blue-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900">
               <iframe
                 ref={ketcherIframeRef}
                 src={withAppBase("/ketcher/index.html")}
                 title="Ketcher 2D Chemical Editor"
-                className="h-[clamp(28rem,63vh,42rem)] w-full border-0 bg-white dark:bg-slate-900"
+                className={`${editorExpanded ? 'h-[min(75vh,42rem)]' : 'h-[min(48vh,26rem)]'} w-full border-0 bg-white dark:bg-slate-900`}
                 allowFullScreen
               />
             </div>
           </div>
           
           {/* Controls Panel - Half width */}
-          <div id="controls-panel" className="flex min-w-0 w-full flex-col gap-4 rounded-lg bg-white p-4 dark:bg-slate-900 lg:w-1/2">
+          <div id="controls-panel" className="flex min-w-0 w-full flex-col gap-4 rounded-lg bg-white p-2 dark:bg-slate-900">
             {/* Copy SMILES Button */}
             <Button 
               onClick={handleCopySmiles}
@@ -2525,17 +2661,12 @@ export function Simulation() {
             <div className="flex flex-col gap-2">
               <Typography variant="h6" color="blue-gray">Search Molecules</Typography>
               <Input
-                label={
-                  searchSource === "stock"
-                    ? "SMILES of the molecule to search against the stock list"
-                    : searchSource === "open"
-                      ? "SMILES of the molecule to search in ChEMBL (open compounds)"
-                      : "Add molecule ID, SMILES, CAS Number, IUPAC name, InChI or InChIKey here"
-                }
+                label={searchSource === "asinex" ? "ID, SMILES, or name" : "Query SMILES"}
                 value={searchCode}
                 onChange={e => setSearchCode(e.target.value)}
                 className="w-full"
               />
+              {searchSource === "asinex" && <p className="text-xs text-blue-gray-500">CAS, IUPAC name, InChI, and InChIKey also work.</p>}
               <Button
                 size="lg"
                 onClick={handleSearch}
@@ -2549,7 +2680,7 @@ export function Simulation() {
 
             {/* Docking section */}
             <div className="flex flex-col gap-4 p-4 rounded-lg bg-gradient-to-br from-blue-50 via-blue-100 to-blue-200 border border-blue-300">
-              <div className="flex gap-4 items-center">
+              <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
                 <button
                   type="button"
                   className="text-blue-700 underline text-left w-fit focus:outline-none hover:text-blue-900 transition-colors"
@@ -2644,6 +2775,12 @@ export function Simulation() {
           </div>
         </div>
       )}
+      </div>
+      <section aria-labelledby="results-heading" className="min-w-0">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 id="results-heading" className="text-xl font-semibold text-blue-gray-900 dark:text-slate-50">Results</h2>
+          <span className="text-sm text-blue-gray-600 dark:text-slate-300">{topMolecules.length} shown{hasMore && (searchSource === 'asinex' || isSearchActive) ? ' · more available' : ''}</span>
+        </div>
         <div id="results" className="w-full bg-slate-100 dark:bg-slate-900">
           {/* Header as a block element, not wrapping Card or div */}
           {/* <div className="mb-4">
@@ -2658,7 +2795,49 @@ export function Simulation() {
           {topError && (
             <Alert color="red" className="mb-4">{topError}</Alert>
           )}
-          {!initialLoading && !topError && topMolecules.length > 0 && (searchSource === "stock" ? (
+          {!initialLoading && !topError && topMolecules.length > 0 && (MACROCYCLE_SOURCES[searchSource] ? (
+            <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
+              <CardBody className="p-0">
+                <div className="border-b border-teal-100 bg-teal-50/60 px-4 py-3 text-xs text-blue-gray-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+                  {MACROCYCLE_SOURCES[searchSource].label} · Morgan (ECFP4) binary Tanimoto. Amount and lead time are dated export fields, not current offers. No prices or cart purchases; select structures for docking handoff.
+                </div>
+                <table className="w-full table-fixed text-left text-sm">
+                  <thead className="sticky top-0 z-10 bg-white dark:bg-slate-900">
+                    <tr>
+                      <th className="w-10 p-2"><input type="checkbox" aria-label="Select all macrocycles" checked={getSelectAllState().checked} ref={(el) => { if (el) el.indeterminate = getSelectAllState().indeterminate; }} onChange={(e) => handleSelectAll(e.target.checked)} /></th>
+                      <th className="w-10 p-2">#</th><th className="w-20 p-2">Similarity</th><th className="w-48 p-2">Macrocycle ID and export details</th><th className="p-2">SMILES</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topMolecules.map((mol, idx) => {
+                      const id = moleculeSelectionId(mol, idx);
+                      const exportDetails = [
+                        mol.snapshotMg && `${mol.snapshotMg} mg`,
+                        mol.snapshotUm && `${mol.snapshotUm} µmol`,
+                        mol.snapshotLeadTime,
+                      ].filter(Boolean).join(' · ');
+                      return (
+                        <tr key={`${mol.macrocycleSource}-${mol.macrocycleRowId}-${idx}`} className="border-b border-blue-gray-100 dark:border-slate-800">
+                          <td className="p-2"><input type="checkbox" aria-label={`Select ${mol.macrocycleCode}`} checked={selectedMolecules.has(id)} onChange={(e) => handleCheckboxChange(mol, idx, e.target.checked)} /></td>
+                          <td className="p-2">{idx + 1}</td>
+                          <td className="p-2 font-semibold">{mol.SIMILARITY === null ? '—' : mol.SIMILARITY.toFixed(3)}</td>
+                          <td className="p-2 text-xs">
+                            <div className="font-mono font-semibold break-all">{mol.macrocycleCode}</div>
+                            <div className="mt-1 text-blue-gray-500" title="Dated supplier export; amount and lead time are unverified now">{exportDetails || 'No export amount or lead time'} · {searchSource === 'real' ? 'stock unverified' : 'virtual'}</div>
+                          </td>
+                          <td className="min-w-0 p-2 font-mono text-xs">
+                            <button type="button" className="block w-full truncate text-left underline decoration-dotted" title={`Copy ${mol.SMILES_STRING}`} onClick={async () => { setSearchCode(mol.SMILES_STRING); try { await copyToClipboard(mol.SMILES_STRING); showClipboardConfirmation(); } catch { showMessage('SMILES could not be copied.', 'error'); } }}>
+                              {mol.SMILES_STRING}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </CardBody>
+            </Card>
+          ) : searchSource === "stock" ? (
             <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
                 <div className="border-b border-blue-gray-100 bg-blue-gray-50/60 px-4 py-2 text-xs text-blue-gray-600 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-400">
@@ -3059,6 +3238,11 @@ export function Simulation() {
               <Typography variant="small" color="gray">Loading more molecules...</Typography>
             </div>
           )}
+          {isSearchActive && hasMore && !topLoading && topMolecules.length > 0 && (
+            <button type="button" className="mb-4 w-full rounded-lg border border-brand-300 bg-white px-4 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50" onClick={loadMoreSearchResults}>
+              Load more results
+            </button>
+          )}
           
           {/* No More Data Message */}
           {!hasMore && topMolecules.length > 0 && !topLoading && (
@@ -3077,6 +3261,10 @@ export function Simulation() {
                   ? isSearchActive
                     ? `No stock compounds matched this structure at the current ${stockMetricLabel} threshold (${similarityThreshold.toFixed(1)}) with ${stockFpLabel}. Lower the similarity threshold or try another molecule.`
                     : "Search the stock list: choose fingerprint and metric, enter a SMILES or draw a molecule, then select Search."
+                  : MACROCYCLE_SOURCES[searchSource]
+                    ? isSearchActive
+                      ? `No ${MACROCYCLE_SOURCES[searchSource].label.toLowerCase()} matched at this threshold. Lower it or try another structure.`
+                      : `Search ${MACROCYCLE_SOURCES[searchSource].label.toLowerCase()}: enter a SMILES or draw a molecule, then select Search.`
                   : searchSource === "open"
                     ? isSearchActive
                       ? "No open compounds matched this structure at the current threshold among retrieved ChEMBL candidates. Lower the similarity threshold or try another molecule."
@@ -3090,6 +3278,8 @@ export function Simulation() {
             </div>
           )}
         </div>
+      </section>
+      </div>
       {showClipboardPopup && (
         <Alert color="green" className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-fit px-6 py-3 text-center">
           Ctrl+V into Draw molecule

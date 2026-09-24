@@ -13,6 +13,7 @@ Longer-form reference for Pyxis Discovery. Shared agent instructions:
 | Situation | Read |
 |---|---|
 | **Simulation stock search (contract)** | [DATA-STOCK-COMPOUNDS.md](./DATA-STOCK-COMPOUNDS.md) — live release state in [POST-PROMOTION-HANDOFF.md](./POST-PROMOTION-HANDOFF.md) |
+| **Simulation macrocycle sources** | [DATA-MACROCYCLES.md](./DATA-MACROCYCLES.md) — dated real and virtual exports, read-only staging index |
 | **Staging / demo mode / folding history** | [STAGING.md](./STAGING.md) (runbook: `deploy/staging/README.md`) |
 | **Protein-design research / folding next steps** | [PROTEIN-DESIGN-RESEARCH.md](./PROTEIN-DESIGN-RESEARCH.md) |
 | **Where is this copy / leftover?** | [WHERE.md](./WHERE.md) |
@@ -58,6 +59,7 @@ Full table in [NEXT-SESSION.md](./NEXT-SESSION.md) § Owner decisions. Short for
 | [IMPROVEMENTS.md](./IMPROVEMENTS.md) | Optional backlog (not critical path) |
 | [ASINEX-ESHOP-HANDOFF.md](./ASINEX-ESHOP-HANDOFF.md) / [ASINEX-ESHOP-REVERSE-ENGINEERING.md](./ASINEX-ESHOP-REVERSE-ENGINEERING.md) | External catalog/storefront reference |
 | [DATA-STOCK-COMPOUNDS.md](./DATA-STOCK-COMPOUNDS.md) | Anna's stock-compound dataset (inspection, import contract, Simulation search integration + env contract) |
+| [DATA-MACROCYCLES.md](./DATA-MACROCYCLES.md) | September 2026 real and virtual macrocycle source provenance, search contract, and index rebuild |
 | [archive/](./archive/) | Superseded plans (quality roadmap, Neurosnap, Bun↔Node rollback, stock-search review) |
 
 ### Deploy trees agents trip on
