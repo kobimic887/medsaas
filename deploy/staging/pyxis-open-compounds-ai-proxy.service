@@ -1,0 +1,18 @@
+[Unit]
+Description=Pyxis staging free AI proxy on oracleOld (loopback only)
+After=network-online.target omniroute.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/projects/medsaas
+# Existing oracleOld credential file. Do not copy its key to 84.
+EnvironmentFile=/home/ubuntu/.config/omniroute/oracle.env
+ExecStart=/usr/bin/python3 services/omniroute-staging-proxy/server.py
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

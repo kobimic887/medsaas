@@ -112,6 +112,14 @@ configDotenv();
 // providers (owner-authorized). Billing/purchases/email stay refused. Production
 // and the normal dev stack leave this unset and are completely unaffected.
 const DEMO_MODE = process.env.PYXIS_DEMO_MODE === 'true';
+// Full staging runs the normal Mongo-backed app under /staging/ with the same
+// production account records. Keep this flag separate from the legacy demo
+// router so the client can label the environment truthfully.
+const STAGING_MODE = process.env.PYXIS_STAGING_MODE === 'true';
+if (DEMO_MODE && STAGING_MODE) {
+  console.error('PYXIS_DEMO_MODE and PYXIS_STAGING_MODE cannot both be true.');
+  process.exit(1);
+}
 
 // In demo mode the server has NO MongoDB and NO Stripe/NVIDIA keys. JWT_SECRET
 // is still required — the staging process must run with its OWN signing secret
@@ -263,7 +271,11 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
   }
 });
 
-const allowedOrigins = new Set([APP_BASE_URL, FRONTEND_URL].filter(Boolean));
+// FRONTEND_URL may include /staging while the browser's Origin is only its
+// scheme and host. Compare origins, not full application URLs.
+const allowedOrigins = new Set([APP_BASE_URL, FRONTEND_URL].filter(Boolean).map((value) => {
+  try { return new URL(value).origin; } catch { return value; }
+}));
 
 app.use(express.json({ limit: '8mb' }));
 app.use(cors({
@@ -313,6 +325,18 @@ if (DEMO_MODE) {
   // /api path with 503 so nothing can silently fall through to the Mongo-backed
   // API or a paid provider.
   app.use(createStagingDemoRouter({ jwtSecret: JWT_SECRET, jwtExpiresIn: JWT_EXPIRES_IN }));
+}
+
+if (STAGING_MODE) {
+  app.get('/api/staging/status', (_req, res) => res.json({
+    staging: true,
+    demo: false,
+    sharedProductionData: true,
+    historyAvailable: true,
+    provider: 'live',
+    providerLive: true,
+    creditsEnabled: true,
+  }));
 }
 
 /**

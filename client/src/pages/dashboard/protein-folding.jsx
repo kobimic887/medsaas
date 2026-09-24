@@ -133,7 +133,7 @@ const ProteinFolding = () => {
         });
         if (response.ok) {
           const data = await response.json();
-          setEnvStatus(data.demo ? data : { demo: false, historyAvailable: false });
+          setEnvStatus(data.staging ? data : { demo: false, historyAvailable: false });
         } else {
           setEnvStatus({ demo: false, historyAvailable: false });
         }

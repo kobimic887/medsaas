@@ -39,6 +39,7 @@ function check(label, cond, extra = '') {
 console.log('[open-ai] runtime gates');
 {
   check('openrouter/free counts as free', isLikelyFreeModel('openrouter/free'));
+  check('OmniRoute OpenRouter route counts as free', isLikelyFreeModel('openrouter/openrouter/free'));
   check(':free suffix counts as free', isLikelyFreeModel('google/gemma-4-26b-a4b-it:free'));
   check('gpt-4.1-mini is not free', !isLikelyFreeModel('gpt-4.1-mini'));
 
@@ -84,6 +85,30 @@ console.log('[open-ai] runtime gates');
   );
   check('enables free openrouter with key', ok.enabled === true && ok.apiKey === 'sk-test-free');
   check('does not leak key into reason', !String(ok.reason).includes('sk-test'));
+
+  const omni = resolveOpenCompoundsAiRuntime({}, {
+    OPEN_COMPOUNDS_AI_ENABLED: 'true',
+    OPEN_COMPOUNDS_AI_PROVIDER: 'omniroute',
+    OPEN_COMPOUNDS_AI_BASE_URL: 'http://127.0.0.1:20129/v1',
+  });
+  check('OmniRoute uses only the local proxy and verified free model', omni.enabled === true
+    && omni.baseUrl === 'http://127.0.0.1:20129/v1'
+    && omni.model === 'openrouter/openrouter/free'
+    && omni.apiKey === 'local-proxy');
+  const remoteOmni = resolveOpenCompoundsAiRuntime({}, {
+    OPEN_COMPOUNDS_AI_ENABLED: 'true',
+    OPEN_COMPOUNDS_AI_PROVIDER: 'omniroute',
+    OPEN_COMPOUNDS_AI_BASE_URL: 'http://151.145.91.17:20128/v1',
+  });
+  check('OmniRoute rejects public plaintext gateway URLs', remoteOmni.enabled === false);
+  const paidOmni = resolveOpenCompoundsAiRuntime({}, {
+    OPEN_COMPOUNDS_AI_ENABLED: 'true',
+    OPEN_COMPOUNDS_AI_PROVIDER: 'omniroute',
+    OPEN_COMPOUNDS_AI_MODEL: 'openrouter/openai/gpt-4.1-mini',
+    OPEN_COMPOUNDS_AI_BASE_URL: 'http://127.0.0.1:20129/v1',
+    OPEN_COMPOUNDS_AI_ALLOW_PAID: 'true',
+  });
+  check('OmniRoute proxy rejects paid routes even with ALLOW_PAID', paidOmni.enabled === false);
 }
 
 console.log('[open-ai] locked tool args');

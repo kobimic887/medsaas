@@ -5,10 +5,10 @@
 // the tool path (runOpenCompoundsSearch / RDKit). Model-written similarity
 // numbers are never accepted as measured evidence.
 //
-// Providers are OpenAI-compatible chat-completions endpoints (OpenRouter or
-// OpenAI). Paid models require OPEN_COMPOUNDS_AI_ALLOW_PAID=true. Free-tier
-// OpenRouter models are preferred when configured with `:free` or
-// `openrouter/free`.
+// Providers are OpenAI-compatible chat-completions endpoints. The OmniRoute
+// provider talks only to an operator-configured loopback proxy; that proxy
+// holds the gateway key and tunnels to oracleOld. Paid models require
+// OPEN_COMPOUNDS_AI_ALLOW_PAID=true.
 
 import {
   OpenCompoundsUnavailableError,
@@ -46,6 +46,13 @@ export const OPEN_COMPOUNDS_AI_PROVIDERS = Object.freeze({
     defaultModel: 'gpt-4.1-mini',
     freeModelHint: 'OpenAI has no free tool-calling tier in this integration; requires OPEN_COMPOUNDS_AI_ALLOW_PAID=true.',
   },
+  omniroute: {
+    id: 'omniroute',
+    label: 'OmniRoute (OpenRouter free)',
+    baseUrl: null,
+    defaultModel: 'openrouter/openrouter/free',
+    freeModelHint: 'Use the verified openrouter/openrouter/free tool route through the local staging proxy.',
+  },
 });
 
 export class OpenCompoundsAiError extends Error {
@@ -62,7 +69,21 @@ export function isLikelyFreeModel(model) {
   if (!id) return false;
   if (id.endsWith(':free')) return true;
   if (id === 'openrouter/free') return true;
+  if (id === 'openrouter/openrouter/free') return true;
   return false;
+}
+
+function resolveOmniRouteProxyBase(raw) {
+  try {
+    const url = new URL(String(raw || ''));
+    if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port
+      || url.pathname !== '/v1' || url.username || url.password || url.search || url.hash) {
+      return null;
+    }
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -75,9 +96,14 @@ export function resolveOpenCompoundsAiRuntime(aiConfig, env = process.env) {
     .trim()
     .toLowerCase();
   const provider = OPEN_COMPOUNDS_AI_PROVIDERS[providerId] || null;
+  const baseUrl = providerId === 'omniroute'
+    ? resolveOmniRouteProxyBase(env.OPEN_COMPOUNDS_AI_BASE_URL)
+    : provider?.baseUrl || null;
   const model = String(aiConfig?.model || env.OPEN_COMPOUNDS_AI_MODEL || provider?.defaultModel || '')
     .trim() || null;
-  const apiKey = String(
+  // The local OmniRoute proxy injects the actual gateway credential on 151.
+  // This placeholder never authenticates anything and is not a secret.
+  const apiKey = providerId === 'omniroute' ? 'local-proxy' : String(
     env.OPEN_COMPOUNDS_AI_API_KEY || env.OPENROUTER_API_KEY || env.OPENAI_API_KEY || ''
   ).trim();
   const configured = String(env.OPEN_COMPOUNDS_AI_ENABLED || '').trim().toLowerCase() === 'true';
@@ -115,6 +141,28 @@ export function resolveOpenCompoundsAiRuntime(aiConfig, env = process.env) {
       allowPaid,
     };
   }
+  if (provider.id === 'omniroute' && !baseUrl) {
+    return {
+      enabled: false,
+      reason: 'OmniRoute requires OPEN_COMPOUNDS_AI_BASE_URL at an HTTP 127.0.0.1:<port>/v1 proxy.',
+      provider: provider.id,
+      model,
+      apiKey: '',
+      baseUrl: null,
+      allowPaid,
+    };
+  }
+  if (provider.id === 'omniroute' && model !== 'openrouter/openrouter/free') {
+    return {
+      enabled: false,
+      reason: 'This OmniRoute proxy permits only the verified openrouter/openrouter/free tool route.',
+      provider: provider.id,
+      model,
+      apiKey: '',
+      baseUrl,
+      allowPaid,
+    };
+  }
   if (!apiKey) {
     return {
       enabled: false,
@@ -122,18 +170,18 @@ export function resolveOpenCompoundsAiRuntime(aiConfig, env = process.env) {
       provider: provider.id,
       model,
       apiKey: '',
-      baseUrl: provider.baseUrl,
+      baseUrl,
       allowPaid,
     };
   }
-  if (!allowPaid && !isLikelyFreeModel(model) && provider.id === 'openrouter') {
+  if (!allowPaid && !isLikelyFreeModel(model) && (provider.id === 'openrouter' || provider.id === 'omniroute')) {
     return {
       enabled: false,
       reason: `Model "${model}" does not look free-tier. Use a :free model / openrouter/free, or set OPEN_COMPOUNDS_AI_ALLOW_PAID=true after budget approval.`,
       provider: provider.id,
       model,
       apiKey: '',
-      baseUrl: provider.baseUrl,
+      baseUrl,
       allowPaid,
     };
   }
@@ -155,7 +203,7 @@ export function resolveOpenCompoundsAiRuntime(aiConfig, env = process.env) {
     provider: provider.id,
     model,
     apiKey,
-    baseUrl: provider.baseUrl,
+    baseUrl,
     allowPaid,
   };
 }

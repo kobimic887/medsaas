@@ -58,8 +58,53 @@ demo/fixture semantics.
 - `env.server.template` — non-secret env layout; secrets are generated on the host
 - `pyxis-macrocycle-search-staging.service` — separate loopback index unit
 - `10-macrocycle-search.conf` — staging-only web service drop-in
+- `pyxis-web-staging-full.service` — opt-in full app unit: existing production
+  Atlas/JWT/provider credentials, separate `/staging/` listener and assets
+- `pyxis-open-compounds-ai-proxy.service` — oracleOld loopback key-injecting
+  proxy, pinned to the verified free OpenRouter tool model
+- `pyxis-open-compounds-ai-tunnel.service` — oracleOld → 84 SSH reverse tunnel;
+  84 sees only `127.0.0.1:20129`, never the gateway credential
 - `deploy-staging.sh` — repeatable staging deploy (run on 84 as root)
 - `rollback-staging.sh` — remove routing + service + tree
+
+## Full staging mode (same production records)
+
+The original staging service is an isolated demo. To use the same real
+accounts, history, credits, orders, database, providers and checkout as the
+consumer app, install `pyxis-web-staging-full.service` over the staging unit.
+It reads `/root/pyxis-LIVE-5174/server/.env` in place; do not copy or log that
+file. `ExecStart` overrides the listen port, asset path, `/staging/` public URL,
+demo/full flags, and free AI route. The `10-macrocycle-search.conf` drop-in
+still provides the independent macrocycle index. The normal application routes
+then run, including stock search, ChEMBL, folding, billing and history.
+
+This is a **shared production database**: staging actions change the same user,
+history, order, and credit records. Staging keeps its own process, frontend
+bundle, `/staging/` URLs and browser storage namespace; users sign in with
+their normal credentials. No link or redirect is added from the consumer app.
+
+Before switching, copy the current staging unit, `server/index.js`, and
+`client/dist` to a dated rollback directory on 84 (exclude `.env`); record the
+consumer bundle SHA-256. Install the new unit, run `systemd-analyze verify`,
+restart **only** `pyxis-web-staging`, and check `/health` plus
+`/api/staging/status` on loopback and over HTTPS. The status must report
+`demo:false`, `sharedProductionData:true`. Verify a normal login and existing
+history in the browser, both macrocycle sources, stock and ChEMBL status, and
+that the consumer bundle hash and `pyxis-web` PID did not change.
+
+For the private free AI path, install the two AI systemd units on oracleOld.
+The proxy reads the existing `~/.config/omniroute/oracle.env` there. The SSH
+reverse tunnel terminates at 84 loopback `:20129`. Test `GET /health` through
+the tunnel before enabling the full staging unit. The only allowed model is
+`openrouter/openrouter/free`; no credential is written to 84. If the tunnel or
+free provider is down, AI search returns an error and **Search without AI**
+remains available.
+
+Rollback full staging: restore the saved original staging unit, run
+`systemctl daemon-reload`, restart only `pyxis-web-staging`, then verify
+`/api/staging/status` reports `demo:true`; restore the saved frontend bundle if
+necessary. Stop the two oracleOld AI units if no longer needed. Do not restart
+`pyxis-web` or alter nginx, DNS, the Mongo database, or the production env file.
 
 ## First install (one time, on 84, root)
 

@@ -1,0 +1,15 @@
+[Unit]
+Description=Pyxis staging private AI tunnel from oracleOld to 84
+After=network-online.target pyxis-open-compounds-ai-proxy.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+ExecStart=/usr/bin/ssh -N -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=yes -R 127.0.0.1:20129:127.0.0.1:20130 oracleNew
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

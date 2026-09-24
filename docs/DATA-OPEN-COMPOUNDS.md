@@ -53,25 +53,32 @@ database-wide top-N. Retrieval cap 300; requested final count ≤ 100.
 6. Optional short model summary may appear; scores are never taken from it.
 
 Limits: ≤4 model rounds, ≤2 tool calls, 90s timeout, 1200 max tokens,
-instruction ≤500 chars. No arbitrary URL/SQL/shell. Provider host allowlist only
-(`openrouter`, `openai`).
+instruction ≤500 chars. No arbitrary URL/SQL/shell. Provider allowlist:
+`openrouter`, `openai`, or the staging `omniroute` loopback proxy.
 
 ### Provider / cost gate
 
 | Env | Meaning |
 |---|---|
 | `OPEN_COMPOUNDS_AI_ENABLED=true` | Opt-in |
-| `OPEN_COMPOUNDS_AI_PROVIDER` | `openrouter` or `openai` |
-| `OPEN_COMPOUNDS_AI_MODEL` | e.g. `openrouter/free` or a `:free` model with tools |
+| `OPEN_COMPOUNDS_AI_PROVIDER` | `openrouter`, `openai`, or `omniroute` |
+| `OPEN_COMPOUNDS_AI_MODEL` | e.g. `openrouter/free`; OmniRoute uses only `openrouter/openrouter/free` |
 | `OPEN_COMPOUNDS_AI_API_KEY` (or `OPENROUTER_API_KEY` / `OPENAI_API_KEY`) | Secret — never logged |
+| `OPEN_COMPOUNDS_AI_BASE_URL` | For `omniroute` only: operator-provisioned `http://127.0.0.1:<port>/v1` proxy |
 | `OPEN_COMPOUNDS_AI_ALLOW_PAID=true` | Required for non-free / OpenAI models |
 
-Measured 2026-09-09: OpenRouter lists free models with `tools` /
-`tool_choice`, including `openrouter/free`. Prefer those unless the owner
-approves a paid budget. **Do not invoke paid models without that approval.**
+Measured 2026-09-24: OmniRoute's `openrouter/openrouter/free` returned a
+required tool call successfully. Its `oc/*-free` routes returned 403 for generic
+API use (OpenCode-only), so staging pins the verified OpenRouter route. The
+staging app reaches a `127.0.0.1` SSH tunnel on 84; a small proxy on oracleOld
+injects the existing OmniRoute client key into requests to its own loopback
+gateway. The key is never copied to 84 or sent over the public HTTP listener.
+The proxy accepts only the chemical-search tool and pinned free model.
+**Do not invoke paid models without budget approval.**
 
-Privacy: query SMILES and optional instruction are sent to the AI provider and
-to ChEMBL. UI states this. No cross-user result cache.
+Privacy: query SMILES and optional instruction are sent through OmniRoute to
+OpenRouter (or directly to the selected provider) and to ChEMBL. UI states
+this. No cross-user result cache.
 
 ## API (authenticated)
 

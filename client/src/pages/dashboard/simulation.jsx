@@ -2090,12 +2090,12 @@ export function Simulation() {
           </label>
         </div>
 
-        {/* Staging-only note: what the data is and what costs money, so owner
-            testing never mistakes the live catalog for a sample or a run for free. */}
+        {/* Staging can run against production accounts; be explicit about
+            external data and billed scientific execution in either mode. */}
         {IS_STAGING_BUILD && (
           <p className="mb-2 text-xs text-blue-gray-500 dark:text-slate-400" role="note">
-            Staging: catalog data is the live read-only internal catalog (the same one production uses); search runs against it.
-            Docking below calls the real provider and is billed to the upstream service under the synthetic test account — checkout stays disabled.
+            Staging uses live search sources when available. Docking and other scientific runs can use paid providers;
+            check the staging notice for whether accounts, credits, and orders are shared with production.
           </p>
         )}
 

@@ -1,0 +1,25 @@
+# Full /staging/ app: same account database and providers as the consumer app.
+# The browser assets and listener remain /staging/ scoped and separate.
+# This unit reads the EXISTING production env file in place; it does not copy
+# or print credentials. The staging process uses the same Mongo/JWT/Stripe
+# credentials and therefore writes real account, history and billing records.
+[Unit]
+Description=Pyxis staging /staging/ (production data, loopback 5274)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/pyxis-STAGING-5274/server
+EnvironmentFile=/root/pyxis-LIVE-5174/server/.env
+# ExecStart env overrides any matching keys in the production env file.
+ExecStart=/usr/bin/env PORT=5274 BIND_HOST=127.0.0.1 FRONTEND_DIST=/root/pyxis-STAGING-5274/client/dist PYXIS_DEMO_MODE=false PYXIS_STAGING_MODE=true BASE_URL=https://app.pyxis-discovery.com/staging FRONTEND_URL=https://app.pyxis-discovery.com/staging OPEN_COMPOUNDS_AI_ENABLED=true OPEN_COMPOUNDS_AI_PROVIDER=omniroute OPEN_COMPOUNDS_AI_MODEL=openrouter/openrouter/free OPEN_COMPOUNDS_AI_BASE_URL=http://127.0.0.1:20129/v1 OPEN_COMPOUNDS_AI_ALLOW_PAID=false /usr/local/bin/bun index.js
+Restart=always
+RestartSec=2
+StandardOutput=append:/var/log/pyxis-web-staging.log
+StandardError=append:/var/log/pyxis-web-staging.log
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
