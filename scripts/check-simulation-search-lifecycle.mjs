@@ -233,11 +233,51 @@ checks.push(
   ['real and virtual macrocycle sources are visible', simulation.includes('Real macrocycles<span className="sr-only"> (18,190 source records)</span>') && simulation.includes('Virtual macrocycles<span className="sr-only"> (2,350,440 source records)</span>')],
   ['staging opens the imported source while consumer catalog default stays intact', simulation.includes('useState(IS_STAGING_BUILD ? "real" : "asinex")') && simulation.includes('fetchMacrocycleStatus(searchSourceRef.current)')],
   ['macrocycle status and similarity use authenticated routes', simulation.includes("/macrocycles/status") && simulation.includes("/macrocycles/similarity")],
-  ['macrocycle search uses a fixed Morgan Tanimoto method', simulation.includes("fingerprint_type: 'morgan'") && simulation.includes("similarity_metric: 'tanimoto'")],
+  ['macrocycle search forwards its selected metric with the Morgan fingerprint', simulation.includes("fingerprint_type: 'morgan'") && simulation.includes('similarity_metric: macrocycleSimilarityMetricRef.current')],
+  ['macrocycle metric options come from the dataset capabilities', simulation.includes('activeMacrocycleStatus.capabilities?.similarityMetrics') && simulation.includes('macrocycleMetricOptions')],
+  ['macrocycle method selector is labelled for a11y', simulation.includes('aria-label="Macrocycle similarity method"')],
+  ['macrocycle status clamps the metric to what the dataset can score', simulation.includes('countMetricsAvailable') && simulation.includes("macrocycleSimilarityMetricRef.current = 'tanimoto'")],
+  ['macrocycle result banner reports the method that produced the rows', simulation.includes('macrocycleResultMethodLabel') && simulation.includes('Ranked by {macrocycleMetricLabel}')],
+  ['macrocycle count copy never claims MOE equivalence', simulation.includes('they are a Pyxis method and are not MOE ctanimoto')],
   ['macrocycle rows have no cart or price controls', simulation.includes('No prices or cart purchases; select structures for docking handoff.')],
   ['query and results are adjacent columns from tablet width', simulation.includes('md:grid-cols-[minmax(14rem,17rem)_minmax(0,1fr)]') && simulation.includes('aria-labelledby="results-heading"')],
   ['results offer explicit pagination in the two-column layout', simulation.includes('Load more results')],
 );
+
+{
+  // Execute handleMacrocycleMethodChange the same way as the stock one: a metric
+  // change defines a new ranking, and a non-macrocycle source is left untouched.
+  const macroBody = simulation.split('const handleMacrocycleMethodChange = (value) => {')[1].split('\n  };')[0];
+  const buildCtx = (source) => {
+    const calls = [];
+    const ctx = {
+      MACROCYCLE_SOURCES: { real: { label: 'Real macrocycles' }, virtual: { label: 'Virtual macrocycles' } },
+      searchSourceRef: { current: source },
+      searchControllerRef: { current: { abort() { calls.push('abort'); } } },
+      searchRequestIdRef: { current: 5 }, isSearchActiveRef: { current: true },
+      isLoadingPageRef: { current: true }, stockOffsetRef: { current: 50 },
+      openRankedCacheRef: { current: [{ chemblId: 'stale' }] },
+      macrocycleSimilarityMetricRef: { current: 'tanimoto' },
+    };
+    for (const name of ['setMacrocycleSimilarityMetric', 'setStockOffset', 'setIsSearchActive', 'setSearchLoading', 'setTopLoading', 'setHasMore', 'setTopMolecules', 'setSelectedMolecules', 'setSearchError', 'setOpenAiStage', 'setOpenAiExplanation']) {
+      ctx[name] = (value) => calls.push([name, value]);
+    }
+    return { ctx, calls };
+  };
+  const active = buildCtx('real');
+  new Function(...Object.keys(active.ctx), 'value', macroBody)(...Object.values(active.ctx), 'count_tanimoto');
+  checks.push(
+    ['macrocycle metric change aborts the old ranking', active.calls.includes('abort') && active.ctx.searchRequestIdRef.current === 6],
+    ['macrocycle metric change resets paging and old rows', active.ctx.stockOffsetRef.current === 0 && !active.ctx.isSearchActiveRef.current && active.calls.some((c) => c[0] === 'setTopMolecules' && c[1].length === 0)],
+    ['macrocycle metric change updates state and ref', active.calls.some((c) => c[0] === 'setMacrocycleSimilarityMetric' && c[1] === 'count_tanimoto') && active.ctx.macrocycleSimilarityMetricRef.current === 'count_tanimoto'],
+    ['macrocycle metric change clears the open AI cache', active.ctx.openRankedCacheRef.current === null],
+  );
+  const inactive = buildCtx('stock');
+  new Function(...Object.keys(inactive.ctx), 'value', macroBody)(...Object.values(inactive.ctx), 'count_tanimoto');
+  checks.push(
+    ['macrocycle metric change leaves other corpora untouched', inactive.calls.length === 1 && inactive.ctx.stockOffsetRef.current === 50 && inactive.ctx.isSearchActiveRef.current === true],
+  );
+}
 
 const { macrocycleResultsFromPayload, appendUniqueMacrocycleRows } = await import(
   pathToFileURL(path.join(root, 'client/src/utils/macrocycleResults.js')).href

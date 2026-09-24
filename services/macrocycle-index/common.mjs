@@ -1,11 +1,70 @@
 // Compact, read-only Morgan fingerprint index for the two 2026-09-23 exports.
-// Each record is: metadata CSV byte offset (uint64 LE), bit count (uint16 LE),
-// then the 2048-bit RDKit Morgan fingerprint (256 bytes).
+//
+// Two files, both in index order:
+//   <source>.fpb   fixed-stride records: metadata CSV byte offset (uint64 LE),
+//                  set-bit count (uint16 LE), then the 2048-bit RDKit Morgan
+//                  fingerprint (256 bytes).
+//   <source>.cnt   formatVersion 2 only: a packed count stream. One byte per
+//                  SET BIT of the row's fingerprint, in ascending bit order,
+//                  holding that bit's frequency (capped at 255). A row's slice
+//                  length is therefore its uint16 set-bit count, so the stream
+//                  needs no offset table — a sequential scan reads it in step
+//                  with the fingerprint records.
+//
+// The count stream exists because neither engine can score a count metric: the
+// RDKit WASM build exposes only binary Morgan, and tonomitosql maps every
+// fingerprint to a binary cartridge type. Count support is identical to the
+// stored binary bit set by construction (server/utils/countMorgan.js); the build
+// aborts on any row where that stops holding.
 export const FINGERPRINT_BYTES = 256;
 export const RECORD_BYTES = 8 + 2 + FINGERPRINT_BYTES;
 export const FINGERPRINT_DETAILS = JSON.stringify({
   radius: 2, nBits: 2048, useChirality: false,
   useBondTypes: true, useFeatures: false,
+});
+
+// 1 = binary index only (the deployed September 2026 staging artifact).
+// 2 = binary index plus the packed count stream.
+export const FORMAT_VERSION = 2;
+export const COUNT_STREAM_VERSION = 2;
+export const MAX_STORED_COUNT = 255;
+
+export const FINGERPRINT_TYPES = Object.freeze(['morgan']);
+export const DEFAULT_FINGERPRINT_TYPE = 'morgan';
+export const BINARY_SIMILARITY_METRICS = Object.freeze(['tanimoto']);
+export const COUNT_SIMILARITY_METRICS = Object.freeze(['count_tanimoto', 'count_dice']);
+export const SIMILARITY_METRICS = Object.freeze([
+  ...BINARY_SIMILARITY_METRICS,
+  ...COUNT_SIMILARITY_METRICS,
+]);
+export const DEFAULT_SIMILARITY_METRIC = 'tanimoto';
+
+// "(binary)" / "(frequency-weighted)" are deliberate: a count score must never
+// read as binary and vice versa.
+export const SIMILARITY_METRIC_LABELS = Object.freeze({
+  tanimoto: 'Tanimoto (binary)',
+  count_tanimoto: 'Count Tanimoto (frequency-weighted)',
+  count_dice: 'Count Dice (frequency-weighted)',
+});
+export const FINGERPRINT_LABELS = Object.freeze({ morgan: 'Morgan (ECFP4)' });
+
+export const COUNT_FINGERPRINT_DESCRIPTION =
+  'Pyxis count Morgan, radius 2, 2048-bit, chirality off, bond types on; frequencies of the retained '
+  + 'RDKit Morgan environments. A Pyxis method — not MOE ctanimoto and not comparable with MOE.';
+
+export function countsFileName(source) {
+  return `${source}.cnt`;
+}
+
+export function isCountMetric(metric) {
+  return COUNT_SIMILARITY_METRICS.includes(metric);
+}
+
+/** Bit offsets set inside one fingerprint byte, ascending (shared lookup). */
+export const BYTE_BIT_INDEXES = Array.from({ length: 256 }, (_, value) => {
+  const indexes = [];
+  for (let bit = 0; bit < 8; bit++) if (value & (1 << bit)) indexes.push(bit);
+  return indexes;
 });
 
 export const DATASETS = Object.freeze({

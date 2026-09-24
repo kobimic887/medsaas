@@ -176,15 +176,22 @@ const fixtureServer = http.createServer((req, res) => {
   };
 
   if (pathname === '/v1/datasets' && req.method === 'GET') {
+    // The real corpus stands in for a format-2 (count-capable) index; virtual
+    // stands in for a format-1 index that must still answer binary Tanimoto
+    // only.
     return send(200, { datasets: [
       { id: 4, name: 'Stock compounds — 2026-09-01', row_count: 630646 },
-      { id: 18, name: 'Macrocycles real stock — 2026-09-23', row_count: 18190 },
+      { id: 18, name: 'Macrocycles real stock — 2026-09-23', row_count: 18190, metrics: ['tanimoto', 'count_tanimoto', 'count_dice'] },
       { id: 19, name: 'Macrocycles virtual — 2026-09-23', row_count: 2350440 },
     ] });
   }
   if (pathname === '/v1/search/similarity' && req.method === 'GET') {
     const datasetId = Number(url.searchParams.get('dataset_id'));
-    hits.macro.push({ datasetId, smiles: url.searchParams.get('smiles') });
+    hits.macro.push({
+      datasetId,
+      smiles: url.searchParams.get('smiles'),
+      metric: url.searchParams.get('similarity_metric'),
+    });
     if (![18, 19].includes(datasetId)) return send(400, { error: 'wrong dataset' });
     if (url.searchParams.get('smiles') === 'AUTHFAIL') return send(401, { detail: 'upstream key rejected' });
     const isReal = datasetId === 18;
@@ -390,16 +397,34 @@ async function main() {
     check('stock similarity -> 503 STOCK_SEARCH_UNAVAILABLE', r.status === 503 && r.json?.code === 'STOCK_SEARCH_UNAVAILABLE', `got ${r.status}`);
     r = await api('GET', '/api/macrocycles/status?source=real', { token: demoToken });
     check('real macrocycle status resolves only its named dataset', r.status === 200 && r.json?.available === true && r.json?.dataset?.id === 18 && r.json?.dataset?.rowCount === 18190, `got ${r.status} ${r.text.slice(0, 150)}`);
+    check('count-capable dataset advertises the count metrics', r.status === 200
+      && r.json?.capabilities?.similarityMetrics?.map((m) => m.value).join(',') === 'tanimoto,count_tanimoto,count_dice'
+      && r.json.capabilities.similarityMetrics.every((m) => /binary|frequency-weighted/.test(m.label))
+      && r.json.countMetricsAvailable === true,
+      `got ${r.status} ${JSON.stringify(r.json?.capabilities?.similarityMetrics)}`);
     r = await api('GET', '/api/macrocycles/status?source=virtual', { token: demoToken });
     check('virtual macrocycle status resolves only its named dataset', r.status === 200 && r.json?.available === true && r.json?.dataset?.id === 19 && r.json?.dataset?.rowCount === 2350440, `got ${r.status} ${r.text.slice(0, 150)}`);
+    check('binary-only dataset advertises Tanimoto alone', r.status === 200
+      && r.json?.capabilities?.similarityMetrics?.length === 1
+      && r.json.capabilities.similarityMetrics[0].value === 'tanimoto'
+      && r.json.countMetricsAvailable === false, `got ${r.status} ${JSON.stringify(r.json?.capabilities)}`);
     r = await api('GET', '/api/macrocycles/similarity?source=real&smiles=C1CCCCC1&threshold=0.5', { token: demoToken });
     check('real macrocycle search uses its dataset and no cart price', r.status === 200 && hits.macro.at(-1)?.datasetId === 18 && r.json?.results?.[0]?.metadata?.source === 'macrocycle_real' && !('price_1mg' in (r.json?.results?.[0]?.metadata || {})) && !('PRICE_1MG' in (r.json?.results?.[0]?.metadata || {})), `got ${r.status} ${r.text.slice(0, 230)}`);
     r = await api('GET', '/api/macrocycles/similarity?source=virtual&smiles=C1CCCCC1&threshold=0.5', { token: demoToken });
     check('virtual macrocycle search uses its separate dataset', r.status === 200 && hits.macro.at(-1)?.datasetId === 19 && r.json?.results?.[0]?.metadata?.source === 'macrocycle_virtual', `got ${r.status} ${r.text.slice(0, 230)}`);
-    r = await api('GET', '/api/macrocycles/similarity?source=virtual&smiles=C1CCCCC1&similarity_metric=ctanimoto', { token: demoToken });
-    check('unsupported count metric rejected before upstream request', r.status === 400 && hits.macro.length === 2, `got ${r.status}`);
+    r = await api('GET', '/api/macrocycles/similarity?source=real&smiles=C1CCCCC1&threshold=0.5&similarity_metric=count_tanimoto', { token: demoToken });
+    check('count metric is forwarded to the count-capable dataset', r.status === 200
+      && hits.macro.at(-1)?.metric === 'count_tanimoto' && r.json?.method?.similarity_metric === 'count_tanimoto'
+      && r.json?.results?.[0]?.metadata?.source === 'macrocycle_real', `got ${r.status} ${r.text.slice(0, 200)}`);
+    const macroHitsBeforeRejections = hits.macro.length;
+    r = await api('GET', '/api/macrocycles/similarity?source=virtual&smiles=C1CCCCC1&similarity_metric=count_tanimoto', { token: demoToken });
+    check('count metric is refused before upstream when the index has no count stream',
+      r.status === 400 && /count fingerprints/.test(r.json?.error || '') && hits.macro.length === macroHitsBeforeRejections,
+      `got ${r.status} ${r.text.slice(0, 200)}`);
+    r = await api('GET', '/api/macrocycles/similarity?source=real&smiles=C1CCCCC1&similarity_metric=ctanimoto', { token: demoToken });
+    check('an MOE metric name is never accepted as a Pyxis metric', r.status === 400 && hits.macro.length === macroHitsBeforeRejections, `got ${r.status}`);
     r = await api('GET', '/api/macrocycles/similarity?source=stock&smiles=C1CCCCC1', { token: demoToken });
-    check('unknown macrocycle source cannot select stock dataset', r.status === 400 && hits.macro.length === 2, `got ${r.status}`);
+    check('unknown macrocycle source cannot select stock dataset', r.status === 400 && hits.macro.length === macroHitsBeforeRejections, `got ${r.status}`);
     r = await api('GET', '/api/macrocycles/similarity?source=real&smiles=AUTHFAIL', { token: demoToken });
     check('upstream auth failure is 502, never a demo-session 401', r.status === 502, `got ${r.status}`);
     r = await api('GET', '/api/macrocycles/status?source=real');

@@ -449,6 +449,15 @@ be implied by any label. Exposing a count-based score needs all of:
    KNN-cap candidates before the id tie-breaker. Re-verify after any future
    change to the similarity SQL (`scripts/test_similarity_tie_pagination.py`).
 
+**Stock stays binary-only.** Pyxis now ships frequency-weighted count metrics,
+but only on the September 23 macrocycle sources, where it owns both sides of the
+comparison and can compute the counts itself from a single artefact
+(`server/utils/countMorgan.js`, `docs/DATA-MACROCYCLES.md`). Nothing in this
+stock contract changes: the engine still exposes binary fingerprints with binary
+Tanimoto/Dice, no count metric may be added to `STOCK_SIMILARITY_METRICS`, and
+the count metrics are not MOE ctanimoto — see
+[`REFERENCE-STOCK-FP-METRICS.md`](REFERENCE-STOCK-FP-METRICS.md).
+
 ## Purchasable offers — stock pricing DISABLED (owner decision 2026-09-13)
 
 Stock search still returns **structure + similarity + dated snapshot µmol/mg only**.

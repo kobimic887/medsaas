@@ -10,7 +10,7 @@ metric selectors"). A structured copy of the reference data is
 
 **Bottom line:** morgan/tanimoto on the live dataset reproduces Anna's Pyxis
 report exactly (26 hits @ 0.3). Her MOE numbers (~30 btanimoto, ~2000 ctanimoto)
-came from a fingerprint we cannot identify with settings nobody recorded, on
+came from MOE ECFP4 with settings nobody recorded, on
 count-capable MOE feature lists. The delta is explained, documented, and **not
 an error to fix**.
 
@@ -21,7 +21,7 @@ an error to fix**.
 | Reported by | Anna (CompChem) |
 | Reported | 2026-09-12, via email quoted by the product owner |
 | Query | `O=C1NC2C(NCCC2)CC1` (the engine echoes the canonical form `O=C1CCC2NCCCC2N1` — same molecule) |
-| MOE fingerprint used by Anna | **Unknown** — no MOE version or fingerprint-settings metadata exists anywhere; her source TSV (`medsaas-data/stock-20260901/`) carries 11 `FP:*` columns and none is identified as the searched one |
+| MOE fingerprint used by Anna | The screenshot supplied with the September 24 email review shows **FP:ECFP4** selected for the 30-hit `btanimoto` run. The MOE version and exact fingerprint settings remain unknown; the source TSV (`medsaas-data/stock-20260901/`) carries 11 `FP:*` columns and does not identify the searched one. The screenshot does not establish the `ctanimoto` run's settings. |
 | Searched library | Anna's stock export (630,652 source rows; 630,646 imported after 6 cartridge-invalid SMILES) |
 
 ## Her three reported results (all at threshold 0.3)
@@ -85,8 +85,8 @@ capacity and not missing fingerprint support. Fix: keep global
   BBC 26580122, ASN 33721197, BBD 27288885, BAS 00025753, LAS 30979215.
 
 **Interpretation (plainly):** the two runs used **different fingerprints** — ours
-is RDKit Morgan radius 2 bit vectors, hers is an unidentified MOE fingerprint
-with unknown settings — and the one-sided overlap (13 of her 30 = 43%, 13 of our
+is RDKit Morgan radius 2 bit vectors, hers is MOE ECFP4 with unknown settings
+— and the one-sided overlap (13 of her 30 = 43%, 13 of our
 26 = 50%) is what that predicts. This is **not** an error to fix; it is two
 defensible answers to two different questions. Her btanimoto/ctanimoto numbers
 are reference data, not reproducible targets.
@@ -108,6 +108,30 @@ Count vectors `x = [2,0,1]`, `y = [1,1,0]` (Anna's ctanimoto formula):
 Same inputs, different scores — binary ≠ count even before fingerprint choice
 enters. Both engine metrics are binary formulas (see below), so neither can
 reproduce ctanimoto, and no UI label may call a score count-based.
+
+## What Pyxis built instead: count metrics on the macrocycle sources
+
+Neither engine could score a count metric (evidence below), so Pyxis computes
+one itself — on the two macrocycle sources only, where it owns both sides of the
+comparison. The implementation is `server/utils/countMorgan.js`. This is
+deliberately **not** MOE parity and no label calls it MOE or MOE-comparable.
+
+| Piece | Choice |
+|---|---|
+| Fingerprint | RDKit Morgan environments — radius 2, 2048 bits, chirality off, bond types on: the settings the index already stores |
+| Counts | the frequency of each *retained* RDKit Morgan environment folding into a bit (RDKit's own `includeRedundantEnvironments=false` environment list, histogrammed) |
+| Metrics | Count Tanimoto `Σxy/(Σx²+Σy²−Σxy)` and Count Dice `2Σxy/(Σx²+Σy²)` — the ctanimoto denominator Anna wrote |
+| Verification | the support of a count vector must equal the bit set of RDKit's own binary Morgan fingerprint. `server/test/count-morgan.test.mjs` asserts that against the live WASM over a 38-structure corpus, and the index build re-asserts it for every row it indexes |
+| Labels | `Count Tanimoto (frequency-weighted)`, `Count Dice (frequency-weighted)` — never just "Tanimoto", never MOE |
+| Scope | the two macrocycle sources only. Stock compounds stays binary-only |
+
+Why her metric is still not built: the RDKit WASM binding emits binary Morgan
+only (`useCounts` and `bitInfo` are silently ignored — measured live, 2025.3.4),
+the tonomitosql engine maps every fingerprint to a binary cartridge type with no
+count-vector operator, and MOE's 15-bit hash space cannot be reconstructed for an
+arbitrary query from the archived `FP:*` columns. Pyxis therefore scores its own
+well-defined count similarity rather than guessing at hers; her hit counts remain
+context, not targets.
 
 ## Engine evidence
 
@@ -136,20 +160,21 @@ reproduce ctanimoto, and no UI label may call a score count-based.
 
 ## Questions Anna must answer before any MOE-parity work
 
-1. **Which fingerprint did the MOE search use?** The export carries 11 `FP:*`
-   columns; the search-panel fingerprint is recorded nowhere.
-2. **Which MOE version and fingerprint settings** (hash space, fold size —
-   e.g. `FP:ECFP4` vs `FP:ECFP4_2048`)? No version metadata exists in the
-   export.
-3. **Can she export the btanimoto hit list with per-hit scores?** Score
+1. **Which MOE version and fingerprint settings** (hash space, fold size —
+   e.g. `FP:ECFP4` vs `FP:ECFP4_2048`)? The 30-hit screenshot shows ECFP4,
+   but no version or full settings metadata exists in the export. Confirm
+   whether the `ctanimoto` run used the same settings.
+2. **Can she export the btanimoto hit list with per-hit scores?** Score
    distributions are comparable; bare ID counts are not.
-4. **Threshold semantics:** is her 0.3 on the same inclusive 0..1 scale, and is
+3. **Threshold semantics:** is her 0.3 on the same inclusive 0..1 scale, and is
    it applied before or after feature-list deduplication?
-5. **Library identity:** was the searched library exactly this 630,652-row
+4. **Library identity:** was the searched library exactly this 630,652-row
    export, or an earlier/local copy with different filtering?
-6. **ctanimoto denominator:** confirm the MOE ctanimoto she ran is exactly
-   `Σxy/(Σx²+Σy²−Σxy)` as she wrote — required before a count metric could ever
-   be exposed (see the blocked-dependency sketch in DATA-STOCK-COMPOUNDS.md).
+5. **ctanimoto denominator:** confirm the MOE ctanimoto she ran is exactly
+   `Σxy/(Σx²+Σy²−Σxy)` as she wrote. Pyxis now implements that denominator for
+   its own macrocycle count metrics (above), but MOE parity additionally needs
+   her fingerprint and version, so this answer is still required before any MOE
+   claim (see the blocked-dependency sketch in DATA-STOCK-COMPOUNDS.md).
 
 Until those are answered, Pyxis ships honest labels
 ("RDKit Morgan (ECFP4)", "(binary)") and treats her numbers as context, not a

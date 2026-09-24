@@ -1,10 +1,33 @@
 // The September 23 macrocycle exports are separate search corpora. Neither
 // contains pack prices; their hits must never be represented as catalog items.
+//
+// Similarity methods: the stored RDKit Morgan (ECFP4) BINARY Tanimoto, plus two
+// frequency-weighted COUNT metrics computed over the same Morgan environments
+// (server/utils/countMorgan.js). The count metrics are advertised only when the
+// loopback index has a packed count stream (format 2); a format-1 index keeps
+// working and offers Tanimoto alone. Count values are a Pyxis method — they are
+// NOT MOE ctanimoto and are never labelled as MOE or MOE-comparable
+// (docs/REFERENCE-STOCK-FP-METRICS.md). The app-side allowlist here must stay in
+// step with SIMILARITY_METRICS in services/macrocycle-index/common.mjs;
+// services/macrocycle-index/test.mjs asserts the two agree.
 import {
   buildStockSimilarityUrl,
   parseStockSearchQuery,
   StockSearchValidationError,
 } from './stockSearch.js';
+
+export const MACROCYCLE_FINGERPRINT_TYPES = Object.freeze(['morgan']);
+export const MACROCYCLE_FINGERPRINT_LABELS = Object.freeze({ morgan: 'Morgan (ECFP4)' });
+export const MACROCYCLE_SIMILARITY_METRICS = Object.freeze(['tanimoto', 'count_tanimoto', 'count_dice']);
+export const MACROCYCLE_DEFAULT_SIMILARITY_METRIC = 'tanimoto';
+
+// "(binary)" / "(frequency-weighted)" is deliberate: a count score must never
+// read as binary, and a binary score must never read as count-based.
+export const MACROCYCLE_SIMILARITY_METRIC_LABELS = Object.freeze({
+  tanimoto: 'Tanimoto (binary)',
+  count_tanimoto: 'Count Tanimoto (frequency-weighted)',
+  count_dice: 'Count Dice (frequency-weighted)',
+});
 
 export const MACROCYCLE_SOURCES = Object.freeze(['real', 'virtual']);
 export const MACROCYCLE_DATASETS = Object.freeze({
@@ -49,17 +72,49 @@ export function parseMacrocycleSource(raw) {
 
 export function parseMacrocycleSearchQuery(query = {}) {
   const source = parseMacrocycleSource(query.source);
+  const fingerprintType = typeof query.fingerprint_type === 'string' ? query.fingerprint_type.trim() : '';
+  if (fingerprintType && fingerprintType !== 'morgan') {
+    throw new MacrocycleSearchValidationError(
+      `Unsupported fingerprint_type: "${fingerprintType.slice(0, 60)}". Supported values: ${MACROCYCLE_FINGERPRINT_TYPES.join(', ')}`
+    );
+  }
+  const rawMetric = typeof query.similarity_metric === 'string' ? query.similarity_metric.trim() : '';
+  const similarityMetric = rawMetric || MACROCYCLE_DEFAULT_SIMILARITY_METRIC;
+  if (!MACROCYCLE_SIMILARITY_METRICS.includes(similarityMetric)) {
+    throw new MacrocycleSearchValidationError(
+      `Unsupported similarity_metric: "${similarityMetric.slice(0, 60)}". Supported values: ${MACROCYCLE_SIMILARITY_METRICS.join(', ')}`
+    );
+  }
   try {
-    const parsed = parseStockSearchQuery(query);
-    if (parsed.fingerprintType !== 'morgan' || parsed.similarityMetric !== 'tanimoto') {
-      throw new MacrocycleSearchValidationError('Macrocycle search supports only Morgan (ECFP4) with binary Tanimoto');
-    }
-    return { source, ...parsed };
+    // Reuse the stock query parser for smiles/threshold/offset/limit, with the
+    // method pinned so its own (binary-only) allowlist cannot reject a count
+    // metric before this contract validates it.
+    const parsed = parseStockSearchQuery({
+      ...query,
+      fingerprint_type: 'morgan',
+      similarity_metric: MACROCYCLE_DEFAULT_SIMILARITY_METRIC,
+    });
+    return { source, ...parsed, similarityMetric };
   } catch (error) {
     if (error instanceof StockSearchValidationError) {
       throw new MacrocycleSearchValidationError(error.message);
     }
     throw error;
+  }
+}
+
+/**
+ * Guard a resolved dataset against the requested metric. The count metrics need
+ * the format-2 count stream, so a binary-only index must answer 400 (a client
+ * error) here instead of letting the loopback service relay it as an outage.
+ */
+export function assertMacrocycleMetricSupported(params, dataset) {
+  const metrics = Array.isArray(dataset?.metrics) ? dataset.metrics : [];
+  if (metrics.length > 0 && !metrics.includes(params.similarityMetric)) {
+    throw new MacrocycleSearchValidationError(
+      `The ${params.source} macrocycle dataset provides ${metrics.join(', ')} only. `
+        + 'Rebuild its index with count fingerprints to enable the count metrics.'
+    );
   }
 }
 
@@ -119,10 +174,14 @@ export function createMacrocycleDatasetResolver({ config, fetchImpl, now = Date.
       if (!match || !Number.isInteger(Number(match.id)) || Number(match.id) <= 0) {
         throw new MacrocycleSearchUnavailableError(`Macrocycle ${selected} dataset "${entry.name}" is not provisioned`);
       }
+      // A format-1 index lists no metrics; it is binary Tanimoto only.
+      const advertised = Array.isArray(match.metrics) ? match.metrics : [];
+      const metrics = advertised.filter((metric) => MACROCYCLE_SIMILARITY_METRICS.includes(metric));
       return {
         id: Number(match.id), name: entry.name,
         rowCount: Number.isFinite(Number(match.row_count)) ? Number(match.row_count) : null,
         source: selected,
+        metrics: metrics.length > 0 ? metrics : [MACROCYCLE_DEFAULT_SIMILARITY_METRIC],
       };
     },
     reset() { cache.clear(); },
@@ -140,13 +199,22 @@ export function buildMacrocycleSimilarityUrl({ config, dataset, params }) {
 }
 
 export function macrocycleStatusPayload(source, dataset) {
+  const advertised = Array.isArray(dataset?.metrics) ? dataset.metrics : [];
+  const metrics = advertised.filter((metric) => MACROCYCLE_SIMILARITY_METRICS.includes(metric));
+  const available = metrics.length > 0 ? metrics : [MACROCYCLE_DEFAULT_SIMILARITY_METRIC];
   return {
     available: true, source,
     dataset: { id: dataset.id, name: dataset.name, rowCount: dataset.rowCount },
-    fingerprintType: 'morgan', similarityMetric: 'tanimoto',
+    fingerprintType: MACROCYCLE_FINGERPRINT_TYPES[0],
+    similarityMetric: MACROCYCLE_DEFAULT_SIMILARITY_METRIC,
+    countMetricsAvailable: metrics.some((metric) => metric !== MACROCYCLE_DEFAULT_SIMILARITY_METRIC),
     capabilities: {
-      fingerprintTypes: [{ value: 'morgan', label: 'Morgan (ECFP4)' }],
-      similarityMetrics: [{ value: 'tanimoto', label: 'Tanimoto (binary)' }],
+      fingerprintTypes: MACROCYCLE_FINGERPRINT_TYPES.map((value) => ({
+        value, label: MACROCYCLE_FINGERPRINT_LABELS[value],
+      })),
+      similarityMetrics: available.map((value) => ({
+        value, label: MACROCYCLE_SIMILARITY_METRIC_LABELS[value],
+      })),
     },
   };
 }

@@ -51,10 +51,18 @@ when a path or trap moves.
   further independent Simulation sources (`docs/DATA-MACROCYCLES.md`). Their
   authenticated `/api/macrocycles/status|similarity` routes use a separate
   `MACROCYCLE_SEARCH_BASE`; missing datasets return 503, never catalog/stock
-  results. Staging's compact read-only RDKit Morgan/binary Tanimoto index is
-  loopback `:8274`. Source IDs can repeat, so use the index row ID for
+  results. Staging's compact read-only RDKit Morgan index is loopback `:8274`:
+  format 1 serves binary Tanimoto, format 2 adds `<source>.cnt` (one byte per set
+  bit, ascending) and the count metrics. `similarity_metric` is `tanimoto`
+  (default), `count_tanimoto` or `count_dice` (unknown, including the MOE name
+  `ctanimoto`, → **400**); a format-1 dataset advertises Tanimoto alone and
+  refuses a count metric with 400 before any scan. The count metrics are a Pyxis
+  method over RDKit's own Morgan environments (`server/utils/countMorgan.js`) —
+  **not MOE ctanimoto, not MOE-comparable**; labels must say "(frequency-weighted)"
+  or "(binary)". MOE btanimoto/ctanimoto parity stays unbuilt. Source IDs can
+  repeat, so use the index row ID for
   selection. Both sources are unpriced and cannot enter the cart; source
-  amounts/lead times are not verified offers. MOE count ctanimoto is excluded.
+  amounts/lead times are not verified offers.
   The staging build starts Simulation on Real macrocycles for owner review;
   the consumer build still starts on Internal catalog. Staging catalog depends
   on the separate supplier endpoint and may be unavailable independently.
@@ -162,6 +170,8 @@ bun run test:staging-demo # demo/staging server contract (fixtures, privacy, ref
 bun run test:staging-simulation # staging Simulation: catalog/search/docking/artifacts against fixture upstreams
 bun run test:staging-build# staging client build scoping checks
 bun run test:catalog-pricing # checkout catalog re-pricing + stock refusal + pricing lifecycles
+bun run test:macrocycle-index # macrocycle index contract: RDKit parity, format-1/2, count stream
+bun run test:count-morgan    # count-Morgan support parity vs RDKit + count Tanimoto/Dice math
 ```
 
 Staging build (never for the live tree): `bun --cwd=client run build:staging`

@@ -1,13 +1,25 @@
 #!/usr/bin/env bun
 // Loopback-only, read-only similarity service for the compact September 2026
 // macrocycle indexes. The public application never calls this service directly.
+//
+// Two artifact generations are served:
+//   formatVersion 1  the deployed binary index — Tanimoto only.
+//   formatVersion 2  binary index + packed count stream — Tanimoto, Count
+//                    Tanimoto and Count Dice. Count support equals the stored
+//                    binary bit set by construction (server/utils/countMorgan.js).
+// Each dataset reports the metrics it can actually score, so a v1 artifact keeps
+// working and simply never advertises a count metric.
 import http from 'node:http';
 import path from 'node:path';
 import fsp from 'node:fs/promises';
 import { loadRDKit } from '../../server/utils/openCompounds.js';
 import {
-  DATASETS, FINGERPRINT_BYTES, FINGERPRINT_DETAILS, NORMALIZED_HEADER,
-  POPCOUNT, RECORD_BYTES, parseCsvLine,
+  countMetricValue, countMorganPacked, countMorganVector, countVectorSumSquares,
+} from '../../server/utils/countMorgan.js';
+import {
+  BYTE_BIT_INDEXES, DATASETS, DEFAULT_SIMILARITY_METRIC, FINGERPRINT_BYTES,
+  FINGERPRINT_DETAILS, FINGERPRINT_TYPES, NORMALIZED_HEADER, POPCOUNT,
+  RECORD_BYTES, SIMILARITY_METRICS, countsFileName, isCountMetric, parseCsvLine,
 } from './common.mjs';
 
 const READ_ROWS = 4096;
@@ -53,6 +65,10 @@ async function readExactly(handle, buffer, length, position) {
   }
 }
 
+function ensureCapacity(buffer, length) {
+  return buffer.length >= length ? buffer : Buffer.allocUnsafe(length);
+}
+
 async function readMetadataLine(handle, offset) {
   const pieces = [];
   let position = offset;
@@ -70,13 +86,15 @@ async function readMetadataLine(handle, offset) {
   throw new Error('Macrocycle metadata row is unexpectedly long');
 }
 
-export async function openIndexStore(indexDir) {
+export async function openIndexStore(indexDir, definitions = DATASETS) {
   const datasets = new Map();
-  for (const [source, definition] of Object.entries(DATASETS)) {
+  for (const [source, definition] of Object.entries(definitions)) {
     let fingerprints;
+    let counts;
     try {
       const manifest = JSON.parse(await fsp.readFile(path.join(indexDir, `${source}.manifest.json`), 'utf8'));
-      if (manifest.formatVersion !== 1 || manifest.source !== source
+      const formatVersion = manifest.formatVersion;
+      if ((formatVersion !== 1 && formatVersion !== 2) || manifest.source !== source
         || manifest.datasetId !== definition.id || manifest.datasetName !== definition.name
         || !Number.isInteger(manifest.indexedRows) || manifest.indexedRows < 1
         || manifest.sourceRows !== definition.expectedRows) {
@@ -88,11 +106,29 @@ export async function openIndexStore(indexDir) {
         || (await fsp.stat(rowsPath)).size !== manifest.rowsBytes) {
         throw new Error(`Incomplete ${source} index files`);
       }
+      // A v1 artifact predates the count stream; it stays searchable but can
+      // never claim a count metric.
+      let metrics = ['tanimoto'];
+      if (formatVersion >= 2) {
+        metrics = [...SIMILARITY_METRICS];
+        const declared = Array.isArray(manifest.similarityMetrics) ? manifest.similarityMetrics : [];
+        if (!metrics.every((metric) => declared.includes(metric))) {
+          throw new Error(`Invalid ${source} count-manifest metric list`);
+        }
+        const countsPath = path.join(indexDir, countsFileName(source));
+        const countsSize = (await fsp.stat(countsPath)).size;
+        if (!Number.isInteger(manifest.countsBytes) || countsSize !== manifest.countsBytes
+          || countsSize < manifest.indexedRows) {
+          throw new Error(`Incomplete ${source} count stream`);
+        }
+        counts = await fsp.open(countsPath, 'r');
+      }
       fingerprints = await fsp.open(fpPath, 'r');
       const rows = await fsp.open(rowsPath, 'r');
-      datasets.set(definition.id, { manifest, fingerprints, rows });
+      datasets.set(definition.id, { manifest, metrics, fingerprints, counts, rows });
     } catch (error) {
       await fingerprints?.close();
+      await counts?.close();
       // One incomplete export must not make the other corpus disappear. The
       // API resolver lists only valid datasets and reports this one unavailable.
       console.error(`Macrocycle ${source} index unavailable: ${error.message}`);
@@ -104,55 +140,116 @@ export async function openIndexStore(indexDir) {
     async close() {
       for (const dataset of datasets.values()) {
         await dataset.fingerprints.close();
+        await dataset.counts?.close();
         await dataset.rows.close();
       }
     },
   };
 }
 
-export async function searchIndex(store, { datasetId, smiles, threshold, offset, limit }) {
+export async function searchIndex(store, {
+  datasetId, smiles, threshold, offset, limit, similarityMetric = DEFAULT_SIMILARITY_METRIC,
+}) {
   const dataset = store.datasets.get(datasetId);
   if (!dataset) throw Object.assign(new Error('Dataset not found'), { status: 404 });
+  if (!SIMILARITY_METRICS.includes(similarityMetric)) {
+    throw Object.assign(new Error('Invalid macrocycle similarity metric'), { status: 400 });
+  }
+  if (!dataset.metrics.includes(similarityMetric)) {
+    throw Object.assign(new Error('This macrocycle index has no count fingerprints; rebuild it before requesting a count metric'), { status: 400 });
+  }
+  const useCounts = isCountMetric(similarityMetric);
   const rdkit = await loadRDKit();
   const mol = rdkit.get_mol(smiles);
   if (!mol) throw Object.assign(new Error('Invalid SMILES'), { status: 400 });
-  let queryFp;
+  let queryFp = null;
+  let queryCounts = null;
   let canonical;
   try {
     canonical = mol.get_smiles();
-    queryFp = mol.get_morgan_fp_as_uint8array(FINGERPRINT_DETAILS);
+    if (useCounts) {
+      if (countMorganPacked(mol)?.isotopic) {
+        throw Object.assign(new Error('Count similarity does not support isotope-labelled queries'), { status: 400 });
+      }
+      queryCounts = countMorganVector(mol);
+    }
+    else queryFp = mol.get_morgan_fp_as_uint8array(FINGERPRINT_DETAILS);
   } finally { mol.delete(); }
-  if (!queryFp || queryFp.length !== FINGERPRINT_BYTES) throw new Error('Could not fingerprint query');
+  if (useCounts && !queryCounts) throw new Error('Could not compute the query count fingerprint');
+  if (!useCounts && (!queryFp || queryFp.length !== FINGERPRINT_BYTES)) throw new Error('Could not fingerprint query');
+
   let queryBits = 0;
-  for (let i = 0; i < FINGERPRINT_BYTES; i++) queryBits += POPCOUNT[queryFp[i]];
+  if (queryFp) {
+    for (let i = 0; i < FINGERPRINT_BYTES; i++) queryBits += POPCOUNT[queryFp[i]];
+  }
+  const querySumSquares = queryCounts ? countVectorSumSquares(queryCounts) : 0;
+
   const capacity = offset + limit;
   const heap = [];
   let totalMatches = 0;
   let processed = 0;
-  const buffer = Buffer.allocUnsafe(READ_ROWS * RECORD_BYTES);
+  const recordBuffer = Buffer.allocUnsafe(READ_ROWS * RECORD_BYTES);
+  let countBuffer = Buffer.allocUnsafe(0);
+  // The count stream is variable length per row, but a row's slice is exactly
+  // its stored set-bit count, so a sequential scan stays in step with the
+  // fingerprint records without an offset table.
+  let countPosition = 0;
+
   while (processed < dataset.manifest.indexedRows) {
     const rows = Math.min(READ_ROWS, dataset.manifest.indexedRows - processed);
-    await readExactly(dataset.fingerprints, buffer, rows * RECORD_BYTES, processed * RECORD_BYTES);
+    await readExactly(dataset.fingerprints, recordBuffer, rows * RECORD_BYTES, processed * RECORD_BYTES);
+    let countsLength = 0;
+    if (useCounts) {
+      for (let row = 0; row < rows; row++) countsLength += recordBuffer.readUInt16LE(row * RECORD_BYTES + 8);
+      countBuffer = ensureCapacity(countBuffer, countsLength);
+      await readExactly(dataset.counts, countBuffer, countsLength, countPosition);
+    }
+    let countsConsumed = 0;
     for (let row = 0; row < rows; row++) {
       const pos = row * RECORD_BYTES;
-      const moleculeBits = buffer.readUInt16LE(pos + 8);
-      if (Math.min(queryBits, moleculeBits) / Math.max(1, queryBits, moleculeBits) < threshold) continue;
-      let intersection = 0;
-      for (let bit = 0; bit < FINGERPRINT_BYTES; bit++) {
-        intersection += POPCOUNT[queryFp[bit] & buffer[pos + 10 + bit]];
+      const moleculeBits = recordBuffer.readUInt16LE(pos + 8);
+      let score;
+      if (useCounts) {
+        // Count Tanimoto / Dice use the frequency vector, so the set-bit counts
+        // replace the binary intersection/union arithmetic.
+        let sumSquares = 0;
+        let dot = 0;
+        for (let byte = 0; byte < FINGERPRINT_BYTES; byte++) {
+          const value = recordBuffer[pos + 10 + byte];
+          if (!value) continue;
+          for (const bitOffset of BYTE_BIT_INDEXES[value]) {
+            const count = countBuffer[countsConsumed++];
+            sumSquares += count * count;
+            dot += queryCounts[byte * 8 + bitOffset] * count;
+          }
+        }
+        score = countMetricValue(similarityMetric, dot, querySumSquares, sumSquares);
+      } else {
+        if (Math.min(queryBits, moleculeBits) / Math.max(1, queryBits, moleculeBits) < threshold) continue;
+        let intersection = 0;
+        for (let bit = 0; bit < FINGERPRINT_BYTES; bit++) {
+          intersection += POPCOUNT[queryFp[bit] & recordBuffer[pos + 10 + bit]];
+        }
+        const union = queryBits + moleculeBits - intersection;
+        score = union ? intersection / union : 0;
       }
-      const union = queryBits + moleculeBits - intersection;
-      const score = union ? intersection / union : 0;
       if (score < threshold) continue;
       totalMatches++;
       const id = processed + row + 1;
       const worst = heap[0];
       if (heap.length < capacity || score > worst.score || (score === worst.score && id < worst.id)) {
-        pushBest(heap, { id, score, metadataOffset: Number(buffer.readBigUInt64LE(pos)) }, capacity);
+        pushBest(heap, { id, score, metadataOffset: Number(recordBuffer.readBigUInt64LE(pos)) }, capacity);
       }
+    }
+    if (useCounts) {
+      // The stream length is implied by the stored set-bit counts; a mismatch
+      // means the artifact is corrupt and must fail loudly, not rank silently.
+      if (countsConsumed !== countsLength) throw new Error('Corrupt macrocycle count stream');
+      countPosition += countsLength;
     }
     processed += rows;
   }
+
   heap.sort((a, b) => b.score - a.score || a.id - b.id);
   const page = heap.slice(offset, offset + limit);
   const results = [];
@@ -169,7 +266,14 @@ export async function searchIndex(store, { datasetId, smiles, threshold, offset,
     delete metadata.smiles;
     results.push({ molecule_id: hit.id, canonical_smiles: hitSmiles, similarity: hit.score, metadata });
   }
-  return { found: results.length > 0, count: results.length, total_matches: totalMatches, query_smiles: canonical, results };
+  return {
+    found: results.length > 0,
+    count: results.length,
+    total_matches: totalMatches,
+    query_smiles: canonical,
+    similarity_metric: similarityMetric,
+    results,
+  };
 }
 
 function parseSearch(url) {
@@ -179,16 +283,18 @@ function parseSearch(url) {
   const threshold = Number(q.get('threshold'));
   const offset = Number(q.get('offset'));
   const limit = Number(q.get('limit'));
+  const fingerprintType = q.get('fingerprint_type') || FINGERPRINT_TYPES[0];
+  const similarityMetric = q.get('similarity_metric') || DEFAULT_SIMILARITY_METRIC;
   if (!Number.isInteger(datasetId) || datasetId < 1
     || !smiles.trim() || smiles.length > 4096
     || !Number.isFinite(threshold) || threshold < 0.1 || threshold > 1
     || !Number.isInteger(offset) || offset < 0 || offset > MAX_OFFSET
     || !Number.isInteger(limit) || limit < 1 || limit > 100
-    || (q.get('fingerprint_type') || 'morgan') !== 'morgan'
-    || (q.get('similarity_metric') || 'tanimoto') !== 'tanimoto') {
+    || !FINGERPRINT_TYPES.includes(fingerprintType)
+    || !SIMILARITY_METRICS.includes(similarityMetric)) {
     throw Object.assign(new Error('Invalid macrocycle similarity query'), { status: 400 });
   }
-  return { datasetId, smiles, threshold, offset, limit };
+  return { datasetId, smiles, threshold, offset, limit, fingerprintType, similarityMetric };
 }
 
 function sendJson(res, status, payload) {
@@ -205,8 +311,9 @@ export function createIndexServer(store) {
     if (req.method !== 'GET') return sendJson(res, 405, { error: 'Method not allowed' });
     if (url.pathname === '/health') return sendJson(res, 200, { status: 'OK', datasets: store.datasets.size });
     if (url.pathname === '/v1/datasets') {
-      return sendJson(res, 200, { datasets: [...store.datasets.values()].map(({ manifest }) => ({
+      return sendJson(res, 200, { datasets: [...store.datasets.values()].map(({ manifest, metrics }) => ({
         id: manifest.datasetId, name: manifest.datasetName, row_count: manifest.indexedRows,
+        fingerprint_type: FINGERPRINT_TYPES[0], metrics,
       })) });
     }
     if (url.pathname !== '/v1/search/similarity') return sendJson(res, 404, { error: 'Not found' });

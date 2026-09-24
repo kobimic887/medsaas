@@ -58,6 +58,7 @@ import {
   createMacrocycleDatasetResolver,
   MacrocycleSearchUnavailableError,
   MacrocycleSearchValidationError,
+  assertMacrocycleMetricSupported,
   macrocycleSearchConfig,
   macrocycleStatusPayload,
   parseMacrocycleSearchQuery,
@@ -5354,6 +5355,11 @@ app.get('/api/macrocycles/similarity', ensureMongoConnected, authenticateToken, 
     if (error instanceof MacrocycleSearchUnavailableError) {
       return res.status(503).json({ error: error.message, code: error.code });
     }
+    throw error;
+  }
+  try { assertMacrocycleMetricSupported(params, dataset); }
+  catch (error) {
+    if (error instanceof MacrocycleSearchValidationError) return res.status(400).json({ error: error.message, code: error.code });
     throw error;
   }
   const upstreamUrl = buildMacrocycleSimilarityUrl({ config: MACROCYCLE_SEARCH_CONFIG, dataset, params });

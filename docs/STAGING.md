@@ -58,10 +58,13 @@ record was created. `noindex` is a search-engine hint, not access control.
   tonomitosql service as production; stage browser status verified.
 - **Real macrocycles:** 18,171 searchable structures from 18,190 dated export
   rows. **Virtual macrocycles:** 2,347,736 searchable structures from 2,350,440
-  export rows. They use an independent read-only Morgan/ECFP4 binary Tanimoto
-  index at `127.0.0.1:8274`; no pack prices or cart purchases. Source amounts
-  and lead times are dated export fields, not current offers. See
-  [`DATA-MACROCYCLES.md`](DATA-MACROCYCLES.md).
+  export rows. They use an independent read-only Morgan/ECFP4 index at
+  `127.0.0.1:8274`; no pack prices or cart purchases. Source amounts and lead
+  times are dated export fields, not current offers. The deployed artifact is
+  **format 1**, so staging offers binary Tanimoto only; rebuilding both corpora
+  with the current builder writes the format-2 count stream and turns on the
+  frequency-weighted Count Tanimoto/Count Dice methods (a Pyxis method, not MOE
+  ctanimoto). See [`DATA-MACROCYCLES.md`](DATA-MACROCYCLES.md).
 - **Open compounds:** ChEMBL retrieval with local RDKit Morgan/Tanimoto
   ranking; AI tool loop is enabled only on staging via
   `openrouter/openrouter/free` through OmniRoute. An explicit **Search without

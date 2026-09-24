@@ -23,17 +23,19 @@ The browser build must be `bun --cwd=client run build:staging` and use `/staging
 
 ## Checks after a staging update
 
-Run the focused repository checks (`bun run check`, `bun run test:staging-build`, `bun run test:simulation-search`, and `bun --cwd=server run test:open-compounds:bun`) before shipping. On 84, verify only the staging service is restarted and confirm:
+Run the focused repository checks (`bun run check`, `bun run test:staging-build`, `bun run test:simulation-search`, `bun run test:count-morgan`, and `bun --cwd=server run test:open-compounds:bun`) before shipping. On 84, verify only the staging service is restarted and confirm:
 
 ```bash
 systemctl is-active pyxis-web-staging pyxis-macrocycle-search-staging
 curl -fsS http://127.0.0.1:5274/health
 curl -fsS http://127.0.0.1:5274/api/staging/status
-curl -fsS http://127.0.0.1:8274/v1/datasets
+curl -fsS http://127.0.0.1:8274/v1/datasets   # each dataset lists fingerprint_type + metrics
 curl -fsS http://127.0.0.1:20129/health
 curl -I https://app.pyxis-discovery.com/staging/
 curl -I https://app.pyxis-discovery.com/
 ```
+
+A format-2 macrocycle index lists `metrics: [tanimoto, count_tanimoto, count_dice]` and needs `<source>.cnt` beside `<source>.fpb`; install the complete `*.fpb`, `*.rows.csv`, `*.cnt`, `*.manifest.json` set or the format check reports that dataset unavailable. A format-1 artifact stays valid and advertises `tanimoto` alone.
 
 `/api/staging/status` must say `demo:false` and `sharedProductionData:true`. Also check a real sign-in, existing history, macrocycle/stock source status, an Open compounds AI search, and the unchanged consumer service PID and bundle SHA. These read-only checks do not prove a completed payment or a paid scientific provider round trip.
 

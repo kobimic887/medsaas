@@ -46,6 +46,7 @@ import {
 import {
   buildMacrocycleSimilarityUrl,
   createMacrocycleDatasetResolver,
+  assertMacrocycleMetricSupported,
   macrocycleSearchConfig,
   macrocycleStatusPayload,
   MacrocycleSearchUnavailableError,
@@ -557,6 +558,15 @@ export function createStagingDemoRouter({ jwtSecret, jwtExpiresIn = "7d" }) {
       }
       console.error("[staging] macrocycle dataset resolution failed:", error);
       return res.status(502).json({ error: "Macrocycle search service failed" });
+    }
+
+    try {
+      assertMacrocycleMetricSupported(params, dataset);
+    } catch (error) {
+      if (error instanceof MacrocycleSearchValidationError) {
+        return res.status(400).json({ error: error.message, code: error.code });
+      }
+      throw error;
     }
 
     const upstreamUrl = buildMacrocycleSimilarityUrl({ config: macrocycleConfig, dataset, params });

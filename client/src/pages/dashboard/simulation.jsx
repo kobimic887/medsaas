@@ -49,6 +49,15 @@ const STOCK_METRIC_FALLBACK_OPTIONS = Object.freeze([
   { value: 'dice', label: 'Dice (binary)' },
 ]);
 
+// Local mirror of the macrocycle metric labels (server/utils/macrocycleSearch.js).
+// The real option list comes from the dataset's status capabilities, because a
+// binary-only index cannot score the count metrics; before the status resolves
+// only the binary default is offered. Count metrics are a Pyxis method — the
+// labels never claim MOE ctanimoto and the scores are not MOE-comparable.
+const MACROCYCLE_METRIC_FALLBACK_OPTIONS = Object.freeze([
+  { value: 'tanimoto', label: 'Tanimoto (binary)' },
+]);
+
 function stockChoiceLabel(options, value, fallback) {
   const match = Array.isArray(options) ? options.find((o) => o && o.value === value) : null;
   return (match && match.label) || fallback;
@@ -165,6 +174,10 @@ export function Simulation() {
   const [openStatus, setOpenStatus] = useState(null); // null | loading | available | unavailable
   const openStatusRequestRef = useRef(0);
   const [macrocycleStatus, setMacrocycleStatus] = useState({});
+  // Macrocycle similarity method. One metric applies to both macrocycle
+  // sources; switching corpus resets it, and the status payload clamps it to
+  // what that dataset can actually score.
+  const [macrocycleSimilarityMetric, setMacrocycleSimilarityMetric] = useState('tanimoto');
   const macrocycleStatusRequestRef = useRef(0);
   // Stock/open pagination is by offset over a stable ranking, never by a
   // parsed compound code (ASINEX IDs like "ASN 04188606" are strings).
@@ -249,6 +262,10 @@ export function Simulation() {
   const similarityThresholdRef = useRef(similarityThreshold);
   const stockFingerprintTypeRef = useRef(stockFingerprintType);
   const stockSimilarityMetricRef = useRef(stockSimilarityMetric);
+  const macrocycleSimilarityMetricRef = useRef(macrocycleSimilarityMetric);
+  // Method used for the visible macrocycle result set (snapshot on a fresh
+  // search), so result banners stay honest if the selector changes afterwards.
+  const lastMacrocycleMethodRef = useRef(null);
   // Method actually used for the visible stock result set (set on first page of
   // a fresh search). Banners for results read this snapshot, not the live selects.
   const lastStockMethodRef = useRef(null);
@@ -317,9 +334,10 @@ export function Simulation() {
     similarityThresholdRef.current = similarityThreshold;
     stockFingerprintTypeRef.current = stockFingerprintType;
     stockSimilarityMetricRef.current = stockSimilarityMetric;
+    macrocycleSimilarityMetricRef.current = macrocycleSimilarityMetric;
     molWeightMinRef.current = molWeightMin;
     molWeightMaxRef.current = molWeightMax;
-  }, [lastSearchQuery, lastFromId, searchType, searchSource, pageSize, similarityThreshold, stockFingerprintType, stockSimilarityMetric, molWeightMin, molWeightMax]);
+  }, [lastSearchQuery, lastFromId, searchType, searchSource, pageSize, similarityThreshold, stockFingerprintType, stockSimilarityMetric, macrocycleSimilarityMetric, molWeightMin, molWeightMax]);
 
   useEffect(() => {
     stockStatusRef.current = stockStatus;
@@ -590,10 +608,24 @@ export function Simulation() {
       });
       const data = await res.json().catch(() => null);
       if (macrocycleStatusRequestRef.current !== requestId) return;
+      if (res.ok && data?.available === true) {
+        // A binary-only index advertises Tanimoto alone; clamp the selector so a
+        // count metric can never be requested from a dataset that cannot score it.
+        const advertised = Array.isArray(data.capabilities?.similarityMetrics)
+          ? data.capabilities.similarityMetrics.map((option) => option?.value).filter(Boolean)
+          : [];
+        if (advertised.length > 0 && !advertised.includes(macrocycleSimilarityMetricRef.current)) {
+          macrocycleSimilarityMetricRef.current = 'tanimoto';
+          setMacrocycleSimilarityMetric('tanimoto');
+        }
+      }
       setMacrocycleStatus((previous) => ({
         ...previous,
         [source]: res.ok && data?.available === true
-          ? { state: 'available', dataset: data.dataset }
+          ? {
+            state: 'available', dataset: data.dataset, capabilities: data.capabilities,
+            countMetricsAvailable: data.countMetricsAvailable === true,
+          }
           : { state: 'unavailable', reason: data?.reason || data?.error || `Availability check failed (HTTP ${res.status}).` },
       }));
     } catch (err) {
@@ -659,6 +691,31 @@ export function Simulation() {
     setOpenAiExplanation('');
   };
 
+  // Changing the macrocycle metric defines a new ranking — the same reset the
+  // stock method change performs. Do not route through handleSourceChange.
+  const handleMacrocycleMethodChange = (value) => {
+    setMacrocycleSimilarityMetric(value);
+    macrocycleSimilarityMetricRef.current = value;
+    if (!MACROCYCLE_SOURCES[searchSourceRef.current]) return;
+    searchControllerRef.current?.abort();
+    searchControllerRef.current = null;
+    searchRequestIdRef.current += 1;
+    isSearchActiveRef.current = false;
+    isLoadingPageRef.current = false;
+    stockOffsetRef.current = 0;
+    setStockOffset(0);
+    setIsSearchActive(false);
+    setSearchLoading(false);
+    setTopLoading(false);
+    setHasMore(false);
+    setTopMolecules([]);
+    setSelectedMolecules(new Set());
+    setSearchError("");
+    openRankedCacheRef.current = null;
+    setOpenAiStage('');
+    setOpenAiExplanation('');
+  };
+
   const handleSourceChange = (nextSource) => {
     if (nextSource === searchSourceRef.current) return;
     searchSourceRef.current = nextSource;
@@ -670,6 +727,9 @@ export function Simulation() {
     stockStatusRequestRef.current += 1; // invalidate any in-flight status check
     openStatusRequestRef.current += 1;
     macrocycleStatusRequestRef.current += 1;
+    // A different corpus ranks with its own advertised metrics.
+    macrocycleSimilarityMetricRef.current = 'tanimoto';
+    setMacrocycleSimilarityMetric('tanimoto');
     setSearchSource(nextSource);
     setIsSearchActive(false);
     isSearchActiveRef.current = false;
@@ -726,7 +786,7 @@ export function Simulation() {
       offset: String(offsetStart),
       limit: String(pageSizeRef.current),
       fingerprint_type: 'morgan',
-      similarity_metric: 'tanimoto',
+      similarity_metric: macrocycleSimilarityMetricRef.current,
     });
     const url = `${API_CONFIG.buildApiUrl('/macrocycles/similarity')}?${params}`;
     const res = await fetchWithGatewayRetry(url, {
@@ -748,6 +808,12 @@ export function Simulation() {
     const rows = macrocycleResultsFromPayload(payload, source);
     if (append) setTopMolecules((previous) => [...previous, ...appendUniqueMacrocycleRows(previous, rows)]);
     else {
+      // Snapshot the method that produced this result set so banners stay honest
+      // if the selector changes before the rows are cleared.
+      lastMacrocycleMethodRef.current = {
+        similarityMetric: macrocycleSimilarityMetricRef.current,
+        threshold: similarityThresholdRef.current,
+      };
       setTopMolecules(rows);
       setSelectedMolecules(new Set());
     }
@@ -1944,6 +2010,19 @@ export function Simulation() {
     ? stockChoiceLabel(stockMetricOptions, snapMethod.similarityMetric, snapMethod.similarityMetric)
     : stockMetricLabel;
 
+  const activeMacrocycleStatus = MACROCYCLE_SOURCES[searchSource] ? macrocycleStatus[searchSource] : null;
+  const macrocycleMetricOptions = (
+    activeMacrocycleStatus?.state === 'available'
+    && Array.isArray(activeMacrocycleStatus.capabilities?.similarityMetrics)
+    && activeMacrocycleStatus.capabilities.similarityMetrics.length > 0
+  ) ? activeMacrocycleStatus.capabilities.similarityMetrics : MACROCYCLE_METRIC_FALLBACK_OPTIONS;
+  const macrocycleMetricLabel = stockChoiceLabel(macrocycleMetricOptions, macrocycleSimilarityMetric, 'Tanimoto (binary)');
+  const macrocycleCountMetricsAvailable = macrocycleMetricOptions.some((option) => option.value !== 'tanimoto');
+  const snapMacrocycleMethod = lastMacrocycleMethodRef.current;
+  const macrocycleResultMethodLabel = snapMacrocycleMethod
+    ? stockChoiceLabel(macrocycleMetricOptions, snapMacrocycleMethod.similarityMetric, snapMacrocycleMethod.similarityMetric)
+    : macrocycleMetricLabel;
+
   const stockSearchDisabled = searchSource === 'stock' && stockStatus?.state !== 'available';
   const openSearchDisabled = searchSource === 'open' && (
     openStatus?.state !== 'available'
@@ -2138,7 +2217,7 @@ export function Simulation() {
         )}
         {MACROCYCLE_SOURCES[searchSource] && macrocycleStatus[searchSource]?.state === 'available' && (
           <div className="mb-2 rounded-lg border border-teal-100 bg-teal-50/70 px-4 py-3 text-sm text-blue-gray-700">
-            {MACROCYCLE_SOURCES[searchSource].label}: {(macrocycleStatus[searchSource].dataset?.rowCount || MACROCYCLE_SOURCES[searchSource].count).toLocaleString()} searchable / {MACROCYCLE_SOURCES[searchSource].count.toLocaleString()} export rows. Morgan (ECFP4) binary Tanimoto. {searchSource === 'real' ? 'Current stock unverified.' : 'Virtual; not stocked.'} No pack prices or cart purchases.
+            {MACROCYCLE_SOURCES[searchSource].label}: {(macrocycleStatus[searchSource].dataset?.rowCount || MACROCYCLE_SOURCES[searchSource].count).toLocaleString()} searchable / {MACROCYCLE_SOURCES[searchSource].count.toLocaleString()} export rows. Ranked by {macrocycleMetricLabel} over Morgan (ECFP4) environments. {searchSource === 'real' ? 'Current stock unverified.' : 'Virtual; not stocked.'} No pack prices or cart purchases.
           </div>
         )}
         {MACROCYCLE_SOURCES[searchSource] && macrocycleStatus[searchSource]?.state === 'unavailable' && (
@@ -2354,6 +2433,28 @@ export function Simulation() {
               Stock search compares structures with RDKit {stockFpLabel} fingerprints and {stockMetricLabel} similarity, computed the same way for the query and every compound.
               All options are binary fingerprints; count-based (MOE ctanimoto-style) searching is not available.
               Substructure, BAS, and molecular-weight search stay available under the internal catalog source.
+            </p>
+          </div>
+        )}
+        {MACROCYCLE_SOURCES[searchSource] && activeMacrocycleStatus?.state === 'available' && (
+          <div className="mb-2 w-full space-y-3 rounded-lg border border-teal-100 bg-teal-50/40 p-4">
+            <label className="block min-w-0 max-w-sm">
+              <span className="mb-1 block text-xs font-semibold text-blue-gray-700">Similarity method</span>
+              <select
+                aria-label="Macrocycle similarity method"
+                value={macrocycleSimilarityMetric}
+                onChange={(e) => handleMacrocycleMethodChange(e.target.value)}
+                className="h-10 w-full rounded-lg border border-teal-200 bg-white px-3 text-sm text-blue-gray-800 outline-none"
+              >
+                {macrocycleMetricOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </label>
+            <p className="text-sm text-blue-gray-500">
+              Every method is computed identically for the query and each structure over RDKit Morgan (ECFP4) environments.
+              The count metrics weight each environment by how often it occurs; they are a Pyxis method and are not MOE ctanimoto — scores are not comparable with MOE numbers.
+              {macrocycleCountMetricsAvailable ? '' : ' Count metrics appear once this dataset is rebuilt with count fingerprints.'}
             </p>
           </div>
         )}
@@ -2803,7 +2904,7 @@ export function Simulation() {
             <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
                 <div className="border-b border-teal-100 bg-teal-50/60 px-4 py-3 text-xs text-blue-gray-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
-                  {MACROCYCLE_SOURCES[searchSource].label} · Morgan (ECFP4) binary Tanimoto. Amount and lead time are dated export fields, not current offers. No prices or cart purchases; select structures for docking handoff.
+                  {MACROCYCLE_SOURCES[searchSource].label} · {macrocycleResultMethodLabel} over Morgan (ECFP4). Amount and lead time are dated export fields, not current offers. No prices or cart purchases; select structures for docking handoff.
                 </div>
                 <table className="w-full table-fixed text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-white dark:bg-slate-900">
