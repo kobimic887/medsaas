@@ -1,208 +1,127 @@
-# Pyxis staging — `/staging/` on the live hostname
+# Pyxis staging — full app at `/staging/`
 
-Status: **owner-test preview, LIVE at `https://app.pyxis-discovery.com/staging/`
-since 2026-09-07 (branch `staging/folding-preview` @ `2d32f4a`).** Nothing here
-is promoted to production automatically; production behavior changes only
-through the scoped `/staging/` nginx routing and the separate staging service.
+**Live 2026-09-24:** `https://app.pyxis-discovery.com/staging/` runs a separate
+Pyxis process with the normal production accounts, Atlas data, history, credits,
+orders, providers and checkout. This is intentionally **shared read/write
+data**: an action in staging can change a real production record or balance.
+The consumer app does not link or redirect to `/staging/` and its process,
+frontend bundle, and nginx root route were not changed by this switch.
 
-The **Simulation extension** below is LIVE since 2026-09-07 at commit
-`2d32f4a` (owner-approved update of the staging service/tree only — production
-`:5174` untouched). Docking/DiffDock on staging are real and billed under the
-synthetic demo account.
+Source commit `acaa4a3`; staging frontend index SHA-256
+`c0689418eae7a35d0bffaa7e3e7c4640484b73dc325b4e6165ebf7117cc4c24b`.
+Consumer bundle SHA-256 remained
+`c215f55254fa45d2ab855589c5ebb4b8a939271ee2f284c5db4871ce07dfddcd`
+and `pyxis-web` PID remained `2965854` during the switch. DNS resolved to 84.
+Runbook and rollback: [`deploy/staging/README.md`](../deploy/staging/README.md).
 
-Verified live over HTTPS on 2026-09-07: `/staging` → `/staging/` redirect,
-staging SPA + deep-link refresh (200), `/staging/assets/*` scoped, sample files
-served, demo sign-in + validate-token, fixture predict (labelled demo), paid
-endpoint refusal (403), unknown `/api` (503); **Simulation live checks**
-(2d32f4a): catalog browse + substructure search returning real Asinex rows,
-`503 STOCK_SEARCH_UNAVAILABLE`, `simulation-logs []`, unauth 401;
-production `/`, `/health`, stock search and `/auth/sign-in` unchanged (no
-banner). Interactive/WebGL/mobile keyboard checks and the first billed docking
-round-trip remain pending a real-browser visit by the owner.
+## Topology and data scope
 
-Runbook and files: [`deploy/staging/README.md`](../deploy/staging/README.md).
-Branch: `staging/folding-preview`.
-
-## What it is
-
-A second, isolated Pyxis application process on the same host and hostname:
-`https://app.pyxis-discovery.com/staging/`. nginx routes only `/staging/` to a
-loopback staging server (`127.0.0.1:5274`); every other path still goes to the
-production app (`:5174`) exactly as before.
-
-| | Production | Staging |
+| | Consumer app | Staging |
 |---|---|---|
-| URL | `/` | `/staging/` |
-| Service / port | `pyxis-web`, `:5174` (0.0.0.0) | `pyxis-web-staging`, `127.0.0.1:5274` |
-| Tree on 84 | `/root/pyxis-LIVE-5174` | `/root/pyxis-STAGING-5274` |
-| Frontend build | `vite build` (base `/`) | `vite build --mode staging` (base `/staging/`) |
-| Mode | normal | `PYXIS_DEMO_MODE=true` |
-| Database | MongoDB Atlas (production) | **none** — in-process demo store |
-| Folding provider | NVIDIA NIM (real, credited) | server fixture — no outbound |
-| Catalog + docking | real (Asinex/NVIDIA) | real (owner-authorized 2026-09-07): live read-only catalog + docking/DiffDock under the synthetic demo account |
-| Billing / email / ADMET / other paid | enabled | refused (`403 DEMO_MODE_DISABLED`) |
-| JWT secret | production secret | **separate** staging secret |
+| URL | `/` | `/staging/` (no consumer redirect) |
+| Host/service | 84 `pyxis-web` `:5174` | 84 `pyxis-web-staging` `127.0.0.1:5274` |
+| Tree | `/root/pyxis-LIVE-5174` | `/root/pyxis-STAGING-5274` |
+| Frontend | Vite base `/` | Vite base `/staging/`, `noindex` |
+| Backend mode | normal | normal + `PYXIS_STAGING_MODE=true` |
+| Accounts, Atlas, JWT, Stripe, providers | production | same existing production credentials, read in place |
+| Browser session keys | normal same-origin keys | `pxstg__` namespaced keys; sign in again with the same account |
+| Simulation stock index | tonomitosql on oracleOld | same dataset and service |
+| Macrocycle index | not deployed to consumer app | separate loopback `:8274` on 84 |
+| Open compounds AI | disabled on consumer app | OmniRoute free model through private loopback tunnel |
 
-## Isolation contract
+The staging unit reads `/root/pyxis-LIVE-5174/server/.env` **in place**;
+credentials are not copied into the staging tree. Its `ExecStart` overrides
+the port, bind host, asset path, base URL, staging flags, and AI configuration.
+Startup uses the normal Mongo-backed routes. `GET /api/staging/status` reports
+`demo:false`, `sharedProductionData:true`, `historyAvailable:true` and live
+provider/credit flags; the browser banner uses this server-owned status.
+Staging and consumer tokens use the same signing key, while namespaced browser
+storage avoids logging out the other tab. Checkout is configured to redirect
+back to the `/staging/` URL; payment completion and webhook delivery were not
+exercised during this staging release.
 
-These are enforced by code + config, not by convention:
+This is not a database snapshot or sandbox. Both `pyxis-web-staging` and
+`pyxis-macrocycle-search-staging` are enabled at boot, as are the two AI bridge
+units on oracleOld. Staging remains reachable only through nginx's existing
+`location /staging/` → loopback proxy; no additional public listener or DNS
+record was created. `noindex` is a search-engine hint, not access control.
 
-1. **No request escapes the staging scope.** Every URL the staging build emits —
-   API calls, iframe assets, samples — is derived from the Vite base path
-   (`/staging/`): `getApiBaseUrl()` returns the base, `withAppBase()` prefixes
-   literals, React Router uses it as `basename`, and nginx strips the prefix to
-   the staging server. A staging API request can never silently hit the
-   production API: unknown `/api/*` paths on the staging server answer
-   `503 DEMO_MODE_UNAVAILABLE` instead of falling through.
-2. **Same-origin storage is namespaced.** The staging build installs a
-   transparent localStorage/sessionStorage prefix (`pxstg__`) at bootstrap
-   (`client/src/utils/storageNamespace.js`). Staging logout clears only staging
-   keys; production sessions and viewer results in other tabs are untouched.
-   The production build installs nothing, so production keys are unchanged.
-3. **Separate signing secrets.** Staging runs with its own `JWT_SECRET`. A
-   token signed by the production secret is a dead session (401) on staging and
-   vice versa — no cross-authentication in either direction.
-4. **Demo mode is server-controlled.** `PYXIS_DEMO_MODE=true` changes the
-   server, not just the UI: no Mongo client is created, no Stripe/NVIDIA keys
-   are read for folding, and `/api/openfold3/predict` is answered by a labelled
-   server fixture. Simulation browsing/search proxy the **read-only** Asinex catalog
-   and, when the service envs are set (owner-authorized for the synthetic
-   account), `/api/simulation` + `/api/diffdock/generate` forward to the real
-   docking providers — those cost real money. Everything else paid (checkout,
-   billing, MolMIM, `diffdock/generate_file`, ADMET, email, Tanimoto) returns
-   `403 DEMO_MODE_DISABLED` even when called by hand. `GET /api/staging/status`
-   is the single source of truth the UI reads for demo/history capability.
-5. **No database, and no pretending there is one.** Production Atlas is
-   off-limits and no separate approved database exists, so the demo keeps saved
-   predictions and simulation runs in in-process stores
-   (`server/utils/foldDemoStore.js`, `server/utils/demoSimStore.js`). The UI and
-   the status endpoint both say history is demo-only and resets on restart.
-6. **Noindex is not access control.** The staging build injects
-   `<meta name="robots" content="noindex,nofollow">`; access control is the
-   separate staging sign-in.
+## Simulation sources
 
-## Folding history contract (demo store)
+- **Internal catalog:** both apps use the existing Asinex supplier API. On
+  2026-09-24 `dev.asinex.com:58181` refused TCP connections from Mac, 151 and
+  84. DNS resolved to `213.208.173.213`; the Asinex website, stock host and
+  docking host remained reachable. This establishes an unreachable catalog
+  port, not its internal cause. The supplier must restore it or provide a new
+  catalog endpoint. Do not substitute stock/macrocycle rows or invent prices.
+- **Stock compounds:** 630,646 compounds available through the same
+  tonomitosql service as production; stage browser status verified.
+- **Real macrocycles:** 18,171 searchable structures from 18,190 dated export
+  rows. **Virtual macrocycles:** 2,347,736 searchable structures from 2,350,440
+  export rows. They use an independent read-only Morgan/ECFP4 binary Tanimoto
+  index at `127.0.0.1:8274`; no pack prices or cart purchases. Source amounts
+  and lead times are dated export fields, not current offers. See
+  [`DATA-MACROCYCLES.md`](DATA-MACROCYCLES.md).
+- **Open compounds:** ChEMBL retrieval with local RDKit Morgan/Tanimoto
+  ranking; AI tool loop is enabled only on staging via
+  `openrouter/openrouter/free` through OmniRoute. An explicit **Search without
+  AI** path remains available. The public route has no AI configuration. See
+  [`DATA-OPEN-COMPOUNDS.md`](DATA-OPEN-COMPOUNDS.md).
 
-Predictions are private to the submitting user; company membership alone does
-not grant access. The demo store implements the conjunctive owner filter
-(`server/utils/foldHistory.js`):
+The staging frontend opens Simulation on Real macrocycles so the preview is
+immediately useful while the external catalog port is down. The consumer build
+still opens on Internal catalog. Query controls and results are side by side
+at desktop width; drawing, SMILES, and source selection remain available.
 
-```
-ownerUserId       === requester user id
-AND ownerCompanyId === requester company (null when the user has none)
-```
+## Private AI bridge
 
-This deliberately differs from the OR-based `simulation_logs` tenant filter
-(`server/utils/simulationLogs.js`), which exists for legacy dual-shape rows and
-is **not** reused for folding history. Non-owners get a uniform 404 (no
-existence oracle). List rows are small projections (no coordinate blobs);
-coordinates download through the owning run (`GET /api/folding-history/:id/blob/:i`);
-blob sizes and run totals are capped; a failed save persists nothing; a
-successful prediction whose save fails stays fully usable with a truthful
-warning (never “rerun to save”).
+`pyxis-open-compounds-ai-proxy.service` on oracleOld binds only
+`127.0.0.1:20130`; it injects the existing OmniRoute client key from
+`~/.config/omniroute/oracle.env`, accepts only the chemical-search tool and
+the verified free model, and forwards to gateway loopback `:20128`. A separate
+SSH reverse tunnel exposes it at `127.0.0.1:20129` on 84. The staging app
+uses that loopback URL with a non-secret placeholder bearer value. No gateway
+key is stored on 84 or sent over the public HTTP gateway. If the bridge is
+unavailable, AI search fails visibly; it never silently falls back to the
+deterministic path or a paid model.
 
-## Demo provider fixture
+## Verification, 2026-09-24
 
-`server/utils/foldFixture.js` generates placeholder PDB/mmCIF coordinates in
-the documented NVIDIA envelope (`outputs[].structures_with_scores[].structure`)
-that the shared normalizer (`client/src/utils/openfold.js`) already extracts.
-Fixtures are deterministically built from chain lengths, contain **no
-confidence scores**, and are labelled `_pyxisDemo: true` so the UI marks them
-“DEMO OUTPUT — NOT A REAL PREDICTION”. Sample structures for viewer testing are
-real public coordinates (RCSB PDB 1CRN, crambin — `client/public/folding-samples/`)
-labelled as examples with provenance, never as new predictions.
+- `bun run check`, `bun run test:staging-build`, `bun run
+  test:simulation-search` (102 invariants), and `bun --cwd=server run
+  test:open-compounds:bun` (35 + 39 + 23 checks) passed; Python proxy compiled.
+- Tunnel `/health` answered 200 from 84. A required tool call through the
+  tunnel returned `search_similar_open_compounds`. The live AI test on 84
+  returned six ChEMBL hits, top `CHEMBL1373993` at similarity 1.000.
+- Browser over HTTPS: the former synthetic staging token led to the real
+  sign-in page and shared-data banner. The configured production demo account
+  signed in and saw 30 existing simulation records. Stock status reported
+  630,646 compounds. Open compounds exposed AI search and a browser query
+  returned six RDKit-ranked hits with the same exact top match. Plans & Credits
+  displayed the normal purchase controls; **no payment or paid science job was
+  submitted**.
+- Stage loopback `/health` and `/api/staging/status` answered; consumer PID and
+  bundle hash stayed unchanged. Earlier browser checks verified both macrocycle
+  sources, selection, and virtual pagination to 12 results. The paid provider
+  round trips and completed Stripe payment remain untested.
 
-## Simulation on staging (owner-tested with real data)
+## Rollback and traps
 
-Simulation exposes these paths, with external-provider availability noted below:
+Pre-switch files are at `/root/pyxis-staging-full-rollback-20260924/` on 84:
+the original staging unit and `staging-before.tar` (server files, frontend
+bundle, docs; **no `.env`**). Restore the original unit and pre-switch bundle,
+`systemctl daemon-reload`, restart only `pyxis-web-staging`, and confirm
+`/api/staging/status` reports `demo:true`. Disable the full staging unit at
+boot if reverting to the older owner-test setup. Stop/disable the two
+oracleOld AI bridge units if no longer needed. Do not restart `pyxis-web`,
+alter nginx or DNS, or roll back the shared Mongo database for a staging-only
+code failure.
 
-The staging build opens Simulation on **Real macrocycles** so the September 23
-preview is immediately usable. The consumer build still opens on Internal
-catalog. On 2026-09-24 the shared supplier endpoint
-`dev.asinex.com:58181` refused connections from 84; selecting Internal catalog
-on staging therefore shows its normal upstream-unavailable error until that
-external service recovers. This does not affect the local macrocycle index.
-
-- **Browse + search operate on the live read-only Asinex catalog** the same way
-  production proxies it (`server/routes/stagingDemo.js` forwards to
-  `ASINEX_API_BASE`): browse pagination (`/api/asinex/all/:page_:size`),
-  single-compound and exact-SMILES lookups, and the `/api/api4/{bas,
-  structure, substructure, similarity, mw}` search family. Queries are
-  forwarded untouched and responses passed through verbatim — no canned hits,
-  no invented scores (catalog similarity returns only genuine upstream hits,
-  exactly like production).
-- **Real docking** (`POST /api/simulation`) and **DiffDock**
-  (`POST /api/diffdock/generate`) run against the real providers when
-  `ASINEX_DOCKING_API_URL` / `DIFFDOCK_API_URL` (+ `SDF_CONVERTER_URL` for
-  SMILES ligands) are set. They are paid calls billed under the synthetic demo
-  account — authorized by the owner, but each run costs money. Results and
-  coordinate blobs are stored in-process with the same row shape and ownership
-  semantics as `simulation_logs`; a repeat run is a free in-memory cache hit
-  (no second provider call), mirroring production's dedupe.
-- **History** (`GET /api/simulation-logs`) lists the demo account's real runs
-  only (Control Panel shows an honest empty state until one exists). Storage is
-  in-process and resets on restart — labelled as temporary demo history.
-- **Stock-compound search** honestly reports
-  `503 STOCK_SEARCH_UNAVAILABLE`: the stock dataset is deployed by the separate
-  Simulation stock service and is not provisioned for staging. The UI shows an
-  explanatory note and disables that source — never a silent Asinex fallback.
-- **Real and virtual macrocycle search** use independent dated exports through
-  a separate read-only loopback index (`pyxis-macrocycle-search-staging`,
-  `127.0.0.1:8274`). The authenticated demo routes proxy only that index;
-  absent data returns 503 and cannot appear as catalog or old stock hits.
-  Results are unpriced and cannot be purchased. Source amounts and lead times
-  are not verified offers. See [`DATA-MACROCYCLES.md`](DATA-MACROCYCLES.md).
-- **Still blocked** with explanatory states (never 503 loops): checkout,
-  billing, MolMIM, `diffdock/generate_file`, ADMET and other paid neighbours.
-
-Fixture-verified without any real outbound call in
-`server/test/staging-simulation.test.mjs` (48 checks under bun + node).
-
-### Macrocycle preview deployed 2026-09-24
-
-Staging runs source commit `84d1e13` with a separately imported index. Its
-manifest reports 18,171 searchable real structures from 18,190 export rows and
-2,347,736 searchable virtual structures from 2,350,440 export rows. In the
-public `/staging/dashboard/simulation` browser path, the real sample returned
-`RPX 202406561` at similarity 1.000 and could be selected; the virtual sample
-returned `VPX 900000001` at 1.000 and pagination completed at 12 results. The
-side-by-side query/results layout was inspected at desktop width. No paid
-docking call was made. The consumer `pyxis-web` bundle hash remained
-`c215f55254fa45d2ab855589c5ebb4b8a939271ee2f284c5db4871ce07dfddcd`.
-
-Staging rollback material is at
-`/root/pyxis-staging-macro-rollback-20260924/` on 84; the pre-macro and
-pre-default frontend builds remain beside the current staging `client/dist`.
-The external Asinex catalog supplier refused connections during this check;
-macrocycle search did not depend on that supplier.
-
-## Status of integrations
-
-- **Verified:** staging routing + deep-link/API scoping (build checks +
-  nginx contract), demo sign-in, fixture predict (PDB + mmCIF), viewer-test
-  sample files, private folding history lifecycle + privacy negatives + size
-  limits (`server/test/staging-demo.test.mjs`, 58 checks), Simulation
-  catalog/search/artifacts/docking-lifecycle + refusals against fixture
-  upstreams (`server/test/staging-simulation.test.mjs`, 48 checks), cross-secret
-  token rejection, paid-endpoint refusal.
-- **Unverified by design:** any real NVIDIA folding prediction (fixture only),
-  real docking/DiffDock round-trips against the live providers (fixture-verified
-  server-side; needs the owner's browser on `/staging/` and costs money),
-  persistent history across staging restarts (no isolated DB approved yet),
-  browser-rendered Molstar evidence (needs a real browser visit to `/staging/`).
-
-## Common traps
-
-- `client/dist` after `bun run build:staging` is the **staging** build. Always
-  restore the production build (`bun --cwd=client run build`) before packing
-  anything for the live tree, or a “prod” deploy would ship `/staging/` assets.
-- Production `pyxis-web` runs on `0.0.0.0:5174`; the staging unit must keep
-  `BIND_HOST=127.0.0.1`. Never flip the staging unit to public.
-- nginx `sites-enabled/app.pyxis-discovery.com` is a symlink to `sites-available`.
-  Back up/restore file CONTENT (`cat >` / `cat … >`), never `cp -a` (it copies
-  the symlink and tracks the live file — real backups carry `.original`/`.current`
-  suffixes under `/root/`).
-- The demo store resets on restart — don’t “fix” that by pointing staging at
-  production Atlas.
-- `401` on staging still means dead session only (client logout is namespaced,
-  so it cannot log out a production session in another tab).
+The older demo router and its in-process folding/simulation history remain in
+source as a reversible fallback. Demo mode used a **different** JWT secret,
+fixture folding, and no MongoDB; none of those descriptions apply to the
+current full staging service. Keep staging and consumer frontend builds
+separate: `bun run build:staging` writes `/staging/` asset URLs, and a normal
+`bun --cwd=client run build` must be restored locally before any consumer
+artifact is packed. The `401`/`403`/`502` status contract still applies;
+staging logout clears only its namespaced browser storage.

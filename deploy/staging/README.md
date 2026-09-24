@@ -1,251 +1,50 @@
-# Isolated Pyxis staging (`/staging/` on the existing hostname)
+# Pyxis full staging at `/staging/`
 
-Owner-test staging lives at **https://app.pyxis-discovery.com/staging/** — no new
-DNS record, subdomain, or certificate.
+**Live since 2026-09-24:** [https://app.pyxis-discovery.com/staging/](https://app.pyxis-discovery.com/staging/) runs the normal Pyxis application in a separate loopback process on 84. It shares production Atlas, accounts, signing key, history, credits, orders, Stripe, and scientific providers. **Staging actions can change real production data and balances.** The consumer root app has no link or redirect to staging; its service and bundle were unchanged during the switch. The browser uses separate `pxstg__` storage keys, so the same account signs in separately.
 
-**Live since 2026-09-07** (branch `staging/folding-preview`, commit `2d32f4a`
-— folding preview since `f06e8a6`, Simulation catalog + docking/DiffDock
-owner-authorized at `2d32f4a`; tree `/root/pyxis-STAGING-5274`, service
-`pyxis-web-staging` on loopback `:5274`). Nginx backups made at install (REAL
-file copies — see the symlink warning below):
-- `/root/pyxis-staging-nginx-backup.20260907T152427.original` — pre-staging
-  config (md5 `4241cf29f104cb40d5ccbf0d722e01c3`)
-- `/root/pyxis-staging-nginx-backup.20260907T152427.current` — config WITH the
-  `/staging/` block (md5 `b9b5885e046cc015914841f6b8d93c82`)
+Current state and measured evidence: [`docs/STAGING.md`](../../docs/STAGING.md). The old isolated demo mode is retained only as a rollback option.
 
-> **Symlink trap:** on this host `/etc/nginx/sites-enabled/app.pyxis-discovery.com`
-> is a symlink into `sites-available/`. Never back it up with `cp -a`, which
-> copies the symlink and tracks the live file. Back up and restore FILE CONTENT:
-> `sudo sh -c 'cat /etc/nginx/sites-available/app.pyxis-discovery.com > /root/...'`
-> and `sudo sh -c 'cat /root/...original > /etc/nginx/sites-enabled/app.pyxis-discovery.com'`
-> (writing through the symlink updates the sites-available target nginx reads). It is a *second, isolated application
-process* on the same host (`oracleNew` / `84.13.81.51`), reached through an
-nginx `location /staging/` that forwards to a loopback-only staging server.
+## Runtime map
 
-The staging process is separate from the consumer app. It does not use the
-production API or MongoDB Atlas, Stripe, or email. Docking/DiffDock are
-explicitly forwarded to real providers and can incur cost. See
-[`docs/STAGING.md`](../../docs/STAGING.md) for the isolation contract and the
-demo/fixture semantics.
+| Component | Location | Role |
+|---|---|---|
+| Public app | 84 `pyxis-web` `:5174` | Consumer site; unchanged by staging release |
+| Full staging app | 84 `pyxis-web-staging` `127.0.0.1:5274` | `/staging/` through existing nginx location; enabled at boot |
+| Staging tree | 84 `/root/pyxis-STAGING-5274` | Separate source and Vite `--mode staging` bundle |
+| Shared environment | 84 `/root/pyxis-LIVE-5174/server/.env` | Read in place by staging systemd unit; do not copy or log |
+| Macrocycle search | 84 `pyxis-macrocycle-search-staging` `127.0.0.1:8274` | Separate read-only real and virtual macrocycle indexes; enabled at boot |
+| Stock search | oracleOld tonomitosql | Same dataset used by consumer app |
+| Free AI proxy | oracleOld `pyxis-open-compounds-ai-proxy` `127.0.0.1:20130` | Injects existing OmniRoute key, allows only verified free model/tool; enabled at boot |
+| Private AI tunnel | oracleOld `pyxis-open-compounds-ai-tunnel` → 84 `127.0.0.1:20129` | Reverse SSH; enabled at boot; no OmniRoute key copied to 84 |
 
-## Topology
+`pyxis-web-staging-full.service` is the installed staging unit. It uses `EnvironmentFile=/root/pyxis-LIVE-5174/server/.env` and overrides the stage port, bind address, asset path, base URL, `PYXIS_DEMO_MODE=false`, `PYXIS_STAGING_MODE=true`, and free AI endpoint. The `10-macrocycle-search.conf` drop-in supplies the staging-only index URL. Normal app routes therefore serve real login, history, stock, ChEMBL, folding, checkout and paid actions. Open compounds AI uses `openrouter/openrouter/free` through the local OmniRoute bridge. An AI bridge failure is visible; **Search without AI** remains an explicit option.
 
-| Thing | Value |
-|---|---|
-| Public URL | `https://app.pyxis-discovery.com/staging/` (nginx `:443`) |
-| Staging service | systemd **`pyxis-web-staging`** — Bun, `server/index.js` |
-| Listen | `127.0.0.1:5274` only (`BIND_HOST`), never public |
-| Tree | `/root/pyxis-STAGING-5274` (mirrors the `pyxis-LIVE-5174` layout) |
-| Frontend build | staging mode: `vite build --mode staging` (base `/staging/`, noindex, namespaced storage) |
-| Mode | `PYXIS_DEMO_MODE=true` → **no MongoDB, no Stripe. Folding fixture-only; Simulation catalog read-only + real docking/DiffDock (owner-authorized)** |
-| DB | none (in-process demo history store, resets on restart) |
-| Sign-in | synthetic demo account via the sign-in page demo button |
-| Production | untouched: same `pyxis-web` on `:5174`, same nginx server block |
+The browser build must be `bun --cwd=client run build:staging` and use `/staging/` asset URLs. A normal `bun --cwd=client run build` restores the local production build after transferring staging artifacts. Do not transfer that normal build into the staging tree. Source uploads via `git archive` exclude ignored `.env` files.
 
-### Ports / units on 84 (measured when this file was written)
+## Checks after a staging update
 
-- `pyxis-web` `:5174` — production (public)
-- `pyxis-vite-legacy` `:5173`, `pyxis-api-legacy` `:3000`, `pyxis-stripe` `:3001` — stopped rollback
-- `pyxis-convertstr` docker `127.0.0.1:8001` — converter (production only)
-- **`pyxis-web-staging` `127.0.0.1:5274`** — this staging service (loopback)
-- **`pyxis-macrocycle-search-staging` `127.0.0.1:8274`** — read-only macrocycle index (loopback)
-- FinSrv `:4000` — unrelated
-
-## Files
-
-- `pyxis-web-staging.service` — systemd unit (install to `/etc/systemd/system/`)
-- `nginx-staging.conf` — server-block snippet for `app.pyxis-discovery.com`
-- `env.server.template` — non-secret env layout; secrets are generated on the host
-- `pyxis-macrocycle-search-staging.service` — separate loopback index unit
-- `10-macrocycle-search.conf` — staging-only web service drop-in
-- `pyxis-web-staging-full.service` — opt-in full app unit: existing production
-  Atlas/JWT/provider credentials, separate `/staging/` listener and assets
-- `pyxis-open-compounds-ai-proxy.service` — oracleOld loopback key-injecting
-  proxy, pinned to the verified free OpenRouter tool model
-- `pyxis-open-compounds-ai-tunnel.service` — oracleOld → 84 SSH reverse tunnel;
-  84 sees only `127.0.0.1:20129`, never the gateway credential
-- `deploy-staging.sh` — repeatable staging deploy (run on 84 as root)
-- `rollback-staging.sh` — remove routing + service + tree
-
-## Full staging mode (same production records)
-
-The original staging service is an isolated demo. To use the same real
-accounts, history, credits, orders, database, providers and checkout as the
-consumer app, install `pyxis-web-staging-full.service` over the staging unit.
-It reads `/root/pyxis-LIVE-5174/server/.env` in place; do not copy or log that
-file. `ExecStart` overrides the listen port, asset path, `/staging/` public URL,
-demo/full flags, and free AI route. The `10-macrocycle-search.conf` drop-in
-still provides the independent macrocycle index. The normal application routes
-then run, including stock search, ChEMBL, folding, billing and history.
-
-This is a **shared production database**: staging actions change the same user,
-history, order, and credit records. Staging keeps its own process, frontend
-bundle, `/staging/` URLs and browser storage namespace; users sign in with
-their normal credentials. No link or redirect is added from the consumer app.
-
-Before switching, copy the current staging unit, `server/index.js`, and
-`client/dist` to a dated rollback directory on 84 (exclude `.env`); record the
-consumer bundle SHA-256. Install the new unit, run `systemd-analyze verify`,
-restart **only** `pyxis-web-staging`, and check `/health` plus
-`/api/staging/status` on loopback and over HTTPS. The status must report
-`demo:false`, `sharedProductionData:true`. Verify a normal login and existing
-history in the browser, both macrocycle sources, stock and ChEMBL status, and
-that the consumer bundle hash and `pyxis-web` PID did not change.
-
-For the private free AI path, install the two AI systemd units on oracleOld.
-The proxy reads the existing `~/.config/omniroute/oracle.env` there. The SSH
-reverse tunnel terminates at 84 loopback `:20129`. Test `GET /health` through
-the tunnel before enabling the full staging unit. The only allowed model is
-`openrouter/openrouter/free`; no credential is written to 84. If the tunnel or
-free provider is down, AI search returns an error and **Search without AI**
-remains available.
-
-Rollback full staging: restore the saved original staging unit, run
-`systemctl daemon-reload`, restart only `pyxis-web-staging`, then verify
-`/api/staging/status` reports `demo:true`; restore the saved frontend bundle if
-necessary. Stop the two oracleOld AI units if no longer needed. Do not restart
-`pyxis-web` or alter nginx, DNS, the Mongo database, or the production env file.
-
-## First install (one time, on 84, root)
+Run the focused repository checks (`bun run check`, `bun run test:staging-build`, `bun run test:simulation-search`, and `bun --cwd=server run test:open-compounds:bun`) before shipping. On 84, verify only the staging service is restarted and confirm:
 
 ```bash
-# 0. Back up the nginx site file's content first (owner-approved action).
-sudo sh -c 'cat /etc/nginx/sites-enabled/app.pyxis-discovery.com > \
-      /root/pyxis-staging-nginx-backup.$(date +%Y%m%dT%H%M%S).original'
-
-# 1. Ship the tree + built staging frontend (run from the Mac, this branch).
-git archive --format=tar HEAD | ssh oracleNew \
-  'sudo mkdir -p /root/pyxis-STAGING-5274 && sudo tar -x -C /root/pyxis-STAGING-5274'
-tar -C client -cf - dist | ssh oracleNew \
-  'sudo tar -x -C /root/pyxis-STAGING-5274/client'
-#   client/dist MUST be the STAGING build (bun run build:staging), not the prod build.
-
-# 2. Server deps + env (root on 84). The .env file is a credential file: only
-#    write it after the owner approves this exact path.
-cd /root/pyxis-STAGING-5274/server
-bun install
-umask 077
-openssl rand -base64 48 > /dev/null   # just to confirm openssl exists
-cat > /root/pyxis-STAGING-5274/server/.env <<EOF
-PYXIS_DEMO_MODE=true
-JWT_SECRET=$(openssl rand -base64 48 | tr -d '\n')
-# Real Simulation services (owner-authorized): catalog defaults to
-# http://dev.asinex.com:58181 when unset; docking/DiffDock default to
-# services.asinex.com. Set SDF_CONVERTER_URL for DiffDock SMILES ligands.
-SDF_CONVERTER_URL=http://127.0.0.1:8001/convertSTR
-EOF
-chmod 600 /root/pyxis-STAGING-5274/server/.env
-
-# 3. Unit + start (never enable: staging must not autostart after a reboot).
-cp /root/pyxis-STAGING-5274/deploy/staging/pyxis-web-staging.service /etc/systemd/system/
-systemctl daemon-reload
-systemctl start pyxis-web-staging
-curl -s http://127.0.0.1:5274/health          # must answer {"status":"OK",...}
-curl -s http://127.0.0.1:5274/api/staging/status
-
-# 4. nginx routing. Validate BEFORE reloading; the reload touches production
-#    nginx, so this is the only step with any blast radius on :443. The live
-#    file is a symlink — back up CONTENT (cp -a would copy the link):
-sudo sh -c 'cat /etc/nginx/sites-enabled/app.pyxis-discovery.com > \
-      /root/pyxis-staging-nginx-backup.$(date +%Y%m%dT%H%M%S).original'
-#   Insert the `location = /staging` + `location /staging/` block (from
-#   nginx-staging.conf) inside the 443 server block, then:
-nginx -t && systemctl reload nginx
-
-# 5. Verify scoped + production unchanged.
-curl -s -o /dev/null -w '%{http_code}\n' https://app.pyxis-discovery.com/staging/       # 200
-curl -s https://app.pyxis-discovery.com/staging/api/staging/status                      # demo payload
-curl -s -o /dev/null -w '%{http_code}\n' https://app.pyxis-discovery.com/               # 200 (prod root)
-curl -s -o /dev/null -w '%{http_code}\n' https://app.pyxis-discovery.com/api/health     # prod API still fine
+systemctl is-active pyxis-web-staging pyxis-macrocycle-search-staging
+curl -fsS http://127.0.0.1:5274/health
+curl -fsS http://127.0.0.1:5274/api/staging/status
+curl -fsS http://127.0.0.1:8274/v1/datasets
+curl -fsS http://127.0.0.1:20129/health
+curl -I https://app.pyxis-discovery.com/staging/
+curl -I https://app.pyxis-discovery.com/
 ```
 
-## Updating staging after code changes (Mac → 84)
+`/api/staging/status` must say `demo:false` and `sharedProductionData:true`. Also check a real sign-in, existing history, macrocycle/stock source status, an Open compounds AI search, and the unchanged consumer service PID and bundle SHA. These read-only checks do not prove a completed payment or a paid scientific provider round trip.
 
-```bash
-cd /Users/kobigenis/projects/medsaas
-bun --cwd=client run build:staging   # client/dist now = staging build (base /staging/)
-git archive --format=tar HEAD | ssh oracleNew \
-  'sudo tar -x -C /root/pyxis-STAGING-5274'
-tar -C client -cf - dist | ssh oracleNew \
-  'sudo tar -x -C /root/pyxis-STAGING-5274/client'
-ssh oracleNew 'sudo systemctl restart pyxis-web-staging'
-#   then rebuild the production default locally so the checked-out tree's
-#   client/dist returns to the prod build:
-bun --cwd=client run build
-```
+The external catalog endpoint `dev.asinex.com:58181` refused connections from Mac, oracleOld and 84 on 2026-09-24. Both sites use that endpoint. Its failure does not justify substituting stock or macrocycle records for catalog items or inventing prices. Ask Asinex for restored service or a replacement endpoint.
 
-### Macrocycle preview configuration
+## Rollback to the former isolated demo
 
-The September 23 real and virtual macrocycle sources use the separate,
-read-only compact search service (`pyxis-macrocycle-search-staging.service`)
-bound to `127.0.0.1:8274`. Install
-[`10-macrocycle-search.conf`](10-macrocycle-search.conf) as
-`/etc/systemd/system/pyxis-web-staging.service.d/10-macrocycle-search.conf`
-and run `systemctl daemon-reload` before restarting `pyxis-web-staging`.
-This non-secret systemd setting points only the staging process at the index;
-the app's `server/.env` holds its JWT secret and is not edited during preview
-updates. The search service must be running and must list both exact dataset
-names (`Macrocycles real stock — 2026-09-23` and
-`Macrocycles virtual — 2026-09-23`) before the Simulation source controls
-report them as available. If either is missing, its source reports unavailable
-without substituting the older stock corpus or the Asinex catalog.
+The pre-switch staging unit and source/frontend archive are at `/root/pyxis-staging-full-rollback-20260924/` on 84. `staging-before.tar` excludes `.env`. Restore the original stage unit and frontend bundle, run `systemctl daemon-reload`, and restart **only** `pyxis-web-staging`. Check `/api/staging/status` returns `demo:true`; disable that older stage unit at boot. Stop and disable both oracleOld AI bridge units if they are no longer needed. Do not restart `pyxis-web`, change DNS/nginx, alter the production env file, or roll back shared Mongo records for a stage code failure.
 
-Copy the complete, validated index artifacts from the builder described in
-[`docs/DATA-MACROCYCLES.md`](../../docs/DATA-MACROCYCLES.md) into
-`/root/pyxis-macrocycle-index-staging` (six files: two each of `.fpb`,
-`.rows.csv`, and `.manifest.json`). Install the service unit to
-`/etc/systemd/system/pyxis-macrocycle-search-staging.service`. Check that
-`curl http://127.0.0.1:8274/health` and `/v1/datasets` succeed before
-restarting `pyxis-web-staging`. The unit starts neither automatically after a
-reboot nor through production `pyxis-web`. Keep a copy of the previous staging
-tree, `client/dist`, systemd fragments, and index directory for rollback;
-restore only those and restart the two staging units if verification fails.
+The old demo used `PYXIS_DEMO_MODE=true`, its own JWT signing secret, in-process history, fixture folding, and refused checkout; these are **not** the current full stage behavior. `pyxis-web-staging.service`, `env.server.template`, `deploy-staging.sh`, and `rollback-staging.sh` are legacy first-install/demo assets. Do not run `rollback-staging.sh` for the full-to-demo rollback: it removes the entire `/staging/` route and tree.
 
-The preview index and staging API are separate loopback processes. The
-consumer-facing Pyxis service on `:5174` has no macrocycle search environment
-setting and its nginx route is unchanged. Keep the existing staging stock
-search at `503 STOCK_SEARCH_UNAVAILABLE` until that separate dataset is
-provisioned for staging.
-The staging build opens Simulation on Real macrocycles; the consumer build
-continues to open on Internal catalog. Catalog requests still require the
-external supplier endpoint, which refused connections from 84 on 2026-09-24.
+## Nginx trap
 
-> The deployed tree on 84 is **source + prebuilt dist**, like the live tree. The
-> staging tree keeps `server/.env` (created above) — source uploads via
-> `git archive` never overwrite it because `.env` is git-ignored and absent from
-> the archive. Do not `git checkout .` or extract a full tarball over it either.
-
-## Rollback / stop (restore only this task's changes)
-
-```bash
-# Full rollback of staging (routing, service, tree):
-ssh oracleNew
-systemctl stop pyxis-web-staging
-rm /etc/systemd/system/pyxis-web-staging.service && systemctl daemon-reload
-#   restore nginx CONTENT from the backup made before the /staging block was
-#   added (sites-enabled is a symlink — write through it, never cp -a):
-sudo sh -c 'cat /root/pyxis-staging-nginx-backup.<ts>.original > /etc/nginx/sites-enabled/app.pyxis-discovery.com'
-sudo nginx -t && sudo systemctl reload nginx
-#   tree can stay on disk (harmless, loopback-only); remove with:
-sudo rm -rf /root/pyxis-STAGING-5274
-```
-
-Rollback never touches `/root/pyxis-LIVE-5174`, the `pyxis-web` unit, or the
-production `.env`. Because the staging server binds `127.0.0.1:5274`, stopping
-the unit plus removing the nginx location fully removes it from the internet.
-
-## Owner notes
-
-- Staging demo history (folding predictions and simulation runs) lives **in the
-  process** and resets when `pyxis-web-staging` restarts. Persistent history
-  needs an approved isolated database; production Atlas is off-limits by design.
-- The demo folding predict is a labelled server fixture — no NVIDIA folding call.
-- Simulation browsing/search is the **live read-only Asinex catalog**; docking
-  and DiffDock forward to the **real providers** under the synthetic demo
-  account (owner-authorized) and each run costs money. `SDF_CONVERTER_URL`
-  points at 84's shared loopback converter container (a stateless utility).
-  Stock-compound search reports `503 STOCK_SEARCH_UNAVAILABLE` until the
-  separate Simulation stock service provisions a dataset for staging.
-- Real-docking behaviour is fixture-verified in
-  `server/test/staging-simulation.test.mjs`; the first live provider round-trip
-  should happen in the owner's browser (it bills the service).
+The existing `/staging/` location proxies to loopback `:5274`; this switch required no nginx or DNS edit. `/etc/nginx/sites-enabled/app.pyxis-discovery.com` is a symlink into `sites-available/`. If restoring nginx for a separate reason, back up and restore **file content**, not the symlink (`cp -a` would keep pointing at the live file). Pre-staging content backup: `/root/pyxis-staging-nginx-backup.20260907T152427.original`; backup with the `/staging/` block: `/root/pyxis-staging-nginx-backup.20260907T152427.current`.

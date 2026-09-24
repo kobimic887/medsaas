@@ -107,16 +107,20 @@ when a path or trap moves.
 - `oracleOld` (`151.145.91.17`) is a distinct host and a temporary Tanimoto source.
   `oracleNew` (`84.13.81.51`) is the **live** application host — measure DNS.
 - Owner-test **staging** is the same hostname at `/staging/`: separate loopback
-  service `pyxis-web-staging` `:5274` (tree `/root/pyxis-STAGING-5274`), demo mode
-  (`PYXIS_DEMO_MODE=true` — no DB, in-process history). Folding stays a labelled
-  fixture; Simulation catalog browse/search proxy the live read-only Asinex
-  catalog and — owner-authorized — docking/DiffDock forward to the real
-  providers from the demo router (`server/routes/stagingDemo.js`,
-  `server/utils/demoSimStore.js`); stock search answers
-  `503 STOCK_SEARCH_UNAVAILABLE` (separate stock deployment's dataset) and
-  `/api/stock-offers` is refused (`DEMO_MODE_DISABLED`). Separate
-  signing secret, Vite `--mode staging` build, nginx `location /staging/` only.
-  Contract, traps and rollback: `docs/STAGING.md` + `deploy/staging/README.md`.
+  service `pyxis-web-staging` `:5274` (tree `/root/pyxis-STAGING-5274`), normal
+  Mongo-backed app with `PYXIS_STAGING_MODE=true` and `PYXIS_DEMO_MODE=false`.
+  Its unit reads the existing production environment in place: accounts,
+  history, credits, orders, checkout, providers and Atlas data are **shared
+  read/write with production**. The staging build has `/staging/` asset URLs,
+  namespaced browser storage and no consumer redirect. Stock uses the same
+  tonomitosql dataset; real/virtual macrocycles use a separate loopback index
+  `:8274`. Open compounds AI uses a private oracleOld OmniRoute tunnel and
+  verified free model; the consumer app's AI remains disabled. Both staging
+  units and the AI bridge units are enabled at boot. The external Asinex
+  catalog endpoint `dev.asinex.com:58181` refused connections from Mac, 151
+  and 84 on 2026-09-24; this affects both apps. The old demo router remains
+  only as a rollback option. Contract and rollback: `docs/STAGING.md` and
+  `deploy/staging/README.md`.
   Public Pyxis is systemd + Bun **`pyxis-web` `:5174`** (nginx `:443` → `127.0.0.1:5174`).
   Legacy Vite `:5173` / `chem_beo` `:3000` = rollback on disk (units **stopped**, still
   **enabled**). `83` (`83.229.87.94`) is leftover, **not DNS**, and is **not** production.
@@ -142,9 +146,9 @@ Do not open these unless the task is prod, deploy, continuation, or box work.
 7. Architecture relationships: global `graphify` skill if `graphify-out/` exists
    (confirm live facts in files). Docking contract: `docs/DOCKING-CONTRACT.md`.
 8. Staging / demo-mode / folding-history work: `docs/STAGING.md` +
-   `deploy/staging/README.md` (isolated `/staging/` preview — never point it at
-   production Atlas; real docking on staging is authorized only from the demo
-   router under the synthetic account, everything else paid stays refused).
+   `deploy/staging/README.md` (the current full `/staging/` app shares production
+   accounts, Atlas, credits, orders and providers; the older isolated demo is
+   rollback only).
 
 ## Commands
 
@@ -208,7 +212,7 @@ Stock search: failed/new queries clear old rows and disable paging; catalog fetc
 
 Integration (2026-09-09): completed stock, Open compounds, and staging/folding work is consolidated on main. Deployment remains separate. Open compounds AI is a real tool-calling loop when `OPEN_COMPOUNDS_AI_*` is provisioned (prefer free OpenRouter models with tools); otherwise use “Search without AI”.
 
-Release (2026-09-12): public pyxis-web now b2d554f; live tonomitosql API b36da33 (global ranking, parallel gather disabled, no candidate cap). AI remains disabled. Database container was not recreated. Fresh public stock search/pack/cart-reload evidence and rollback: docs/POST-PROMOTION-HANDOFF.md.
+Release (2026-09-12): public pyxis-web now b2d554f; live tonomitosql API b36da33 (global ranking, parallel gather disabled, no candidate cap). AI remained disabled on the consumer app; staging AI was enabled 2026-09-24. Database container was not recreated. Fresh public stock search/pack/cart-reload evidence and rollback: docs/POST-PROMOTION-HANDOFF.md.
 
 Release (2026-09-13): public `pyxis-web` now `0e932a1` with catalog/Stock `/api4/bas` pricing and 409 review. Hosted Stripe checkout verified through unpaid review ($170, BAS 00132206 1 mg); browser publishable key is not required. Payment completion is untested. Evidence/rollback: `docs/POST-PROMOTION-HANDOFF.md`.
 
