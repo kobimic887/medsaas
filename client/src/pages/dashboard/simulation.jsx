@@ -1716,8 +1716,14 @@ export function Simulation() {
     // retains its catalog browse default; staging probes its stock index.
     setIsSearchActive(false); // Not in search mode initially
     if (searchSourceRef.current === 'asinex') fetchAllMolecules(0, false);
-    else if (searchSourceRef.current === 'stock') fetchStockStatus();
-    else if (MACROCYCLE_SOURCES[searchSourceRef.current]) fetchMacrocycleStatus(searchSourceRef.current);
+    else {
+      // A source status probe is not a catalog browse. Without settling this
+      // state, a fresh staging load shows a perpetual "Loading catalog" spinner.
+      setInitialLoading(false);
+      setCatalogSettled(true);
+      if (searchSourceRef.current === 'stock') fetchStockStatus();
+      else if (MACROCYCLE_SOURCES[searchSourceRef.current]) fetchMacrocycleStatus(searchSourceRef.current);
+    }
   }, []); // Only run once on mount
 
   // Separate useEffect for scroll handling
@@ -2163,8 +2169,7 @@ export function Simulation() {
             external data and billed scientific execution in either mode. */}
         {IS_STAGING_BUILD && (
           <p className="mb-2 text-xs text-blue-gray-500 dark:text-slate-400" role="note">
-            Staging uses live search sources when available. Docking and other scientific runs can use paid providers;
-            check the staging notice for whether accounts, credits, and orders are shared with production.
+            Docking and other scientific runs can use paid providers. This staging app shares production records and balances.
           </p>
         )}
 
@@ -2176,8 +2181,8 @@ export function Simulation() {
           </div>
         )}
         {searchSource === "stock" && stockStatus && stockStatus.state === "available" && (
-          <div className="mb-2 rounded-lg border border-teal-100 bg-teal-50/70 px-4 py-3">
-            <Typography variant="small" color="blue-gray">
+          <div className="mb-2 rounded-lg border border-teal-100 bg-teal-50/70 px-4 py-3 dark:border-teal-800 dark:bg-teal-950/60">
+            <Typography variant="small" color="blue-gray" className="dark:!text-slate-100">
               Stock-compound search is ready — {stockStatus.dataset.rowCount ? `${stockStatus.dataset.rowCount.toLocaleString()} compounds` : "the imported dataset"}, ranked by {stockFpLabel} {stockMetricLabel} similarity.
             </Typography>
           </div>
@@ -2206,7 +2211,7 @@ export function Simulation() {
           </div>
         )}
         {MACROCYCLE_SOURCES[searchSource] && macrocycleStatus[searchSource]?.state === 'available' && (
-          <div className="mb-2 rounded-lg border border-teal-100 bg-teal-50/70 px-4 py-3 text-sm text-blue-gray-700">
+          <div className="mb-2 rounded-lg border border-teal-100 bg-teal-50/70 px-4 py-3 text-sm text-blue-gray-800 dark:border-teal-800 dark:bg-teal-950/60 dark:text-slate-100">
               {MACROCYCLE_SOURCES[searchSource].label}: {(macrocycleStatus[searchSource].dataset?.rowCount || MACROCYCLE_SOURCES[searchSource].count).toLocaleString()} searchable / {MACROCYCLE_SOURCES[searchSource].count.toLocaleString()} export rows. Ranked by {macrocycleMetricLabel} over Morgan (ECFP4) environments. {searchSource === 'real' ? 'Current stock unverified.' : 'Virtual; not stocked.'} The price guide is not a per-row offer; cart purchases are unavailable.
           </div>
         )}
@@ -2909,7 +2914,7 @@ export function Simulation() {
           {(initialLoading || (topLoading && topMolecules.length === 0)) && (
             <div className="mb-4 flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/70 px-4 py-3" role="status" aria-live="polite">
               <Spinner className="h-5 w-5 text-blue-500" />
-              <Typography color="blue-gray">Loading catalog molecules...</Typography>
+              <Typography color="blue-gray">{searchSource === 'asinex' ? 'Loading catalog molecules...' : 'Loading search results...'}</Typography>
             </div>
           )}
           {topError && (

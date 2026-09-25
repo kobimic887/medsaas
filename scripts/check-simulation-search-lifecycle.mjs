@@ -232,6 +232,7 @@ checks.push(
 checks.push(
   ['staging separates its Pyxis stock, real, virtual and ChEMBL collections from the legacy catalog', simulation.includes("{ value: 'stock', title: 'Stock compounds'") && simulation.includes("{ value: 'real', title: 'Real macrocycles'") && simulation.includes("{ value: 'virtual', title: 'Virtual compounds'") && simulation.includes("{ value: 'open', title: 'Open compounds'") && simulation.includes("{ value: 'asinex', title: 'Internal catalog'")],
   ['staging opens the Pyxis stock index while consumer catalog default stays intact', simulation.includes('useState(IS_STAGING_BUILD ? "stock" : "asinex")') && simulation.includes("fetchStockStatus()")],
+  ['a non-catalog default settles the browse spinner', simulation.includes("if (searchSourceRef.current === 'asinex') fetchAllMolecules(0, false);") && simulation.includes('setInitialLoading(false);') && simulation.includes('setCatalogSettled(true);')],
   ['macrocycle status and similarity use authenticated routes', simulation.includes("/macrocycles/status") && simulation.includes("/macrocycles/similarity")],
   ['macrocycle search forwards its selected metric with the Morgan fingerprint', simulation.includes("fingerprint_type: 'morgan'") && simulation.includes('similarity_metric: macrocycleSimilarityMetricRef.current')],
   ['macrocycle metric options come from the dataset capabilities', simulation.includes('activeMacrocycleStatus.capabilities?.similarityMetrics') && simulation.includes('macrocycleMetricOptions')],
