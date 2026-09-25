@@ -205,6 +205,32 @@ frontend SHA stayed `c215f55254fa45d2ab855589c5ebb4b8a939271ee2f284c5db4871ce07d
 and the public root and staging URLs both answered 200. No payment or paid
 scientific run was submitted.
 
+## Combined RPX + VPX search, 2026-09-25
+
+Staging runtime source `e5e5565` presents one Macrocycles collection with
+Real + virtual, Real only and Virtual only filters. Combined searches scan
+the two existing read-only indexes with one RDKit query and one globally ranked
+result list; matching structures remain separate source-labelled rows with
+their own workbook pack estimates. The served staging frontend index SHA-256
+is `b0ab3adf1d7a3abf1cc3c1550dfc1b71b351a5345cb91c06907e0aa278a49e77`.
+The staging-only rollback archive is
+`/root/pyxis-staging-rpx-vpx-rollback-20260925.tgz` and includes the preceding
+frontend bundle, relevant source files and search service; no `.env` or index
+data are inside. Restore it over `/root/pyxis-STAGING-5274` and restart only
+`pyxis-web-staging` and `pyxis-macrocycle-search-staging` if needed.
+
+The signed-in browser reported 2,365,907 searchable Macrocycles and returned
+`RPX 202410091` and `VPX 900000003` as two exact hits for the shared structure
+in [`DATA-MACROCYCLES.md`](DATA-MACROCYCLES.md). The Real and Virtual filters
+each returned only their respective hit; switching filters cleared old rows.
+The RPX and VPX rows displayed their respective approximate USD pack amounts.
+A direct full-index Count Tanimoto query also returned both at 1.000. Focused
+index, Simulation, staging API, count-Morgan and build checks passed. Both
+staging services and the public service answered health checks. The public
+`pyxis-web` PID remained `2965854`, and its frontend index SHA-256 remained
+`c215f55254fa45d2ab855589c5ebb4b8a939271ee2f284c5db4871ce07dfddcd`.
+No payment or paid scientific run was submitted.
+
 ## Rollback and traps
 
 Pre-switch files are at `/root/pyxis-staging-full-rollback-20260924/` on 84:

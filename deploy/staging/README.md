@@ -58,6 +58,13 @@ The later inline price and panel update has its own rollback snapshot at
 staging tree and restart only `pyxis-web-staging` to return to the preceding
 catalog preview. The macrocycle index and consumer app are outside this rollback.
 
+The combined RPX + VPX search update has a staging-only rollback snapshot at
+`/root/pyxis-staging-rpx-vpx-rollback-20260925.tgz`. It contains the preceding
+frontend bundle, relevant source and macrocycle search service, without any
+`.env` or dataset files. Restore it over `/root/pyxis-STAGING-5274` and restart
+only `pyxis-web-staging` and `pyxis-macrocycle-search-staging`. Keep the existing
+macrocycle indexes and public `pyxis-web` untouched.
+
 `/api/staging/status` must say `demo:false` and `sharedProductionData:true`. Also check a real sign-in, existing history, macrocycle/stock source status, an Open compounds AI search, and the unchanged consumer service PID and bundle SHA. These read-only checks do not prove a completed payment or a paid scientific provider round trip.
 
 The external catalog endpoint `dev.asinex.com:58181` refused connections from Mac, oracleOld and 84 on 2026-09-24. The consumer app still uses that endpoint. The staging Simulation source picker now uses the Pyxis stock and macrocycle indexes plus ChEMBL, so its search does not require the failed supplier catalog. This does not turn the dated exports into verified offers or enable their checkout. See the replacement-catalog gaps in [`docs/STAGING.md`](../../docs/STAGING.md).
