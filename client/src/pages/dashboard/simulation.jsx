@@ -2901,7 +2901,7 @@ export function Simulation() {
                 </tbody>
               </table>
               <p className="pt-2 text-xs text-blue-gray-600 dark:text-slate-300">
-                Reference only. EUR source × {PRICE_GUIDE_EUR_USD.rate} ({PRICE_GUIDE_EUR_USD.date} ECB rate), rounded to whole USD. Other codes excludes LAS, RPX and VPX. This does not confirm an offer, stock, or checkout price.
+                Reference only. EUR source × {PRICE_GUIDE_EUR_USD.rate} ({PRICE_GUIDE_EUR_USD.date} ECB rate), rounded to whole USD. {searchSource === 'stock' && 'Other codes excludes LAS, RPX and VPX. '}This does not confirm an offer, stock, or checkout price.
               </p>
             </div>
           </details>

@@ -158,10 +158,12 @@ not describe any of them as done, and do not approximate them from nearby data.
   offers. Stock rows also stay unpriced (owner decision
   2026-09-13). Price columns and basket adds exist only for Internal catalog
   rows, priced from that row's own response and re-priced at checkout.
-- **The Asinex catalog port itself.** `dev.asinex.com:58181` refused TCP
+- **The legacy Asinex catalog port itself.** `dev.asinex.com:58181` refused TCP
   connections from Mac, oracleOld and 84 on 2026-09-24 while its DNS and web/
-  stock/docking hosts answered. This is an external outage the supplier must
-  clear or replace; do not substitute catalog, stock, or macrocycle rows for it.
+  stock/docking hosts answered. The consumer's legacy catalog still requires
+  this port; staging's own search collections do not. The supplier can restore
+  the port for the consumer during the migration, but new purchases require an
+  independent Pyxis offer/checkout contract rather than silent substitution.
 - **"New website functionality"** mentioned for the following days was never
   specified beyond the Simulation layout. Nothing was inferred from the mockup
   other than the query/results side-by-side layout.

@@ -556,7 +556,7 @@ editing `/root/pyxis/server/.env` and `systemctl restart pyxis-web`.
 | 2 | `diffdockApiUrl` | `https://<BOX_DOMAIN>/molecular-docking/diffdock/generate` | PATCH the shared Atlas company document **once**, then verify from live `84` |
 | 3 | `SDF_CONVERTER_URL` | `https://<BOX_DOMAIN>/convertSTR` | Set the host-local `.env` on **`84` only**, then restart `pyxis-web`. Do not mirror leftover `83` |
 | 4 | `TANIMOTO_API_BASE` | `https://<BOX_DOMAIN>/tanimoto` | Set the host-local `.env` on **`84` only**, then restart `pyxis-web`; only after §10 restores the data |
-| — | `catalogApiBase`, `stockApiUrl` | **leave on Asinex.** The catalog needs their compound file for licensing reasons, and live stock cannot be self-hosted at any price | — |
+| — | `catalogApiBase`, `stockApiUrl` | **Do not change as part of the compute-box cutover.** The consumer app still uses these legacy Asinex endpoints. The owner directed a separate Pyxis-owned catalog replacement on 2026-09-25; its staging search uses provided exports, and purchase/offer licensing and authority must be settled in that separate work. | — |
 
 **Verify the credit behaviour between each, not just the response.** Run one dock that
 succeeds and one against a nonsense PDB ID. The failing one must return an error and leave the

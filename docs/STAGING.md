@@ -48,12 +48,13 @@ record was created. `noindex` is a search-engine hint, not access control.
 
 ## Simulation sources
 
-- **Internal catalog:** both apps use the existing Asinex supplier API. On
-  2026-09-24 `dev.asinex.com:58181` refused TCP connections from Mac, 151 and
-  84. DNS resolved to `213.208.173.213`; the Asinex website, stock host and
-  docking host remained reachable. This establishes an unreachable catalog
-  port, not its internal cause. The supplier must restore it or provide a new
-  catalog endpoint. Do not substitute stock/macrocycle rows or invent prices.
+- **Legacy Internal catalog:** the consumer app still uses the Asinex supplier
+  API. On 2026-09-24 `dev.asinex.com:58181` refused TCP connections from Mac,
+  151 and 84. DNS resolved to `213.208.173.213`; the Asinex website, stock host
+  and docking host remained reachable. This establishes an unreachable catalog
+  port, not its internal cause. Staging's Simulation picker no longer exposes
+  this catalog; it searches the Pyxis-owned datasets below. No dated export is
+  treated as a verified offer.
 - **Stock compounds:** 630,646 compounds available through the same
   tonomitosql service as production; stage browser status verified.
 - **Real macrocycles:** 18,171 searchable structures from 18,190 dated export
@@ -70,10 +71,35 @@ record was created. `noindex` is a search-engine hint, not access control.
   AI** path remains available. The public route has no AI configuration. See
   [`DATA-OPEN-COMPOUNDS.md`](DATA-OPEN-COMPOUNDS.md).
 
-The staging frontend opens Simulation on Real macrocycles so the preview is
-immediately useful while the external catalog port is down. The consumer build
-still opens on Internal catalog. Query controls and results are side by side
-at desktop width; drawing, SMILES, and source selection remain available.
+The staging frontend opens Simulation on the Pyxis stock index and presents
+Stock compounds, Real macrocycles, Virtual compounds and Open compounds as
+separate collections. The consumer build still opens on Internal catalog.
+Query controls and results are side by side at desktop width, with a wider
+workspace at 1280-pixel viewports. Drawing, SMILES, and source selection remain
+available. A collapsible guide displays only the owner's approved **1–3
+selected-compound** workbook tier for other stock codes, LAS, RPX and VPX.
+It converts the EUR sheet to rounded USD estimates at the dated ECB 24 September
+rate (1 EUR = 1.1367 USD); it is read-only and does not price a basket row.
+
+### Replacement catalog gaps
+
+The source files now support structure-similarity discovery in staging, but
+they do not yet supply a complete independent e-shop catalog:
+
+| Needed for | Current gap |
+|---|---|
+| Product lookup | Pyxis stock and macrocycle indexes need code/ID lookup, browse, substructure and molecular-weight search; they currently expose similarity only. |
+| Buyable offers | The price workbook has prefix/quantity tiers, not a confirmed live offer for each molecule. The user limited it to 1–3 selected compounds; larger tiers are not usable. Current stock, pack availability, delivery commitment and offer validity need a supplier feed or signed rules. |
+| USD checkout | The displayed ECB conversion is informational. A server-owned FX source, validity period, rounding, taxes/shipping and re-pricing rule must be approved before creating Stripe sessions. |
+| Order fulfillment | The route for sending a paid order to the supplier and receiving confirmation/tracking is not specified or exercised. |
+| Scientific data | MOE `btanimoto`/`ctanimoto` parity needs Anna's exact fingerprint definition/version and sample reference vectors; current count metrics are Pyxis/RDKit methods. |
+
+The consumer's legacy catalog browse, BAS lookup and checkout still depend on
+Asinex's unavailable `dev.asinex.com:58181` endpoints. Its DiffDock and other
+scientific services have separate dependencies; see the deployment/arrival
+runbooks for their measured status. A replacement catalog can be built from the
+owned exports, but production purchase controls must stay disabled for those
+rows until the offer and checkout contract exists.
 
 ## Private AI bridge
 

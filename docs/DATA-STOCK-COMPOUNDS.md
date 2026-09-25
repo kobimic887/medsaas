@@ -1,7 +1,9 @@
 # Stock compounds dataset — Anna's MOE export (2026-09-01)
 
 Support for searching Anna's stock-compound corpus in Pyxis Discovery. The
-**intended UI is the Simulation tab** (source toggle Asinex | Stock compounds);
+**intended UI is the Simulation tab**. The consumer build still has an Asinex |
+Stock compounds source choice; staging now opens on Pyxis stock and adds real,
+virtual and ChEMBL collections without an Asinex catalog choice;
 the Deep Similarity dataset picker remains useful for scoped Tanimoto work but
 is not this workflow. The importer is
 [`scripts/import-stock-compounds.mjs`](../scripts/import-stock-compounds.mjs) —
