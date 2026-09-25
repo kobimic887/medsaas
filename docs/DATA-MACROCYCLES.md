@@ -12,10 +12,29 @@ row counts. SHA-256 of the originals used for this preview:
 | Real CSV | `89760f2de3a4203a9d02f975f1ffe9a266d4e38e5a2e34132ea542157f860fa9` |
 | Virtual ZIP | `6e95e69e5a0e1aa470303ef486a3051304b926d9e7a8dadde9ccb9a2c3bb6597` |
 
-Neither source contains a pack price. The listed `web_mg`,
+The virtual CSV has **VPX codes only**. The real CSV has **RPX codes only**.
+LAS and other non-X codes are in the separate September 1 stock TSV, not
+missing rows in the virtual ZIP. The older `2.3M_Pyxis_macrocycles_virtual.zip`
+contains an SDF whose `ID` joins to the new CSV's `ID`; the first 100 records
+match in order. That sample proves the relationship, not a full-file join or
+identical structures. The new CSV already contains SMILES, so the older SDF is
+not required for the current search index.
+
+Neither source contains a per-row pack price. The listed `web_mg`,
 `CURRENT_TOT_NETTO_MG`, and lead times are source metadata, not a current stock
-or delivery promise. Macrocycle results are unpriced and cannot enter the cart;
-selection is for docking handoff. Real source supplier codes repeat (2,593
+or delivery promise. Macrocycle results cannot enter the cart; selection is
+for docking handoff. Anna's separate `Pyxis-e-shop_PRICE_LIST.xlsx` (SHA-256
+`e06cb5f85a172ecd6dccd17348f7cafc29cb5c0bddc3a895c234b6af2042b2c9`)
+lists euro tiers by supplier code prefix, pack quantity, and number of selected
+compounds. Only **C:F, the 1–3 selected-compound tier**, is used: the owner says
+the larger tiers are unreliable. Staging displays other stock codes, LAS, RPX
+and VPX in a collapsible USD **reference guide**, without assigning a checkout
+price to a hit. USD estimates multiply the EUR sheet values by the ECB's
+24 September 2026 reference rate (1 EUR = 1.1367 USD) and round to whole
+dollars; this is a dated display estimate, not a transaction rate. The sheet
+lists 1, 2 and 5 mg for RPX/VPX; larger packs are n/a. Offer authority and a
+checkout FX rule need confirmation before cart integration. Real source supplier
+codes repeat (2,593
 repeated rows); each accepted row has its own stable index identity while its
 supplier code remains visible. Do not deduplicate by `MAIN_BAS` or use it as
 the React selection key.
@@ -130,10 +149,13 @@ not describe any of them as done, and do not approximate them from nearby data.
   and forbidden, and no label may claim MOE equivalence or reproduce her hit
   counts. Blocked on Anna answering the fingerprint/version questions in
   [`REFERENCE-STOCK-FP-METRICS.md`](REFERENCE-STOCK-FP-METRICS.md).
-- **Prices, pack sizes, basket adds, and lead-time promises for the new sets.**
-  Neither dated export carries a pack price, so there is nothing honest to
-  display. Macrocycle source amounts and lead times are dated export fields,
-  not current offers. Stock rows also stay unpriced (owner decision
+- **Per-hit offers, basket adds, and lead-time promises for the new sets.**
+  The separate supplier price guide provides other/LAS/RPX/VPX 1–3 tier amounts,
+  but neither dated macrocycle export carries a per-hit offer. The guide is
+  displayed for reference; checkout authority and the USD billing rule are not
+  established.
+  Macrocycle source amounts and lead times are dated export fields, not current
+  offers. Stock rows also stay unpriced (owner decision
   2026-09-13). Price columns and basket adds exist only for Internal catalog
   rows, priced from that row's own response and re-priced at checkout.
 - **The Asinex catalog port itself.** `dev.asinex.com:58181` refused TCP

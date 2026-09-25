@@ -29,7 +29,7 @@ export function reducer(state, action) {
 
 export function MaterialTailwindControllerProvider({ children }) {
   const initialState = {
-    openSidenav: typeof window !== 'undefined' ? window.innerWidth >= 1280 : false, // Open on desktop (xl breakpoint), closed on mobile
+    openSidenav: typeof window !== 'undefined' ? window.innerWidth >= 1536 : false, // Keep the workspace wide until the 2xl breakpoint.
     sidenavColor: "blue",
     sidenavType: "white",
     transparentNavbar: true,
@@ -41,7 +41,7 @@ export function MaterialTailwindControllerProvider({ children }) {
   // Handle window resize to auto-manage sidenav on desktop/mobile
   React.useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth >= 1280) {
+      if (window.innerWidth >= 1536) {
         // Desktop: keep sidenav open
         if (!controller.openSidenav) {
           dispatch({ type: "OPEN_SIDENAV", value: true });

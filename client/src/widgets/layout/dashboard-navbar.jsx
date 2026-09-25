@@ -531,7 +531,7 @@ Please contact the customer at ${userEmail} to process this order.
             id="mobile-menu-toggle"
             variant="text"
             color="blue-gray"
-            className="grid dark:text-slate-300 xl:hidden"
+            className="grid dark:text-slate-300 2xl:hidden"
             aria-label={openSidenav ? "Close navigation menu" : "Open navigation menu"}
             onClick={() => setOpenSidenav(dispatch, !openSidenav)}
           >

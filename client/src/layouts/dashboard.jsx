@@ -95,7 +95,7 @@ function DashboardShell() {
       <div 
         id="main-content-wrapper" 
         className={`min-w-0 flex-1 flex flex-col transition-all duration-300 ${
-          openSidenav ? 'xl:ml-72' : 'xl:ml-0'
+          openSidenav ? '2xl:ml-72' : '2xl:ml-0'
         }`}
       >
         {/* Top Navigation Header. The staging-only banner renders inside the

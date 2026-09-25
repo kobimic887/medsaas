@@ -220,7 +220,7 @@ checks.push(
   ['open AI search posts to ai-search', simulation.includes("/open-compounds/ai-search")],
   ['open availability is probed via the status endpoint', simulation.includes("/open-compounds/status")],
   ['open search is similarity-only and restarts at offset zero', simulation.includes("runOpenSearch(0, false,") || simulation.includes("runOpenAiSearch({")],
-  ['open compounds radio is present', simulation.includes('Open compounds<span className="sr-only"> (ChEMBL)</span>')],
+  ['ChEMBL remains an explicit staging source', simulation.includes("{ value: 'open', title: 'Open compounds', detail: 'ChEMBL discovery' }") && simulation.includes('name="searchSource"')],
   ['open threshold floor is 0.4', simulation.includes('searchSource === "open" ? "0.4"') && simulation.includes('Math.max(0.4, value)')],
   ['open export uses authenticated export route', simulation.includes("/open-compounds/export")],
   ['open empty/error states are distinct', simulation.includes('No open compounds matched this structure')],
@@ -230,8 +230,8 @@ checks.push(
 );
 
 checks.push(
-  ['real and virtual macrocycle sources are visible', simulation.includes('Real macrocycles<span className="sr-only"> (18,190 source records)</span>') && simulation.includes('Virtual macrocycles<span className="sr-only"> (2,350,440 source records)</span>')],
-  ['staging opens the imported source while consumer catalog default stays intact', simulation.includes('useState(IS_STAGING_BUILD ? "real" : "asinex")') && simulation.includes('fetchMacrocycleStatus(searchSourceRef.current)')],
+  ['staging separates its Pyxis stock, real, virtual and ChEMBL collections from the legacy catalog', simulation.includes("{ value: 'stock', title: 'Stock compounds'") && simulation.includes("{ value: 'real', title: 'Real macrocycles'") && simulation.includes("{ value: 'virtual', title: 'Virtual compounds'") && simulation.includes("{ value: 'open', title: 'Open compounds'") && simulation.includes("{ value: 'asinex', title: 'Internal catalog'")],
+  ['staging opens the Pyxis stock index while consumer catalog default stays intact', simulation.includes('useState(IS_STAGING_BUILD ? "stock" : "asinex")') && simulation.includes("fetchStockStatus()")],
   ['macrocycle status and similarity use authenticated routes', simulation.includes("/macrocycles/status") && simulation.includes("/macrocycles/similarity")],
   ['macrocycle search forwards its selected metric with the Morgan fingerprint', simulation.includes("fingerprint_type: 'morgan'") && simulation.includes('similarity_metric: macrocycleSimilarityMetricRef.current')],
   ['macrocycle metric options come from the dataset capabilities', simulation.includes('activeMacrocycleStatus.capabilities?.similarityMetrics') && simulation.includes('macrocycleMetricOptions')],
@@ -239,8 +239,9 @@ checks.push(
   ['macrocycle status clamps the metric to what the dataset can score', simulation.includes('countMetricsAvailable') && simulation.includes("macrocycleSimilarityMetricRef.current = 'tanimoto'")],
   ['macrocycle result banner reports the method that produced the rows', simulation.includes('macrocycleResultMethodLabel') && simulation.includes('Ranked by {macrocycleMetricLabel}')],
   ['macrocycle count copy never claims MOE equivalence', simulation.includes('they are a Pyxis method and are not MOE ctanimoto')],
-  ['macrocycle rows have no cart or price controls', simulation.includes('No prices or cart purchases; select structures for docking handoff.')],
-  ['query and results are adjacent columns from tablet width', simulation.includes('md:grid-cols-[minmax(14rem,17rem)_minmax(0,1fr)]') && simulation.includes('aria-labelledby="results-heading"')],
+  ['macrocycle rows have no cart or per-row offer controls', simulation.includes('No per-row offers or cart purchases; select structures for docking handoff.')],
+  ['staging price guide is read-only and limited to one verified tier', simulation.includes('IS_STAGING_BUILD && COMPOUND_PRICE_GUIDE[searchSource]') && simulation.includes('1–3 selected') && simulation.includes('Reference only') && simulation.includes('does not confirm an offer, stock, or checkout price')],
+  ['query and results are adjacent columns from tablet width', simulation.includes('md:grid-cols-[minmax(17rem,20rem)_minmax(0,1fr)]') && simulation.includes('aria-labelledby="results-heading"')],
   ['results offer explicit pagination in the two-column layout', simulation.includes('Load more results')],
 );
 

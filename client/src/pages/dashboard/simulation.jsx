@@ -27,6 +27,7 @@ import { stockResultsFromPayload, appendUniqueStockRows } from '@/utils/stockRes
 import { cartItemFromCatalogPrice } from '@/utils/stockOffers';
 import { openResultsFromPayload } from '@/utils/openResults';
 import { macrocycleResultsFromPayload, appendUniqueMacrocycleRows } from '@/utils/macrocycleResults';
+import { COMPOUND_PRICE_GUIDE, PRICE_GUIDE_EUR_USD, approximateUsd } from '@/utils/compoundPriceGuide';
 
 const MACROCYCLE_SOURCES = Object.freeze({
   real: { label: 'Real macrocycles', count: 18190 },
@@ -166,9 +167,9 @@ export function Simulation() {
   // (existing behavior), 'stock' = Anna's stock-compound dataset (RDKit-fingerprint
   // similarity through /api/stock-search/similarity). Stock is never a silent
   // fallback for Asinex or vice versa — switching clears the result list.
-  // Owner-test staging opens on the newly imported corpus so the preview is
-  // useful even when the separate live catalog supplier endpoint is down.
-  const [searchSource, setSearchSource] = useState(IS_STAGING_BUILD ? "real" : "asinex");
+  // Staging starts on the Pyxis-owned stock index. The consumer build retains
+  // its existing catalog until the replacement has been owner-tested.
+  const [searchSource, setSearchSource] = useState(IS_STAGING_BUILD ? "stock" : "asinex");
   const [stockStatus, setStockStatus] = useState(null); // null | { state: 'loading' } | { state: 'available', dataset } | { state: 'unavailable', reason }
   const stockStatusRequestRef = useRef(0);
   const [openStatus, setOpenStatus] = useState(null); // null | loading | available | unavailable
@@ -1712,9 +1713,10 @@ export function Simulation() {
   // Auto-fetch on component mount
   useEffect(() => {
     // Load the selected source when the component mounts. The consumer build
-    // retains its catalog browse default; staging probes its macrocycle index.
+    // retains its catalog browse default; staging probes its stock index.
     setIsSearchActive(false); // Not in search mode initially
     if (searchSourceRef.current === 'asinex') fetchAllMolecules(0, false);
+    else if (searchSourceRef.current === 'stock') fetchStockStatus();
     else if (MACROCYCLE_SOURCES[searchSourceRef.current]) fetchMacrocycleStatus(searchSourceRef.current);
   }, []); // Only run once on mount
 
@@ -2121,52 +2123,40 @@ export function Simulation() {
         </div>
       )}
 
-      <div className="grid w-full min-w-0 gap-4 md:grid-cols-[minmax(14rem,17rem)_minmax(0,1fr)] xl:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)] md:items-start">
+      <fieldset className="mb-4 min-w-0 rounded-2xl border border-blue-gray-100 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950 sm:p-4">
+        <legend className="sr-only">Compound collection</legend>
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-1">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-brand-600 dark:text-brand-300">Compound search</p>
+            <h1 className="text-xl font-semibold text-blue-gray-900 dark:text-slate-50">Pyxis compound catalog</h1>
+          </div>
+          <p className="text-xs text-blue-gray-500 dark:text-slate-400">Collections are searched separately.</p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {(IS_STAGING_BUILD ? [
+            { value: 'stock', title: 'Stock compounds', detail: '630,646 searchable' },
+            { value: 'real', title: 'Real macrocycles', detail: '18,171 searchable' },
+            { value: 'virtual', title: 'Virtual compounds', detail: '2,347,736 searchable' },
+            { value: 'open', title: 'Open compounds', detail: 'ChEMBL discovery' },
+          ] : [
+            { value: 'asinex', title: 'Internal catalog', detail: 'Existing catalog' },
+            { value: 'stock', title: 'Stock compounds', detail: 'Similarity search' },
+            { value: 'open', title: 'Open compounds', detail: 'ChEMBL discovery' },
+          ]).map(({ value, title, detail }) => (
+            <label key={value} className={`flex min-w-0 cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors ${searchSource === value ? 'border-brand-500 bg-brand-50 text-brand-900 dark:bg-brand-900/30 dark:text-brand-100' : 'border-blue-gray-100 bg-blue-gray-50/50 text-blue-gray-800 hover:border-brand-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'}`}>
+              <input type="radio" name="searchSource" value={value} checked={searchSource === value} onChange={() => handleSourceChange(value)} className="mt-1 accent-teal-700" />
+              <span className="min-w-0"><span className="block font-semibold leading-5">{title}</span><span className="mt-1 block text-xs opacity-75">{detail}</span></span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      <div className="grid w-full min-w-0 gap-4 md:grid-cols-[minmax(17rem,20rem)_minmax(0,1fr)] 2xl:grid-cols-[minmax(21rem,24rem)_minmax(0,1fr)] md:items-start">
       <div id="query-panel" className="min-w-0 rounded-2xl border border-blue-gray-100 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950 sm:p-4">
       <div className="mb-4 flex flex-col gap-2 w-full">
-        {/* Search source: live ASINEX catalog vs Anna's stock compounds. The two
-            corpora are never mixed or silently substituted: switching clears the
-            result list, and an unprovisioned stock search is shown as such. */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2 w-full">
-          <Typography variant="small" color="blue-gray" className="mr-2">Search in:</Typography>
-          <label className="flex items-center gap-1 w-auto">
-            <input
-              type="radio"
-              name="searchSource"
-              value="asinex"
-              checked={searchSource === "asinex"}
-              onChange={() => handleSourceChange("asinex")}
-            />
-            <span>Internal catalog</span>
-          </label>
-          <label className="flex items-center gap-1 w-auto">
-            <input
-              type="radio"
-              name="searchSource"
-              value="stock"
-              checked={searchSource === "stock"}
-              onChange={() => handleSourceChange("stock")}
-            />
-            <span>Stock compounds<span className="sr-only"> (similarity)</span></span>
-          </label>
-          <label className="flex items-center gap-1 w-auto">
-            <input type="radio" name="searchSource" value="real" checked={searchSource === 'real'} onChange={() => handleSourceChange('real')} />
-            <span>Real macrocycles<span className="sr-only"> (18,190 source records)</span></span>
-          </label>
-          <label className="flex items-center gap-1 w-auto">
-            <input type="radio" name="searchSource" value="virtual" checked={searchSource === 'virtual'} onChange={() => handleSourceChange('virtual')} />
-            <span>Virtual macrocycles<span className="sr-only"> (2,350,440 source records)</span></span>
-          </label>
-          <label className="flex items-center gap-1 w-auto">
-            <input
-              type="radio"
-              name="searchSource"
-              value="open"
-              checked={searchSource === "open"}
-              onChange={() => handleSourceChange("open")}
-            />
-            <span>Open compounds<span className="sr-only"> (ChEMBL)</span></span>
-          </label>
+        <div className="mb-1">
+          <h2 className="text-lg font-semibold text-blue-gray-900 dark:text-slate-50">Find compounds</h2>
+          <p className="text-xs text-blue-gray-500 dark:text-slate-400">Enter or draw a structure to search this collection.</p>
         </div>
 
         {/* Staging can run against production accounts; be explicit about
@@ -2196,7 +2186,7 @@ export function Simulation() {
           <Alert color="amber" className="mb-2">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               <Typography variant="small">
-                Stock-compound search is not available yet: {stockStatus.reason} You can still search the internal catalog — switch the source above.
+                Stock-compound search is not available yet: {stockStatus.reason} {IS_STAGING_BUILD ? 'Please try again later.' : 'You can still search the internal catalog — switch the source above.'}
               </Typography>
               <button
                 type="button"
@@ -2217,7 +2207,7 @@ export function Simulation() {
         )}
         {MACROCYCLE_SOURCES[searchSource] && macrocycleStatus[searchSource]?.state === 'available' && (
           <div className="mb-2 rounded-lg border border-teal-100 bg-teal-50/70 px-4 py-3 text-sm text-blue-gray-700">
-            {MACROCYCLE_SOURCES[searchSource].label}: {(macrocycleStatus[searchSource].dataset?.rowCount || MACROCYCLE_SOURCES[searchSource].count).toLocaleString()} searchable / {MACROCYCLE_SOURCES[searchSource].count.toLocaleString()} export rows. Ranked by {macrocycleMetricLabel} over Morgan (ECFP4) environments. {searchSource === 'real' ? 'Current stock unverified.' : 'Virtual; not stocked.'} No pack prices or cart purchases.
+              {MACROCYCLE_SOURCES[searchSource].label}: {(macrocycleStatus[searchSource].dataset?.rowCount || MACROCYCLE_SOURCES[searchSource].count).toLocaleString()} searchable / {MACROCYCLE_SOURCES[searchSource].count.toLocaleString()} export rows. Ranked by {macrocycleMetricLabel} over Morgan (ECFP4) environments. {searchSource === 'real' ? 'Current stock unverified.' : 'Virtual; not stocked.'} The price guide is not a per-row offer; cart purchases are unavailable.
           </div>
         )}
         {MACROCYCLE_SOURCES[searchSource] && macrocycleStatus[searchSource]?.state === 'unavailable' && (
@@ -2432,7 +2422,7 @@ export function Simulation() {
             <p className="text-sm text-blue-gray-500">
               Stock search compares structures with RDKit {stockFpLabel} fingerprints and {stockMetricLabel} similarity, computed the same way for the query and every compound.
               All options are binary fingerprints; count-based (MOE ctanimoto-style) searching is not available.
-              Substructure, BAS, and molecular-weight search stay available under the internal catalog source.
+              {IS_STAGING_BUILD ? 'This Pyxis stock index currently supports structure similarity. Code, substructure and molecular-weight lookup are not available in this view yet.' : 'Substructure, BAS, and molecular-weight search stay available under the internal catalog source.'}
             </p>
           </div>
         )}
@@ -2886,6 +2876,31 @@ export function Simulation() {
           <h2 id="results-heading" className="text-xl font-semibold text-blue-gray-900 dark:text-slate-50">Results</h2>
           <span className="text-sm text-blue-gray-600 dark:text-slate-300">{topMolecules.length} shown{hasMore && (searchSource === 'asinex' || isSearchActive) ? ' · more available' : ''}</span>
         </div>
+        {IS_STAGING_BUILD && COMPOUND_PRICE_GUIDE[searchSource] && (
+          <details className="mb-3 rounded-xl border border-brand-100 bg-brand-50/60 text-blue-gray-800 dark:border-brand-900/50 dark:bg-brand-900/10 dark:text-slate-100">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
+              {COMPOUND_PRICE_GUIDE[searchSource].title} · USD estimate · 1–3 selected
+            </summary>
+            <div className="overflow-x-auto px-4 pb-3">
+              <table className="w-full text-left text-xs tabular-nums">
+                <thead className="border-b border-brand-100 dark:border-brand-900/60">
+                  <tr><th scope="col" className="py-2 pr-3">Pack</th>{COMPOUND_PRICE_GUIDE[searchSource].columns.map(({ label }) => <th scope="col" key={label} className="py-2 pr-3">{label}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {COMPOUND_PRICE_GUIDE[searchSource].sizes.map((mg, row) => (
+                    <tr key={mg} className="border-b border-brand-100/70 last:border-0 dark:border-brand-900/30">
+                      <th scope="row" className="py-2 pr-3 font-semibold">{mg} mg</th>
+                      {COMPOUND_PRICE_GUIDE[searchSource].columns.map(({ label, values }) => <td key={label} className="py-2 pr-3" title={`Source: €${values[row]}`}>≈{approximateUsd(values[row])} <span className="text-blue-gray-500">(€{values[row]})</span></td>)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="pt-2 text-xs text-blue-gray-600 dark:text-slate-300">
+                Reference only. EUR source × {PRICE_GUIDE_EUR_USD.rate} ({PRICE_GUIDE_EUR_USD.date} ECB rate), rounded to whole USD. Other codes excludes LAS, RPX and VPX. This does not confirm an offer, stock, or checkout price.
+              </p>
+            </div>
+          </details>
+        )}
         <div id="results" className="w-full bg-slate-100 dark:bg-slate-900">
           {/* Header as a block element, not wrapping Card or div */}
           {/* <div className="mb-4">
@@ -2904,7 +2919,7 @@ export function Simulation() {
             <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
                 <div className="border-b border-teal-100 bg-teal-50/60 px-4 py-3 text-xs text-blue-gray-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
-                  {MACROCYCLE_SOURCES[searchSource].label} · {macrocycleResultMethodLabel} over Morgan (ECFP4). Amount and lead time are dated export fields, not current offers. No prices or cart purchases; select structures for docking handoff.
+                  {MACROCYCLE_SOURCES[searchSource].label} · {macrocycleResultMethodLabel} over Morgan (ECFP4). Amount and lead time are dated export fields, not current offers. No per-row offers or cart purchases; select structures for docking handoff.
                 </div>
                 <table className="w-full table-fixed text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-white dark:bg-slate-900">

@@ -61,11 +61,14 @@ when a path or trap moves.
   **not MOE ctanimoto, not MOE-comparable**; labels must say "(frequency-weighted)"
   or "(binary)". MOE btanimoto/ctanimoto parity stays unbuilt. Source IDs can
   repeat, so use the index row ID for
-  selection. Both sources are unpriced and cannot enter the cart; source
-  amounts/lead times are not verified offers.
-  The staging build starts Simulation on Real macrocycles for owner review;
-  the consumer build still starts on Internal catalog. Staging catalog depends
-  on the separate supplier endpoint and may be unavailable independently.
+  selection. Neither source has per-row offers or can enter the cart; source
+  amounts/lead times are not verified offers. Staging may show the separate
+  `Pyxis-e-shop_PRICE_LIST.xlsx` 1–3 selected-compound euro tier for other
+  stock codes, LAS, RPX and VPX as an approximate USD reference guide only;
+  it is not a checkout price source without confirmed FX and offer rules.
+  The staging build starts Simulation on Pyxis stock; its source picker contains
+  stock, real macrocycles, virtual compounds and ChEMBL, not the failed supplier
+  catalog. The consumer build still starts on Internal catalog.
   Open compounds: AI tool loop
   (`POST /api/open-compounds/ai-search`) plus deterministic
   `GET /api/open-compounds/status|similarity|export` — ChEMBL retrieval + local

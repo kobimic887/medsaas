@@ -48,7 +48,7 @@ for deployed identities and browser evidence.
 
 `/api/staging/status` must say `demo:false` and `sharedProductionData:true`. Also check a real sign-in, existing history, macrocycle/stock source status, an Open compounds AI search, and the unchanged consumer service PID and bundle SHA. These read-only checks do not prove a completed payment or a paid scientific provider round trip.
 
-The external catalog endpoint `dev.asinex.com:58181` refused connections from Mac, oracleOld and 84 on 2026-09-24. Both sites use that endpoint. Its failure does not justify substituting stock or macrocycle records for catalog items or inventing prices. Ask Asinex for restored service or a replacement endpoint.
+The external catalog endpoint `dev.asinex.com:58181` refused connections from Mac, oracleOld and 84 on 2026-09-24. The consumer app still uses that endpoint. The staging Simulation source picker now uses the Pyxis stock and macrocycle indexes plus ChEMBL, so its search does not require the failed supplier catalog. This does not turn the dated exports into verified offers or enable their checkout. See the replacement-catalog gaps in [`docs/STAGING.md`](../../docs/STAGING.md).
 
 ## Rollback to the former isolated demo
 
