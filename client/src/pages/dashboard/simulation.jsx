@@ -27,7 +27,7 @@ import { stockResultsFromPayload, appendUniqueStockRows } from '@/utils/stockRes
 import { cartItemFromCatalogPrice } from '@/utils/stockOffers';
 import { openResultsFromPayload } from '@/utils/openResults';
 import { macrocycleResultsFromPayload, appendUniqueMacrocycleRows } from '@/utils/macrocycleResults';
-import { COMPOUND_PRICE_GUIDE, PRICE_GUIDE_EUR_USD, approximateUsd } from '@/utils/compoundPriceGuide';
+import { PRICE_GUIDE_EUR_USD, workbookPacksForRow } from '@/utils/compoundPriceGuide';
 
 const MACROCYCLE_SOURCES = Object.freeze({
   real: { label: 'Real macrocycles', count: 18190 },
@@ -62,6 +62,28 @@ const MACROCYCLE_METRIC_FALLBACK_OPTIONS = Object.freeze([
 function stockChoiceLabel(options, value, fallback) {
   const match = Array.isArray(options) ? options.find((o) => o && o.value === value) : null;
   return (match && match.label) || fallback;
+}
+
+function WorkbookRowPrices({ source, code }) {
+  const pricing = workbookPacksForRow(source, code);
+  if (!pricing) return <span className="text-blue-gray-500">No workbook tier</span>;
+  return (
+    <div className="min-w-[11rem] text-xs tabular-nums" aria-label={`${pricing.category} workbook pack prices in estimated US dollars`}>
+      <div className="flex flex-wrap gap-x-3 gap-y-1">
+        {pricing.packs.slice(0, 3).map(({ mg, eur, usd }) => (
+          <span key={mg} title={`${mg} mg: €${eur} in supplier workbook`}>{mg} mg <strong>≈{usd}</strong></span>
+        ))}
+      </div>
+      {pricing.packs.length > 3 && (
+        <details className="mt-1">
+          <summary className="cursor-pointer text-brand-700 dark:text-brand-300">More pack sizes</summary>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+            {pricing.packs.slice(3).map(({ mg, eur, usd }) => <span key={mg} title={`${mg} mg: €${eur} in supplier workbook`}>{mg} mg <strong>≈{usd}</strong></span>)}
+          </div>
+        </details>
+      )}
+    </div>
+  );
 }
 
 function catalogRowsFromResponse(result) {
@@ -2136,13 +2158,13 @@ export function Simulation() {
             <p className="text-xs font-semibold uppercase tracking-widest text-brand-600 dark:text-brand-300">Compound search</p>
             <h1 className="text-xl font-semibold text-blue-gray-900 dark:text-slate-50">Pyxis compound catalog</h1>
           </div>
-          <p className="text-xs text-blue-gray-500 dark:text-slate-400">Collections are searched separately.</p>
+          <p className="text-xs text-blue-gray-500 dark:text-slate-400">Choose a collection. Real RPX and virtual VPX can share a structure, so their source labels stay distinct.</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {(IS_STAGING_BUILD ? [
             { value: 'stock', title: 'Stock compounds', detail: '630,646 searchable' },
             { value: 'real', title: 'Real macrocycles', detail: '18,171 searchable' },
-            { value: 'virtual', title: 'Virtual compounds', detail: '2,347,736 searchable' },
+            { value: 'virtual', title: 'Virtual macrocycles', detail: '2,347,736 searchable' },
             { value: 'open', title: 'Open compounds', detail: 'ChEMBL discovery' },
           ] : [
             { value: 'asinex', title: 'Internal catalog', detail: 'Existing catalog' },
@@ -2157,21 +2179,13 @@ export function Simulation() {
         </div>
       </fieldset>
 
-      <div className="grid w-full min-w-0 gap-4 md:grid-cols-[minmax(17rem,20rem)_minmax(0,1fr)] 2xl:grid-cols-[minmax(21rem,24rem)_minmax(0,1fr)] md:items-start">
+      <div className="grid w-full min-w-0 gap-4 lg:grid-cols-[minmax(25rem,29rem)_minmax(0,1fr)] 2xl:grid-cols-[minmax(27rem,31rem)_minmax(0,1fr)] lg:items-start">
       <div id="query-panel" className="min-w-0 rounded-2xl border border-blue-gray-100 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950 sm:p-4">
       <div className="mb-4 flex flex-col gap-2 w-full">
         <div className="mb-1">
           <h2 className="text-lg font-semibold text-blue-gray-900 dark:text-slate-50">Find compounds</h2>
           <p className="text-xs text-blue-gray-500 dark:text-slate-400">Enter or draw a structure to search this collection.</p>
         </div>
-
-        {/* Staging can run against production accounts; be explicit about
-            external data and billed scientific execution in either mode. */}
-        {IS_STAGING_BUILD && (
-          <p className="mb-2 text-xs text-blue-gray-500 dark:text-slate-400" role="note">
-            Docking and other scientific runs can use paid providers. This staging app shares production records and balances.
-          </p>
-        )}
 
         {/* Stock-compound availability: a clear state, never a silent corpus switch. */}
         {searchSource === "stock" && stockStatus && stockStatus.state === "loading" && (
@@ -2183,7 +2197,7 @@ export function Simulation() {
         {searchSource === "stock" && stockStatus && stockStatus.state === "available" && (
           <div className="mb-2 rounded-lg border border-teal-100 bg-teal-50/70 px-4 py-3 dark:border-teal-800 dark:bg-teal-950/60">
             <Typography variant="small" color="blue-gray" className="dark:!text-slate-100">
-              Stock-compound search is ready — {stockStatus.dataset.rowCount ? `${stockStatus.dataset.rowCount.toLocaleString()} compounds` : "the imported dataset"}, ranked by {stockFpLabel} {stockMetricLabel} similarity.
+              Stock compounds · {stockStatus.dataset.rowCount ? `${stockStatus.dataset.rowCount.toLocaleString()} searchable` : "ready"}
             </Typography>
           </div>
         )}
@@ -2212,7 +2226,7 @@ export function Simulation() {
         )}
         {MACROCYCLE_SOURCES[searchSource] && macrocycleStatus[searchSource]?.state === 'available' && (
           <div className="mb-2 rounded-lg border border-teal-100 bg-teal-50/70 px-4 py-3 text-sm text-blue-gray-800 dark:border-teal-800 dark:bg-teal-950/60 dark:text-slate-100">
-              {MACROCYCLE_SOURCES[searchSource].label}: {(macrocycleStatus[searchSource].dataset?.rowCount || MACROCYCLE_SOURCES[searchSource].count).toLocaleString()} searchable / {MACROCYCLE_SOURCES[searchSource].count.toLocaleString()} export rows. Ranked by {macrocycleMetricLabel} over Morgan (ECFP4) environments. {searchSource === 'real' ? 'Current stock unverified.' : 'Virtual; not stocked.'} The price guide is not a per-row offer; cart purchases are unavailable.
+              {MACROCYCLE_SOURCES[searchSource].label} · {(macrocycleStatus[searchSource].dataset?.rowCount || MACROCYCLE_SOURCES[searchSource].count).toLocaleString()} searchable {searchSource === 'real' ? '· current stock unverified' : '· virtual designs'}
           </div>
         )}
         {MACROCYCLE_SOURCES[searchSource] && macrocycleStatus[searchSource]?.state === 'unavailable' && (
@@ -2331,7 +2345,7 @@ export function Simulation() {
               checked={queryType === "text"}
               onChange={() => setQueryType("text")}
             />
-            <span>Paste identifier or SMILES</span>
+            <span>{searchSource === 'asinex' ? 'Paste identifier or SMILES' : 'Paste SMILES'}</span>
           </label>
         </div>
         {/* Search type radio buttons. Stock mode is similarity-only (ranked); the
@@ -2424,11 +2438,10 @@ export function Simulation() {
                 </select>
               </label>
             </div>
-            <p className="text-sm text-blue-gray-500">
-              Stock search compares structures with RDKit {stockFpLabel} fingerprints and {stockMetricLabel} similarity, computed the same way for the query and every compound.
-              All options are binary fingerprints; count-based (MOE ctanimoto-style) searching is not available.
-              {IS_STAGING_BUILD ? 'This Pyxis stock index currently supports structure similarity. Code, substructure and molecular-weight lookup are not available in this view yet.' : 'Substructure, BAS, and molecular-weight search stay available under the internal catalog source.'}
-            </p>
+            <details className="text-xs text-blue-gray-600 dark:text-slate-300">
+              <summary className="cursor-pointer">How stock scores work</summary>
+              <p className="mt-2">RDKit {stockFpLabel} and {stockMetricLabel} compare the query with each stock structure. These are binary fingerprints. Code, substructure and molecular-weight lookup are not available in this Pyxis index.</p>
+            </details>
           </div>
         )}
         {MACROCYCLE_SOURCES[searchSource] && activeMacrocycleStatus?.state === 'available' && (
@@ -2446,11 +2459,10 @@ export function Simulation() {
                 ))}
               </select>
             </label>
-            <p className="text-sm text-blue-gray-500">
-              Every method is computed identically for the query and each structure over RDKit Morgan (ECFP4) environments.
-              The count metrics weight each environment by how often it occurs; they are a Pyxis method and are not MOE ctanimoto — scores are not comparable with MOE numbers.
-              {macrocycleCountMetricsAvailable ? '' : ' Count metrics appear once this dataset is rebuilt with count fingerprints.'}
-            </p>
+            <details className="text-xs text-blue-gray-600 dark:text-slate-300">
+              <summary className="cursor-pointer">How macrocycle scores work</summary>
+              <p className="mt-2">Each method compares RDKit Morgan (ECFP4) environments. Frequency-weighted metrics are a Pyxis method, not MOE ctanimoto; those scores are not comparable with MOE. {macrocycleCountMetricsAvailable ? '' : 'Count metrics require a rebuilt index.'}</p>
+            </details>
           </div>
         )}
         {searchSource === "open" && (
@@ -2881,30 +2893,10 @@ export function Simulation() {
           <h2 id="results-heading" className="text-xl font-semibold text-blue-gray-900 dark:text-slate-50">Results</h2>
           <span className="text-sm text-blue-gray-600 dark:text-slate-300">{topMolecules.length} shown{hasMore && (searchSource === 'asinex' || isSearchActive) ? ' · more available' : ''}</span>
         </div>
-        {IS_STAGING_BUILD && COMPOUND_PRICE_GUIDE[searchSource] && (
-          <details className="mb-3 rounded-xl border border-brand-100 bg-brand-50/60 text-blue-gray-800 dark:border-brand-900/50 dark:bg-brand-900/10 dark:text-slate-100">
-            <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
-              {COMPOUND_PRICE_GUIDE[searchSource].title} · USD estimate · 1–3 selected
-            </summary>
-            <div className="overflow-x-auto px-4 pb-3">
-              <table className="w-full text-left text-xs tabular-nums">
-                <thead className="border-b border-brand-100 dark:border-brand-900/60">
-                  <tr><th scope="col" className="py-2 pr-3">Pack</th>{COMPOUND_PRICE_GUIDE[searchSource].columns.map(({ label }) => <th scope="col" key={label} className="py-2 pr-3">{label}</th>)}</tr>
-                </thead>
-                <tbody>
-                  {COMPOUND_PRICE_GUIDE[searchSource].sizes.map((mg, row) => (
-                    <tr key={mg} className="border-b border-brand-100/70 last:border-0 dark:border-brand-900/30">
-                      <th scope="row" className="py-2 pr-3 font-semibold">{mg} mg</th>
-                      {COMPOUND_PRICE_GUIDE[searchSource].columns.map(({ label, values }) => <td key={label} className="py-2 pr-3" title={`Source: €${values[row]}`}>≈{approximateUsd(values[row])} <span className="text-blue-gray-500">(€{values[row]})</span></td>)}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <p className="pt-2 text-xs text-blue-gray-600 dark:text-slate-300">
-                Reference only. EUR source × {PRICE_GUIDE_EUR_USD.rate} ({PRICE_GUIDE_EUR_USD.date} ECB rate), rounded to whole USD. {searchSource === 'stock' && 'Other codes excludes LAS, RPX and VPX. '}This does not confirm an offer, stock, or checkout price.
-              </p>
-            </div>
-          </details>
+        {IS_STAGING_BUILD && ['stock', 'real', 'virtual'].includes(searchSource) && topMolecules.length > 0 && (
+          <p className="mb-3 text-xs text-blue-gray-600 dark:text-slate-300">
+            Pack estimates appear beside each compound. Workbook 1–3 selected tier; EUR × {PRICE_GUIDE_EUR_USD.rate} ({PRICE_GUIDE_EUR_USD.date}), rounded to USD. Availability and checkout prices are unconfirmed.
+          </p>
         )}
         <div id="results" className="w-full bg-slate-100 dark:bg-slate-900">
           {/* Header as a block element, not wrapping Card or div */}
@@ -2924,13 +2916,13 @@ export function Simulation() {
             <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
                 <div className="border-b border-teal-100 bg-teal-50/60 px-4 py-3 text-xs text-blue-gray-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
-                  {MACROCYCLE_SOURCES[searchSource].label} · {macrocycleResultMethodLabel} over Morgan (ECFP4). Amount and lead time are dated export fields, not current offers. No per-row offers or cart purchases; select structures for docking handoff.
+                  {MACROCYCLE_SOURCES[searchSource].label} · {macrocycleResultMethodLabel} over Morgan (ECFP4). Amount and lead time are dated export fields; pack amounts are workbook estimates. Select structures for docking handoff.
                 </div>
                 <table className="w-full table-fixed text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-white dark:bg-slate-900">
                     <tr>
                       <th className="w-10 p-2"><input type="checkbox" aria-label="Select all macrocycles" checked={getSelectAllState().checked} ref={(el) => { if (el) el.indeterminate = getSelectAllState().indeterminate; }} onChange={(e) => handleSelectAll(e.target.checked)} /></th>
-                      <th className="w-10 p-2">#</th><th className="w-20 p-2">Similarity</th><th className="w-48 p-2">Macrocycle ID and export details</th><th className="p-2">SMILES</th>
+                      <th className="w-10 p-2">#</th><th className="w-20 p-2">Similarity</th><th className="w-48 p-2">Macrocycle ID and export details</th><th className="w-48 p-2">Packs · USD estimate</th><th className="p-2">SMILES</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2950,6 +2942,7 @@ export function Simulation() {
                             <div className="font-mono font-semibold break-all">{mol.macrocycleCode}</div>
                             <div className="mt-1 text-blue-gray-500" title="Dated supplier export; amount and lead time are unverified now">{exportDetails || 'No export amount or lead time'} · {searchSource === 'real' ? 'stock unverified' : 'virtual'}</div>
                           </td>
+                          <td className="p-2"><WorkbookRowPrices source={searchSource} code={mol.macrocycleCode} /></td>
                           <td className="min-w-0 p-2 font-mono text-xs">
                             <button type="button" className="block w-full truncate text-left underline decoration-dotted" title={`Copy ${mol.SMILES_STRING}`} onClick={async () => { setSearchCode(mol.SMILES_STRING); try { await copyToClipboard(mol.SMILES_STRING); showClipboardConfirmation(); } catch { showMessage('SMILES could not be copied.', 'error'); } }}>
                               {mol.SMILES_STRING}
@@ -2966,7 +2959,7 @@ export function Simulation() {
             <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
                 <div className="border-b border-blue-gray-100 bg-blue-gray-50/60 px-4 py-2 text-xs text-blue-gray-600 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-400">
-                  Source: stock compounds, ranked by {snapFpLabel} {snapMetricLabel} similarity. µmol / mg are dated snapshot quantities from the supplier export — not live availability. Stock rows are not priced or purchasable here — selection is for docking handoff only.
+                  Source: stock compounds, ranked by {snapFpLabel} {snapMetricLabel} similarity. µmol / mg are dated snapshot quantities, not live availability. Pack amounts are workbook estimates; selection is for docking handoff.
                 </div>
                 <table className="w-full text-left">
                   <thead className="sticky top-0 z-10 bg-white">
@@ -2988,6 +2981,7 @@ export function Simulation() {
                       <th className="p-2 font-bold bg-white">#</th>
                       <th className="p-2 font-bold bg-white">Similarity</th>
                       <th className="p-2 font-bold bg-white">Stock ID</th>
+                      <th className="p-2 font-bold bg-white">Packs · USD estimate</th>
                       <th className="p-2 font-bold bg-white">SMILES</th>
                       <th className="p-2 font-bold bg-white" title="Dated snapshot quantity from the supplier export — not live availability">µmol</th>
                       <th className="p-2 font-bold bg-white" title="Dated snapshot quantity from the supplier export — not live availability">mg</th>
@@ -3022,6 +3016,7 @@ export function Simulation() {
                           >
                             {mol.stockCode}
                           </td>
+                          <td className="p-2"><WorkbookRowPrices source="stock" code={mol.stockCode} /></td>
                           <td className="p-0 font-mono text-xs">
                             <button
                               type="button"

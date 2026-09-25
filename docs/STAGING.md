@@ -74,12 +74,12 @@ record was created. `noindex` is a search-engine hint, not access control.
 The staging frontend opens Simulation on the Pyxis stock index and presents
 Stock compounds, Real macrocycles, Virtual compounds and Open compounds as
 separate collections. The consumer build still opens on Internal catalog.
-Query controls and results are side by side at desktop width, with a wider
-workspace at 1280-pixel viewports. Drawing, SMILES, and source selection remain
-available. A collapsible guide displays only the owner's approved **1–3
-selected-compound** workbook tier for other stock codes, LAS, RPX and VPX.
-It converts the EUR sheet to rounded USD estimates at the dated ECB 24 September
-rate (1 EUR = 1.1367 USD); it is read-only and does not price a basket row.
+Query controls and results are side by side from desktop width, with a wider
+Find compounds panel. Drawing, SMILES, and source selection remain available.
+Each Pyxis stock, RPX, or VPX result row displays the matching pack amounts from
+the owner's approved **1–3 selected-compound** workbook tier. The EUR amounts
+convert to rounded USD estimates at the dated ECB 24 September rate
+(1 EUR = 1.1367 USD); they do not price a basket row or verify availability.
 
 ### Replacement catalog gaps
 

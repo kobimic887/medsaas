@@ -64,7 +64,7 @@ when a path or trap moves.
   selection. Neither source has per-row offers or can enter the cart; source
   amounts/lead times are not verified offers. Staging may show the separate
   `Pyxis-e-shop_PRICE_LIST.xlsx` 1–3 selected-compound euro tier for other
-  stock codes, LAS, RPX and VPX as an approximate USD reference guide only;
+  stock codes, LAS, RPX and VPX as approximate USD amounts beside each staging result;
   it is not a checkout price source without confirmed FX and offer rules.
   The staging build starts Simulation on Pyxis stock; its source picker contains
   stock, real macrocycles, virtual compounds and ChEMBL, not the failed supplier
@@ -79,8 +79,8 @@ when a path or trap moves.
   disable pagination and clear old rows; catalog browsing must reject stock/open
   mode so Asinex rows cannot appear as stock/open hits. **Owner decision
   2026-09-13 supersedes the 4b285aa live-quote pricing: the browser never
-  prices via `POST /api/stock-offers` or `/api4/bas`.** Stock rows carry **no
-  prices** in Simulation — no Purchase column, no basket adds; selection stays
+  prices via `POST /api/stock-offers` or `/api4/bas`.** Stock rows carry workbook
+  pack estimates in staging but **no checkout prices** — no Purchase column, no basket adds; selection stays
   docking-handoff only. Internal catalog price columns and basket adds come
   from the catalog's **own browse/search response**: the page normalizer maps
   `PRICE_*MG` / `price_*mg` per row, and a row without a positive pack price
@@ -221,7 +221,7 @@ Subagent limits: `~/.codex/AGENTS.md` (Skills, subagents, cheap mode). Use the n
 
 Do not spawn `pyxis-ops` for ordinary one-file work.
 
-Stock search: failed/new queries clear old rows and disable paging; catalog fetches refuse stock mode. Generic RDKit rejection explains charges/bonds without modifying the submitted structure. Stock rows are unpriced (no pack offers in the client); checkout price review stays server-owned.
+Stock search: failed/new queries clear old rows and disable paging; catalog fetches refuse stock mode. Generic RDKit rejection explains charges/bonds without modifying the submitted structure. Stock rows have staging workbook estimates but no buyable offers; checkout price review stays server-owned.
 
 Integration (2026-09-09): completed stock, Open compounds, and staging/folding work is consolidated on main. Deployment remains separate. Open compounds AI is a real tool-calling loop when `OPEN_COMPOUNDS_AI_*` is provisioned (prefer free OpenRouter models with tools); otherwise use “Search without AI”.
 

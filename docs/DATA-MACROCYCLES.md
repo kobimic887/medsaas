@@ -27,9 +27,9 @@ for docking handoff. Anna's separate `Pyxis-e-shop_PRICE_LIST.xlsx` (SHA-256
 `e06cb5f85a172ecd6dccd17348f7cafc29cb5c0bddc3a895c234b6af2042b2c9`)
 lists euro tiers by supplier code prefix, pack quantity, and number of selected
 compounds. Only **C:F, the 1–3 selected-compound tier**, is used: the owner says
-the larger tiers are unreliable. Staging displays other stock codes, LAS, RPX
-and VPX in a collapsible USD **reference guide**, without assigning a checkout
-price to a hit. USD estimates multiply the EUR sheet values by the ECB's
+the larger tiers are unreliable. Staging maps other stock codes, LAS, RPX
+and VPX to the matching workbook pack amounts **inside each search result row**,
+without assigning a checkout price to a hit. USD estimates multiply the EUR sheet values by the ECB's
 24 September 2026 reference rate (1 EUR = 1.1367 USD) and round to whole
 dollars; this is a dated display estimate, not a transaction rate. The sheet
 lists 1, 2 and 5 mg for RPX/VPX; larger packs are n/a. Offer authority and a
@@ -150,9 +150,9 @@ not describe any of them as done, and do not approximate them from nearby data.
   counts. Blocked on Anna answering the fingerprint/version questions in
   [`REFERENCE-STOCK-FP-METRICS.md`](REFERENCE-STOCK-FP-METRICS.md).
 - **Per-hit offers, basket adds, and lead-time promises for the new sets.**
-  The separate supplier price guide provides other/LAS/RPX/VPX 1–3 tier amounts,
-  but neither dated macrocycle export carries a per-hit offer. The guide is
-  displayed for reference; checkout authority and the USD billing rule are not
+  The separate supplier workbook provides other/LAS/RPX/VPX 1–3 tier amounts,
+  but neither dated macrocycle export carries a per-hit offer. The matching
+  pack estimates are displayed in each staging result row; checkout authority and the USD billing rule are not
   established.
   Macrocycle source amounts and lead times are dated export fields, not current
   offers. Stock rows also stay unpriced (owner decision

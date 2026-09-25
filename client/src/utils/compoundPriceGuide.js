@@ -30,3 +30,19 @@ export function approximateUsd(euros) {
     style: 'currency', currency: 'USD', maximumFractionDigits: 0,
   }).format(euros * PRICE_GUIDE_EUR_USD.rate);
 }
+
+// The workbook is a prefix/pack price list, not an individual compound quote.
+// Keep source row identity and dated availability separate from this mapping.
+export function workbookPacksForRow(source, code) {
+  if (!['stock', 'real', 'virtual'].includes(source)) return null;
+  const prefix = String(code || '').trim().split(/\s+/)[0].toUpperCase();
+  if (!prefix || (source === 'real' && prefix !== 'RPX') || (source === 'virtual' && prefix !== 'VPX')) return null;
+  if (source === 'stock' && ['RPX', 'VPX'].includes(prefix)) return null;
+  const category = source === 'real' ? 'RPX' : source === 'virtual' ? 'VPX' : prefix === 'LAS' ? 'LAS' : 'Other codes';
+  const guide = category === 'RPX' ? COMPOUND_PRICE_GUIDE.real
+    : category === 'VPX' ? COMPOUND_PRICE_GUIDE.virtual
+      : COMPOUND_PRICE_GUIDE.stock;
+  const column = guide.columns.find(({ label }) => label === category);
+  if (!column) return null;
+  return { category, packs: guide.sizes.map((mg, index) => ({ mg, eur: column.values[index], usd: approximateUsd(column.values[index]) })) };
+}

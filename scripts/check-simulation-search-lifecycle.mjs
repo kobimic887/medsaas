@@ -47,6 +47,14 @@ const checks = [
 const { copyToClipboard } = await import(
   pathToFileURL(path.join(root, 'client/src/utils/copyToClipboard.js')).href
 );
+const { workbookPacksForRow } = await import(
+  pathToFileURL(path.join(root, 'client/src/utils/compoundPriceGuide.js')).href
+);
+checks.push(
+  ['workbook row mapping uses LAS and stock-other separately', workbookPacksForRow('stock', 'LAS 001')?.packs[0]?.eur === 226 && workbookPacksForRow('stock', 'ASN 001')?.packs[0]?.eur === 170],
+  ['RPX and VPX rows use their own tiers and only three pack sizes', workbookPacksForRow('real', 'RPX 001')?.packs.length === 3 && workbookPacksForRow('real', 'RPX 001')?.packs[0]?.eur === 317 && workbookPacksForRow('virtual', 'VPX 001')?.packs[0]?.eur === 400],
+  ['unexpected source prefixes cannot acquire a workbook price', workbookPacksForRow('stock', 'VPX 001') === null && workbookPacksForRow('real', 'LAS 001') === null],
+);
 
 const copied = [];
 const removed = [];
@@ -109,7 +117,7 @@ checks.push(
   ['stock method snapshot ref exists for result banners', simulation.includes('lastStockMethodRef')],
   ['runStockSearch forwards fingerprint_type and similarity_metric', simulation.includes('fingerprint_type: stockFingerprintTypeRef.current') && simulation.includes('similarity_metric: stockSimilarityMetricRef.current')],
   ['stock metric fallback label is Tanimoto (binary)', simulation.includes("'Tanimoto (binary)'")],
-  ['stock UI states count-based searching is unavailable', simulation.includes('count-based (MOE ctanimoto-style) searching is not available')],
+  ['stock UI states count-based searching is unavailable', simulation.includes('These are binary fingerprints.')],
   ['stock pagination dedupes by stockRowId via appendUniqueStockRows', simulation.includes('appendUniqueStockRows(prev, rows)')],
   ['hardcoded Morgan/Tanimoto results banner is gone', !simulation.includes('ranked by RDKit Morgan (ECFP4) Tanimoto similarity')],
 );
@@ -230,7 +238,7 @@ checks.push(
 );
 
 checks.push(
-  ['staging separates its Pyxis stock, real, virtual and ChEMBL collections from the legacy catalog', simulation.includes("{ value: 'stock', title: 'Stock compounds'") && simulation.includes("{ value: 'real', title: 'Real macrocycles'") && simulation.includes("{ value: 'virtual', title: 'Virtual compounds'") && simulation.includes("{ value: 'open', title: 'Open compounds'") && simulation.includes("{ value: 'asinex', title: 'Internal catalog'")],
+  ['staging separates its Pyxis stock, real, virtual and ChEMBL collections from the legacy catalog', simulation.includes("{ value: 'stock', title: 'Stock compounds'") && simulation.includes("{ value: 'real', title: 'Real macrocycles'") && simulation.includes("{ value: 'virtual', title: 'Virtual macrocycles'") && simulation.includes("{ value: 'open', title: 'Open compounds'") && simulation.includes("{ value: 'asinex', title: 'Internal catalog'")],
   ['staging opens the Pyxis stock index while consumer catalog default stays intact', simulation.includes('useState(IS_STAGING_BUILD ? "stock" : "asinex")') && simulation.includes("fetchStockStatus()")],
   ['a non-catalog default settles the browse spinner', simulation.includes("if (searchSourceRef.current === 'asinex') fetchAllMolecules(0, false);") && simulation.includes('setInitialLoading(false);') && simulation.includes('setCatalogSettled(true);')],
   ['macrocycle status and similarity use authenticated routes', simulation.includes("/macrocycles/status") && simulation.includes("/macrocycles/similarity")],
@@ -238,11 +246,11 @@ checks.push(
   ['macrocycle metric options come from the dataset capabilities', simulation.includes('activeMacrocycleStatus.capabilities?.similarityMetrics') && simulation.includes('macrocycleMetricOptions')],
   ['macrocycle method selector is labelled for a11y', simulation.includes('aria-label="Macrocycle similarity method"')],
   ['macrocycle status clamps the metric to what the dataset can score', simulation.includes('countMetricsAvailable') && simulation.includes("macrocycleSimilarityMetricRef.current = 'tanimoto'")],
-  ['macrocycle result banner reports the method that produced the rows', simulation.includes('macrocycleResultMethodLabel') && simulation.includes('Ranked by {macrocycleMetricLabel}')],
-  ['macrocycle count copy never claims MOE equivalence', simulation.includes('they are a Pyxis method and are not MOE ctanimoto')],
-  ['macrocycle rows have no cart or per-row offer controls', simulation.includes('No per-row offers or cart purchases; select structures for docking handoff.')],
-  ['staging price guide is read-only and limited to one verified tier', simulation.includes('IS_STAGING_BUILD && COMPOUND_PRICE_GUIDE[searchSource]') && simulation.includes('1–3 selected') && simulation.includes('Reference only') && simulation.includes('does not confirm an offer, stock, or checkout price')],
-  ['query and results are adjacent columns from tablet width', simulation.includes('md:grid-cols-[minmax(17rem,20rem)_minmax(0,1fr)]') && simulation.includes('aria-labelledby="results-heading"')],
+  ['macrocycle result banner reports the method that produced the rows', simulation.includes('macrocycleResultMethodLabel') && simulation.includes('macrocycleMetricLabel')],
+  ['macrocycle count copy never claims MOE equivalence', simulation.includes('a Pyxis method, not MOE ctanimoto')],
+  ['macrocycle rows retain docking handoff without cart controls', simulation.includes('Select structures for docking handoff.') && simulation.includes('WorkbookRowPrices source={searchSource}')],
+  ['staging rows show the approved workbook tier beside each hit', simulation.includes('WorkbookRowPrices source="stock"') && simulation.includes('WorkbookRowPrices source={searchSource}') && simulation.includes('Workbook 1–3 selected tier') && simulation.includes('Availability and checkout prices are unconfirmed.')],
+  ['query and results are adjacent columns with a wider query panel', simulation.includes('lg:grid-cols-[minmax(25rem,29rem)_minmax(0,1fr)]') && simulation.includes('aria-labelledby="results-heading"')],
   ['results offer explicit pagination in the two-column layout', simulation.includes('Load more results')],
 );
 
