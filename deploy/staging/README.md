@@ -53,6 +53,11 @@ To reverse that UI release, extract it over `/root/pyxis-STAGING-5274` and resta
 only `pyxis-web-staging`. Do not restore the older count-metric index for this
 UI-only rollback. The consumer app must retain its own process and bundle.
 
+The later inline price and panel update has its own rollback snapshot at
+`/root/pyxis-staging-inline-prices-rollback-20260925.tgz`. Restore it over the
+staging tree and restart only `pyxis-web-staging` to return to the preceding
+catalog preview. The macrocycle index and consumer app are outside this rollback.
+
 `/api/staging/status` must say `demo:false` and `sharedProductionData:true`. Also check a real sign-in, existing history, macrocycle/stock source status, an Open compounds AI search, and the unchanged consumer service PID and bundle SHA. These read-only checks do not prove a completed payment or a paid scientific provider round trip.
 
 The external catalog endpoint `dev.asinex.com:58181` refused connections from Mac, oracleOld and 84 on 2026-09-24. The consumer app still uses that endpoint. The staging Simulation source picker now uses the Pyxis stock and macrocycle indexes plus ChEMBL, so its search does not require the failed supplier catalog. This does not turn the dated exports into verified offers or enable their checkout. See the replacement-catalog gaps in [`docs/STAGING.md`](../../docs/STAGING.md).

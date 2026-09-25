@@ -180,6 +180,28 @@ PID remained `2965854`, its index SHA-256 remained
 and its root URL answered 200 without redirect. `bun run check`, focused
 Simulation and shell checks, and the staging build check passed.
 
+## Inline workbook packs and wider search panel, 2026-09-25
+
+Staging source `f8bb81e` shows the approved 1–3 selected-compound workbook
+amounts inside each Pyxis result row, in approximate USD, with the original EUR
+amount in the pack tooltip. The Find compounds column is wider and the long
+method explanation is collapsed. These are prefix/pack estimates, not a verified
+offer or Stripe checkout price. The rollback snapshot is
+`/root/pyxis-staging-inline-prices-rollback-20260925.tgz`; restoring it over
+`/root/pyxis-STAGING-5274` and restarting **only** `pyxis-web-staging` restores
+the previous staging interface. No search index or shared database changed.
+
+The served staging frontend index SHA-256 is
+`b4ff384f6578a6069fc768d273fd93e7493cdbd74c2d602efe70b2c071679041`.
+Browser exact searches showed BAS 30906909 at 1.000 with about $193/$221/$248,
+RPX 202406561 at 1.000 with about $360/$415/$477, and VPX 900000001 at
+1.000 with about $455/$523/$601 for 1/2/5 mg. ChEMBL deterministic and AI
+searches using `c1ccccc1` each returned CHEMBL277500 at 1.000; the AI path
+displayed its explanation. The public `pyxis-web` PID stayed `2965854`, its
+frontend SHA stayed `c215f55254fa45d2ab855589c5ebb4b8a939271ee2f284c5db4871ce07dfddcd`,
+and the public root and staging URLs both answered 200. No payment or paid
+scientific run was submitted.
+
 ## Rollback and traps
 
 Pre-switch files are at `/root/pyxis-staging-full-rollback-20260924/` on 84:
