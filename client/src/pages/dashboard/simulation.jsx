@@ -30,6 +30,7 @@ import { macrocycleResultsFromPayload, appendUniqueMacrocycleRows } from '@/util
 import { PRICE_GUIDE_EUR_USD, workbookPacksForRow } from '@/utils/compoundPriceGuide';
 
 const MACROCYCLE_SOURCES = Object.freeze({
+  both: { label: 'Macrocycles', count: 2368630 },
   real: { label: 'Real macrocycles', count: 18190 },
   virtual: { label: 'Virtual macrocycles', count: 2350440 },
 });
@@ -2158,26 +2159,44 @@ export function Simulation() {
             <p className="text-xs font-semibold uppercase tracking-widest text-brand-600 dark:text-brand-300">Compound search</p>
             <h1 className="text-xl font-semibold text-blue-gray-900 dark:text-slate-50">Pyxis compound catalog</h1>
           </div>
-          <p className="text-xs text-blue-gray-500 dark:text-slate-400">Choose a collection. Real RPX and virtual VPX can share a structure, so their source labels stay distinct.</p>
+          <p className="text-xs text-blue-gray-500 dark:text-slate-400">Search real and virtual macrocycles together, or filter that collection below.</p>
         </div>
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-2 sm:grid-cols-3">
           {(IS_STAGING_BUILD ? [
             { value: 'stock', title: 'Stock compounds', detail: '630,646 searchable' },
-            { value: 'real', title: 'Real macrocycles', detail: '18,171 searchable' },
-            { value: 'virtual', title: 'Virtual macrocycles', detail: '2,347,736 searchable' },
+            { value: 'both', title: 'Macrocycles', detail: 'RPX + VPX · 2,365,907 searchable' },
             { value: 'open', title: 'Open compounds', detail: 'ChEMBL discovery' },
           ] : [
             { value: 'asinex', title: 'Internal catalog', detail: 'Existing catalog' },
             { value: 'stock', title: 'Stock compounds', detail: 'Similarity search' },
             { value: 'open', title: 'Open compounds', detail: 'ChEMBL discovery' },
-          ]).map(({ value, title, detail }) => (
-            <label key={value} className={`flex min-w-0 cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors ${searchSource === value ? 'border-brand-500 bg-brand-50 text-brand-900 dark:bg-brand-900/30 dark:text-brand-100' : 'border-blue-gray-100 bg-blue-gray-50/50 text-blue-gray-800 hover:border-brand-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'}`}>
-              <input type="radio" name="searchSource" value={value} checked={searchSource === value} onChange={() => handleSourceChange(value)} className="mt-1 accent-teal-700" />
-              <span className="min-w-0"><span className="block font-semibold leading-5">{title}</span><span className="mt-1 block text-xs opacity-75">{detail}</span></span>
-            </label>
-          ))}
+          ]).map(({ value, title, detail }) => {
+            const selected = value === 'both' ? Boolean(MACROCYCLE_SOURCES[searchSource]) : searchSource === value;
+            return (
+              <label key={value} className={`flex min-w-0 cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors ${selected ? 'border-brand-500 bg-brand-50 text-brand-900 dark:bg-brand-900/30 dark:text-brand-100' : 'border-blue-gray-100 bg-blue-gray-50/50 text-blue-gray-800 hover:border-brand-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'}`}>
+                <input type="radio" name="searchSource" value={value} checked={selected} onChange={() => handleSourceChange(value)} className="mt-1 accent-teal-700" />
+                <span className="min-w-0"><span className="block font-semibold leading-5">{title}</span><span className="mt-1 block text-xs opacity-75">{detail}</span></span>
+              </label>
+            );
+          })}
         </div>
       </fieldset>
+
+      {IS_STAGING_BUILD && MACROCYCLE_SOURCES[searchSource] && (
+        <fieldset className="flex flex-wrap items-center gap-2 text-sm" aria-label="Macrocycle source filter">
+          <legend className="mr-2 font-semibold">Macrocycles:</legend>
+          {[
+            { value: 'both', label: 'Real + virtual' },
+            { value: 'real', label: 'Real only' },
+            { value: 'virtual', label: 'Virtual only' },
+          ].map(({ value, label }) => (
+            <label key={value} className="flex cursor-pointer items-center gap-2 rounded-full border border-teal-300 px-3 py-1 dark:border-teal-800">
+              <input type="radio" name="macrocycleSource" value={value} checked={searchSource === value} onChange={() => handleSourceChange(value)} />
+              {label}
+            </label>
+          ))}
+        </fieldset>
+      )}
 
       <div className="grid w-full min-w-0 gap-4 lg:grid-cols-[minmax(25rem,29rem)_minmax(0,1fr)] 2xl:grid-cols-[minmax(27rem,31rem)_minmax(0,1fr)] lg:items-start">
       <div id="query-panel" className="min-w-0 rounded-2xl border border-blue-gray-100 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950 sm:p-4">
@@ -2226,7 +2245,7 @@ export function Simulation() {
         )}
         {MACROCYCLE_SOURCES[searchSource] && macrocycleStatus[searchSource]?.state === 'available' && (
           <div className="mb-2 rounded-lg border border-teal-100 bg-teal-50/70 px-4 py-3 text-sm text-blue-gray-800 dark:border-teal-800 dark:bg-teal-950/60 dark:text-slate-100">
-              {MACROCYCLE_SOURCES[searchSource].label} · {(macrocycleStatus[searchSource].dataset?.rowCount || MACROCYCLE_SOURCES[searchSource].count).toLocaleString()} searchable {searchSource === 'real' ? '· current stock unverified' : '· virtual designs'}
+              {MACROCYCLE_SOURCES[searchSource].label} · {(macrocycleStatus[searchSource].dataset?.rowCount || MACROCYCLE_SOURCES[searchSource].count).toLocaleString()} searchable {searchSource === 'both' ? '· real RPX + virtual VPX' : searchSource === 'real' ? '· current stock unverified' : '· virtual designs'}
           </div>
         )}
         {MACROCYCLE_SOURCES[searchSource] && macrocycleStatus[searchSource]?.state === 'unavailable' && (
@@ -2893,7 +2912,7 @@ export function Simulation() {
           <h2 id="results-heading" className="text-xl font-semibold text-blue-gray-900 dark:text-slate-50">Results</h2>
           <span className="text-sm text-blue-gray-600 dark:text-slate-300">{topMolecules.length} shown{hasMore && (searchSource === 'asinex' || isSearchActive) ? ' · more available' : ''}</span>
         </div>
-        {IS_STAGING_BUILD && ['stock', 'real', 'virtual'].includes(searchSource) && topMolecules.length > 0 && (
+        {IS_STAGING_BUILD && ['stock', 'both', 'real', 'virtual'].includes(searchSource) && topMolecules.length > 0 && (
           <p className="mb-3 text-xs text-blue-gray-600 dark:text-slate-300">
             Pack estimates appear beside each compound. Workbook 1–3 selected tier; EUR × {PRICE_GUIDE_EUR_USD.rate} ({PRICE_GUIDE_EUR_USD.date}), rounded to USD. Availability and checkout prices are unconfirmed.
           </p>
@@ -2916,7 +2935,7 @@ export function Simulation() {
             <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
                 <div className="border-b border-teal-100 bg-teal-50/60 px-4 py-3 text-xs text-blue-gray-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
-                  {MACROCYCLE_SOURCES[searchSource].label} · {macrocycleResultMethodLabel} over Morgan (ECFP4). Amount and lead time are dated export fields; pack amounts are workbook estimates. Select structures for docking handoff.
+                  {MACROCYCLE_SOURCES[searchSource].label} · globally ranked by {macrocycleResultMethodLabel} over Morgan (ECFP4). RPX and VPX rows retain their source; amount and lead time are dated export fields. Pack amounts are workbook estimates. Select structures for docking handoff.
                 </div>
                 <table className="w-full table-fixed text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-white dark:bg-slate-900">
@@ -2940,9 +2959,10 @@ export function Simulation() {
                           <td className="p-2 font-semibold">{mol.SIMILARITY === null ? '—' : mol.SIMILARITY.toFixed(3)}</td>
                           <td className="p-2 text-xs">
                             <div className="font-mono font-semibold break-all">{mol.macrocycleCode}</div>
-                            <div className="mt-1 text-blue-gray-500" title="Dated supplier export; amount and lead time are unverified now">{exportDetails || 'No export amount or lead time'} · {searchSource === 'real' ? 'stock unverified' : 'virtual'}</div>
+                            <div className="mt-1 font-semibold text-teal-700 dark:text-teal-300">{mol.macrocycleSource === 'real' ? 'Real RPX' : 'Virtual VPX'}</div>
+                            <div className="mt-1 text-blue-gray-500" title="Dated supplier export; amount and lead time are unverified now">{exportDetails || 'No export amount or lead time'} · {mol.macrocycleSource === 'real' ? 'stock unverified' : 'virtual'}</div>
                           </td>
-                          <td className="p-2"><WorkbookRowPrices source={searchSource} code={mol.macrocycleCode} /></td>
+                          <td className="p-2"><WorkbookRowPrices source={mol.macrocycleSource} code={mol.macrocycleCode} /></td>
                           <td className="min-w-0 p-2 font-mono text-xs">
                             <button type="button" className="block w-full truncate text-left underline decoration-dotted" title={`Copy ${mol.SMILES_STRING}`} onClick={async () => { setSearchCode(mol.SMILES_STRING); try { await copyToClipboard(mol.SMILES_STRING); showClipboardConfirmation(); } catch { showMessage('SMILES could not be copied.', 'error'); } }}>
                               {mol.SMILES_STRING}

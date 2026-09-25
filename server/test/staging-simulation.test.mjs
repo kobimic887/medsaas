@@ -187,10 +187,18 @@ const fixtureServer = http.createServer((req, res) => {
   }
   if (pathname === '/v1/search/similarity' && req.method === 'GET') {
     const datasetId = Number(url.searchParams.get('dataset_id'));
+    const datasetIds = url.searchParams.get('dataset_ids');
     hits.macro.push({
-      datasetId,
+      datasetId, datasetIds,
       smiles: url.searchParams.get('smiles'),
       metric: url.searchParams.get('similarity_metric'),
+    });
+    if (datasetIds === '18,19') return send(200, {
+      found: true, count: 2, query_smiles: url.searchParams.get('smiles'),
+      results: [
+        { molecule_id: 181, source: 'real', canonical_smiles: 'C1CCCCC1', similarity: 0.9, metadata: { ID: 'RPX 181', MAIN_BAS: 'RPX 181', PRICE_1MG: 123 } },
+        { molecule_id: 181, source: 'virtual', canonical_smiles: 'C1CCCCC1', similarity: 0.8, metadata: { ID: 'VPX 181', MAIN_BAS: 'VPX 181', PRICE_1MG: 456 } },
+      ],
     });
     if (![18, 19].includes(datasetId)) return send(400, { error: 'wrong dataset' });
     if (url.searchParams.get('smiles') === 'AUTHFAIL') return send(401, { detail: 'upstream key rejected' });
@@ -408,6 +416,19 @@ async function main() {
       && r.json?.capabilities?.similarityMetrics?.length === 1
       && r.json.capabilities.similarityMetrics[0].value === 'tanimoto'
       && r.json.countMetricsAvailable === false, `got ${r.status} ${JSON.stringify(r.json?.capabilities)}`);
+    r = await api('GET', '/api/macrocycles/status?source=both', { token: demoToken });
+    check('combined macrocycle status counts both datasets and advertises only common metrics',
+      r.status === 200 && r.json?.available === true && r.json?.dataset?.rowCount === 2368630
+      && r.json?.capabilities?.similarityMetrics?.map((m) => m.value).join(',') === 'tanimoto',
+      `got ${r.status} ${r.text.slice(0, 230)}`);
+    r = await api('GET', '/api/macrocycles/similarity?source=both&smiles=C1CCCCC1&threshold=0.5', { token: demoToken });
+    check('combined search keeps both source rows and strips untrusted price fields',
+      r.status === 200 && hits.macro.at(-1)?.datasetIds === '18,19'
+      && r.json?.results?.map((hit) => hit.source).join(',') === 'real,virtual'
+      && r.json?.results?.[0]?.metadata?.source === 'macrocycle_real'
+      && r.json?.results?.[1]?.metadata?.source === 'macrocycle_virtual'
+      && r.json.results.every((hit) => !('PRICE_1MG' in hit.metadata)),
+      `got ${r.status} ${r.text.slice(0, 260)}`);
     r = await api('GET', '/api/macrocycles/similarity?source=real&smiles=C1CCCCC1&threshold=0.5', { token: demoToken });
     check('real macrocycle search uses its dataset and no cart price', r.status === 200 && hits.macro.at(-1)?.datasetId === 18 && r.json?.results?.[0]?.metadata?.source === 'macrocycle_real' && !('price_1mg' in (r.json?.results?.[0]?.metadata || {})) && !('PRICE_1MG' in (r.json?.results?.[0]?.metadata || {})), `got ${r.status} ${r.text.slice(0, 230)}`);
     r = await api('GET', '/api/macrocycles/similarity?source=virtual&smiles=C1CCCCC1&threshold=0.5', { token: demoToken });
@@ -417,6 +438,10 @@ async function main() {
       && hits.macro.at(-1)?.metric === 'count_tanimoto' && r.json?.method?.similarity_metric === 'count_tanimoto'
       && r.json?.results?.[0]?.metadata?.source === 'macrocycle_real', `got ${r.status} ${r.text.slice(0, 200)}`);
     const macroHitsBeforeRejections = hits.macro.length;
+    r = await api('GET', '/api/macrocycles/similarity?source=both&smiles=C1CCCCC1&similarity_metric=count_tanimoto', { token: demoToken });
+    check('combined view refuses a metric missing from either dataset before upstream',
+      r.status === 400 && hits.macro.length === macroHitsBeforeRejections,
+      `got ${r.status} ${r.text.slice(0, 200)}`);
     r = await api('GET', '/api/macrocycles/similarity?source=virtual&smiles=C1CCCCC1&similarity_metric=count_tanimoto', { token: demoToken });
     check('count metric is refused before upstream when the index has no count stream',
       r.status === 400 && /count fingerprints/.test(r.json?.error || '') && hits.macro.length === macroHitsBeforeRejections,

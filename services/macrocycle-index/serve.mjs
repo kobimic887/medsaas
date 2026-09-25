@@ -26,7 +26,8 @@ const READ_ROWS = 4096;
 const MAX_OFFSET = 100000;
 
 function isWorse(a, b) {
-  return a.score < b.score || (a.score === b.score && a.id > b.id);
+  return a.score < b.score || (a.score === b.score
+    && (a.sourceRank > b.sourceRank || (a.sourceRank === b.sourceRank && a.id > b.id)));
 }
 
 function pushBest(heap, candidate, capacity) {
@@ -147,15 +148,15 @@ export async function openIndexStore(indexDir, definitions = DATASETS) {
   };
 }
 
-export async function searchIndex(store, {
-  datasetId, smiles, threshold, offset, limit, similarityMetric = DEFAULT_SIMILARITY_METRIC,
+async function searchIndexes(store, {
+  datasetIds, smiles, threshold, offset, limit, similarityMetric = DEFAULT_SIMILARITY_METRIC,
 }) {
-  const dataset = store.datasets.get(datasetId);
-  if (!dataset) throw Object.assign(new Error('Dataset not found'), { status: 404 });
+  const datasets = datasetIds.map((id) => store.datasets.get(id));
+  if (datasets.some((dataset) => !dataset)) throw Object.assign(new Error('Dataset not found'), { status: 404 });
   if (!SIMILARITY_METRICS.includes(similarityMetric)) {
     throw Object.assign(new Error('Invalid macrocycle similarity metric'), { status: 400 });
   }
-  if (!dataset.metrics.includes(similarityMetric)) {
+  if (datasets.some((dataset) => !dataset.metrics.includes(similarityMetric))) {
     throw Object.assign(new Error('This macrocycle index has no count fingerprints; rebuild it before requesting a count metric'), { status: 400 });
   }
   const useCounts = isCountMetric(similarityMetric);
@@ -187,74 +188,76 @@ export async function searchIndex(store, {
   const capacity = offset + limit;
   const heap = [];
   let totalMatches = 0;
-  let processed = 0;
   const recordBuffer = Buffer.allocUnsafe(READ_ROWS * RECORD_BYTES);
   let countBuffer = Buffer.allocUnsafe(0);
   // The count stream is variable length per row, but a row's slice is exactly
   // its stored set-bit count, so a sequential scan stays in step with the
   // fingerprint records without an offset table.
-  let countPosition = 0;
-
-  while (processed < dataset.manifest.indexedRows) {
-    const rows = Math.min(READ_ROWS, dataset.manifest.indexedRows - processed);
-    await readExactly(dataset.fingerprints, recordBuffer, rows * RECORD_BYTES, processed * RECORD_BYTES);
-    let countsLength = 0;
-    if (useCounts) {
-      for (let row = 0; row < rows; row++) countsLength += recordBuffer.readUInt16LE(row * RECORD_BYTES + 8);
-      countBuffer = ensureCapacity(countBuffer, countsLength);
-      await readExactly(dataset.counts, countBuffer, countsLength, countPosition);
-    }
-    let countsConsumed = 0;
-    for (let row = 0; row < rows; row++) {
-      const pos = row * RECORD_BYTES;
-      const moleculeBits = recordBuffer.readUInt16LE(pos + 8);
-      let score;
+  for (const [sourceRank, dataset] of datasets.entries()) {
+    let processed = 0;
+    let countPosition = 0;
+    while (processed < dataset.manifest.indexedRows) {
+      const rows = Math.min(READ_ROWS, dataset.manifest.indexedRows - processed);
+      await readExactly(dataset.fingerprints, recordBuffer, rows * RECORD_BYTES, processed * RECORD_BYTES);
+      let countsLength = 0;
       if (useCounts) {
-        // Count Tanimoto / Dice use the frequency vector, so the set-bit counts
-        // replace the binary intersection/union arithmetic.
-        let sumSquares = 0;
-        let dot = 0;
-        for (let byte = 0; byte < FINGERPRINT_BYTES; byte++) {
-          const value = recordBuffer[pos + 10 + byte];
-          if (!value) continue;
-          for (const bitOffset of BYTE_BIT_INDEXES[value]) {
-            const count = countBuffer[countsConsumed++];
-            sumSquares += count * count;
-            dot += queryCounts[byte * 8 + bitOffset] * count;
+        for (let row = 0; row < rows; row++) countsLength += recordBuffer.readUInt16LE(row * RECORD_BYTES + 8);
+        countBuffer = ensureCapacity(countBuffer, countsLength);
+        await readExactly(dataset.counts, countBuffer, countsLength, countPosition);
+      }
+      let countsConsumed = 0;
+      for (let row = 0; row < rows; row++) {
+        const pos = row * RECORD_BYTES;
+        const moleculeBits = recordBuffer.readUInt16LE(pos + 8);
+        let score;
+        if (useCounts) {
+          // Count Tanimoto / Dice use the frequency vector, so the set-bit counts
+          // replace the binary intersection/union arithmetic.
+          let sumSquares = 0;
+          let dot = 0;
+          for (let byte = 0; byte < FINGERPRINT_BYTES; byte++) {
+            const value = recordBuffer[pos + 10 + byte];
+            if (!value) continue;
+            for (const bitOffset of BYTE_BIT_INDEXES[value]) {
+              const count = countBuffer[countsConsumed++];
+              sumSquares += count * count;
+              dot += queryCounts[byte * 8 + bitOffset] * count;
+            }
           }
+          score = countMetricValue(similarityMetric, dot, querySumSquares, sumSquares);
+        } else {
+          if (Math.min(queryBits, moleculeBits) / Math.max(1, queryBits, moleculeBits) < threshold) continue;
+          let intersection = 0;
+          for (let bit = 0; bit < FINGERPRINT_BYTES; bit++) {
+            intersection += POPCOUNT[queryFp[bit] & recordBuffer[pos + 10 + bit]];
+          }
+          const union = queryBits + moleculeBits - intersection;
+          score = union ? intersection / union : 0;
         }
-        score = countMetricValue(similarityMetric, dot, querySumSquares, sumSquares);
-      } else {
-        if (Math.min(queryBits, moleculeBits) / Math.max(1, queryBits, moleculeBits) < threshold) continue;
-        let intersection = 0;
-        for (let bit = 0; bit < FINGERPRINT_BYTES; bit++) {
-          intersection += POPCOUNT[queryFp[bit] & recordBuffer[pos + 10 + bit]];
+        if (score < threshold) continue;
+        totalMatches++;
+        const id = processed + row + 1;
+        const worst = heap[0];
+        const candidate = { id, score, sourceRank, dataset, metadataOffset: Number(recordBuffer.readBigUInt64LE(pos)) };
+        if (heap.length < capacity || isWorse(worst, candidate)) {
+          pushBest(heap, candidate, capacity);
         }
-        const union = queryBits + moleculeBits - intersection;
-        score = union ? intersection / union : 0;
       }
-      if (score < threshold) continue;
-      totalMatches++;
-      const id = processed + row + 1;
-      const worst = heap[0];
-      if (heap.length < capacity || score > worst.score || (score === worst.score && id < worst.id)) {
-        pushBest(heap, { id, score, metadataOffset: Number(recordBuffer.readBigUInt64LE(pos)) }, capacity);
+      if (useCounts) {
+        // The stream length is implied by the stored set-bit counts; a mismatch
+        // means the artifact is corrupt and must fail loudly, not rank silently.
+        if (countsConsumed !== countsLength) throw new Error('Corrupt macrocycle count stream');
+        countPosition += countsLength;
       }
+      processed += rows;
     }
-    if (useCounts) {
-      // The stream length is implied by the stored set-bit counts; a mismatch
-      // means the artifact is corrupt and must fail loudly, not rank silently.
-      if (countsConsumed !== countsLength) throw new Error('Corrupt macrocycle count stream');
-      countPosition += countsLength;
-    }
-    processed += rows;
   }
 
-  heap.sort((a, b) => b.score - a.score || a.id - b.id);
+  heap.sort((a, b) => b.score - a.score || a.sourceRank - b.sourceRank || a.id - b.id);
   const page = heap.slice(offset, offset + limit);
   const results = [];
   for (const hit of page) {
-    const fields = parseCsvLine(await readMetadataLine(dataset.rows, hit.metadataOffset));
+    const fields = parseCsvLine(await readMetadataLine(hit.dataset.rows, hit.metadataOffset));
     if (fields.length !== NORMALIZED_HEADER.length) throw new Error('Corrupt index metadata row');
     const metadata = Object.fromEntries(NORMALIZED_HEADER.map((key, index) => [key, fields[index]]));
     const hitMol = rdkit.get_mol(metadata.smiles);
@@ -264,7 +267,7 @@ export async function searchIndex(store, {
       finally { hitMol.delete(); }
     }
     delete metadata.smiles;
-    results.push({ molecule_id: hit.id, canonical_smiles: hitSmiles, similarity: hit.score, metadata });
+    results.push({ molecule_id: hit.id, source: hit.dataset.manifest.source, canonical_smiles: hitSmiles, similarity: hit.score, metadata });
   }
   return {
     found: results.length > 0,
@@ -276,16 +279,31 @@ export async function searchIndex(store, {
   };
 }
 
+export function searchIndex(store, { datasetId, ...query }) {
+  return searchIndexes(store, { datasetIds: [datasetId], ...query });
+}
+
+export function searchCombinedIndex(store, { datasetIds, ...query }) {
+  if (!Array.isArray(datasetIds) || datasetIds.length !== 2 || datasetIds[0] === datasetIds[1]) {
+    throw Object.assign(new Error('Combined search requires two distinct datasets'), { status: 400 });
+  }
+  return searchIndexes(store, { datasetIds, ...query });
+}
+
 function parseSearch(url) {
   const q = url.searchParams;
-  const datasetId = Number(q.get('dataset_id'));
+  const hasSingle = q.has('dataset_id');
+  const hasCombined = q.has('dataset_ids');
+  const datasetIds = hasCombined ? String(q.get('dataset_ids')).split(',').map(Number) : [Number(q.get('dataset_id'))];
   const smiles = q.get('smiles') || '';
   const threshold = Number(q.get('threshold'));
   const offset = Number(q.get('offset'));
   const limit = Number(q.get('limit'));
   const fingerprintType = q.get('fingerprint_type') || FINGERPRINT_TYPES[0];
   const similarityMetric = q.get('similarity_metric') || DEFAULT_SIMILARITY_METRIC;
-  if (!Number.isInteger(datasetId) || datasetId < 1
+  if (hasSingle === hasCombined || datasetIds.length < 1 || datasetIds.length > 2
+    || datasetIds.some((id) => !Number.isInteger(id) || id < 1)
+    || (hasCombined && (datasetIds.length !== 2 || datasetIds[0] === datasetIds[1]))
     || !smiles.trim() || smiles.length > 4096
     || !Number.isFinite(threshold) || threshold < 0.1 || threshold > 1
     || !Number.isInteger(offset) || offset < 0 || offset > MAX_OFFSET
@@ -294,7 +312,7 @@ function parseSearch(url) {
     || !SIMILARITY_METRICS.includes(similarityMetric)) {
     throw Object.assign(new Error('Invalid macrocycle similarity query'), { status: 400 });
   }
-  return { datasetId, smiles, threshold, offset, limit, fingerprintType, similarityMetric };
+  return { datasetIds, smiles, threshold, offset, limit, fingerprintType, similarityMetric };
 }
 
 function sendJson(res, status, payload) {
@@ -322,7 +340,12 @@ export function createIndexServer(store) {
     catch (error) { return sendJson(res, error.status || 400, { error: error.message }); }
     if (pending >= 4) return sendJson(res, 429, { error: 'Macrocycle search is busy; retry shortly' });
     pending++;
-    const result = queue.then(() => searchIndex(store, params));
+    const result = queue.then(() => {
+      const { datasetIds, ...query } = params;
+      return datasetIds.length === 2
+        ? searchCombinedIndex(store, { datasetIds, ...query })
+        : searchIndex(store, { datasetId: datasetIds[0], ...query });
+    });
     queue = result.catch(() => {});
     result.then((payload) => sendJson(res, 200, payload)).catch((error) => {
       const status = error.status || 500;

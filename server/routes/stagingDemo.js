@@ -46,14 +46,17 @@ import {
 import {
   buildMacrocycleSimilarityUrl,
   createMacrocycleDatasetResolver,
+  MACROCYCLE_SOURCES,
   assertMacrocycleMetricSupported,
   macrocycleSearchConfig,
   macrocycleStatusPayload,
+  combinedMacrocycleStatusPayload,
   MacrocycleSearchUnavailableError,
   MacrocycleSearchValidationError,
   parseMacrocycleSearchQuery,
-  parseMacrocycleSource,
+  parseMacrocycleSearchSource,
   tagMacrocycleResults,
+  tagCombinedMacrocycleResults,
 } from "../utils/macrocycleSearch.js";
 import { describeStockUpstreamError, relayStockUpstreamStatus } from "../utils/stockSearch.js";
 
@@ -519,7 +522,7 @@ export function createStagingDemoRouter({ jwtSecret, jwtExpiresIn = "7d" }) {
   router.get("/api/macrocycles/status", demoAuth, async (req, res) => {
     let source;
     try {
-      source = parseMacrocycleSource(req.query.source);
+      source = parseMacrocycleSearchSource(req.query.source);
     } catch (error) {
       if (error instanceof MacrocycleSearchValidationError) {
         return res.status(400).json({ error: error.message });
@@ -527,6 +530,10 @@ export function createStagingDemoRouter({ jwtSecret, jwtExpiresIn = "7d" }) {
       throw error;
     }
     try {
+      if (source === 'both') {
+        const datasets = await Promise.all(MACROCYCLE_SOURCES.map((name) => macrocycleResolver.resolve(name)));
+        return res.json(combinedMacrocycleStatusPayload(datasets));
+      }
       const dataset = await macrocycleResolver.resolve(source);
       return res.json(macrocycleStatusPayload(source, dataset));
     } catch (error) {
@@ -549,9 +556,10 @@ export function createStagingDemoRouter({ jwtSecret, jwtExpiresIn = "7d" }) {
       throw error;
     }
 
-    let dataset;
+    let datasets;
     try {
-      dataset = await macrocycleResolver.resolve(params.source);
+      datasets = await Promise.all((params.source === 'both' ? MACROCYCLE_SOURCES : [params.source])
+        .map((source) => macrocycleResolver.resolve(source)));
     } catch (error) {
       if (error instanceof MacrocycleSearchUnavailableError) {
         return res.status(503).json({ error: error.message, code: error.code });
@@ -561,7 +569,7 @@ export function createStagingDemoRouter({ jwtSecret, jwtExpiresIn = "7d" }) {
     }
 
     try {
-      assertMacrocycleMetricSupported(params, dataset);
+      for (const dataset of datasets) assertMacrocycleMetricSupported({ ...params, source: dataset.source }, dataset);
     } catch (error) {
       if (error instanceof MacrocycleSearchValidationError) {
         return res.status(400).json({ error: error.message, code: error.code });
@@ -569,7 +577,7 @@ export function createStagingDemoRouter({ jwtSecret, jwtExpiresIn = "7d" }) {
       throw error;
     }
 
-    const upstreamUrl = buildMacrocycleSimilarityUrl({ config: macrocycleConfig, dataset, params });
+    const upstreamUrl = buildMacrocycleSimilarityUrl({ config: macrocycleConfig, datasets, params });
     try {
       const response = await fetchWithTimeout(upstreamUrl, { headers: { Accept: "application/json" } });
       let data;
@@ -582,7 +590,9 @@ export function createStagingDemoRouter({ jwtSecret, jwtExpiresIn = "7d" }) {
           ...(status === 502 ? { details: `Upstream HTTP ${response.status}` } : {}),
         });
       }
-      return res.json(tagMacrocycleResults(data, params.source, dataset, params));
+      return res.json(params.source === 'both'
+        ? tagCombinedMacrocycleResults(data, datasets, params)
+        : tagMacrocycleResults(data, params.source, datasets[0], params));
     } catch (error) {
       console.error("[staging] macrocycle search failed:", error.message || error);
       return res.status(502).json({ error: "Macrocycle search service failed" });

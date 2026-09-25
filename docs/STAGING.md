@@ -57,9 +57,12 @@ record was created. `noindex` is a search-engine hint, not access control.
   treated as a verified offer.
 - **Stock compounds:** 630,646 compounds available through the same
   tonomitosql service as production; stage browser status verified.
-- **Real macrocycles:** 18,171 searchable structures from 18,190 dated export
-  rows. **Virtual macrocycles:** 2,347,736 searchable structures from 2,350,440
-  export rows. They use an independent read-only Morgan/ECFP4 index at
+- **Macrocycles:** one combined search over **Real RPX** (18,171 searchable
+  structures from 18,190 dated export rows) and **Virtual VPX** (2,347,736
+  searchable structures from 2,350,440 export rows), with Real and Virtual
+  filters. The combined collection has **2,365,907** searchable rows and keeps
+  duplicate structures across subsets as distinct source-labelled hits. They
+  use an independent read-only Morgan/ECFP4 index at
   `127.0.0.1:8274`; no pack prices or cart purchases. Source amounts and lead
   times are dated export fields, not current offers. Both deployed artifacts are
   **format 2** and offer binary Tanimoto plus frequency-weighted Count Tanimoto
@@ -72,8 +75,8 @@ record was created. `noindex` is a search-engine hint, not access control.
   [`DATA-OPEN-COMPOUNDS.md`](DATA-OPEN-COMPOUNDS.md).
 
 The staging frontend opens Simulation on the Pyxis stock index and presents
-Stock compounds, Real macrocycles, Virtual compounds and Open compounds as
-separate collections. The consumer build still opens on Internal catalog.
+Stock compounds, combined Macrocycles, and Open compounds as collections.
+The consumer build still opens on Internal catalog.
 Query controls and results are side by side from desktop width, with a wider
 Find compounds panel. Drawing, SMILES, and source selection remain available.
 Each Pyxis stock, RPX, or VPX result row displays the matching pack amounts from

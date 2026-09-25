@@ -18,7 +18,7 @@ import { countMorganPacked, countMorganVector, countSimilarity } from '../../ser
 // service's allowlist must name exactly the same wire values.
 import { MACROCYCLE_SIMILARITY_METRICS } from '../../server/utils/macrocycleSearch.js';
 import { FINGERPRINT_DETAILS, POPCOUNT, RECORD_BYTES, SIMILARITY_METRICS } from './common.mjs';
-import { createIndexServer, openIndexStore, searchIndex } from './serve.mjs';
+import { createIndexServer, openIndexStore, searchIndex, searchCombinedIndex } from './serve.mjs';
 
 const dir = await mkdtemp(path.join(os.tmpdir(), 'pyxis-macrocycle-index-test-'));
 let server;
@@ -56,14 +56,15 @@ try {
   const counts = Buffer.concat(countParts);
   const rowsBytes = Buffer.byteLength(csv);
 
-  async function writeArtifact(source, { formatVersion }) {
+  async function writeArtifact(source, { formatVersion, id, name }) {
+    const sourceCsv = csv;
     const manifest = {
-      formatVersion, source, datasetId: formatVersion === 2 ? 1 : 2,
-      datasetName: formatVersion === 2 ? 'test v2' : 'test v1',
+      formatVersion, source, datasetId: id,
+      datasetName: name,
       sourceRows: examples.length, indexedRows: examples.length,
       fingerprint: 'RDKit Morgan radius 2, 2048-bit, chirality off, binary Tanimoto',
       normalizedInputSha256: 'fixture', fingerprintsFile: `${source}.fpb`, rowsFile: `${source}.rows.csv`,
-      fingerprintsBytes: records.length, rowsBytes, generatedAt: '2026-09-25T00:00:00.000Z',
+      fingerprintsBytes: records.length, rowsBytes: Buffer.byteLength(sourceCsv), generatedAt: '2026-09-25T00:00:00.000Z',
     };
     if (formatVersion === 2) {
       manifest.countsFile = `${source}.cnt`;
@@ -72,19 +73,22 @@ try {
       await writeFile(path.join(dir, `${source}.cnt`), counts);
     }
     await writeFile(path.join(dir, `${source}.fpb`), records);
-    await writeFile(path.join(dir, `${source}.rows.csv`), csv);
+    await writeFile(path.join(dir, `${source}.rows.csv`), sourceCsv);
     await writeFile(path.join(dir, `${source}.manifest.json`), JSON.stringify(manifest, null, 2));
   }
-  await writeArtifact('test', { formatVersion: 2 });
-  await writeArtifact('testbin', { formatVersion: 1 });
+  await writeArtifact('test', { formatVersion: 2, id: 1, name: 'test v2' });
+  await writeArtifact('testbin', { formatVersion: 1, id: 2, name: 'test v1' });
+  await writeArtifact('testother', { formatVersion: 2, id: 3, name: 'test other v2' });
 
   store = await openIndexStore(dir, {
     test: { id: 1, name: 'test v2', expectedRows: examples.length },
     testbin: { id: 2, name: 'test v1', expectedRows: examples.length },
+    testother: { id: 3, name: 'test other v2', expectedRows: examples.length },
   });
   assert.deepEqual([...MACROCYCLE_SIMILARITY_METRICS], [...SIMILARITY_METRICS], 'app and index metric allowlists must agree');
   assert.deepEqual(store.datasets.get(1).metrics, [...SIMILARITY_METRICS]);
   assert.deepEqual(store.datasets.get(2).metrics, ['tanimoto'], 'a format-1 artifact never advertises count metrics');
+  assert.deepEqual(store.datasets.get(3).metrics, [...SIMILARITY_METRICS]);
 
   const first = await searchIndex(store, { datasetId: 1, smiles: 'c1ccccc1', threshold: 1, offset: 0, limit: 1 });
   assert.equal(first.similarity_metric, 'tanimoto');
@@ -95,6 +99,25 @@ try {
   assert.equal(second.results[0].molecule_id, 3);
   assert.equal(second.results[0].metadata.MAIN_BAS, 'RPX 1');
   assert.equal(second.results[0].metadata.Lead_TIME, '28 days');
+
+  const combined = await searchCombinedIndex(store, {
+    datasetIds: [1, 3], smiles: 'c1ccccc1', threshold: 1, offset: 0, limit: 4,
+  });
+  assert.equal(combined.total_matches, 4);
+  assert.deepEqual(combined.results.map(({ source, molecule_id }) => `${source}:${molecule_id}`),
+    ['test:1', 'test:3', 'testother:1', 'testother:3'], 'ties retain both source rows in deterministic order');
+  const combinedPage = await searchCombinedIndex(store, {
+    datasetIds: [1, 3], smiles: 'c1ccccc1', threshold: 1, offset: 2, limit: 2,
+  });
+  assert.deepEqual(combinedPage.results.map(({ source, molecule_id }) => `${source}:${molecule_id}`),
+    ['testother:1', 'testother:3'], 'combined pagination must not repeat or skip equal-score rows');
+  const combinedCount = await searchCombinedIndex(store, {
+    datasetIds: [1, 3], smiles: 'c1ccccc1', threshold: 1, offset: 0, limit: 1, similarityMetric: 'count_tanimoto',
+  });
+  assert.equal(combinedCount.results[0].similarity, 1);
+  await assert.rejects(searchCombinedIndex(store, {
+    datasetIds: [1, 2], smiles: 'c1ccccc1', threshold: 1, offset: 0, limit: 1, similarityMetric: 'count_tanimoto',
+  }), (error) => error.status === 400, 'a combined metric needs both artifacts');
 
   // Count metrics rank in the same bit space but with frequency-weighted scores.
   const countTanimoto = await searchIndex(store, {
@@ -138,6 +161,7 @@ try {
   assert.deepEqual(listing.datasets, [
     { id: 1, name: 'test v2', row_count: 3, fingerprint_type: 'morgan', metrics: [...SIMILARITY_METRICS] },
     { id: 2, name: 'test v1', row_count: 3, fingerprint_type: 'morgan', metrics: ['tanimoto'] },
+    { id: 3, name: 'test other v2', row_count: 3, fingerprint_type: 'morgan', metrics: [...SIMILARITY_METRICS] },
   ]);
 
   const url = new URL(`${base}/v1/search/similarity`);
@@ -148,6 +172,15 @@ try {
   const reply = await fetch(url);
   assert.equal(reply.status, 200);
   assert.equal((await reply.json()).results[0].molecule_id, 3);
+
+  url.search = new URLSearchParams({
+    dataset_ids: '1,3', smiles: 'c1ccccc1', threshold: '1', offset: '2', limit: '2',
+    fingerprint_type: 'morgan', similarity_metric: 'tanimoto',
+  }).toString();
+  const combinedReply = await fetch(url);
+  assert.equal(combinedReply.status, 200);
+  assert.deepEqual((await combinedReply.json()).results.map(({ source, molecule_id }) => `${source}:${molecule_id}`),
+    ['testother:1', 'testother:3']);
 
   url.searchParams.set('similarity_metric', 'count_tanimoto');
   const counted = await fetch(url);

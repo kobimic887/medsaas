@@ -4,6 +4,8 @@
 export function macrocycleResultsFromPayload(payload, source) {
   if (!Array.isArray(payload?.results)) return [];
   return payload.results.map((item) => {
+    const rowSource = source === 'both' ? item?.source : source;
+    if (rowSource !== 'real' && rowSource !== 'virtual') return null;
     const metadata = item?.metadata && typeof item.metadata === 'object' ? item.metadata : {};
     const code = String(metadata.MAIN_BAS || metadata.compound_id || metadata.ID || item?.molecule_id || '').trim();
     const smiles = String(item?.canonical_smiles || '').trim();
@@ -12,7 +14,7 @@ export function macrocycleResultsFromPayload(payload, source) {
       ASINEX_ID: code,
       macrocycleCode: code,
       macrocycleRowId: item.molecule_id,
-      macrocycleSource: source,
+      macrocycleSource: rowSource,
       SMILES_STRING: smiles,
       SIMILARITY: typeof item.similarity === 'number' && Number.isFinite(item.similarity) ? item.similarity : null,
       snapshotMg: String(metadata.web_mg || metadata.CURRENT_TOT_NETTO_MG || '').trim(),
@@ -24,9 +26,10 @@ export function macrocycleResultsFromPayload(payload, source) {
 }
 
 export function appendUniqueMacrocycleRows(existingRows, newRows) {
-  const seen = new Set(existingRows.map((row) => String(row.macrocycleRowId)));
+  const key = (row) => `${row.macrocycleSource}:${row.macrocycleRowId}`;
+  const seen = new Set(existingRows.map(key));
   return newRows.filter((row) => {
-    const id = String(row.macrocycleRowId);
+    const id = key(row);
     if (seen.has(id)) return false;
     seen.add(id);
     return true;

@@ -1,6 +1,8 @@
 # September 2026 macrocycle search
 
-Anna's September 23 email requests two additional Simulation sources. The
+Anna's September 23 email supplies two subsets for Simulation search. Staging
+presents one Macrocycles collection containing RPX and VPX, with All, Real and
+Virtual filters. The
 published files on `https://spectra.pyxis-discovery.com/CompChem/` differ from
 the email's proposed names: `Pyxis_RealStock_18190.csv` has **18,190** source
 records and `Pyxis_Virtual_Molecules_20260923.zip` has **2,350,440**. Keep the
@@ -48,7 +50,7 @@ index manifest rather than silently altered.
 ## Search contract
 
 The two sets are independent of Internal catalog, Stock compounds, and ChEMBL.
-`GET /api/macrocycles/status?source=real|virtual` and
+`GET /api/macrocycles/status?source=both|real|virtual` and
 `GET /api/macrocycles/similarity?source=...&smiles=...&threshold=...&offset=...&limit=...`
 require an authenticated active user. Status reports `available: false` with
 a reason when the service/dataset is absent; similarity returns 503
@@ -71,9 +73,17 @@ remains binary-only.
 
 A dataset whose index is still format 1 advertises Tanimoto alone and refuses a
 count metric with 400 before any scan, so no client can ask for a ranking the
-artifact cannot produce. Results are ranked globally by score, then index row ID,
-and paginated. The index manifest records RDKit-rejected structures; they are
-excluded from the searchable count shown in the UI.
+artifact cannot produce. `source=both` requires both indexes, reports their
+combined searchable count and only metrics supported by **both**, and scans
+both with one query fingerprint. The shared result list is ranked by score,
+then Real before Virtual for ties, then index row ID, before pagination. A hit
+is identified by `(source, index row ID)`; equal SMILES or supplier codes across
+RPX and VPX remain separate rows. The index manifest records RDKit-rejected
+structures; they are excluded from the searchable count shown in the UI.
+For a reproducible cross-subset check, the SMILES
+`CN1N=C(C)C=C1C(=O)N1CCC2(CC1)CCCCOCCN(C)C1=NC=CC2=N1` at threshold `1`
+returns both `RPX 202410091` and `VPX 900000003`; each keeps its own source,
+row ID and dated metadata.
 
 Staging runs a compact, read-only index in a separate loopback process at
 `127.0.0.1:8274` (`pyxis-macrocycle-search-staging`). Its fingerprint record is

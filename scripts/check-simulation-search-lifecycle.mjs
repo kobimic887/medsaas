@@ -238,7 +238,7 @@ checks.push(
 );
 
 checks.push(
-  ['staging separates its Pyxis stock, real, virtual and ChEMBL collections from the legacy catalog', simulation.includes("{ value: 'stock', title: 'Stock compounds'") && simulation.includes("{ value: 'real', title: 'Real macrocycles'") && simulation.includes("{ value: 'virtual', title: 'Virtual macrocycles'") && simulation.includes("{ value: 'open', title: 'Open compounds'") && simulation.includes("{ value: 'asinex', title: 'Internal catalog'")],
+  ['staging combines RPX and VPX under one macrocycle collection with source filters', simulation.includes("{ value: 'both', title: 'Macrocycles'") && simulation.includes("{ value: 'both', label: 'Real + virtual' }") && simulation.includes("{ value: 'real', label: 'Real only' }") && simulation.includes("{ value: 'virtual', label: 'Virtual only' }") && simulation.includes("{ value: 'open', title: 'Open compounds'") && simulation.includes("{ value: 'asinex', title: 'Internal catalog'")],
   ['staging opens the Pyxis stock index while consumer catalog default stays intact', simulation.includes('useState(IS_STAGING_BUILD ? "stock" : "asinex")') && simulation.includes("fetchStockStatus()")],
   ['a non-catalog default settles the browse spinner', simulation.includes("if (searchSourceRef.current === 'asinex') fetchAllMolecules(0, false);") && simulation.includes('setInitialLoading(false);') && simulation.includes('setCatalogSettled(true);')],
   ['macrocycle status and similarity use authenticated routes', simulation.includes("/macrocycles/status") && simulation.includes("/macrocycles/similarity")],
@@ -248,8 +248,8 @@ checks.push(
   ['macrocycle status clamps the metric to what the dataset can score', simulation.includes('countMetricsAvailable') && simulation.includes("macrocycleSimilarityMetricRef.current = 'tanimoto'")],
   ['macrocycle result banner reports the method that produced the rows', simulation.includes('macrocycleResultMethodLabel') && simulation.includes('macrocycleMetricLabel')],
   ['macrocycle count copy never claims MOE equivalence', simulation.includes('a Pyxis method, not MOE ctanimoto')],
-  ['macrocycle rows retain docking handoff without cart controls', simulation.includes('Select structures for docking handoff.') && simulation.includes('WorkbookRowPrices source={searchSource}')],
-  ['staging rows show the approved workbook tier beside each hit', simulation.includes('WorkbookRowPrices source="stock"') && simulation.includes('WorkbookRowPrices source={searchSource}') && simulation.includes('Workbook 1–3 selected tier') && simulation.includes('Availability and checkout prices are unconfirmed.')],
+  ['macrocycle rows retain source identity and docking handoff without cart controls', simulation.includes('Select structures for docking handoff.') && simulation.includes('WorkbookRowPrices source={mol.macrocycleSource}') && simulation.includes('Real RPX') && simulation.includes('Virtual VPX')],
+  ['staging rows show the approved workbook tier beside each hit', simulation.includes('WorkbookRowPrices source="stock"') && simulation.includes('WorkbookRowPrices source={mol.macrocycleSource}') && simulation.includes('Workbook 1–3 selected tier') && simulation.includes('Availability and checkout prices are unconfirmed.')],
   ['query and results are adjacent columns with a wider query panel', simulation.includes('lg:grid-cols-[minmax(25rem,29rem)_minmax(0,1fr)]') && simulation.includes('aria-labelledby="results-heading"')],
   ['results offer explicit pagination in the two-column layout', simulation.includes('Load more results')],
 );
@@ -298,12 +298,17 @@ const macroRows = macrocycleResultsFromPayload({ results: [
 const virtualRows = macrocycleResultsFromPayload({ results: [
   { molecule_id: 1, canonical_smiles: 'C1CCCCC1', similarity: 1, metadata: { MAIN_BAS: 'VPX 900000001', web_mg: '', web_uM: '', CURRENT_TOT_NETTO_MG: '5', CURRENT_TOT_AMOUNT_UM: '11.3', Lead_TIME: '28 days' } },
 ] }, 'virtual');
+const combinedRows = macrocycleResultsFromPayload({ results: [
+  { source: 'real', molecule_id: 1, canonical_smiles: 'C1CCCCC1', similarity: 1, metadata: { MAIN_BAS: 'RPX 1' } },
+  { source: 'virtual', molecule_id: 1, canonical_smiles: 'C1CCCCC1', similarity: 1, metadata: { MAIN_BAS: 'VPX 1' } },
+] }, 'both');
 checks.push(
   ['macrocycle hit preserves source, identity, structure, and numeric score', macroRows.length === 1 && macroRows[0].macrocycleSource === 'real' && macroRows[0].macrocycleCode === 'BAS 00132206' && macroRows[0].SMILES_STRING === 'O=C1NC2C(NCCC2)CC1' && macroRows[0].SIMILARITY === 0.71],
   ['macrocycle dated quantities and lead time survive with caveated labels', macroRows[0].snapshotMg === '12.5' && macroRows[0].snapshotUm === '44' && macroRows[0].snapshotLeadTime === '28 days' && simulation.includes('Dated supplier export; amount and lead time are unverified now')],
   ['virtual export amount fields appear when real-stock columns are blank', virtualRows[0].snapshotMg === '5' && virtualRows[0].snapshotUm === '11.3'],
   ['macrocycle hit cannot enter catalog pricing through row fields', macroRows[0].isMacrocycleRow === true && macroRows[0].PRICE_1MG === undefined && macroRows[0].STOCK_MG === undefined],
   ['macrocycle page append removes duplicate row IDs', appendUniqueMacrocycleRows(macroRows, [...macroRows, { ...macroRows[0], macrocycleRowId: 42 }]).length === 1],
+  ['combined macrocycle rows keep equal structures and row IDs from both sources', combinedRows.length === 2 && combinedRows[0].macrocycleSource === 'real' && combinedRows[1].macrocycleSource === 'virtual' && appendUniqueMacrocycleRows([combinedRows[0]], [combinedRows[1]]).length === 1],
 );
 
 checks.push(['stock backend inherits the resolved Tanimoto default', readFileSync(path.join(root, 'server/index.js'), 'utf8').includes('stockSearchConfig({ ...process.env, TANIMOTO_API_BASE })')]);

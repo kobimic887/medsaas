@@ -70,8 +70,16 @@ export function parseMacrocycleSource(raw) {
   return raw.trim();
 }
 
+// Import/build operations accept only the two physical datasets. The search
+// API additionally accepts their combined ranked view.
+export function parseMacrocycleSearchSource(raw) {
+  if (typeof raw === 'string' && raw.trim() === 'both') return 'both';
+  try { return parseMacrocycleSource(raw); }
+  catch { throw new MacrocycleSearchValidationError('source must be both, real or virtual'); }
+}
+
 export function parseMacrocycleSearchQuery(query = {}) {
-  const source = parseMacrocycleSource(query.source);
+  const source = parseMacrocycleSearchSource(query.source);
   const fingerprintType = typeof query.fingerprint_type === 'string' ? query.fingerprint_type.trim() : '';
   if (fingerprintType && fingerprintType !== 'morgan') {
     throw new MacrocycleSearchValidationError(
@@ -188,14 +196,20 @@ export function createMacrocycleDatasetResolver({ config, fetchImpl, now = Date.
   };
 }
 
-export function buildMacrocycleSimilarityUrl({ config, dataset, params }) {
+export function buildMacrocycleSimilarityUrl({ config, dataset, datasets, params }) {
   if (!config.baseUrl) throw new MacrocycleSearchUnavailableError('MACROCYCLE_SEARCH_BASE is not configured');
-  return buildStockSimilarityUrl({
-    baseUrl: config.baseUrl, datasetId: dataset.id,
+  const selected = datasets || [dataset];
+  const url = new URL(buildStockSimilarityUrl({
+    baseUrl: config.baseUrl, datasetId: selected[0].id,
     smiles: params.smiles, threshold: params.threshold, offset: params.offset,
     limit: params.limit, fingerprintType: params.fingerprintType,
     similarityMetric: params.similarityMetric,
-  });
+  }));
+  if (selected.length === 2) {
+    url.searchParams.delete('dataset_id');
+    url.searchParams.set('dataset_ids', selected.map(({ id }) => id).join(','));
+  }
+  return url.toString();
 }
 
 export function macrocycleStatusPayload(source, dataset) {
@@ -217,6 +231,15 @@ export function macrocycleStatusPayload(source, dataset) {
       })),
     },
   };
+}
+
+export function combinedMacrocycleStatusPayload(datasets) {
+  const metrics = MACROCYCLE_SIMILARITY_METRICS.filter((metric) =>
+    datasets.every((dataset) => dataset.metrics.includes(metric)));
+  const count = datasets.reduce((sum, dataset) => sum + (dataset.rowCount || 0), 0);
+  return macrocycleStatusPayload('both', {
+    id: null, name: 'Real and virtual macrocycles', rowCount: count, metrics,
+  });
 }
 
 export function tagMacrocycleResults(data, source, dataset, params) {
@@ -247,5 +270,23 @@ export function tagMacrocycleResults(data, source, dataset, params) {
       };
     }).sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0)
       || Number(a.molecule_id) - Number(b.molecule_id)),
+  };
+}
+
+export function tagCombinedMacrocycleResults(data, datasets, params) {
+  if (!data || !Array.isArray(data.results)) {
+    throw new MacrocycleSearchUnavailableError('Macrocycle search service returned invalid results');
+  }
+  const bySource = Object.fromEntries(datasets.map((dataset) => [dataset.source, dataset]));
+  const results = data.results.map((hit) => {
+    const dataset = bySource[hit.source];
+    if (!dataset) throw new MacrocycleSearchUnavailableError('Combined search returned an unknown source');
+    return { ...tagMacrocycleResults({ results: [hit] }, hit.source, dataset, params).results[0], source: hit.source };
+  });
+  return {
+    ...data, source: 'both',
+    datasets: datasets.map(({ id, name, rowCount, source }) => ({ id, name, rowCount, source })),
+    method: { fingerprint_type: params.fingerprintType, similarity_metric: params.similarityMetric, threshold: params.threshold },
+    results,
   };
 }

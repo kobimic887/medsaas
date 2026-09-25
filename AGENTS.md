@@ -47,11 +47,15 @@ when a path or trap moves.
   (defaults `morgan`/`tanimoto`; unknown → **400**); labels mark scores
   **(binary)** — no count/ctanimoto option. Contract:
   `docs/DATA-STOCK-COMPOUNDS.md` (+ `docs/REFERENCE-STOCK-FP-METRICS.md`).
-  The September 23 **Real macrocycles** and **Virtual macrocycles** are two
-  further independent Simulation sources (`docs/DATA-MACROCYCLES.md`). Their
+  The September 23 **Real macrocycles** (RPX) and **Virtual macrocycles** (VPX)
+  form one staging Simulation Macrocycles collection, with All/Real/Virtual
+  filters (`docs/DATA-MACROCYCLES.md`). Their
   authenticated `/api/macrocycles/status|similarity` routes use a separate
-  `MACROCYCLE_SEARCH_BASE`; missing datasets return 503, never catalog/stock
-  results. Staging's compact read-only RDKit Morgan index is loopback `:8274`:
+  `MACROCYCLE_SEARCH_BASE` and `source=both|real|virtual`; combined search
+  globally ranks both indexes, keeps hits with the same SMILES or supplier ID,
+  and identifies rows by source plus index row ID. Missing either combined
+  dataset returns 503, never catalog/stock results. Staging's compact read-only
+  RDKit Morgan index is loopback `:8274`:
   format 1 serves binary Tanimoto, format 2 adds `<source>.cnt` (one byte per set
   bit, ascending) and the count metrics. `similarity_metric` is `tanimoto`
   (default), `count_tanimoto` or `count_dice` (unknown, including the MOE name
@@ -60,14 +64,14 @@ when a path or trap moves.
   method over RDKit's own Morgan environments (`server/utils/countMorgan.js`) —
   **not MOE ctanimoto, not MOE-comparable**; labels must say "(frequency-weighted)"
   or "(binary)". MOE btanimoto/ctanimoto parity stays unbuilt. Source IDs can
-  repeat, so use the index row ID for
-  selection. Neither source has per-row offers or can enter the cart; source
+  repeat, so use source plus index row ID for selection. Neither source has
+  per-row offers or can enter the cart; source
   amounts/lead times are not verified offers. Staging may show the separate
   `Pyxis-e-shop_PRICE_LIST.xlsx` 1–3 selected-compound euro tier for other
   stock codes, LAS, RPX and VPX as approximate USD amounts beside each staging result;
   it is not a checkout price source without confirmed FX and offer rules.
   The staging build starts Simulation on Pyxis stock; its source picker contains
-  stock, real macrocycles, virtual compounds and ChEMBL, not the failed supplier
+  stock, combined Macrocycles and ChEMBL, not the failed supplier
   catalog. The consumer build still starts on Internal catalog.
   Open compounds: AI tool loop
   (`POST /api/open-compounds/ai-search`) plus deterministic

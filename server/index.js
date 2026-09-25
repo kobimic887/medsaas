@@ -58,12 +58,15 @@ import {
   createMacrocycleDatasetResolver,
   MacrocycleSearchUnavailableError,
   MacrocycleSearchValidationError,
+  MACROCYCLE_SOURCES,
   assertMacrocycleMetricSupported,
   macrocycleSearchConfig,
   macrocycleStatusPayload,
+  combinedMacrocycleStatusPayload,
   parseMacrocycleSearchQuery,
-  parseMacrocycleSource,
+  parseMacrocycleSearchSource,
   tagMacrocycleResults,
+  tagCombinedMacrocycleResults,
 } from './utils/macrocycleSearch.js';
 import {
   buildOpenCompoundsStatus,
@@ -5320,17 +5323,22 @@ app.get('/api/stock-search/similarity', ensureMongoConnected, authenticateToken,
   }
 });
 
-// September 23 macrocycle exports are independent datasets. A missing import
+// September 23 macrocycle exports are independent datasets. The combined view
+// ranks both without erasing their real/virtual identities. A missing import
 // returns an explicit unavailable state; the older stock dataset is never a
 // substitute. Amount and lead-time metadata are informational, not prices.
 app.get('/api/macrocycles/status', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   let source;
-  try { source = parseMacrocycleSource(req.query.source); }
+  try { source = parseMacrocycleSearchSource(req.query.source); }
   catch (error) {
     if (error instanceof MacrocycleSearchValidationError) return res.status(400).json({ error: error.message, code: error.code });
     throw error;
   }
   try {
+    if (source === 'both') {
+      const datasets = await Promise.all(MACROCYCLE_SOURCES.map((name) => macrocycleSearchResolver.resolve(name)));
+      return res.json(combinedMacrocycleStatusPayload(datasets));
+    }
     const dataset = await macrocycleSearchResolver.resolve(source);
     return res.json(macrocycleStatusPayload(source, dataset));
   } catch (error) {
@@ -5349,20 +5357,25 @@ app.get('/api/macrocycles/similarity', ensureMongoConnected, authenticateToken, 
     if (error instanceof MacrocycleSearchValidationError) return res.status(400).json({ error: error.message, code: error.code });
     throw error;
   }
-  let dataset;
-  try { dataset = await macrocycleSearchResolver.resolve(params.source); }
+  let datasets;
+  try {
+    datasets = await Promise.all((params.source === 'both' ? MACROCYCLE_SOURCES : [params.source])
+      .map((source) => macrocycleSearchResolver.resolve(source)));
+  }
   catch (error) {
     if (error instanceof MacrocycleSearchUnavailableError) {
       return res.status(503).json({ error: error.message, code: error.code });
     }
     throw error;
   }
-  try { assertMacrocycleMetricSupported(params, dataset); }
+  try {
+    for (const dataset of datasets) assertMacrocycleMetricSupported({ ...params, source: dataset.source }, dataset);
+  }
   catch (error) {
     if (error instanceof MacrocycleSearchValidationError) return res.status(400).json({ error: error.message, code: error.code });
     throw error;
   }
-  const upstreamUrl = buildMacrocycleSimilarityUrl({ config: MACROCYCLE_SEARCH_CONFIG, dataset, params });
+  const upstreamUrl = buildMacrocycleSimilarityUrl({ config: MACROCYCLE_SEARCH_CONFIG, datasets, params });
   try {
     const response = await fetchWithTimeout(upstreamUrl, { headers: { Accept: 'application/json' } });
     const text = await response.text();
@@ -5375,7 +5388,9 @@ app.get('/api/macrocycles/similarity', ensureMongoConnected, authenticateToken, 
         ...(status === 502 ? { details: `Upstream HTTP ${response.status}` } : {}),
       });
     }
-    return res.json(tagMacrocycleResults(data, params.source, dataset, params));
+    return res.json(params.source === 'both'
+      ? tagCombinedMacrocycleResults(data, datasets, params)
+      : tagMacrocycleResults(data, params.source, datasets[0], params));
   } catch (error) {
     console.error(`Macrocycle search proxy error url=${safeUpstreamUrl(upstreamUrl)}:`, error.message || error);
     return res.status(502).json({ error: 'Macrocycle search is temporarily unavailable' });
