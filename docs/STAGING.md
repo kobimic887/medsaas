@@ -155,6 +155,31 @@ remained unchanged. Current rollback snapshot is
 `index-before/`, and both saved frontend bundles). Restore those staging-only
 files and restart the two staging units if this update must be reversed.
 
+## Pyxis-owned catalog preview, 2026-09-25
+
+Staging runtime source is `cb5e06e`; the served staging frontend index SHA-256
+is `499370258435d7584cfbfa9a7eeb1dd409d3fa15f80b7765a0223dad5e494dca`.
+The staging-only rollback copy is
+`/root/pyxis-staging-catalog-rollback-20260925/staging-source-and-bundle-before.tgz`;
+the directory also holds uncompressed earlier bundles and baseline consumer
+identity. Restoring that archive into `/root/pyxis-STAGING-5274` and restarting
+**only** `pyxis-web-staging` returns to the previous search UI. No index or
+shared Atlas data changed in this release.
+
+The signed-in browser showed four separate collection cards and opened on the
+630,646-row Pyxis stock index without a catalog request or indefinite browse
+spinner. A query using the source structure of `ASN 04188606` returned that
+code first at similarity 1.000 and ten stock results in the first page. Real
+macrocycles reported 18,171 searchable rows and the RPX guide showed its 1,
+2 and 5 mg values in approximate USD. The stock guide showed separate LAS and
+other-code values. Browser price controls stayed read-only, and no paid action
+or Stripe session was submitted. Staging `/health`, shared-data status and
+public HTTPS route answered 200 without redirect. The consumer `pyxis-web`
+PID remained `2965854`, its index SHA-256 remained
+`c215f55254fa45d2ab855589c5ebb4b8a939271ee2f284c5db4871ce07dfddcd`,
+and its root URL answered 200 without redirect. `bun run check`, focused
+Simulation and shell checks, and the staging build check passed.
+
 ## Rollback and traps
 
 Pre-switch files are at `/root/pyxis-staging-full-rollback-20260924/` on 84:
