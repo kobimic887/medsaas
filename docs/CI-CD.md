@@ -44,6 +44,8 @@ or runtime path when behavior changes. Reuse existing checks before adding tests
 Server integration tests use an isolated MongoDB test process. The first run may
 download its binary; this does not require starting the project's legacy local
 MongoDB stack or connecting tests to an application database.
+Runtime fixtures must set their own application URLs; CORS expectations must not
+depend on a developer's private environment file.
 
 ## Deployment
 

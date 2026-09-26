@@ -1,10 +1,7 @@
 // Runtime parity smoke: auth, Stripe webhook, token consumption, static serving.
 //
-// Live product (2026-08-23+): 84 pyxis-web serves this API + client/dist on :5174.
-// Default run blanks FRONTEND_DIST so API checks stay hermetic. --assert-static
-// (after `bun run build`) proves the unified pyxis-web path — not Vite :5173.
-//
-// Historical: through 2026-08-23 public was Vite :5173 (83, then 84 dual-stack).
+// Default run blanks FRONTEND_DIST and supplies its own application URLs.
+// --assert-static (after `bun run build`) also checks unified static serving.
 //
 // Run:
 //   SERVER_RUNTIME=node npm --prefix server run test:runtime-smoke
@@ -80,6 +77,10 @@ async function main() {
     STRIPE_SECRET_KEY: 'sk_test_dummy_key_never_calls_api',
     STRIPE_WEBHOOK_SECRET: WEBHOOK_SECRET,
     PORT: String(PORT),
+    // The CORS check needs a configured allowlist. Never borrow these from a
+    // developer's .env: a clean CI checkout would exercise permissive dev mode.
+    BASE_URL: BASE,
+    FRONTEND_URL: BASE,
     NODE_ENV: 'test',
     NVIDIA_MOLMIM_API_KEY: '',  // Blank so handler returns 500 without calling NVIDIA
   };
@@ -499,11 +500,8 @@ async function main() {
     );
 
     // --- Test 5e: an unexpected Origin must not take the whole app down ---
-    // Refusing CORS by throwing turned every request from an unlisted origin into
-    // a 500 — index.html and /assets/*.js included — so the browser got a blank
-    // page. Found in dress rehearsal (pre-2026-08-23 public flip) through an
-    // SSH tunnel. Ordinary operational access still hits the same CORS path on
-    // live 84 pyxis-web.
+    // Refuse a foreign origin by omitting CORS headers, without turning an
+    // otherwise valid request into a server error.
     console.log('\nTest 5e — a disallowed Origin does not 500 the app:');
     const weirdOrigin = { Origin: 'https://not-the-configured-origin.example' };
     const healthOdd = await fetch(`${BASE}/health`, { headers: weirdOrigin });
