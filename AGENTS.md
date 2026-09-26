@@ -50,6 +50,9 @@ when a path or trap moves.
   `pyxis_catalog` schema combines stock views with all RPX/VPX source rows and
   copied vectors. Never ingest these into the legacy public search tables;
   source row numbers and search index IDs differ. This does not switch app search.
+  RPX/VPX data and derived search artifacts stay on the scientific data host;
+  the staging app reaches its loopback index through the private SSH tunnel.
+  Do not leave dataset or dataset-backup copies on the application host.
 - Client routes: `client/src/routes.jsx`. Use `API_CONFIG.buildApiUrl()` for `/api/*`
   and `API_CONFIG.buildUrl()` for top-level routes.
 - Auth state: `client/src/context/auth.jsx`. Session logout interceptor:

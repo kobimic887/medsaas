@@ -81,3 +81,8 @@ This schema does not change application search routing. Keep macros out of publi
 source row numbers include excluded rows and differ from search index IDs;
 supplier code and SMILES are not unique. Stock Morgan is512bits, macro Morgan
 2048bits; do not directly compare these stored vectors across sources.
+
+RPX/VPX SQL and derived index data reside on the scientific data host. The staging
+application uses a private SSH-forwarded loopback endpoint, not a local dataset.
+Deploy source/index artifacts only to the data host; keep rollback copies off
+the application host too. See `deploy/staging/README.md` for unit roles.

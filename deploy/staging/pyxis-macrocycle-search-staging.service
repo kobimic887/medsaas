@@ -1,15 +1,15 @@
 [Unit]
-Description=Pyxis staging macrocycle similarity index
+Description=Pyxis macrocycle similarity index on the scientific data host
 After=network.target
 
 [Service]
 Type=simple
-User=root
-WorkingDirectory=/root/pyxis-STAGING-5274
+User=ubuntu
+WorkingDirectory=/home/ubuntu/projects/medsaas
 Environment=BIND_HOST=127.0.0.1
 Environment=PORT=8274
-Environment=MACROCYCLE_INDEX_DIR=/root/pyxis-macrocycle-index-staging
-ExecStart=/usr/local/bin/bun services/macrocycle-index/serve.mjs
+Environment=MACROCYCLE_INDEX_DIR=/home/ubuntu/.local/share/pyxis/macrocycle-index-staging
+ExecStart=/home/ubuntu/.bun/bin/bun services/macrocycle-index/serve.mjs
 Restart=on-failure
 RestartSec=5
 CPUQuota=80%
