@@ -77,7 +77,7 @@
     "test:compound-shop:node": "npm --prefix server run test:compound-shop:node && npm run test:catalog-ui:node"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.0",
+    "@biomejs/biome": "^2.5.14",
     "concurrently": "^10.0.3"
   }
 }
