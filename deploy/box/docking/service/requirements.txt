@@ -1,5 +1,5 @@
 # Runtime dependencies are deliberately exact-pinned for repeatable Docker builds.
-fastapi==0.111.0
+fastapi==0.141.1
 gemmi==0.7.5
 httpx==0.28.1
 meeko==0.7.1
