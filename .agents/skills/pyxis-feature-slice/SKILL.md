@@ -82,4 +82,4 @@ A green `build` alone does not prove a dashboard flow.
 
 Simulation search regression: execute rejected-query handlers in `test:simulation-search`; prove old rows clear and catalog browsing cannot run in stock/open mode or during a pending search. Open compounds: `bun run test:open-compounds`.
 
-Molecule basket checkout redirects to the server-created Stripe URL: no client publishable-key guard. Verify the actual navbar handler reaches the authenticated endpoint without VITE_STRIPE_PUBLISHABLE_KEY in `test:catalog-pricing` (checkout re-prices from the original catalog API `GET /api/id/{code}`; stock-origin rows are refused).
+Molecule checkout is unavailable until Pyxis owns authoritative offers. All old catalog aliases and molecule basket checkout refuse locally with `503 CATALOG_RETIRED`; never restore supplier repricing or invent missing prices. Known-plan credit checkout still redirects to the server-created Stripe URL. Verify actual route zero-supplier-call behavior and preserved plan checkout with `test:catalog-pricing`, and unchanged baskets/no redirect on503 with `test:catalog-ui`.

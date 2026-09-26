@@ -11,11 +11,19 @@ const stockOffersUtil = readFileSync(
   path.join(root, 'client/src/utils/stockOffers.js'),
   'utf8',
 );
+const controlPanel = readFileSync(path.join(root, 'client/src/pages/dashboard/controlpanel.jsx'), 'utf8');
+const molstar = readFileSync(path.join(root, 'client/src/pages/dashboard/molstar3d.jsx'), 'utf8');
 const emptyResponseFallbacks = (
   simulation.match(/responseText\.trim\(\) \? JSON\.parse\(responseText\) : \[\]/g) || []
 ).length;
 
 const checks = [
+  ['Control Panel pricing explains unavailable offers without supplier calls or basket writes',
+    controlPanel.includes('Verified compound purchase offers are currently unavailable.')
+    && !controlPanel.includes('/asinex/') && !controlPanel.includes('const addToCart')],
+  ['Molstar never requests retired supplier prices or invents a price',
+    !molstar.includes('/mol-price/search') && !/price(?:1|2|5|10)mg:.*100/.test(molstar)],
+
   ['browse requests have an abort controller', simulation.includes('const browseControllerRef = useRef(null)')],
   ['search requests have an abort controller', simulation.includes('const searchControllerRef = useRef(null)')],
   ['route cleanup aborts browse work', simulation.includes('browseControllerRef.current?.abort();')],
@@ -50,6 +58,21 @@ const { copyToClipboard } = await import(
 const { workbookPacksForRow } = await import(
   pathToFileURL(path.join(root, 'client/src/utils/compoundPriceGuide.js')).href
 );
+{
+  const body = controlPanel.split('const fetchPriceData = (smiles) => {')[1].split('\n  };')[0];
+  const state = {};
+  new Function('setCurrentSmiles', 'setShowPricePopup', 'smiles', body)(
+    (value) => { state.smiles = value; }, (value) => { state.open = value; }, 'CCO',
+  );
+  checks.push(['Show Price opens the unavailable-offers explanation for the requested structure', state.open === true && state.smiles === 'CCO']);
+  const viewerBody = molstar.split('const fetchAllMoleculePrices = async () => {')[1].split('\n  };')[0];
+  let prices = { CCO: { price1mg: 100 } };
+  new Function('viewerClearedRef', 'setMoleculePrices', viewerBody)(
+    { current: false }, (value) => { prices = value; },
+  );
+  checks.push(['loading docking metadata clears old offers without a supplier request', Object.keys(prices).length === 0]);
+}
+
 checks.push(
   ['workbook row mapping uses LAS and stock-other separately', workbookPacksForRow('stock', 'LAS 001')?.packs[0]?.eur === 226 && workbookPacksForRow('stock', 'ASN 001')?.packs[0]?.eur === 170],
   ['RPX and VPX rows use their own tiers and only three pack sizes', workbookPacksForRow('real', 'RPX 001')?.packs.length === 3 && workbookPacksForRow('real', 'RPX 001')?.packs[0]?.eur === 317 && workbookPacksForRow('virtual', 'VPX 001')?.packs[0]?.eur === 400],
@@ -104,7 +127,7 @@ checks.push(
   ['ASINEX paging cursor is the numeric row id, not the parsed display code', simulation.includes('const parsed = Number(molecule.id);')],
   ['score-ranked similarity is not paged by an unproven id cursor', simulation.includes("method !== 'similarity' && formattedMolecules.length >= pageSize")],
   ['switching the corpus aborts in-flight work and clears results', simulation.includes('const handleSourceChange = (nextSource) =>') && simulation.includes('searchControllerRef.current?.abort();') && simulation.includes('setTopMolecules([]);')],
-  ['unprovisioned stock search is a visible state, not a fallback', simulation.includes('Stock-compound search is not available yet') && simulation.includes('switch the source above')],
+  ['unprovisioned stock search is a visible state, not a fallback', simulation.includes('Stock-compound search is not available yet') && simulation.includes('Please try again later or choose another collection.')],
   ['stock rows render no purchase or pricing UI', !simulation.includes('>Purchase</') && !simulation.includes('stockOffersByCode') && !simulation.includes('/stock-offers')],
   ['stock snapshot quantities are labelled as dated snapshots', simulation.includes('Dated snapshot quantity from the supplier export')],
   ['stock empty/error states are distinct from the catalog', simulation.includes('No stock compounds matched this structure at the current')],
@@ -238,9 +261,9 @@ checks.push(
 );
 
 checks.push(
-  ['staging combines RPX and VPX under one macrocycle collection with source filters', simulation.includes("{ value: 'both', title: 'Macrocycles'") && simulation.includes("{ value: 'both', label: 'Real + virtual' }") && simulation.includes("{ value: 'real', label: 'Real only' }") && simulation.includes("{ value: 'virtual', label: 'Virtual only' }") && simulation.includes("{ value: 'open', title: 'Open compounds'") && simulation.includes("{ value: 'asinex', title: 'Internal catalog'")],
-  ['staging opens the Pyxis stock index while consumer catalog default stays intact', simulation.includes('useState(IS_STAGING_BUILD ? "stock" : "asinex")') && simulation.includes("fetchStockStatus()")],
-  ['a non-catalog default settles the browse spinner', simulation.includes("if (searchSourceRef.current === 'asinex') fetchAllMolecules(0, false);") && simulation.includes('setInitialLoading(false);') && simulation.includes('setCatalogSettled(true);')],
+  ['all builds combine RPX and VPX under one macrocycle collection with source filters', simulation.includes("{ value: 'both', title: 'Macrocycles'") && simulation.includes("{ value: 'both', label: 'Real + virtual' }") && simulation.includes("{ value: 'real', label: 'Real only' }") && simulation.includes("{ value: 'virtual', label: 'Virtual only' }") && simulation.includes("{ value: 'open', title: 'Open compounds'") && !simulation.includes("{ value: 'asinex', title: 'Internal catalog'")],
+  ['all builds open the Pyxis stock index', simulation.includes('useState("stock")') && simulation.includes("fetchStockStatus()")],
+  ['a non-catalog default settles the browse spinner', !simulation.includes("if (searchSourceRef.current === 'asinex') fetchAllMolecules(0, false);") && simulation.includes('setInitialLoading(false);') && simulation.includes('setCatalogSettled(true);')],
   ['macrocycle status and similarity use authenticated routes', simulation.includes("/macrocycles/status") && simulation.includes("/macrocycles/similarity")],
   ['macrocycle search forwards its selected metric with the Morgan fingerprint', simulation.includes("fingerprint_type: 'morgan'") && simulation.includes('similarity_metric: macrocycleSimilarityMetricRef.current')],
   ['macrocycle metric options come from the dataset capabilities', simulation.includes('activeMacrocycleStatus.capabilities?.similarityMetrics') && simulation.includes('macrocycleMetricOptions')],

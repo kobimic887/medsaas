@@ -20,7 +20,7 @@ import {
   ArrowDownTrayIcon,
   CheckIcon,
 } from "@heroicons/react/24/outline";
-import { ClockIcon, ShoppingCartIcon } from "@heroicons/react/24/solid";
+import { ClockIcon } from "@heroicons/react/24/solid";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 
 const CONTROL_PANEL_FETCH_TIMEOUT_MS = 15_000;
@@ -40,16 +40,9 @@ export function ControlPanel() {
   
   // Price popup state
   const [showPricePopup, setShowPricePopup] = React.useState(false);
-  const [priceData, setPriceData] = React.useState(null);
-  const [priceLoading, setPriceLoading] = React.useState(false);
   const [currentSmiles, setCurrentSmiles] = React.useState('');
   
-  // Cart state and functions
-  const [cart, setCart] = React.useState([]);
-  const [message, setMessage] = React.useState('');
-  const [messageType, setMessageType] = React.useState('');
   const admetRefreshTimerRef = React.useRef(null);
-  const messageTimerRef = React.useRef(null);
 
   // ADMET popup state
   const [showAdmetPopup, setShowAdmetPopup] = React.useState(false);
@@ -136,12 +129,10 @@ export function ControlPanel() {
   // Fetch activities and simulation logs on component mount
   React.useEffect(() => {
     startPanelFetches();
-    loadCartFromStorage();
     return () => {
       panelFetchControllerRef.current?.abort();
       window.clearTimeout(panelFetchTimeoutRef.current);
       window.clearTimeout(admetRefreshTimerRef.current);
-      window.clearTimeout(messageTimerRef.current);
     };
   }, []);
 
@@ -208,35 +199,11 @@ export function ControlPanel() {
     URL.revokeObjectURL(url);
   };
 
-  // Function to fetch price data from API
-  const fetchPriceData = async (smiles) => {
-    try {
-      setPriceLoading(true);
-      setCurrentSmiles(smiles);
-      const token = getAuthToken();
-      const _smiles = decodeURIComponent(smiles);      
-      const normalizedSmiles = _smiles.split('\\').map(part => part.trim()).filter(part => part).join(`\\`);
-      const response = await fetch(API_CONFIG.buildApiUrl(`/asinex/exact/${encodeURIComponent(normalizedSmiles)}`), {
-        headers: {
-          "accept": "*/*",
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(await responseErrorText(response));
-      }
-      
-      const data = await response.json();
-      setPriceData(data);
-      setShowPricePopup(true);
-    } catch (err) {
-      console.error('Error fetching price data:', err);
-      setPriceData({ error: err.message });
-      setShowPricePopup(true);
-    } finally {
-      setPriceLoading(false);
-    }
+  // Supplier catalog pricing is retired. Snapshot inventory and workbook
+  // estimates do not establish a verified purchase offer.
+  const fetchPriceData = (smiles) => {
+    setCurrentSmiles(smiles);
+    setShowPricePopup(true);
   };
 
   // Function to fetch ADMET data from API
@@ -271,78 +238,6 @@ export function ControlPanel() {
     } finally {
       setAdmetLoading(false);
     }
-  };
-
-  // Cart utility functions
-  const loadCartFromStorage = () => {
-    try {
-      const savedCart = localStorage.getItem('moleculeCart');
-      if (savedCart) {
-        const parsedCart = JSON.parse(savedCart);
-        
-        // Handle different cart data structures
-        if (Array.isArray(parsedCart)) {
-          // Simple array format (old format)
-          setCart(parsedCart);
-          return parsedCart;
-        } else if (parsedCart.items && Array.isArray(parsedCart.items)) {
-          // Object format with items and total (new format)
-          setCart(parsedCart.items);
-          return parsedCart.items;
-        } else {
-          // Unknown format, reset cart
-          setCart([]);
-          return [];
-        }
-      }
-    } catch (error) {
-      console.error('Error loading cart from storage:', error);
-    }
-    setCart([]);
-    return [];
-  };
-
-  const saveCartToStorage = (cartItems) => {
-    try {
-      const total = cartItems.reduce((sum, item) => sum + (item.totalPrice || item.price || 0), 0);
-      const cartData = {
-        items: cartItems,
-        total: total
-      };
-      localStorage.setItem('moleculeCart', JSON.stringify(cartData));
-      // Dispatch custom event to notify other components
-      window.dispatchEvent(new CustomEvent('cartUpdated'));
-    } catch (error) {
-      console.error('Error saving cart to storage:', error);
-    }
-  };
-
-  const addToCart = (molecule, amount, pricePerMg) => {
-    const cartItem = {
-      id: `${currentSmiles}_${Date.now()}`,
-      catalogId: molecule.BAS_CODE || molecule.bas_code || molecule.basCode || molecule.ASINEX_ID || molecule.id_number || molecule.id,
-      smiles: currentSmiles,
-      name: molecule.id_number || molecule.IUPAC_NAME || molecule.name || 'Molecule',
-      formula: molecule.brutto_formula || molecule.BRUTTO_FORMULA || molecule.formula || '',
-      amount: amount,
-      pricePerMg: pricePerMg,
-      totalPrice: pricePerMg, // Do not multiply by amount - just use the price as is
-      moleculeId: molecule.id || molecule.ASINEX_ID || molecule.id || 'N/A',
-      availableMg: molecule.available_mg || molecule.AVAILABLE_MG || 0,
-      addedAt: new Date().toISOString()
-    };
-
-    const updatedCart = [...cart, cartItem];
-    setCart(updatedCart);
-    saveCartToStorage(updatedCart);
-    
-    setMessage(`Added ${amount}mg of ${cartItem.name} to cart`);
-    setMessageType('success');
-    window.clearTimeout(messageTimerRef.current);
-    messageTimerRef.current = window.setTimeout(() => {
-      setMessage('');
-      setMessageType('');
-    }, 3000);
   };
 
   // Handle navigation to molstar3d with simulation data
@@ -548,10 +443,10 @@ export function ControlPanel() {
                                   fetchPriceData(smiles);
                                 }
                               }}
-                              disabled={priceLoading || !log.smiles && !log.SMILES}
+                              disabled={!log.smiles && !log.SMILES}
                               className="px-2 py-1 text-sm dark:border-blue-400 dark:text-blue-200"
                             >
-                              {priceLoading && (currentSmiles === (log.smiles || log.SMILES)) ? 'Loading...' : 'Show Price'}
+                              Show Price
                             </Button>
                           </td>
                           <td className={className}>
@@ -658,163 +553,11 @@ export function ControlPanel() {
                 </Typography>
               </div>
 
-              {message && (
-                <Alert color={messageType === 'success' ? 'green' : 'red'} className="mb-4">
-                  {message}
-                </Alert>
-              )}
-
-              {priceLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Spinner className="h-8 w-8" />
-                  <Typography className="ml-2">Loading price data...</Typography>
-                </div>
-              ) : priceData?.error ? (
-                <Alert color="red">
-                  Error: {priceData.error}
-                </Alert>
-              ) : priceData?.data ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr>
-                        <th className="p-2 font-bold">ID</th>
-                        <th className="p-2 font-bold">ID Number</th>
-                        <th className="p-2 font-bold">SMILES</th>
-                        <th className="p-2 font-bold">Formula</th>
-                        <th className="p-2 font-bold">Mol Weight</th>
-                        <th className="p-2 font-bold">Available (mg)</th>
-                        <th className="p-2 font-bold">Price 1mg</th>
-                        <th className="p-2 font-bold">Price 5mg</th>
-                        <th className="p-2 font-bold">Price 10mg</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr className="border-b">
-                        <td className="p-2">{priceData.data.id || 'N/A'}</td>
-                        <td className="p-2">{priceData.data.id_number || 'N/A'}</td>
-                        <td className="p-2 font-mono text-xs" title={priceData.data.smiles_string || 'N/A'}>
-                          {(priceData.data.smiles_string || 'N/A').toString().slice(0, 30)}
-                          {(priceData.data.smiles_string || 'N/A').toString().length > 30 ? '...' : ''}
-                        </td>
-                        <td className="p-2">{priceData.data.brutto_formula || 'N/A'}</td>
-                        <td className="p-2">{priceData.data.mol_weight || 'N/A'}</td>
-                        <td className="p-2">{priceData.data.available_mg || 'N/A'}</td>
-                        <td className="p-2 cursor-pointer group" title={priceData.data.price_1mg ? `$${priceData.data.price_1mg}` : "-"}>
-                          <span>{priceData.data.price_1mg ? `$${priceData.data.price_1mg}` : "-"}</span>
-                          {priceData.data.price_1mg && (
-                            <ShoppingCartIcon
-                              className="inline-block h-5 w-5 text-brand-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
-                              title="Add 1mg to cart"
-                              onClick={() => addToCart(priceData.data, 1, priceData.data.price_1mg)}
-                            />
-                          )}
-                        </td>
-                        <td className="p-2 cursor-pointer group" title={priceData.data.price_5mg ? `$${priceData.data.price_5mg}` : "-"}>
-                          <span>{priceData.data.price_5mg ? `$${priceData.data.price_5mg}` : "-"}</span>
-                          {priceData.data.price_5mg && (
-                            <ShoppingCartIcon
-                              className="inline-block h-5 w-5 text-brand-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
-                              title="Add 5mg to cart"
-                              onClick={() => addToCart(priceData.data, 5, priceData.data.price_5mg)}
-                            />
-                          )}
-                        </td>
-                        <td className="p-2 cursor-pointer group" title={priceData.data.price_10mg ? `$${priceData.data.price_10mg}` : "-"}>
-                          <span>{priceData.data.price_10mg ? `$${priceData.data.price_10mg}` : "-"}</span>
-                          {priceData.data.price_10mg && (
-                            <ShoppingCartIcon
-                              className="inline-block h-5 w-5 text-brand-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
-                              title="Add 10mg to cart"
-                              onClick={() => addToCart(priceData.data, 10, priceData.data.price_10mg)}
-                            />
-                          )}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              ) : Array.isArray(priceData) && priceData.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr>
-                        <th className="p-2 font-bold">ID</th>
-                        <th className="p-2 font-bold">IUPAC Name</th>
-                        <th className="p-2 font-bold">Formula</th>
-                        <th className="p-2 font-bold">MW</th>
-                        <th className="p-2 font-bold">Available (mg)</th>
-                        <th className="p-2 font-bold">Price 1mg</th>
-                        <th className="p-2 font-bold">Price 2mg</th>
-                        <th className="p-2 font-bold">Price 5mg</th>
-                        <th className="p-2 font-bold">Price 10mg</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {priceData.map((mol, idx) => (
-                        <tr key={mol.ASINEX_ID || mol.id || idx} className="border-b">
-                          <td className="p-2">{mol.ASINEX_ID || mol.id || 'N/A'}</td>
-                          <td className="p-2" title={mol.IUPAC_NAME || 'N/A'}>
-                            {(mol.IUPAC_NAME || 'N/A').toString().slice(0, 30)}
-                            {(mol.IUPAC_NAME || 'N/A').toString().length > 30 ? '...' : ''}
-                          </td>
-                          <td className="p-2">{mol.BRUTTO_FORMULA || mol.formula || 'N/A'}</td>
-                          <td className="p-2">{mol.MW_STRUCTURE || mol.mw || 'N/A'}</td>
-                          <td className="p-2">{mol.AVAILABLE_MG || mol.availableMg || 'N/A'}</td>
-                          <td className="p-2 cursor-pointer group" title={mol.PRICE_1MG || mol.price_1mg ? `$${mol.PRICE_1MG || mol.price_1mg}` : "-"}>
-                            <span>{mol.PRICE_1MG || mol.price_1mg ? `$${mol.PRICE_1MG || mol.price_1mg}` : "-"}</span>
-                            {(mol.PRICE_1MG || mol.price_1mg) && (
-                              <ShoppingCartIcon
-                                className="inline-block h-5 w-5 text-brand-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
-                                title="Add 1mg to cart"
-                                onClick={() => addToCart(mol, 1, mol.PRICE_1MG || mol.price_1mg)}
-                              />
-                            )}
-                          </td>
-                          <td className="p-2 cursor-pointer group" title={mol.PRICE_2MG || mol.price_2mg ? `$${mol.PRICE_2MG || mol.price_2mg}` : "-"}>
-                            <span>{mol.PRICE_2MG || mol.price_2mg ? `$${mol.PRICE_2MG || mol.price_2mg}` : "-"}</span>
-                            {(mol.PRICE_2MG || mol.price_2mg) && (
-                              <ShoppingCartIcon
-                                className="inline-block h-5 w-5 text-brand-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
-                                title="Add 2mg to cart"
-                                onClick={() => addToCart(mol, 2, mol.PRICE_2MG || mol.price_2mg)}
-                              />
-                            )}
-                          </td>
-                          <td className="p-2 cursor-pointer group" title={mol.PRICE_5MG || mol.price_5mg ? `$${mol.PRICE_5MG || mol.price_5mg}` : "-"}>
-                            <span>{mol.PRICE_5MG || mol.price_5mg ? `$${mol.PRICE_5MG || mol.price_5mg}` : "-"}</span>
-                            {(mol.PRICE_5MG || mol.price_5mg) && (
-                              <ShoppingCartIcon
-                                className="inline-block h-5 w-5 text-brand-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
-                                title="Add 5mg to cart"
-                                onClick={() => addToCart(mol, 5, mol.PRICE_5MG || mol.price_5mg)}
-                              />
-                            )}
-                          </td>
-                          <td className="p-2 cursor-pointer group" title={mol.PRICE_10MG || mol.price_10mg ? `$${mol.PRICE_10MG || mol.price_10mg}` : "-"}>
-                            <span>{mol.PRICE_10MG || mol.price_10mg ? `$${mol.PRICE_10MG || mol.price_10mg}` : "-"}</span>
-                            {(mol.PRICE_10MG || mol.price_10mg) && (
-                              <ShoppingCartIcon
-                                className="inline-block h-5 w-5 text-brand-600 ml-2 cursor-pointer opacity-70 group-hover:opacity-100"
-                                title="Add 10mg to cart"
-                                onClick={() => addToCart(mol, 10, mol.PRICE_10MG || mol.price_10mg)}
-                              />
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : priceData ? (
-                <div className="overflow-x-auto">
-                  <pre className="whitespace-pre-wrap rounded border bg-gray-50 p-4 font-mono text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
-                    {JSON.stringify(priceData, null, 2)}
-                  </pre>
-                </div>
-              ) : (
-                <Typography color="gray">No data available</Typography>
-              )}
+              <Alert color="blue">
+                Verified compound purchase offers are currently unavailable. Catalog amounts and workbook
+                estimates are reference information; they cannot be added to a basket or purchased.
+                Your simulation and docking results remain available.
+              </Alert>
             </div>
           </div>
         </div>

@@ -135,7 +135,7 @@ export function MainHome() {
           <StepCard number="01" icon="🏢" title="Create a Company" delay={0}
             description="Register your company, then manage its branding, team roles, and usage policy from the admin area." />
           <StepCard number="02" icon="🔬" title="Choose Molecular Inputs" delay={100}
-            description="Search the configured compound catalog, sketch a structure, or provide the supported receptor and ligand inputs directly." />
+            description="Search Pyxis stock, RPX and VPX macrocycles, or ChEMBL; sketch a structure or provide receptor and ligand inputs directly." />
           <StepCard number="03" icon="🧬" title="Run a Docking Workflow" delay={200}
             description="Submit a configured Vina or DiffDock job and keep its progress and result associated with your account." />
           <StepCard number="04" icon="🔎" title="Review the Result" delay={300}
@@ -152,7 +152,7 @@ export function MainHome() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-12 max-w-6xl mx-auto px-4">
           <FeatureCard icon="🧪" title="Compound Libraries" delay={0}
-            description="Search and filter the configured catalog, review structures and package pricing, and keep selected compounds in a cart." />
+            description="Search Pyxis stock and macrocycle snapshots or explore ChEMBL. Review structures, compare similarity, and select compounds for research." />
           <FeatureCard icon="🎯" title="Docking Workbench" delay={80}
             description="Prepare Vina and DiffDock requests with validation, progress feedback, and account-scoped stored results." />
           <FeatureCard icon="🔮" title="Molstar 3D Viewer" delay={160}
@@ -194,7 +194,7 @@ export function MainHome() {
             </p>
             <ul className="space-y-3 text-gray-300">
               {["Company branding and role-based member management",
-                "Catalog search, package selection, and server-priced checkout",
+                "Owned stock and macrocycle collections, plus ChEMBL discovery",
                 "Company activity and simulation history",
                 "Configurable usage policy and credit balances"
               ].map((t, i) => (
@@ -227,15 +227,16 @@ export function MainHome() {
           <Reveal delay={150} className="flex-1">
             <span className="cb-badge cb-badge-blue">For Research Teams</span>
             <h2 className="text-3xl lg:text-4xl font-bold text-white mb-4" style={{ fontFamily: "'Outfit', sans-serif" }}>
-              Explore, Simulate,<br />Then Purchase
+              Explore, Simulate,<br />Review Results
             </h2>
             <p className="text-gray-400 leading-relaxed mb-6">
-              Sign in to browse the configured compound catalog, sketch or paste a
+              Sign in to search the available compound collections, sketch or paste a
               molecular structure, submit an available docking workflow, and review
-              its stored receptor and poses without losing the run context.
+              its stored receptor and poses without losing the run context. Compound purchase
+              offers are currently unavailable; displayed pack estimates are for reference.
             </p>
             <ul className="space-y-3 text-gray-300">
-              {["Catalog search with structure and price details",
+              {["Structure search with dated inventory and indicative pack estimates",
                 "Ketcher molecular editing and direct SMILES input",
                 "Configured Vina and DiffDock submission paths",
                 "Authenticated 3D pose review and SDF download"

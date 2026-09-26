@@ -1,6 +1,6 @@
-// Molecule checkout pricing route: original-catalog re-pricing, 409 review,
-// stock-origin refusal, disabled /api/stock-offers. Stub upstream serves the
-// original catalog GET /api/id/<code> only — any /api4/bas hit fails the run.
+// Catalog independence route contract. Full staging uses the real server,
+// isolated fixture Mongo and an HTTP sentinel. Every supplier catalog alias
+// and molecule checkout shape must refuse locally, including company overrides.
 // Run: SERVER_RUNTIME=bun bun test/catalog-pricing-route.test.mjs
 
 import { spawn } from 'node:child_process';
@@ -22,13 +22,6 @@ const DB_NAME = 'medsaas_catalog_pricing_route_test';
 const BUN_PATH = process.env.BUN_PATH || `${process.env.HOME}/.bun/bin/bun`;
 const serverRuntime = process.env.SERVER_RUNTIME || 'bun';
 const runtimeBin = serverRuntime === 'bun' ? BUN_PATH : process.execPath;
-
-// Real per-compound catalog prices measured live 2026-09-13 from
-// {ASINEX_API_BASE}/api/id/<code> (docs/DATA-STOCK-COMPOUNDS.md § Catalog pricing).
-const CATALOG_ROWS = {
-  'BAS 00293357': { id: 2, id_number: 'BAS 00293357', smiles_string: 'C#Cc1ccc(cc1)C#C', brutto_formula: 'C10 H6', price_1mg: 22, price_5mg: 66, price_10mg: 176 },
-  'LAS 30881879': { id: 19009, id_number: 'LAS 30881879', smiles_string: 'Cc1ccc(cc1)C(=O)O', brutto_formula: 'C8 H8 O2', price_1mg: 20, price_5mg: 60, price_10mg: 160 },
-};
 
 let passed = 0;
 let failed = 0;
@@ -61,14 +54,6 @@ function startCatalogStub() {
     let body = '';
     for await (const chunk of req) body += chunk;
     requests.push({ method: req.method, path: url.pathname, body: body ? JSON.parse(body) : {} });
-    if (req.method === 'GET' && url.pathname.startsWith('/api/id/')) {
-      const code = decodeURIComponent(url.pathname.slice('/api/id/'.length));
-      const row = CATALOG_ROWS[code];
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      // Unknown codes answer 200 with an EMPTY body (measured upstream behavior).
-      res.end(row ? JSON.stringify(row) : '');
-      return;
-    }
     res.writeHead(404);
     res.end('not found');
   });
@@ -100,6 +85,10 @@ async function main() {
         STRIPE_SECRET_KEY: 'sk_test_catalog_pricing_unused',
         STRIPE_WEBHOOK_SECRET: 'whsec_catalog_pricing_test_do_not_use',
         NODE_ENV: 'test',
+        PYXIS_DEMO_MODE: 'false',
+        PYXIS_STAGING_MODE: 'true',
+        ASINEX_DOCKING_API_URL: 'https://services.asinex.com:8000/docking',
+        DIFFDOCK_API_URL: 'https://services.asinex.com:58000/molecular-docking/diffdock/generate',
         FRONTEND_DIST: '',
         NVIDIA_MOLMIM_API_KEY: '',
         ASINEX_API_BASE: `http://127.0.0.1:${STUB_PORT}`,
@@ -158,128 +147,62 @@ async function main() {
     check('stock-offers → 503 STOCK_OFFERS_DISABLED', offers.status === 503 && offersBody.code === 'STOCK_OFFERS_DISABLED', `(got ${offers.status}) ${JSON.stringify(offersBody).slice(0, 120)}`);
     check('stock-offers resolution made no upstream call', stub.requests.length === 0, `(stub saw ${stub.requests.length})`);
 
-    // ── stock-origin basket rows are refused explicitly ──────────────────────
-    const stockCheckout = await fetch(`${BASE}/create-checkout-session-onetime`, {
-      method: 'POST',
-      headers: auth,
-      body: JSON.stringify({
-        cartItems: [{ source: 'stock', catalogId: 'ASN 33727025', amount: 1, totalPrice: 170, name: 'ASN 33727025' }],
-      }),
-    });
-    const stockBody = await stockCheckout.json().catch(() => ({}));
-    check(
-      'stock-origin row → 400 MOLECULE_STOCK_ITEMS_UNSUPPORTED',
-      stockCheckout.status === 400 && stockBody.code === 'MOLECULE_STOCK_ITEMS_UNSUPPORTED',
-      `(got ${stockCheckout.status}) ${JSON.stringify(stockBody).slice(0, 160)}`,
-    );
-    check(
-      'rejection names the offending row with a removal instruction',
-      stockBody.unsupportedItems?.[0]?.catalogId === 'ASN 33727025' && /remove/i.test(stockBody.error || ''),
-      JSON.stringify(stockBody).slice(0, 200),
-    );
-    check('stock rejection creates no Stripe session', stockBody.url === undefined && stockBody.sessionId === undefined);
-    check('stock rejection made no upstream lookup', stub.requests.length === 0);
+    const retiredPaths = [
+      ['GET', '/api/all/0_10'], ['GET', '/api/exact/CCO'], ['GET', '/api/id/BAS1'],
+      ['GET', '/api/asinex/all/0_10'], ['GET', '/api/asinex/id/BAS1'],
+      ['GET', '/api/asinex/exact/CCO'], ['GET', '/api/asinex/substructure/0_10/CCO'],
+      ['POST', '/api/asinex/search'], ['GET', '/api/asinex/health'],
+      ...['bas', 'structure', 'substructure', 'similarity', 'mw'].map((name) => ['POST', `/api/api4/${name}`]),
+      ['POST', '/api/shop'], ['GET', '/api4/similarity'],
+      ['POST', '/API/ASINEX/SEARCH/'], ['GET', '/api/asinex/future-alias'],
+    ];
+    for (const [method, route] of retiredPaths) {
+      const response = await fetch(`${BASE}${route}`, { method, headers: auth });
+      const data = await response.json();
+      check(`${method} ${route} refuses locally`, response.status === 503 && data.code === 'CATALOG_RETIRED');
+    }
+    for (const body of [
+      { cartItems: [{ source: 'catalog', catalogId: 'BAS 00293357', amount: 1, totalPrice: 22 }] },
+      { cartItems: [{ source: 'stock', stockCode: 'ASN1' }] },
+      { cartItems: [{ catalogId: 'LAS1' }] },
+      { description: 'legacy molecule total', totalAmount: 1 },
+      { cartItems: [], description: 'empty cart bypass', totalAmount: 1 },
+    ]) {
+      const response = await fetch(`${BASE}/create-checkout-session-onetime`, {
+        method: 'POST', headers: auth, body: JSON.stringify(body),
+      });
+      const data = await response.json();
+      check('every molecule checkout shape refuses before Stripe', response.status === 503 && data.code === 'CATALOG_RETIRED' && !data.url);
+    }
+    const unauth = await fetch(`${BASE}/api/asinex/all/0_10`);
+    check('retired catalog keeps missing-session 401', unauth.status === 401);
 
-    // Legacy shape: a source-less row that carries the stockCode marker must
-    // also be refused — never silently converted into a catalog purchase.
-    const legacyStockCheckout = await fetch(`${BASE}/create-checkout-session-onetime`, {
-      method: 'POST',
-      headers: auth,
-      body: JSON.stringify({
-        cartItems: [{ catalogId: 'ASN 33727025', stockCode: 'ASN 33727025', amount: 5, totalPrice: 218 }],
-      }),
+    // A stored company override cannot revive the catalog or supplier compute.
+    const company = await client.db(DB_NAME).collection('companies').insertOne({
+      name: 'Override company', active: true,
+      ligandServiceConfig: {
+        catalogApiBase: `http://127.0.0.1:${STUB_PORT}/company-catalog`,
+        dockingApiUrl: 'https://SERVICES.ASINEX.COM.:8000/docking',
+        diffdockApiUrl: 'https://services.asinex.com:58000/diffdock',
+      },
     });
-    const legacyStockBody = await legacyStockCheckout.json().catch(() => ({}));
-    check(
-      'source-less row with stockCode marker → 400 MOLECULE_STOCK_ITEMS_UNSUPPORTED',
-      legacyStockCheckout.status === 400 && legacyStockBody.code === 'MOLECULE_STOCK_ITEMS_UNSUPPORTED',
-      `(got ${legacyStockCheckout.status}) ${JSON.stringify(legacyStockBody).slice(0, 120)}`,
-    );
-
-    // ── catalog re-pricing + 409 review ──────────────────────────────────────
-    const driftedCheckout = await fetch(`${BASE}/create-checkout-session-onetime`, {
-      method: 'POST',
-      headers: auth,
-      body: JSON.stringify({
-        cartItems: [
-          { source: 'catalog', catalogId: 'BAS 00293357', amount: 5, totalPrice: 1, name: 'stale basket' },
-          { catalogId: 'LAS 30881879', amount: 1, pricePerMg: 1, totalPrice: 1 },
-        ],
-      }),
-    });
-    const driftBody = await driftedCheckout.json().catch(() => ({}));
-    check(
-      'drifted basket → 409 MOLECULE_PRICES_CHANGED',
-      driftedCheckout.status === 409 && driftBody.code === 'MOLECULE_PRICES_CHANGED',
-      `(got ${driftedCheckout.status}) ${JSON.stringify(driftBody).slice(0, 160)}`,
-    );
-    check('409 re-priced from the measured catalog 5 mg price (66, not the stale 1)', driftBody.updatedCartItems?.[0]?.totalPrice === 66, JSON.stringify(driftBody.updatedCartItems || []).slice(0, 200));
-    check('409 re-priced the legacy source-less row from /api/id too', driftBody.updatedCartItems?.[1]?.totalPrice === 20, JSON.stringify(driftBody.updatedCartItems || []).slice(0, 200));
-    check('409 carries fresh total dollars', driftBody.totalAmount === 86);
-    check('409 creates no Stripe session (no url/sessionId)', driftBody.url === undefined && driftBody.sessionId === undefined);
-    check('409 kept the customer item fields', driftBody.updatedCartItems?.[0]?.name === 'stale basket' && driftBody.updatedCartItems?.[0]?.source === 'catalog');
-    check(
-      'pricing looked the codes up on the original catalog API',
-      stub.requests.some((r) => r.method === 'GET' && r.path === '/api/id/BAS%2000293357')
-        && stub.requests.some((r) => r.method === 'GET' && r.path === '/api/id/LAS%2030881879'),
-      JSON.stringify(stub.requests.map((r) => `${r.method} ${r.path}`)),
-    );
-
-    // ── validation boundaries stay intact ────────────────────────────────────
-    const qtyCheckout = await fetch(`${BASE}/create-checkout-session-onetime`, {
-      method: 'POST',
-      headers: auth,
-      body: JSON.stringify({
-        cartItems: [{ catalogId: 'BAS 00293357', amount: 1, quantity: 2, totalPrice: 22 }],
-      }),
-    });
-    check('quantity other than 1 → 400', qtyCheckout.status === 400, `(got ${qtyCheckout.status})`);
-
-    const qtyString = await fetch(`${BASE}/create-checkout-session-onetime`, {
-      method: 'POST',
-      headers: auth,
-      body: JSON.stringify({
-        cartItems: [{ catalogId: 'BAS 00293357', amount: 1, quantity: '1', totalPrice: 22 }],
-      }),
-    });
-    check('quantity "1" as a string → 400 (only numeric 1)', qtyString.status === 400, `(got ${qtyString.status})`);
-
-    const invalidSize = await fetch(`${BASE}/create-checkout-session-onetime`, {
-      method: 'POST',
-      headers: auth,
-      body: JSON.stringify({
-        cartItems: [{ catalogId: 'BAS 00293357', amount: 3, totalPrice: 99 }],
-      }),
-    });
-    const invalidSizeBody = await invalidSize.json().catch(() => ({}));
-    check(
-      'unsupported pack size → 400',
-      invalidSize.status === 400 && /package size/i.test(invalidSizeBody.error || ''),
-      `(got ${invalidSize.status}) ${JSON.stringify(invalidSizeBody).slice(0, 160)}`,
-    );
-
-    const unknownCode = await fetch(`${BASE}/create-checkout-session-onetime`, {
-      method: 'POST',
-      headers: auth,
-      body: JSON.stringify({
-        cartItems: [{ catalogId: 'BAS 99999999', amount: 5, totalPrice: 66 }],
-      }),
-    });
-    const unknownBody = await unknownCode.json().catch(() => ({}));
-    check(
-      'unknown catalog code → 400, not 409/Stripe',
-      unknownCode.status === 400 && /catalog/i.test(unknownBody.error || ''),
-      `(got ${unknownCode.status}) ${JSON.stringify(unknownBody).slice(0, 160)}`,
-    );
-
-    // ── invariants ───────────────────────────────────────────────────────────
-    const events = await client.db(DB_NAME).collection('billing_events').find({}).toArray();
-    check('no billing event written by any refused checkout', events.length === 0, `(found ${events.length})`);
-    check(
-      'checkout never called /api4/bas (pricing retirement is absolute)',
-      stub.requests.every((r) => r.path !== '/api4/bas'),
-      JSON.stringify(stub.requests.map((r) => r.path)),
-    );
+    await client.db(DB_NAME).collection('users').updateOne({ username: 'cataloguser' }, { $set: { companyId: company.insertedId.toString() } });
+    const overridden = await fetch(`${BASE}/api/asinex/id/BAS1`, { headers: auth });
+    check('company catalog override cannot enable supplier requests', overridden.status === 503 && (await overridden.json()).code === 'CATALOG_RETIRED');
+    for (const [method, route, body] of [
+      ['GET', '/api/simulation?pdbid=1abc&smiles=CCO', null],
+      ['POST', '/api/simulation', { pdbid: '1abc', smiles: 'CCO' }],
+      ['POST', '/api/diffdock/generate', { protein: '1abc', ligand: 'CCO' }],
+    ]) {
+      const response = await fetch(`${BASE}${route}`, { method, headers: auth, ...(body ? { body: JSON.stringify(body) } : {}) });
+      const data = await response.json();
+      check(`${method} ${route} refuses supplier compute before credits`, response.status === 503 && data.code === 'SUPPLIER_PROVIDER_RETIRED', JSON.stringify(data));
+    }
+    const user = await client.db(DB_NAME).collection('users').findOne({ username: 'cataloguser' });
+    check('refused science preserves credit balance', user.simulationTokens === 5);
+    check('zero supplier catalog HTTP requests, including overrides', stub.requests.length === 0, JSON.stringify(stub.requests));
+    const events = await client.db(DB_NAME).collection('billing_events').countDocuments();
+    check('zero billing events for refused molecule baskets', events === 0);
 
     console.log(`\ncatalog-pricing route: ${passed} passed, ${failed} failed`);
     if (failed > 0) {

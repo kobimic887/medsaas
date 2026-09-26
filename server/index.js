@@ -31,17 +31,9 @@ import {
   createAdmetTask,
   getQueueStatus,
 } from './utils/admetQueue.js';
-import { normalizeShopSearchResponse, moleculeCartPriceReview } from './utils/asinexCompound.js';
 // "De-SaaS" branding does not remove plans, checkout, roles, or credits.
 import { buildPlanCheckoutSessionParams, getPlan, PLAN_CATALOG } from './utils/planCheckout.js';
-import {
-  parseBasSearchCodes,
-  priceMoleculeCartFromCatalog,
-  searchCatalogRowsByBasCodes,
-  CatalogPricingValidationError,
-  CatalogPricingUpstreamError,
-  MoleculeCartStockItemsError,
-} from './utils/catalogPricing.js';
+import { createRetiredCatalogRouter, refuseRetiredCatalog, isRetiredSupplierUrl, refuseRetiredScientificProvider } from './utils/catalogAccessPolicy.js';
 import {
   buildStockSimilarityUrl,
   createStockDatasetResolver,
@@ -101,7 +93,7 @@ import {
   buildTenantFilter,
 } from './utils/simulationLogs.js';
 import { ensureUserTenantOnLogin } from './utils/ensureUserTenant.js';
-import { fetchWithUpstreamRetry, safeUpstreamUrl } from './utils/upstreamRetry.js';
+import { safeUpstreamUrl } from './utils/upstreamRetry.js';
 import scientificServicesRouter from './routes/scientificServices.js';
 import { createStagingDemoRouter } from './routes/stagingDemo.js';
 
@@ -219,7 +211,7 @@ const PASSWORD_POLICY = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]
 
 const stripe = new Stripe(DEMO_MODE ? 'sk_test_pyxis_staging_demo_disabled' : process.env.STRIPE_SECRET_KEY);
 if (DEMO_MODE) {
-  console.warn('[demo] PYXIS_DEMO_MODE is on — no MongoDB, no Stripe. Folding is fixture-only; catalog proxies are read-only; docking/DiffDock forward to the real providers only when the corresponding service envs are set (owner-authorized for staging).');
+  console.warn('[demo] PYXIS_DEMO_MODE is on — no MongoDB, no Stripe. Folding is fixture-only; supplier catalog routes are retired; docking/DiffDock forward to the real providers only when the corresponding service envs are set (owner-authorized for staging).');
 }
 
 const FRONTEND_DIST_PATH = path.resolve(
@@ -313,13 +305,17 @@ app.use((_req, res, next) => {
 
 if (DEMO_MODE) {
   // Demo router must run before every production route: it owns the demo auth,
-  // fixture predict, folding/simulation history CRUD, catalog proxies and (when
+  // fixture predict, folding/simulation history CRUD, catalog refusals and (when
   // the service envs are configured) real docking/DiffDock forwarding; it
   // refuses remaining paid/outbound endpoints with 403 and answers any other
   // /api path with 503 so nothing can silently fall through to the Mongo-backed
   // API or a paid provider.
   app.use(createStagingDemoRouter({ jwtSecret: JWT_SECRET, jwtExpiresIn: JWT_EXPIRES_IN }));
 }
+
+// Always enforced: environment settings and company overrides cannot restore
+// the retired supplier catalog. Authenticate before explaining its retirement.
+app.use(createRetiredCatalogRouter({ middleware: [ensureMongoConnected, authenticateToken, requireActiveUser] }));
 
 if (STAGING_MODE) {
   app.get('/api/staging/status', (_req, res) => res.json({
@@ -423,21 +419,10 @@ axios.defaults.timeout = EXTERNAL_HTTP_TIMEOUT_MS;
 // Wrap native fetch so every outbound request is bounded. Callers may pass a
 // longer `timeoutMs`; an explicit `signal` is respected and wins.
 function fetchWithTimeout(url, opts = {}) {
+  if (isRetiredSupplierUrl(url)) throw new Error("Supplier access is retired; configure a Pyxis service");
   const { timeoutMs = EXTERNAL_HTTP_TIMEOUT_MS, ...rest } = opts;
   if (rest.signal) return fetch(url, rest);
   return fetch(url, { ...rest, signal: AbortSignal.timeout(timeoutMs) });
-}
-
-// ASINEX catalog browse/search is flaky under load (intermittent 5xx / reset).
-// Retry only those cases; never 4xx. Logs status + sanitized URL, never secrets.
-function fetchAsinexUpstream(url, opts = {}) {
-  return fetchWithUpstreamRetry(url, opts, {
-    fetchImpl: (u, o) => fetchWithTimeout(u, o),
-    maxAttempts: 3,
-    baseDelayMs: 250,
-    maxDelayMs: 2000,
-    log: (msg) => console.warn(msg),
-  });
 }
 
 // ── NVIDIA hosted NIM access ────────────────────────────────────────────────
@@ -1584,7 +1569,8 @@ async function assertValidHttpUrl(value, fieldName) {
 }
 
 // Per-request SSRF guard for company-customised ligand upstreams. Re-validates
-// each non-default URL right before use, so a host that passed the config-time
+// each active scientific URL right before use. Retired catalog/shop settings
+// are never contacted or resolved. A scientific host that passed the config-time
 // check but later had its DNS rebound to an internal address (e.g. the cloud
 // metadata endpoint 169.254.169.254) is refused. Default upstreams are
 // developer/env-set and trusted, so they skip the lookup. This narrows — it
@@ -1594,9 +1580,9 @@ async function assertValidHttpUrl(value, fieldName) {
 // forever" into "win a DNS race per request", layered on the config-time check.
 async function assertConfiguredUrlsArePublic(config) {
   const checks = [];
-  for (const field of ['catalogApiBase', 'stockApiUrl', 'dockingApiUrl', 'diffdockApiUrl']) {
+  for (const field of ['dockingApiUrl', 'diffdockApiUrl']) {
     const value = config[field];
-    if (value && value !== DEFAULT_LIGAND_SERVICE_CONFIG[field]) {
+    if (value && !isRetiredSupplierUrl(value) && value !== DEFAULT_LIGAND_SERVICE_CONFIG[field]) {
       checks.push(assertValidHttpUrl(value, field));
     }
   }
@@ -1946,46 +1932,27 @@ async function fulfillCheckoutSession(session) {
  * @swagger
  * /create-checkout-session-onetime:
  *   post:
- *     summary: Create a Stripe checkout session for a one-time payment
+ *     summary: Buy a server-priced credit pack (molecule checkout is retired)
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             oneOf:
- *               - type: object
- *                 required: [planName]
- *                 properties:
- *                   planName:
- *                     type: string
- *                     enum: [Standard, Academic, Professional]
- *                     description: Credit pack; price and credits are determined by the server
- *               - type: object
- *                 required: [description, totalAmount]
- *                 properties:
- *                   description:
- *                     type: string
- *                     description: Item description/name
- *                   totalAmount:
- *                     type: number
- *                     description: Total amount (USD)
- *           examples:
- *             creditPack:
- *               summary: One-time credit pack
- *               value:
- *                 planName: Standard
- *             new:
- *               summary: New preferred fields
- *               value:
- *                 description: Custom pack
- *                 totalAmount: 12.5
+ *             type: object
+ *             required: [planName]
+ *             properties:
+ *               planName:
+ *                 type: string
+ *                 enum: [Standard, Academic, Professional]
  *     responses:
  *       200:
- *         description: Checkout session created
+ *         description: Credit-pack checkout session created
+ *       503:
+ *         description: CATALOG_RETIRED for molecule or legacy amount requests
  */
 app.post('/create-checkout-session-onetime', checkoutRateLimit, ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try {
-    const { planName, description, totalAmount, cartItems } = req.body;
+    const { planName } = req.body;
     const appUrl = getPublicAppUrl(req);
     const plan = getPlan(planName);
 
@@ -2023,153 +1990,9 @@ app.post('/create-checkout-session-onetime', checkoutRateLimit, ensureMongoConne
       return res.json({ url: session.url, sessionId: session.id });
     }
 
-    // Molecule cart: server re-prices from the original catalog API's
-    // per-compound prices (GET /api/id/<code>). Client totals and names are
-    // discarded; stock-origin rows are refused (owner: stock is not
-    // purchasable and /api4/bas pricing is retired).
-    if (Array.isArray(cartItems) && cartItems.length > 0) {
-      try {
-        const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-        const priced = await priceMoleculeCartFromCatalog(cartItems, {
-          catalogApiBase,
-          fetchImpl: fetchAsinexUpstream,
-        });
-        const { lineItems, totalCents } = priced;
-        // Review-before-payment: a changed or absent displayed total answers 409
-        // with refreshed items and never reaches the Stripe call below.
-        const review = moleculeCartPriceReview(cartItems, priced);
-        if (review.changed) {
-          return res.status(409).json({
-            code: 'MOLECULE_PRICES_CHANGED',
-            error: 'Supplier prices have changed. Review the updated basket before continuing to checkout.',
-            updatedCartItems: review.updatedCartItems,
-            totalAmount: totalCents / 100,
-          });
-        }
-
-        const session = await stripe.checkout.sessions.create({
-          payment_method_types: ['card'],
-          line_items: lineItems,
-          mode: 'payment',
-          success_url: `${appUrl}/dashboard/simulation?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url: `${appUrl}/dashboard/simulation?payment=canceled`,
-          metadata: {
-            purchaseType: 'molecule_order',
-            product: 'Molecule order',
-            username: req.user.username,
-            userId: req.user.userId || '',
-            companyId: req.user.companyId || '',
-            companyName: req.user.companyName || '',
-          },
-        });
-
-        await billingEventsCollection.updateOne(
-          { stripeSessionId: session.id },
-          {
-            $set: {
-              stripeSessionId: session.id,
-              status: 'pending',
-              purchaseType: 'molecule_order',
-              username: req.user.username,
-              companyId: req.user.companyId || null,
-              amountTotal: totalCents,
-              currency: 'usd',
-              updatedAt: new Date(),
-            },
-            $setOnInsert: { createdAt: new Date() },
-          },
-          { upsert: true }
-        );
-
-        return res.json({ url: session.url, sessionId: session.id });
-      } catch (error) {
-        if (error instanceof MoleculeCartStockItemsError) {
-          return res.status(400).json({
-            code: 'MOLECULE_STOCK_ITEMS_UNSUPPORTED',
-            error: error.message,
-            unsupportedItems: error.unsupportedItems,
-          });
-        }
-        if (error instanceof CatalogPricingValidationError) {
-          return res.status(400).json({ error: error.message });
-        }
-        if (error instanceof CatalogPricingUpstreamError) {
-          console.error('Molecule checkout catalog pricing failed:', error.message || error);
-          return res.status(502).json({
-            error: 'Catalog price lookup failed',
-            code: 'CATALOG_PRICING_UNAVAILABLE',
-            details: error.message,
-          });
-        }
-        // normalizeMoleculeCartRequest / priceMoleculeCart throw plain Errors
-        // for empty carts, unknown codes, or missing pack prices.
-        if (error instanceof Error && /cart|catalog|package|price|SMILES/i.test(error.message)) {
-          return res.status(400).json({ error: error.message });
-        }
-        throw error;
-      }
-    }
-
-    const productName = (typeof description === 'string' && description.trim())
-      ? description.trim()
-      : null;
-
-    let amount = totalAmount;
-    if (typeof amount === 'string') amount = parseFloat(amount);
-
-    if (!productName || !Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({
-        error: 'Invalid request body',
-        details: 'Provide a known planName, a molecule cartItems array, or { description, totalAmount } with a positive amount.'
-      });
-    }
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: productName,
-              description: 'One-time purchase',              
-            },
-            unit_amount: Math.round(amount * 100), // Convert to cents
-          },
-          quantity: 1,
-        },
-      ],
-      mode: 'payment', // one-time payment
-      success_url: `${appUrl}/dashboard/simulation?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${appUrl}/dashboard/simulation?payment=canceled`,
-      metadata: {
-        purchaseType: 'molecule_order',
-        product: productName,
-        username: req.user.username,
-        userId: req.user.userId || '',
-        companyId: req.user.companyId || '',
-        companyName: req.user.companyName || ''
-      }
-    });
-
-    await billingEventsCollection.updateOne(
-      { stripeSessionId: session.id },
-      {
-        $set: {
-          stripeSessionId: session.id,
-          status: 'pending',
-          purchaseType: 'molecule_order',
-          username: req.user.username,
-          companyId: req.user.companyId || null,
-          amountTotal: Math.round(amount * 100),
-          currency: 'usd',
-          updatedAt: new Date()
-        },
-        $setOnInsert: { createdAt: new Date() }
-      },
-      { upsert: true }
-    );
-
-    res.json({ url: session.url, sessionId: session.id });
+    // No legacy cart or arbitrary client total may bypass the retired supplier
+    // catalog. Credit packs above remain server-priced and independent.
+    return refuseRetiredCatalog(req, res);
   } catch (error) {
     console.error('Error creating one-time checkout session:', error);
     res.status(500).json({ error: 'Unable to start checkout. Please try again.' });
@@ -2177,8 +2000,7 @@ app.post('/create-checkout-session-onetime', checkoutRateLimit, ensureMongoConne
 });
 
 // Credit-plan checkout is restricted to company admins. Credits are granted only
-// by the verified Stripe webhook. Compound checkout below remains a separate
-// active-user flow. See docs/STRIPE_LIVE_CUTOVER.md.
+// by the verified Stripe webhook. Supplier molecule checkout is retired. See docs/STRIPE_LIVE_CUTOVER.md.
 app.post('/create-checkout-session', checkoutRateLimit, ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (req, res) => {
   try {
     const { planName } = req.body;
@@ -3319,33 +3141,7 @@ function authenticateToken(req, res, next) {
   });
 }
 
-app.post('/api/shop', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  try {
-    const { stockApiUrl } = await getRequestLigandServiceConfig(req);
-    const response = await fetchWithTimeout(stockApiUrl, {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json, text/plain, */*',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(req.body)
-    });
-    if (!response.ok) {
-      // Relay upstream status (mapping an upstream 401 to 502 so it can't trip
-      // the client's same-origin-401 auto-logout), matching the other proxies.
-      return res
-        .status(relayUpstreamStatus(response.status))
-        .json({ error: `Stock API responded with status: ${response.status}` });
-    }
-    const data = await response.json();
-    // Normalise the legacy eShop casing (and attach server-computed prices) at
-    // the boundary; passes the payload through unchanged if it isn't the
-    // expected { list, found, totalFound } shape.
-    res.json(normalizeShopSearchResponse(data));
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+app.post('/api/shop', ensureMongoConnected, authenticateToken, requireActiveUser, refuseRetiredCatalog);
 
 
 
@@ -3401,6 +3197,8 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, requireActiv
     // cache hit above returns before this point and must stay free. Conditional update, not
     // findOne-then-update: two concurrent requests on a single remaining token would both
     // pass a separate read and drive the balance negative.
+    const { dockingApiUrl } = await getRequestLigandServiceConfig(req);
+    if (isRetiredSupplierUrl(dockingApiUrl)) return refuseRetiredScientificProvider(res);
     const charged = await chargeSimulationToken(req, res, 'simulation', { refundOnDisconnect: false });
     if (!charged.ok) {
       return res.status(403).json({ error: charged.error });
@@ -3410,9 +3208,8 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, requireActiv
       Math.random().toString(36).charAt(2)
     ).join('');
     // Call external API
-    const { dockingApiUrl } = await getRequestLigandServiceConfig(req);
     const url = `${dockingApiUrl}/${encodeURIComponent(pdbid)}&${encodeURIComponent(smiles)}`;
-    const response = await fetchWithTimeout(url, { timeoutMs: EXTERNAL_HTTP_TIMEOUT_LONG_MS,
+    const response = await fetchWithTimeout(url, { redirect: 'error', timeoutMs: EXTERNAL_HTTP_TIMEOUT_LONG_MS,
       method: 'GET',
       headers: {
         'Accept': 'application/json, text/plain, */*',
@@ -3557,6 +3354,8 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, requireActi
     }
     // Charge the credit — see the GET handler for why this stays inline and is a
     // conditional update rather than a separate read.
+    const { dockingApiUrl } = await getRequestLigandServiceConfig(req);
+    if (isRetiredSupplierUrl(dockingApiUrl)) return refuseRetiredScientificProvider(res);
     const charged = await chargeSimulationToken(req, res, 'simulation', { refundOnDisconnect: false });
     if (!charged.ok) {
       return res.status(403).json({ error: charged.error });
@@ -3566,8 +3365,7 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, requireActi
       Math.random().toString(36).charAt(2)
     ).join('');
     // Call external API with POST method
-    const { dockingApiUrl } = await getRequestLigandServiceConfig(req);
-    const response = await fetchWithTimeout(dockingApiUrl, { timeoutMs: EXTERNAL_HTTP_TIMEOUT_LONG_MS,
+    const response = await fetchWithTimeout(dockingApiUrl, { redirect: 'error', timeoutMs: EXTERNAL_HTTP_TIMEOUT_LONG_MS,
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -4459,566 +4257,28 @@ app.get('/api/company/audit-logs', ensureMongoConnected, authenticateToken, requ
 });
 
 // Direct Asinex API Proxy Endpoints
-/**
- * @swagger
- * /api/exact/{smiles}:
- *   get:
- *     summary: Get molecule by exact SMILES structure (direct Asinex API proxy)
- *     tags: [Asinex Direct API]
- *     parameters:
- *       - in: path
- *         name: smiles
- *         required: true
- *         schema:
- *           type: string
- *         description: URL-encoded SMILES string for exact structure match
- *         example: COc1ccc%28cc1%29n2c%28nnc2SCc3ccccc3%29c4ccncc4
- *     responses:
- *       200:
- *         description: Molecule details for exact SMILES match
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *       404:
- *         description: No exact match found
- *       500:
- *         description: Server error
- */
-app.get('/api/exact/:smiles', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  try {
-    const { smiles } = req.params;
-    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    
-    if (!smiles) {
-      return res.status(400).json({ error: 'SMILES string is required' });
-    }
-    
-    // Forward the request directly to Asinex API
-    const response = await fetchWithTimeout(`${catalogApiBase}/api/exact/${smiles}`, {
-      method: 'GET',
-      headers: {
-        'Accept': '*/*',
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    // Forward the status code and response
-    const data = await response.text();
-    
-    // Try to parse as JSON, if it fails return as text
-    let responseData;
-    try {
-      responseData = JSON.parse(data);
-    } catch {
-      responseData = data;
-    }
-    
-    res.status(relayUpstreamStatus(response.status));
-    
-    // Set appropriate content type based on response
-    if (response.headers.get('content-type')) {
-      res.setHeader('Content-Type', response.headers.get('content-type'));
-    }
-    
-    // Send the response
-    if (typeof responseData === 'object') {
-      res.json(responseData);
-    } else {
-      res.send(responseData);
-    }
-    
-  } catch (error) {
-    console.error('Asinex API proxy error:', error);
-    res.status(500).json({ 
-      error: 'Failed to connect to Asinex API', 
-      details: error.message 
-    });
-  }
-});
+// Retired supplier endpoint: authenticated local 503 CATALOG_RETIRED.
+app.get('/api/exact/:smiles', ensureMongoConnected, authenticateToken, requireActiveUser, refuseRetiredCatalog);
 
-/**
- * @swagger
- * /api/all/{id}_{pageSize}:
- *   get:
- *     summary: Get all molecules with pagination (direct Asinex API proxy)
- *     tags: [Asinex Direct API]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: Starting ID for pagination
- *       - in: path
- *         name: pageSize
- *         required: true
- *         schema:
- *           type: integer
- *         description: Number of molecules per page
- *     responses:
- *       200:
- *         description: List of molecules from Asinex API
- *       500:
- *         description: Server error
- */
-app.get('/api/all/:id_:pageSize', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  try {
-    const { id, pageSize } = req.params;
-    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    
-    // Forward the request directly to Asinex API
-    const response = await fetchWithTimeout(`${catalogApiBase}/api/all/${id}_${pageSize}`, {
-      method: 'GET',
-      headers: {
-        'Accept': '*/*',
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    const data = await response.text();
-    let responseData;
-    try {
-      responseData = JSON.parse(data);
-    } catch {
-      responseData = data;
-    }
-    
-    res.status(relayUpstreamStatus(response.status));
-    if (response.headers.get('content-type')) {
-      res.setHeader('Content-Type', response.headers.get('content-type'));
-    }
-    
-    if (typeof responseData === 'object') {
-      res.json(responseData);
-    } else {
-      res.send(responseData);
-    }
-    
-  } catch (error) {
-    console.error('Asinex API proxy error:', error);
-    res.status(500).json({ 
-      error: 'Failed to connect to Asinex API', 
-      details: error.message 
-    });
-  }
-});
+// Retired supplier endpoint: authenticated local 503 CATALOG_RETIRED.
+app.get('/api/all/:id_:pageSize', ensureMongoConnected, authenticateToken, requireActiveUser, refuseRetiredCatalog);
 
-/**
- * @swagger
- * /api/id/{id_number}:
- *   get:
- *     summary: Get molecule by ID (direct Asinex API proxy)
- *     tags: [Asinex Direct API]
- *     parameters:
- *       - in: path
- *         name: id_number
- *         required: true
- *         schema:
- *           type: string
- *         description: Molecule ID to retrieve
- *     responses:
- *       200:
- *         description: Molecule details from Asinex API
- *       404:
- *         description: Molecule not found
- *       500:
- *         description: Server error
- */
-app.get('/api/id/:id_number', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  try {
-    const { id_number } = req.params;
-    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    
-    // Forward the request directly to Asinex API
-    const response = await fetchWithTimeout(`${catalogApiBase}/api/id/${id_number}`, {
-      method: 'GET',
-      headers: {
-        'Accept': '*/*',
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    const data = await response.text();
-    let responseData;
-    try {
-      responseData = JSON.parse(data);
-    } catch {
-      responseData = data;
-    }
-    
-    res.status(relayUpstreamStatus(response.status));
-    if (response.headers.get('content-type')) {
-      res.setHeader('Content-Type', response.headers.get('content-type'));
-    }
-    
-    if (typeof responseData === 'object') {
-      res.json(responseData);
-    } else {
-      res.send(responseData);
-    }
-    
-  } catch (error) {
-    console.error('Asinex API proxy error:', error);
-    res.status(500).json({ 
-      error: 'Failed to connect to Asinex API', 
-      details: error.message 
-    });
-  }
-});
+// Retired supplier endpoint: authenticated local 503 CATALOG_RETIRED.
+app.get('/api/id/:id_number', ensureMongoConnected, authenticateToken, requireActiveUser, refuseRetiredCatalog);
 
-// ── BAS-code search (Simulation searchType 'bas') ────────────────────────────
-// Owner decision 2026-09-13 retired upstream /api4/bas outright — no runtime
-// call may target it, pricing or search. BAS search is preserved on the
-// verified read-only catalog wrapper: every requested code is looked up on
-// GET {catalogApiBase}/api/id/<code> (the same endpoint as /api/asinex/id and
-// checkout pricing — see server/utils/catalogPricing.js). Rows carry numeric
-// ids, so the Simulation id-cursor pagination contract (fromId = last row id)
-// is unchanged.
-/**
- * @swagger
- * /api/api4/bas:
- *   post:
- *     summary: BAS-code search over the catalog wrapper (GET /api/id lookups — upstream /api4/bas is retired)
- *     tags: [Asinex Direct API]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               fromId:
- *                 type: integer
- *               pageSize:
- *                 type: integer
- *               bas:
- *                 type: string
- *           example:
- *             fromId: 0
- *             pageSize: 10
- *             bas: "BAS 00132206,BAS 00293357"
- *     responses:
- *       200:
- *         description: Array of catalog rows (unlisted codes are skipped)
- *       502:
- *         description: Catalog wrapper unreachable
- */
-app.post('/api/api4/bas', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  try {
-    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    const rows = await searchCatalogRowsByBasCodes(parseBasSearchCodes(req.body?.bas), {
-      catalogApiBase,
-      fetchImpl: fetchAsinexUpstream,
-      fromId: req.body?.fromId,
-      pageSize: req.body?.pageSize,
-    });
-    return res.json(rows);
-  } catch (error) {
-    console.error('Catalog BAS search failed:', error.message || error);
-    return res.status(502).json({ error: 'Failed to connect to Asinex API', details: error.message });
-  }
-});
+app.post('/api/api4/bas', ensureMongoConnected, authenticateToken, requireActiveUser, refuseRetiredCatalog);
 
-/**
- * @swagger
- * /api/api4/structure:
- *   post:
- *     summary: Direct proxy to Asinex API /api4/structure
- *     tags: [Asinex Direct API]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               fromId:
- *                 type: integer
- *               pageSize:
- *                 type: integer
- *               bas:
- *                 type: string
- *               smiles:
- *                 type: string
- *               similarity:
- *                 type: number
- *               mwFrom:
- *                 type: number
- *               mwTo:
- *                 type: number
- *           example:
- *             fromId: -1
- *             pageSize: 10
- *             bas: bas103456
- *             smiles: C#Cc1c(Br)c(CC)c(C#C)cc1
- *             similarity: 1
- *             mwFrom: 1
- *             mwTo: 10
- *     responses:
- *       200:
- *         description: Asinex API response
- */
-app.post('/api/api4/structure', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  let upstreamUrl;
-  try {
-    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    upstreamUrl = `${catalogApiBase}/api4/structure`;
-    const response = await fetchAsinexUpstream(upstreamUrl, {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(req.body)
-    });
+// Retired supplier endpoint: authenticated local 503 CATALOG_RETIRED.
+app.post('/api/api4/structure', ensureMongoConnected, authenticateToken, requireActiveUser, refuseRetiredCatalog);
 
-    const text = await response.text();
-    let data;
-    try { data = JSON.parse(text); } catch { data = text; }
+// Retired supplier endpoint: authenticated local 503 CATALOG_RETIRED.
+app.post('/api/api4/substructure', ensureMongoConnected, authenticateToken, requireActiveUser, refuseRetiredCatalog);
 
-    if (response.status >= 500) {
-      console.error(`Asinex API upstream status=${response.status} url=${safeUpstreamUrl(upstreamUrl)}`);
-    }
-    res.status(relayUpstreamStatus(response.status));
-    if (response.headers.get('content-type')) {
-      res.setHeader('Content-Type', response.headers.get('content-type'));
-    }
-    if (typeof data === 'object') {
-      res.json(data);
-    } else {
-      res.send(data);
-    }
-  } catch (error) {
-    console.error(`Asinex API proxy error (/api4/structure) url=${safeUpstreamUrl(upstreamUrl)}:`, error.message || error);
-    res.status(502).json({ error: 'Failed to connect to Asinex API', details: error.message });
-  }
-});
+// Retired supplier endpoint: authenticated local 503 CATALOG_RETIRED.
+app.post('/api/api4/similarity', ensureMongoConnected, authenticateToken, requireActiveUser, refuseRetiredCatalog);
 
-/**
- * @swagger
- * /api/api4/substructure:
- *   post:
- *     summary: Direct proxy to Asinex API /api4/substructure
- *     tags: [Asinex Direct API]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               fromId:
- *                 type: integer
- *               pageSize:
- *                 type: integer
- *               bas:
- *                 type: string
- *               smiles:
- *                 type: string
- *               similarity:
- *                 type: number
- *               mwFrom:
- *                 type: number
- *               mwTo:
- *                 type: number
- *           example:
- *             fromId: -1
- *             pageSize: 10
- *             bas: bas103456
- *             smiles: C#Cc1c(Br)c(CC)c(C#C)cc1
- *             similarity: 1
- *             mwFrom: 1
- *             mwTo: 10
- *     responses:
- *       200:
- *         description: Asinex API response
- */
-app.post('/api/api4/substructure', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  let upstreamUrl;
-  try {
-    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    upstreamUrl = `${catalogApiBase}/api4/substructure`;
-    const response = await fetchAsinexUpstream(upstreamUrl, {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(req.body)
-    });
-
-    const text = await response.text();
-    let data;
-    try { data = JSON.parse(text); } catch { data = text; }
-
-    if (response.status >= 500) {
-      console.error(`Asinex API upstream status=${response.status} url=${safeUpstreamUrl(upstreamUrl)}`);
-    }
-    res.status(relayUpstreamStatus(response.status));
-    if (response.headers.get('content-type')) {
-      res.setHeader('Content-Type', response.headers.get('content-type'));
-    }
-    if (typeof data === 'object') {
-      res.json(data);
-    } else {
-      res.send(data);
-    }
-  } catch (error) {
-    console.error(`Asinex API proxy error (/api4/substructure) url=${safeUpstreamUrl(upstreamUrl)}:`, error.message || error);
-    res.status(502).json({ error: 'Failed to connect to Asinex API', details: error.message });
-  }
-});
-
-/**
- * @swagger
- * /api/api4/similarity:
- *   post:
- *     summary: Direct proxy to Asinex API /api4/similarity
- *     tags: [Asinex Direct API]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               fromId:
- *                 type: integer
- *               pageSize:
- *                 type: integer
- *               bas:
- *                 type: string
- *               smiles:
- *                 type: string
- *               similarity:
- *                 type: number
- *               mwFrom:
- *                 type: number
- *               mwTo:
- *                 type: number
- *           example:
- *             fromId: -1
- *             pageSize: 10
- *             bas: bas103456
- *             smiles: C#Cc1c(Br)c(CC)c(C#C)cc1
- *             similarity: 1
- *             mwFrom: 1
- *             mwTo: 10
- *     responses:
- *       200:
- *         description: Asinex API response
- */
-app.post('/api/api4/similarity', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  let upstreamUrl;
-  try {
-    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    upstreamUrl = `${catalogApiBase}/api4/similarity`;
-    const response = await fetchAsinexUpstream(upstreamUrl, {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(req.body)
-    });
-
-    const text = await response.text();
-    let data;
-    try { data = JSON.parse(text); } catch { data = text; }
-
-    if (response.status >= 500) {
-      console.error(`Asinex API upstream status=${response.status} url=${safeUpstreamUrl(upstreamUrl)}`);
-    }
-    res.status(relayUpstreamStatus(response.status));
-    if (response.headers.get('content-type')) {
-      res.setHeader('Content-Type', response.headers.get('content-type'));
-    }
-    if (typeof data === 'object') {
-      res.json(data);
-    } else {
-      res.send(data);
-    }
-  } catch (error) {
-    console.error(`Asinex API proxy error (/api4/similarity) url=${safeUpstreamUrl(upstreamUrl)}:`, error.message || error);
-    res.status(502).json({ error: 'Failed to connect to Asinex API', details: error.message });
-  }
-});
-
-/**
- * @swagger
- * /api/api4/mw:
- *   post:
- *     summary: Direct proxy to Asinex API /api4/mw
- *     tags: [Asinex Direct API]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               fromId:
- *                 type: integer
- *               pageSize:
- *                 type: integer
- *               bas:
- *                 type: string
- *               smiles:
- *                 type: string
- *               similarity:
- *                 type: number
- *               mwFrom:
- *                 type: number
- *               mwTo:
- *                 type: number
- *           example:
- *             fromId: -1
- *             pageSize: 10
- *             bas: bas103456
- *             smiles: C#Cc1c(Br)c(CC)c(C#C)cc1
- *             similarity: 1
- *             mwFrom: 1
- *             mwTo: 10
- *     responses:
- *       200:
- *         description: Asinex API response
- */
-app.post('/api/api4/mw', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  let upstreamUrl;
-  try {
-    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    upstreamUrl = `${catalogApiBase}/api4/mw`;
-    const response = await fetchAsinexUpstream(upstreamUrl, {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(req.body)
-    });
-
-    const text = await response.text();
-    let data;
-    try { data = JSON.parse(text); } catch { data = text; }
-
-    if (response.status >= 500) {
-      console.error(`Asinex API upstream status=${response.status} url=${safeUpstreamUrl(upstreamUrl)}`);
-    }
-    res.status(relayUpstreamStatus(response.status));
-    if (response.headers.get('content-type')) {
-      res.setHeader('Content-Type', response.headers.get('content-type'));
-    }
-    if (typeof data === 'object') {
-      res.json(data);
-    } else {
-      res.send(data);
-    }
-  } catch (error) {
-    console.error(`Asinex API proxy error (/api4/mw) url=${safeUpstreamUrl(upstreamUrl)}:`, error.message || error);
-    res.status(502).json({ error: 'Failed to connect to Asinex API', details: error.message });
-  }
-});
+// Retired supplier endpoint: authenticated local 503 CATALOG_RETIRED.
+app.post('/api/api4/mw', ensureMongoConnected, authenticateToken, requireActiveUser, refuseRetiredCatalog);
 
 // ── Stock purchasable pack offers (DISABLED) ────────────────────────────────
 // Owner decision 2026-09-13: stock compounds are not purchasable and /api4/bas
@@ -5643,7 +4903,18 @@ app.get('/api/open-compounds/export', ensureMongoConnected, authenticateToken, r
  *       500:
  *         description: Server error or DiffDock service unavailable
  */
-app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requireActiveUser, consumeSimulationToken('diffdock'), async (req, res) => {
+async function requireIndependentDiffdockProvider(req, res, next) {
+  if (!req.body?.protein || !req.body?.ligand) return res.status(400).json({ error: 'protein and ligand are required' });
+  try {
+    const { diffdockApiUrl } = await getRequestLigandServiceConfig(req);
+    if (isRetiredSupplierUrl(diffdockApiUrl)) return refuseRetiredScientificProvider(res);
+    return next();
+  } catch (error) {
+    return res.status(503).json({ error: 'Scientific provider configuration is unavailable', details: error.message });
+  }
+}
+
+app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requireActiveUser, requireIndependentDiffdockProvider, consumeSimulationToken('diffdock'), async (req, res) => {
   try {
     const { diffdockApiUrl } = await getRequestLigandServiceConfig(req);
     const {
@@ -5755,7 +5026,7 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
         `protein_bytes=${Buffer.byteLength(String(protein_bytes || ''))} ` +
         `num_poses=${requestBody.num_poses}`
       );
-      const response = await fetchWithTimeout(diffdockApiUrl, { timeoutMs: EXTERNAL_HTTP_TIMEOUT_LONG_MS,
+      const response = await fetchWithTimeout(diffdockApiUrl, { redirect: 'error', timeoutMs: EXTERNAL_HTTP_TIMEOUT_LONG_MS,
         method: 'POST',
         headers: {
           'Accept': 'application/json',
@@ -5898,421 +5169,23 @@ app.post('/api/diffdock/generate_file', ensureMongoConnected, authenticateToken,
 
 // Asinex API Wrapper Endpoints
 
-/**
- * @swagger
- * /api/asinex/all/{id}_{pageSize}:
- *   get:
- *     summary: Get all molecules with pagination from Asinex API
- *     tags: [Asinex Wrapper]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: Starting ID for pagination
- *       - in: path
- *         name: pageSize
- *         required: true
- *         schema:
- *           type: integer
- *         description: Number of molecules per page
- *     responses:
- *       200:
- *         description: List of molecules from Asinex API
- *       500:
- *         description: Server error
- */
-app.get('/api/asinex/all/:id_:pageSize', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  const { id_, pageSize } = req.params;
-  let upstreamUrl;
+// Retired supplier endpoint: authenticated local 503 CATALOG_RETIRED.
+app.get('/api/asinex/all/:id_:pageSize', ensureMongoConnected, authenticateToken, requireActiveUser, refuseRetiredCatalog);
 
-  if (!id_ || !pageSize ) {
-    return res.status(400).json({ error: '_id, pageSize are all required' });
-  }
+// Retired supplier endpoint: authenticated local 503 CATALOG_RETIRED.
+app.get('/api/asinex/id/:id_number', ensureMongoConnected, authenticateToken, requireActiveUser, refuseRetiredCatalog);
 
-  try {
-    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    upstreamUrl = `${catalogApiBase}/api/all/${id_}_${pageSize.replace('_', '')}`;
-    const response = await fetchAsinexUpstream(upstreamUrl, {
-      method: 'GET'
-    });
+// Retired supplier endpoint: authenticated local 503 CATALOG_RETIRED.
+app.get('/api/asinex/exact/:smiles', ensureMongoConnected, authenticateToken, requireActiveUser, refuseRetiredCatalog);
 
-    if (!response.ok) {
-      console.error(`Asinex catalog upstream status=${response.status} url=${safeUpstreamUrl(upstreamUrl)}`);
-      return res.status(relayUpstreamStatus(response.status)).json({
-        error: 'Upstream catalog failed',
-        details: `Asinex API responded with status: ${response.status}`
-      });
-    }
+// Retired supplier endpoint: authenticated local 503 CATALOG_RETIRED.
+app.get('/api/asinex/substructure/:id_:pageSize/:smiles', ensureMongoConnected, authenticateToken, requireActiveUser, refuseRetiredCatalog);
 
-    const data = await response.json();
-    res.json(data);
-  } catch (error) {
-    console.error(`Asinex API error url=${safeUpstreamUrl(upstreamUrl)}:`, error.message || error);
-    res.status(502).json({
-      error: 'Failed to fetch from Asinex API',
-      details: error.message
-    });
-  }
-});
+// Retired supplier endpoint: authenticated local 503 CATALOG_RETIRED.
+app.post('/api/asinex/search', ensureMongoConnected, authenticateToken, requireActiveUser, refuseRetiredCatalog);
 
-/**
- * @swagger
- * /api/asinex/id/{id_number}:
- *   get:
- *     summary: Get molecule by ID from Asinex API
- *     tags: [Asinex Wrapper]
- *     parameters:
- *       - in: path
- *         name: id_number
- *         required: true
- *         schema:
- *           type: string
- *         description: Molecule ID to retrieve
- *     responses:
- *       200:
- *         description: Molecule details from Asinex API
- *       404:
- *         description: Molecule not found
- *       500:
- *         description: Server error
- */
-app.get('/api/asinex/id/:id_number', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  try {
-    const { id_number } = req.params;
-    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    
-    if (!id_number) {
-      return res.status(400).json({ error: 'id_number is required' });
-    }
-    
-    const response = await fetchWithTimeout(`${catalogApiBase}/api/id/${encodeURIComponent(id_number)}`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    if (response.status === 404) {
-      return res.status(404).json({ error: 'Molecule not found in Asinex database' });
-    }
-    
-    if (!response.ok) {
-      throw new Error(`Asinex API responded with status: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    
-    res.json({
-      source: 'asinex',
-      id: id_number,
-      data
-    });
-  } catch (error) {
-    console.error('Asinex API error:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch from Asinex API', 
-      details: error.message 
-    });
-  }
-});
-
-/**
- * @swagger
- * /api/asinex/exact/{smiles}:
- *   get:
- *     summary: Get molecule by exact SMILES structure from Asinex API
- *     tags: [Asinex Wrapper]
- *     parameters:
- *       - in: path
- *         name: smiles
- *         required: true
- *         schema:
- *           type: string
- *         description: SMILES string for exact structure match
- *     responses:
- *       200:
- *         description: Molecule details for exact SMILES match
- *       404:
- *         description: No exact match found
- *       500:
- *         description: Server error
- */
-app.get('/api/asinex/exact/:smiles', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  try {
-    const { smiles } = req.params;
-    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    
-    if (!smiles) {
-      return res.status(400).json({ error: 'SMILES string is required' });
-    }
-    
-    const response = await fetchWithTimeout(`${catalogApiBase}/api/exact/${encodeURIComponent(smiles)}`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    if (response.status === 404) {
-      return res.status(404).json({ error: 'No exact SMILES match found in Asinex database' });
-    }
-    
-    if (!response.ok) {
-      throw new Error(`Asinex API responded with status: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    
-    res.json({
-      source: 'asinex',
-      searchType: 'exact',
-      smiles: smiles,
-      data
-    });
-  } catch (error) {
-    console.error('Asinex API error:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch from Asinex API', 
-      details: error.message 
-    });
-  }
-});
-
-/**
- * @swagger
- * /api/asinex/substructure/{id}_{pageSize}/{smiles}:
- *   get:
- *     summary: Get molecules by substructure search from Asinex API
- *     tags: [Asinex Wrapper]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: Starting ID for pagination
- *       - in: path
- *         name: pageSize
- *         required: true
- *         schema:
- *           type: integer
- *         description: Number of molecules per page
- *       - in: path
- *         name: smiles
- *         required: true
- *         schema:
- *           type: string
- *         description: SMILES string for substructure search
- *     responses:
- *       200:
- *         description: Molecules containing the substructure
- *       404:
- *         description: No substructure matches found
- *       500:
- *         description: Server error
- */
-app.get('/api/asinex/substructure/:id_:pageSize/:smiles', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  try {
-    const { id_, pageSize, smiles } = req.params;
-    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    
-    if (!id_ || !pageSize || !smiles) {
-      return res.status(400).json({ error: '_id, pageSize, and SMILES are all required' });
-    }
-  const uri =`${catalogApiBase}/api/substructure/${id_}_${pageSize.replace('_', '')}/${encodeURIComponent(smiles)}`;
-    const response = await fetchWithTimeout(uri, {      method: 'GET'     });
-
-    if (response.status === 404) {
-      return res.status(404).json({ error: 'No substructure matches found in Asinex database' });
-    }
-    
-    if (!response.ok) {
-      throw new Error(`Asinex API responded with status: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    
-    // Return the data directly as received from Asinex API
-    res.json(data);
-  } catch (error) {
-    console.error('Asinex API error:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch from Asinex API', 
-      details: error.message 
-    });
-  }
-});
-
-/**
- * @swagger
- * /api/asinex/search:
- *   post:
- *     summary: Advanced search wrapper for Asinex API
- *     tags: [Asinex Wrapper]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               searchType:
- *                 type: string
- *                 enum: [all, id, exact, substructure]
- *                 description: Type of search to perform
- *               id:
- *                 type: integer
- *                 description: Starting ID (for pagination searches)
- *               pageSize:
- *                 type: integer
- *                 description: Page size (for pagination searches)
- *               id_number:
- *                 type: string
- *                 description: Specific molecule ID (for ID search)
- *               smiles:
- *                 type: string
- *                 description: SMILES string (for structure searches)
- *             required:
- *               - searchType
- *     responses:
- *       200:
- *         description: Search results from Asinex API
- *       400:
- *         description: Invalid search parameters
- *       500:
- *         description: Server error
- */
-app.post('/api/asinex/search', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  try {
-    const { searchType, id, pageSize, id_number, smiles } = req.body;
-    const { catalogApiBase } = await getRequestLigandServiceConfig(req);
-    
-    if (!searchType) {
-      return res.status(400).json({ error: 'searchType is required' });
-    }
-    
-    let apiUrl;
-    let searchParams = {};
-    
-    switch (searchType) {
-      case 'all':
-        if (!id || !pageSize) {
-          return res.status(400).json({ error: 'id and pageSize are required for all search' });
-        }
-        apiUrl = `${catalogApiBase}/api/all/${id}_${pageSize}`;
-        searchParams = { id, pageSize };
-        break;
-        
-      case 'id':
-        if (!id_number) {
-          return res.status(400).json({ error: 'id_number is required for ID search' });
-        }
-        apiUrl = `${catalogApiBase}/api/id/${encodeURIComponent(id_number)}`;
-        searchParams = { id_number };
-        break;
-        
-      case 'exact':
-        if (!smiles) {
-          return res.status(400).json({ error: 'smiles is required for exact search' });
-        }
-        apiUrl = `${catalogApiBase}/api/exact/${encodeURIComponent(smiles)}`;
-        searchParams = { smiles };
-        break;
-        
-      case 'substructure':
-        if (!id || !pageSize || !smiles) {
-          return res.status(400).json({ error: 'id, pageSize, and smiles are required for substructure search' });
-        }
-        apiUrl = `${catalogApiBase}/api/substructure/${id}_${pageSize}/${encodeURIComponent(smiles)}`;
-        searchParams = { id, pageSize, smiles };
-        break;
-        
-      default:
-        return res.status(400).json({ error: 'Invalid searchType. Must be one of: all, id, exact, substructure' });
-    }
-    
-    const response = await fetchWithTimeout(apiUrl, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    if (response.status === 404) {
-      return res.status(404).json({ error: 'No results found in Asinex database' });
-    }
-    
-    if (!response.ok) {
-      throw new Error(`Asinex API responded with status: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    
-    res.json({
-      source: 'asinex',
-      searchType,
-      searchParams,
-      timestamp: new Date().toISOString(),
-      data
-    });
-  } catch (error) {
-    console.error('Asinex API error:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch from Asinex API', 
-      details: error.message 
-    });
-  }
-});
-
-/**
- * @swagger
- * /api/asinex/health:
- *   get:
- *     summary: Check Asinex API health status
- *     tags: [Asinex Wrapper]
- *     responses:
- *       200:
- *         description: Asinex API health status
- */
-app.get('/api/asinex/health', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  let catalogApiBase = DEFAULT_LIGAND_SERVICE_CONFIG.catalogApiBase;
-  try {
-    ({ catalogApiBase } = await getRequestLigandServiceConfig(req));
-    const response = await fetchWithTimeout(`${catalogApiBase}/api/all/1_1`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      },
-      timeout: 5000
-    });
-    
-    const isHealthy = response.ok;
-    
-    res.json({
-      asinexApi: {
-        status: isHealthy ? 'healthy' : 'unhealthy',
-        baseUrl: catalogApiBase,
-        statusCode: response.status,
-        timestamp: new Date().toISOString()
-      }
-    });
-  } catch (error) {
-    res.json({
-      asinexApi: {
-        status: 'unhealthy',
-        baseUrl: catalogApiBase,
-        error: error.message,
-        timestamp: new Date().toISOString()
-      }
-    });
-  }
-});
+// Retired supplier endpoint: authenticated local 503 CATALOG_RETIRED.
+app.get('/api/asinex/health', ensureMongoConnected, authenticateToken, requireActiveUser, refuseRetiredCatalog);
 
 // Require a valid session for the scientific microservice proxies. These were
 // previously mounted with no auth, exposing compute (GROMACS/glioblastoma) and

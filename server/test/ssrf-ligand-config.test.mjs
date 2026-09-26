@@ -164,8 +164,8 @@ async function main() {
       await companies.updateOne({ companyId: COMPANY }, { $set: { ligandServiceConfig: patch } });
     }
 
-    // A catalog route the guard protects (uses catalogApiBase via the chokepoint).
-    const ROUTE = '/api/asinex/exact/CCO';
+    // An active scientific route still requires the SSRF guard after catalog retirement.
+    const ROUTE = '/api/diffdock/generate';
 
     const cases = [
       { label: 'cloud metadata endpoint (169.254.169.254)', url: 'http://169.254.169.254/latest/meta-data/' },
@@ -175,9 +175,9 @@ async function main() {
     ];
 
     for (const c of cases) {
-      await seedConfig({ catalogApiBase: c.url });
+      await seedConfig({ diffdockApiUrl: c.url });
       const startedAt = Date.now();
-      const res = await api(ROUTE, { token });
+      const res = await api(ROUTE, { token, method: 'POST', body: { protein: '1abc', ligand: 'CCO' } });
       const elapsed = Date.now() - startedAt;
       const refused = res.status >= 400 && /public host/i.test(JSON.stringify(res.body));
       check(`refuses ${c.label}`, refused, `status=${res.status} body=${JSON.stringify(res.body)}`);
@@ -187,11 +187,11 @@ async function main() {
     // Defence-in-depth: even though the config API would reject a private URL on
     // save, the request-time guard is what stops a *rebound* host. Confirm the
     // refusal references the offending field, not a generic upstream error.
-    await seedConfig({ catalogApiBase: 'http://169.254.169.254' });
-    const fielded = await api(ROUTE, { token });
+    await seedConfig({ diffdockApiUrl: 'http://169.254.169.254' });
+    const fielded = await api(ROUTE, { token, method: 'POST', body: { protein: '1abc', ligand: 'CCO' } });
     check(
-      'refusal names the offending field (catalogApiBase)',
-      /catalogApiBase/.test(JSON.stringify(fielded.body)),
+      'refusal names the offending field (diffdockApiUrl)',
+      /diffdockApiUrl/.test(JSON.stringify(fielded.body)),
       JSON.stringify(fielded.body)
     );
   } finally {

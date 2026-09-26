@@ -2,7 +2,7 @@ import {
   CloudIcon,
 } from "@heroicons/react/24/outline";
 import { ShoppingCartIcon } from '@heroicons/react/24/solid';
-import { withAppBase, IS_STAGING_BUILD } from "@/utils/appEnv";
+import { withAppBase } from "@/utils/appEnv";
 import {
   Alert,
   Button,
@@ -187,13 +187,9 @@ export function Simulation() {
   const [topError, setTopError] = useState("");
 
   const [searchType, setSearchType] = useState("similarity"); // Add searchType state
-  // Which corpus the search box targets: 'asinex' = the live ASINEX catalog
-  // (existing behavior), 'stock' = Anna's stock-compound dataset (RDKit-fingerprint
-  // similarity through /api/stock-search/similarity). Stock is never a silent
-  // fallback for Asinex or vice versa — switching clears the result list.
-  // Staging starts on the Pyxis-owned stock index. The consumer build retains
-  // its existing catalog until the replacement has been owner-tested.
-  const [searchSource, setSearchSource] = useState(IS_STAGING_BUILD ? "stock" : "asinex");
+  // Pyxis-owned snapshots and explicit ChEMBL discovery are the supported
+  // sources in every build. An unavailable source never switches to a supplier.
+  const [searchSource, setSearchSource] = useState("stock");
   const [stockStatus, setStockStatus] = useState(null); // null | { state: 'loading' } | { state: 'available', dataset } | { state: 'unavailable', reason }
   const stockStatusRequestRef = useRef(0);
   const [openStatus, setOpenStatus] = useState(null); // null | loading | available | unavailable
@@ -743,6 +739,7 @@ export function Simulation() {
   };
 
   const handleSourceChange = (nextSource) => {
+    if (!['stock', 'open', 'both', 'real', 'virtual'].includes(nextSource)) return;
     if (nextSource === searchSourceRef.current) return;
     searchSourceRef.current = nextSource;
     browseControllerRef.current?.abort();
@@ -794,9 +791,6 @@ export function Simulation() {
       setSearchType('similarity');
       setSimilarityThreshold(value => Math.max(0.1, value));
       if (macrocycleStatusRef.current?.[nextSource]?.state !== 'available') fetchMacrocycleStatus(nextSource);
-    } else {
-      // Back to the catalog: restore the normal browse entry state.
-      fetchAllMolecules(0, false);
     }
   };
 
@@ -1737,18 +1731,11 @@ export function Simulation() {
 
   // Auto-fetch on component mount
   useEffect(() => {
-    // Load the selected source when the component mounts. The consumer build
-    // retains its catalog browse default; staging probes its stock index.
-    setIsSearchActive(false); // Not in search mode initially
-    if (searchSourceRef.current === 'asinex') fetchAllMolecules(0, false);
-    else {
-      // A source status probe is not a catalog browse. Without settling this
-      // state, a fresh staging load shows a perpetual "Loading catalog" spinner.
-      setInitialLoading(false);
-      setCatalogSettled(true);
-      if (searchSourceRef.current === 'stock') fetchStockStatus();
-      else if (MACROCYCLE_SOURCES[searchSourceRef.current]) fetchMacrocycleStatus(searchSourceRef.current);
-    }
+    // Probe the owned stock index without a supplier catalog request.
+    setIsSearchActive(false);
+    setInitialLoading(false);
+    setCatalogSettled(true);
+    fetchStockStatus();
   }, []); // Only run once on mount
 
   // Separate useEffect for scroll handling
@@ -2164,15 +2151,11 @@ export function Simulation() {
           <p className="text-xs text-blue-gray-500 dark:text-slate-400">Search real and virtual macrocycles together, or filter that collection below.</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-3">
-          {(IS_STAGING_BUILD ? [
+          {[
             { value: 'stock', title: 'Stock compounds', detail: '630,646 searchable' },
             { value: 'both', title: 'Macrocycles', detail: 'RPX + VPX · 2,365,907 searchable' },
             { value: 'open', title: 'Open compounds', detail: 'ChEMBL discovery' },
-          ] : [
-            { value: 'asinex', title: 'Internal catalog', detail: 'Existing catalog' },
-            { value: 'stock', title: 'Stock compounds', detail: 'Similarity search' },
-            { value: 'open', title: 'Open compounds', detail: 'ChEMBL discovery' },
-          ]).map(({ value, title, detail }) => {
+          ].map(({ value, title, detail }) => {
             const selected = value === 'both' ? Boolean(MACROCYCLE_SOURCES[searchSource]) : searchSource === value;
             return (
               <label key={value} className={`flex min-w-0 cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors ${selected ? 'border-brand-500 bg-brand-50 text-brand-900 dark:bg-brand-900/30 dark:text-brand-100' : 'border-blue-gray-100 bg-blue-gray-50/50 text-blue-gray-800 hover:border-brand-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'}`}>
@@ -2184,7 +2167,7 @@ export function Simulation() {
         </div>
       </fieldset>
 
-      {IS_STAGING_BUILD && MACROCYCLE_SOURCES[searchSource] && (
+      {MACROCYCLE_SOURCES[searchSource] && (
         <fieldset className="flex flex-wrap items-center gap-2 text-sm" aria-label="Macrocycle source filter">
           <legend className="mr-2 font-semibold">Macrocycles:</legend>
           {[
@@ -2226,7 +2209,7 @@ export function Simulation() {
           <Alert color="amber" className="mb-2">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               <Typography variant="small">
-                Stock-compound search is not available yet: {stockStatus.reason} {IS_STAGING_BUILD ? 'Please try again later.' : 'You can still search the internal catalog — switch the source above.'}
+                Stock-compound search is not available yet: {stockStatus.reason} Please try again later or choose another collection.
               </Typography>
               <button
                 type="button"
@@ -2332,7 +2315,7 @@ export function Simulation() {
           <Alert color="amber" className="mb-2">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               <Typography variant="small">
-                Open compounds search is not available: {openStatus.reason} Switch the source above — Internal catalog and Stock compounds are unchanged.
+                Open compounds search is not available: {openStatus.reason} Choose another collection above or try again later.
               </Typography>
               <button
                 type="button"
@@ -2914,7 +2897,7 @@ export function Simulation() {
           <h2 id="results-heading" className="text-xl font-semibold text-blue-gray-900 dark:text-slate-50">Results</h2>
           <span className="text-sm text-blue-gray-600 dark:text-slate-300">{topMolecules.length} shown{hasMore && (searchSource === 'asinex' || isSearchActive) ? ' · more available' : ''}</span>
         </div>
-        {IS_STAGING_BUILD && ['stock', 'both', 'real', 'virtual'].includes(searchSource) && topMolecules.length > 0 && (
+        {['stock', 'both', 'real', 'virtual'].includes(searchSource) && topMolecules.length > 0 && (
           <p className="mb-3 text-xs text-blue-gray-600 dark:text-slate-300">
             Pack estimates appear beside each compound. Workbook 1–3 selected tier; EUR × {PRICE_GUIDE_EUR_USD.rate} ({PRICE_GUIDE_EUR_USD.date}), rounded to USD. Availability and checkout prices are unconfirmed.
           </p>

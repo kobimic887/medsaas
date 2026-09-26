@@ -8,6 +8,11 @@ service must preserve. DiffDock uses a separate API. Implementations and checks:
 - Payload verifier: [`verify-docking-response.mjs`](../scripts/verify-docking-response.mjs).
 - Compute service: [`deploy/box/docking/`](../deploy/box/docking/).
 
+Known Asinex provider URLs are retired and refused locally with
+`503 SUPPLIER_PROVIDER_RETIRED`, without a new credit charge. Configure a qualified
+Pyxis compute URL; there is no automatic supplier fallback. Existing saved
+results remain application data.
+
 ## Request and response
 
 The dashboard submits `POST /api/simulation` with `{ pdbid, smiles }`.

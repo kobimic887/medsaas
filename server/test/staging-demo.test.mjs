@@ -304,7 +304,6 @@ async function main() {
       ['POST', '/api/generate-molecules', { smiles: 'CCO' }], // NVIDIA MolMIM
       ['POST', '/create-checkout-session', { plan: 'Standard' }],
       ['POST', '/create-checkout-session-onetime', { plan: 'Standard' }],
-      ['POST', '/api/shop', {}],
       ['POST', '/api/stock-offers', { codes: ['ASN 33727025'] }],
       ['POST', '/send-email', {}],
       ['POST', '/api/diffdock/generate_file', {}], // local-script flow stays off
@@ -312,6 +311,12 @@ async function main() {
       r = await api(method, p, { token: demoToken, body });
       check(`${method} ${p} refused 403`, r.status === 403 && r.json?.code === 'DEMO_MODE_DISABLED', `got ${r.status} ${r.text.slice(0, 80)}`);
     }
+
+    // Supplier retirement is the same authenticated local refusal in every mode.
+    r = await api('POST', '/api/shop', { token: demoToken, body: {} });
+    check('POST /api/shop -> 503 CATALOG_RETIRED', r.status === 503 && r.json?.code === 'CATALOG_RETIRED', `got ${r.status} ${r.text.slice(0, 80)}`);
+    r = await api('POST', '/api/shop', { body: {} });
+    check('POST /api/shop without a session -> 401', r.status === 401, `got ${r.status}`);
 
     // /api/simulation and /api/diffdock/generate are REAL docking routes on
     // staging (owner-authorized). An empty body must fail validation (400)

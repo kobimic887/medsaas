@@ -7,13 +7,11 @@
 //     /api/openfold3/predict is answered from the server-side fixture with NO
 //     outbound call and no production NVIDIA credentials.
 //   - Simulation is usable for owner testing and mirrors production:
-//       * catalog browse + structure/substructure/similarity/molecular-weight
-//         search proxy the same read-only external ASINEX catalog production
-//         uses (ASINEX_API_BASE); BAS-code search resolves each code on
-//         GET /api/id (upstream /api4/bas is retired — no runtime calls),
+//       * supplier catalog routes refuse locally with CATALOG_RETIRED;
+//         they never call the supplier, regardless of environment settings,
 //       * /api/simulation and /api/diffdock/generate forward to the real
-//         docking providers (ASINEX_DOCKING_API_URL / DIFFDOCK_API_URL) — real,
-//         paid execution, authorized for the synthetic demo account,
+//         configured non-supplier docking providers; Asinex hosts refuse
+//         locally before any upstream call,
 //       * runs and their coordinate blobs are kept in an in-process store with
 //         simulation_logs ownership semantics (resets on restart — labelled as
 //         temporary demo history),
@@ -39,10 +37,7 @@ import jwt from "jsonwebtoken";
 import { buildFixtureFoldResponse } from "../utils/foldFixture.js";
 import { demoStore } from "../utils/foldDemoStore.js";
 import { createDemoSimStore } from "../utils/demoSimStore.js";
-import {
-  parseBasSearchCodes,
-  searchCatalogRowsByBasCodes,
-} from "../utils/catalogPricing.js";
+import { createRetiredCatalogRouter, isRetiredSupplierUrl, refuseRetiredScientificProvider } from "../utils/catalogAccessPolicy.js";
 import {
   buildMacrocycleSimilarityUrl,
   createMacrocycleDatasetResolver,
@@ -96,6 +91,7 @@ const UPSTREAM_TIMEOUT_MS = 120000; // interactive catalog/search
 const UPSTREAM_LONG_TIMEOUT_MS = 600000; // docking / diffdock jobs
 
 function fetchWithTimeout(url, opts = {}) {
+  if (isRetiredSupplierUrl(url)) throw new Error("Supplier access is retired; configure a Pyxis service");
   const { timeoutMs = UPSTREAM_TIMEOUT_MS, ...rest } = opts;
   if (rest.signal) return fetch(url, rest);
   return fetch(url, { ...rest, signal: AbortSignal.timeout(timeoutMs) });
@@ -111,7 +107,6 @@ function relayUpstreamStatus(status) {
 // no per-company override to read.
 function ligandServiceConfig() {
   return {
-    catalogApiBase: (process.env.ASINEX_API_BASE || "http://dev.asinex.com:58181").replace(/\/$/, ""),
     dockingApiUrl:
       process.env.ASINEX_DOCKING_API_URL || "https://services.asinex.com:8000/docking",
     diffdockApiUrl:
@@ -120,51 +115,6 @@ function ligandServiceConfig() {
     sdfConverterUrl:
       process.env.SDF_CONVERTER_URL || "http://83.229.87.94:8001/convertSTR",
   };
-}
-
-function safeUpstreamUrl(url) {
-  // Log upstream URLs without embedded credentials.
-  return String(url || "").replace(/\/\/([^/@]+)@/, "//");
-}
-
-// Relay an upstream response verbatim (status/content-type/payload) the way the
-// production Asinex proxies do — read-only catalog data, never cached or canned.
-async function relayCatalogUpstream(res, upstreamUrl, init = {}) {
-  try {
-    const response = await fetchWithTimeout(upstreamUrl, {
-      method: init.method || "GET",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        ...(init.headers || {}),
-      },
-      ...(init.body !== undefined ? { body: init.body } : {}),
-    });
-    const text = await response.text();
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = text;
-    }
-    if (response.status >= 500) {
-      console.error(
-        `[staging] asinex upstream status=${response.status} url=${safeUpstreamUrl(upstreamUrl)}`
-      );
-    }
-    res.status(relayUpstreamStatus(response.status));
-    if (response.headers.get("content-type")) {
-      res.setHeader("Content-Type", response.headers.get("content-type"));
-    }
-    if (typeof data === "object") {
-      res.json(data);
-    } else {
-      res.send(data);
-    }
-  } catch (error) {
-    console.error(`[staging] asinex upstream error url=${safeUpstreamUrl(upstreamUrl)}:`, error.message || error);
-    res.status(502).json({ error: "Failed to connect to Asinex API", details: error.message });
-  }
 }
 
 function demoSimulationKey() {
@@ -282,6 +232,8 @@ export function createStagingDemoRouter({ jwtSecret, jwtExpiresIn = "7d" }) {
     }
   }
 
+  router.use(createRetiredCatalogRouter({ middleware: [demoAuth] }));
+
   // ---- Server status (drives client demo chrome) ---------------------------
   router.get("/api/staging/status", (_req, res) => {
     res.json({
@@ -294,7 +246,7 @@ export function createStagingDemoRouter({ jwtSecret, jwtExpiresIn = "7d" }) {
       creditsEnabled: false,
       simulation: {
         enabled: true,
-        catalog: "live-read-only-asinex",
+        catalog: "retired-use-owned-collections",
         dockingProvider: "live",
         stockSearch: "unavailable",
         logsStorage: "in-process (resets on restart)",
@@ -406,99 +358,6 @@ export function createStagingDemoRouter({ jwtSecret, jwtExpiresIn = "7d" }) {
   // ---- Simulation: catalog browse + search (live read-only Asinex catalog) --
   // Mirrors the production wrapper endpoints so the Simulation page behaves
   // exactly as it does against production — same URL shapes, same payloads,
-  // same passthrough of the upstream response (never canned results).
-  router.get("/api/asinex/all/:id_:pageSize", demoAuth, async (req, res) => {
-    const { id_, pageSize } = req.params;
-    if (!id_ || !pageSize) {
-      return res.status(400).json({ error: "_id, pageSize are all required" });
-    }
-    const { catalogApiBase } = ligandServiceConfig();
-    const upstreamUrl = `${catalogApiBase}/api/all/${id_}_${String(pageSize).replace("_", "")}`;
-    await relayCatalogUpstream(res, upstreamUrl);
-  });
-
-  router.get("/api/asinex/id/:id_number", demoAuth, async (req, res) => {
-    const { id_number } = req.params;
-    if (!id_number) return res.status(400).json({ error: "id_number is required" });
-    const { catalogApiBase } = ligandServiceConfig();
-    const upstreamUrl = `${catalogApiBase}/api/id/${encodeURIComponent(id_number)}`;
-    try {
-      const response = await fetchWithTimeout(upstreamUrl, {
-        headers: { Accept: "application/json", "Content-Type": "application/json" },
-      });
-      if (response.status === 404) {
-        return res.status(404).json({ error: "Molecule not found in Asinex database" });
-      }
-      if (!response.ok) {
-        throw new Error(`Asinex API responded with status: ${response.status}`);
-      }
-      const data = await response.json();
-      res.json({ source: "asinex", id: id_number, data });
-    } catch (error) {
-      console.error("[staging] Asinex id lookup failed:", error.message || error);
-      res.status(500).json({ error: "Failed to fetch from Asinex API", details: error.message });
-    }
-  });
-
-  // Control Panel "Show Price" — a read-only exact-SMILES catalog lookup.
-  router.get("/api/asinex/exact/:smiles", demoAuth, async (req, res) => {
-    const { smiles } = req.params;
-    if (!smiles) return res.status(400).json({ error: "SMILES string is required" });
-    const { catalogApiBase } = ligandServiceConfig();
-    const upstreamUrl = `${catalogApiBase}/api/exact/${encodeURIComponent(smiles)}`;
-    try {
-      const response = await fetchWithTimeout(upstreamUrl, {
-        headers: { Accept: "application/json", "Content-Type": "application/json" },
-      });
-      if (response.status === 404) {
-        return res.status(404).json({ error: "No exact SMILES match found in Asinex database" });
-      }
-      if (!response.ok) {
-        throw new Error(`Asinex API responded with status: ${response.status}`);
-      }
-      const data = await response.json();
-      res.json({ source: "asinex", searchType: "exact", smiles, data });
-    } catch (error) {
-      console.error("[staging] Asinex exact lookup failed:", error.message || error);
-      res.status(502).json({ error: "Failed to fetch from Asinex API", details: error.message });
-    }
-  });
-
-  // Whitelisted /api4 search methods (same route names the Simulation page
-  // uses). Structure/substructure/similarity/mw forward the query body
-  // untouched so search genuinely runs against the live catalog — no canned
-  // results, no invented scores. BAS-code search does NOT forward: owner
-  // decision 2026-09-13 retired upstream /api4/bas with zero runtime calls,
-  // so it resolves each code on GET /api/id via the shared pricing util —
-  // the same verified wrapper production uses.
-  const API4_METHODS = new Set(["bas", "structure", "substructure", "similarity", "mw"]);
-  router.post("/api/api4/:method", demoAuth, async (req, res) => {
-    const { method } = req.params;
-    if (!API4_METHODS.has(method)) {
-      return res.status(400).json({ error: `Unsupported search method: ${method}` });
-    }
-    const { catalogApiBase } = ligandServiceConfig();
-    if (method === "bas") {
-      try {
-        const rows = await searchCatalogRowsByBasCodes(parseBasSearchCodes(req.body?.bas), {
-          catalogApiBase,
-          fetchImpl: (url, opts) => fetchWithTimeout(url, opts),
-          fromId: req.body?.fromId,
-          pageSize: req.body?.pageSize,
-        });
-        return res.json(rows);
-      } catch (error) {
-        console.error("[staging] BAS catalog search failed:", error.message || error);
-        return res.status(502).json({ error: "Failed to connect to Asinex API", details: error.message });
-      }
-    }
-    const upstreamUrl = `${catalogApiBase}/api4/${method}`;
-    await relayCatalogUpstream(res, upstreamUrl, {
-      method: "POST",
-      body: JSON.stringify(req.body || {}),
-    });
-  });
-
   // ---- Stock-compound search: honest STOCK_SEARCH_UNAVAILABLE --------------
   // The stock dataset is owned by the separate Simulation stock deployment;
   // this staging process has no STOCK_SEARCH_* config, so the status/similarity
@@ -506,7 +365,7 @@ export function createStagingDemoRouter({ jwtSecret, jwtExpiresIn = "7d" }) {
   // when the dataset is unprovisioned — never a silent fallback to Asinex.
   const stockUnavailable = () => ({
     error:
-      "Stock-compound search is not provisioned for this staging environment (the dataset is deployed by the separate Simulation stock service). Switch the source to the Asinex catalog.",
+      "Stock-compound search is not provisioned for this staging environment (the dataset is deployed by the separate Simulation stock service). Use a configured Pyxis macrocycle collection or Open compounds.",
     code: "STOCK_SEARCH_UNAVAILABLE",
     reason:
       "the stock dataset is not provisioned on staging",
@@ -664,9 +523,11 @@ export function createStagingDemoRouter({ jwtSecret, jwtExpiresIn = "7d" }) {
     }
     const simulationKey = demoSimulationKey();
     const { dockingApiUrl } = ligandServiceConfig();
+    if (isRetiredSupplierUrl(dockingApiUrl)) return refuseRetiredScientificProvider(res);
     let data;
     try {
       const response = await fetchWithTimeout(dockingApiUrl, {
+        redirect: "error",
         method: "POST",
         headers: { Accept: "application/json, text/plain, */*", "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -708,6 +569,7 @@ export function createStagingDemoRouter({ jwtSecret, jwtExpiresIn = "7d" }) {
       if (!protein || !ligand) {
         return res.status(400).json({ error: "protein and ligand are required" });
       }
+      if (isRetiredSupplierUrl(diffdockApiUrl)) return refuseRetiredScientificProvider(res);
 
       let ligand_bytes;
       let ligand_raw;
@@ -778,6 +640,7 @@ export function createStagingDemoRouter({ jwtSecret, jwtExpiresIn = "7d" }) {
           is_staged,
         };
         const response = await fetchWithTimeout(diffdockApiUrl, {
+          redirect: "error",
           method: "POST",
           headers: { Accept: "application/json", "Content-Type": "application/json" },
           body: JSON.stringify(requestBody),

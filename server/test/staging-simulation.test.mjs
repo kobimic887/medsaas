@@ -1,19 +1,7 @@
-// Staging Simulation test: boots server/index.js with PYXIS_DEMO_MODE=true, no
-// database, and fixture upstream services for the ASINEX catalog, docking and
-// SDF conversion. Proves the Simulation surface is usable on staging WITHOUT
-// any real outbound call:
+// Staging Simulation contract: supplier catalog routes refuse locally with
+// zero fixture supplier hits. Configured Pyxis macrocycle searches and owned
+// scientific providers keep working; missing sources never fall back.
 //
-//   1. Catalog browse pagination + single-compound lookups (passthrough of the
-//      live-read-only Asinex mirror).
-//   2. BAS / substructure / similarity / molecular-weight search genuinely
-//      operate on the upstream collection — no canned results, no invented
-//      scores; an arbitrary query returns [] exactly like the upstream.
-//      BAS search resolves codes on GET /api/id: upstream /api4/bas is retired
-//      and the fixture counts any /api4/bas hit as a regression.
-//   3. Unsupported /api4 methods are rejected; stock search honestly reports
-//      503 STOCK_SEARCH_UNAVAILABLE (never a silent Asinex fallback).
-//      The new real/virtual macrocycle sources use only explicitly configured
-//      read-only datasets and keep price/cart fields out of results.
 //   4. Real docking POST /api/simulation stores a run in the in-process store
 //      (simulation_logs ownership semantics), answers artifacts from it, and
 //      serves a cache hit WITHOUT a second provider call.
@@ -130,7 +118,7 @@ const ROWS = Array.from({ length: 25 }, (_, i) => makeRow(i));
 // each env URL distinct: ASINEX_API_BASE = http://127.0.0.1:<port>,
 // ASINEX_DOCKING_API_URL = .../dock, DIFFDOCK_API_URL = .../diffdock,
 // SDF_CONVERTER_URL = .../convertSTR.
-const hits = { dock: 0, api4bas: 0, macro: [] };
+const hits = { catalog: 0, dock: 0, api4bas: 0, macro: [] };
 let lastDockBody = null;
 
 function rowMatchesCode(row, code) {
@@ -165,6 +153,7 @@ function dockSdf() {
 const fixtureServer = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1');
   const pathname = url.pathname;
+  if (/^\/(?:api\/(?:all|id|exact)|api4)\//.test(pathname)) hits.catalog += 1;
   const send = (status, payload, contentType = 'application/json') => {
     res.writeHead(status, { 'Content-Type': contentType });
     res.end(typeof payload === 'string' ? payload : JSON.stringify(payload));
@@ -352,50 +341,21 @@ async function main() {
     const peerToken = DEMO_JWT(DEMO_SECRET, { userId: 'u2', username: 'pyxis-staging-tester-2', companyId: null });
     const otherCompanyToken = DEMO_JWT(DEMO_SECRET, { userId: 'u3', username: 'elsewhere-user', companyId: 'otherComp' });
 
-    // --- 1. Catalog browse + pagination ---------------------------------------
-    console.log('Test 1 — catalog browse (live-read-only mirror):');
-    r = await api('GET', '/api/asinex/all/0_10', { token: demoToken });
-    check('page 0 size 10 -> 10 rows', r.status === 200 && Array.isArray(r.json) && r.json.length === 10, `got ${r.status}`);
-    check('browse rows carry catalog fields', r.json?.[0]?.ASINEX_ID && r.json?.[0]?.SMILES_STRING && r.json?.[0]?.PRICE_1MG != null, JSON.stringify(r.json?.[0]));
-    r = await api('GET', '/api/asinex/all/1_10', { token: demoToken });
-    check('page 1 continues after page 0', r.json?.[0]?.id === 11 && r.json.length === 10, JSON.stringify(r.json?.[0]));
-    r = await api('GET', '/api/asinex/all/2_10', { token: demoToken });
-    check('last page returns remaining 5', r.json?.length === 5);
+    // Every retired catalog path is a local refusal, including unregistered aliases.
+    for (const [method, route] of [
+      ['GET', '/api/asinex/all/0_10'], ['GET', '/api/asinex/id/ASN1'],
+      ['GET', '/api/asinex/exact/CCO'], ['GET', '/api/asinex/health'],
+      ['POST', '/api/asinex/search'], ['GET', '/api/all/0_10'],
+      ['GET', '/api/id/ASN1'], ['GET', '/api/exact/CCO'],
+      ...['bas', 'structure', 'substructure', 'similarity', 'mw', 'bogus'].map((name) => ['POST', `/api/api4/${name}`]),
+      ['POST', '/api/shop'],
+    ]) {
+      r = await api(method, route, { token: demoToken, body: method === 'POST' ? {} : undefined });
+      check(`${route} -> local CATALOG_RETIRED`, r.status === 503 && r.json?.code === 'CATALOG_RETIRED');
+    }
     r = await api('GET', '/api/asinex/all/0_10');
-    check('browse without token -> 401', r.status === 401, `got ${r.status}`);
-
-    r = await api('GET', `/api/asinex/id/${encodeURIComponent('ASN 00000003')}`, { token: demoToken });
-    check('single-compound lookup by id', r.status === 200 && r.json?.source === 'asinex' && r.json?.data?.id === 3, `got ${r.status}`);
-    r = await api('GET', `/api/asinex/exact/${encodeURIComponent('CCO')}`, { token: demoToken });
-    check('exact lookup wrapper shape (Control Panel price)', r.status === 200 && r.json?.searchType === 'exact' && r.json?.data?.SMILES_STRING === 'CCO', `got ${r.status}`);
-
-    // --- 2. Search genuinely operates on the collection -----------------------
-    console.log('\nTest 2 — BAS / substructure / similarity / MW search:');
-    r = await api('POST', '/api/api4/bas', { token: demoToken, body: { fromId: 0, pageSize: 10, bas: 'ASN 00000001,ASN 00000003' } });
-    check('BAS lookup returns exactly the requested codes', r.status === 200 && r.json?.length === 2 && [1, 3].every((id) => r.json.some((row) => row.id === id)), `got ${r.status} ${r.text.slice(0, 160)}`);
-    r = await api('POST', '/api/api4/bas', { token: demoToken, body: { bas: 'ASN 99999999' } });
-    check('unknown BAS code -> empty, not canned', r.status === 200 && Array.isArray(r.json) && r.json.length === 0);
-    // Owner decision 2026-09-13: upstream /api4/bas is retired with zero
-    // runtime callers — staging BAS search resolves codes on GET /api/id.
-    // The fixture still implements /api4/bas, so any hit here is a regression.
-    check('BAS search never called upstream /api4/bas', hits.api4bas === 0, `hits=${hits.api4bas}`);
-
-    r = await api('POST', '/api/api4/substructure', { token: demoToken, body: { fromId: 0, pageSize: 10, smiles: 'c1ccccc1' } });
-    const benzeneRows = ROWS.filter((row) => row.SMILES_STRING.includes('c1ccccc1'));
-    check('substructure returns only genuine matches', r.status === 200 && r.json?.length === benzeneRows.length && r.json?.every((row) => row.SMILES_STRING.includes('c1ccccc1')), `got ${r.text.slice(0, 160)}`);
-    r = await api('POST', '/api/api4/substructure', { token: demoToken, body: { smiles: 'zzzzz-not-a-structure' } });
-    check('substructure with no matches -> empty, not canned', r.status === 200 && Array.isArray(r.json) && r.json.length === 0);
-
-    r = await api('POST', '/api/api4/similarity', { token: demoToken, body: { fromId: 0, pageSize: 10, smiles: 'c1ccccc1', threshold: 0.7 } });
-    check('similarity self-hit carries the upstream score (not invented)', r.status === 200 && r.json?.length >= 1 && r.json?.[0]?.SMILES_STRING === 'c1ccccc1' && r.json?.[0]?.SIMILARITY === 1.0, `got ${r.text.slice(0, 160)}`);
-    r = await api('POST', '/api/api4/similarity', { token: demoToken, body: { smiles: 'C#C#C#C#C-not-real', threshold: 0.7 } });
-    check('similarity arbitrary query -> empty (never fake hits/scores)', r.status === 200 && Array.isArray(r.json) && r.json.length === 0, `got ${r.text.slice(0, 160)}`);
-
-    r = await api('POST', '/api/api4/mw', { token: demoToken, body: { smiles: '', mwFrom: 61, mwTo: 63 } });
-    check('molecular-weight range filters on MW', r.status === 200 && r.json?.every((row) => row.MW_STRUCTURE >= 61 && row.MW_STRUCTURE <= 63) && r.json?.length > 0, `got ${r.text.slice(0, 160)}`);
-
-    r = await api('POST', '/api/api4/bogus', { token: demoToken, body: {} });
-    check('unsupported /api4 method rejected (400, no passthrough)', r.status === 400, `got ${r.status}`);
+    check('retired catalog retains session auth', r.status === 401);
+    check('no catalog request reaches fixture supplier', hits.catalog === 0 && hits.api4bas === 0, JSON.stringify(hits));
 
     // --- 3. Stock search honest-unavailable + neighbours refused ---------------
     console.log('\nTest 3 — stock search honesty + refusals:');

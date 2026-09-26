@@ -11,9 +11,10 @@
  * bun scripts/import-macrocycle-datasets.mjs --source virtual \
  *   --input /data/Pyxis_Virtual_Molecules_20260923.zip --out-dir /data/macro-virtual
  *
- * The full virtual set cannot safely fit on the existing 151 tonomitosql host;
- * this tool deliberately has no upload flag. --limit names a sample so smoke
- * output cannot masquerade as the full set.
+ * This normalizer deliberately has no upload flag. The compact SQL importer
+ * in services/catalog-sql preserves the existing vectors without rebuilding
+ * six legacy fingerprint indexes. --limit names a sample so smoke output
+ * cannot masquerade as the full set.
  * No source has prices. web_mg and CURRENT_TOT_NETTO_MG are amounts, not packs.
  */
 import { createHash } from 'node:crypto';

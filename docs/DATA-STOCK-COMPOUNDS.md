@@ -1,7 +1,7 @@
 # Stock compound search
 
 Simulation searches the configured stock dataset through the application API.
-Stock, catalog, macrocycle, and open-compound results remain separate sources;
+Stock, macrocycle, and open-compound results remain separate sources;
 an unavailable source never falls back to another one. Stock selection passes
 a structure to docking. Stock rows cannot enter checkout.
 
@@ -96,3 +96,5 @@ bun run test:simulation-search
 These checks exercise API and UI contracts. Service availability and ranking
 against an installed dataset require a separate runtime check. Deployment and
 private data locations belong in [operator records](OPERATIONS.md).
+
+The [organized SQL catalog](../services/catalog-sql/README.md) also exposes existing stock and its six stored fingerprint columns alongside RPX/VPX. Retired supplier catalog aliases and molecule checkout return `503 CATALOG_RETIRED` locally; credit-pack purchases are independent and remain supported.

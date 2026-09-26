@@ -1,8 +1,8 @@
 # Macrocycle search
 
 Simulation's Macrocycles collection combines real and virtual datasets, with
-All, Real, and Virtual filters. The datasets remain distinct from stock,
-catalog, and ChEMBL sources. Rows support docking handoff, not checkout.
+All, Real, and Virtual filters. The datasets remain distinct from stock
+and ChEMBL sources. Rows support docking handoff, not checkout.
 Source quantities and lead times are dated metadata, not current offers.
 
 ## API contract
@@ -80,3 +80,7 @@ bun run test:simulation-search
 Index deployment and private dataset provenance belong in
 [operator records](OPERATIONS.md). The index is read-only and has no application
 database.
+
+## SQL inspection
+
+The [organized SQL catalog](../services/catalog-sql/README.md) retains every normalized RPX/VPX source row, including rows excluded from search, and copies the existing binary/count vectors exactly. The `pyxis_catalog` views expose combined inventory, individual sources and calculation formulas alongside existing stock. This is independent of supplier APIs and does not change the configured application search backend.

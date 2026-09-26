@@ -262,103 +262,11 @@ export function Molstar3D() {
     }
   };
 
-  // Function to fetch molecule price from API
-  const fetchMoleculePrice = async (smiles) => {
-    try {
-      const encodedSmiles = encodeURIComponent(smiles);
-      const response = await fetch(API_CONFIG.buildApiUrl(`/mol-price/search?smiles=${encodedSmiles}&limit=20`), {
-        method: 'GET',
-        headers: {
-          'accept': '*/*'
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        
-        // Handle the actual API response structure
-        if (Array.isArray(data) && data.length > 0) {
-          const molecule = data[0];
-          
-          // Extract price information from the response
-          const priceInfo = {
-            id: molecule.ASINEX_ID || 'N/A',
-            name: molecule.IUPAC_NAME || 'N/A',
-            availableMg: molecule.AVAILABLE_MG || 0,
-            price1mg: molecule.PRICE_1MG || 100,
-            price2mg: molecule.PRICE_2MG || 100,
-            price5mg: molecule.PRICE_5MG || 100,
-            price10mg: molecule.PRICE_10MG || 100
-          };
-          
-          return priceInfo;
-        } else {
-          // Return default pricing when not found
-          return {
-            id: 'Not Found',
-            name: 'N/A',
-            availableMg: 0,
-            price1mg: 100,
-            price2mg: 100,
-            price5mg: 100,
-            price10mg: 100
-          };
-        }
-      } else {
-        console.error('Failed to fetch price for SMILES:', smiles);
-        return {
-          id: 'API Error',
-          name: 'N/A',
-          availableMg: 0,
-          price1mg: 100,
-          price2mg: 100,
-          price5mg: 100,
-          price10mg: 100
-        };
-      }
-    } catch (error) {
-      console.error('Error fetching price for SMILES:', smiles, error);
-      return {
-        id: 'Network Error',
-        name: 'N/A',
-        availableMg: 0,
-        price1mg: 100,
-        price2mg: 100,
-        price5mg: 100,
-        price10mg: 100
-      };
-    }
-  };
-
-  // Price lookups are secondary metadata. Deduplicate them and keep only a few
-  // requests in flight so a full docking result cannot create a request storm.
-  const fetchAllMoleculePrices = async (molecules) => {
-    const smilesList = [...new Set(
-      molecules.map((molecule) => molecule.smiles).filter((smiles) => smiles && smiles !== 'N/A')
-    )];
-    const priceMap = {};
-    const concurrency = 4;
-
-    for (let i = 0; i < smilesList.length; i += concurrency) {
-      if (viewerClearedRef.current) return;
-      const batch = smilesList.slice(i, i + concurrency);
-      const results = await Promise.all(batch.map(async (smiles) => ({
-        smiles,
-        price: await fetchMoleculePrice(smiles),
-      })));
-      results.forEach(({ smiles, price }) => {
-        priceMap[smiles] = price;
-      });
-    }
-
-    if (viewerClearedRef.current) return;
-    setMoleculePrices(priceMap);
-    setSdfData((current) => current.map((molecule) => {
-      const catalogName = priceMap[molecule.smiles]?.name;
-      return catalogName && catalogName !== 'N/A'
-        ? { ...molecule, name: catalogName }
-        : molecule;
-    }));
+  // Docking results do not carry verified compound offers. Keep this hook local
+  // so loading a result never contacts the retired supplier catalog or invents
+  // a price; structure names from the result are preserved.
+  const fetchAllMoleculePrices = async () => {
+    if (!viewerClearedRef.current) setMoleculePrices({});
   };
 
   // Shopping cart functions
@@ -1498,7 +1406,7 @@ export function Molstar3D() {
                                 <Typography variant="small" color="blue-gray" className="font-medium text-xs">
                                   {typeof moleculePrices[molecule.smiles] === 'string' 
                                     ? moleculePrices[molecule.smiles] 
-                                    : 'Loading...'}
+                                    : 'Verified offers unavailable'}
                                 </Typography>
                               )}
                             </div>

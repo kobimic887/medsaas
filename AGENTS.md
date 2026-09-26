@@ -42,9 +42,14 @@ when a path or trap moves.
 - Simulation sources (catalog, stock, macrocycles, open compounds), pricing and
   checkout: read [the search/checkout contract](.agents/skills/pyxis-feature-slice/references/search-and-checkout.md)
   before changing these flows. Stock/macrocycles are not buyable; missing data
-  never falls back to a different source. Catalog checkout re-prices server-side
-  from `GET /api/id/{code}`; changed prices require explicit 409 review. Upstream
-  `/api4/bas` has no runtime callers. Stock search belongs in Simulation.
+  never falls back to a different source. Supplier catalog aliases and molecule
+  checkout refuse locally with `503 CATALOG_RETIRED`; company overrides cannot
+  restore Asinex dependence. Credit-plan checkout remains available. Known
+  Asinex compute URLs are refused without charging; use configured Pyxis services. Stock search belongs in Simulation.
+- Scientific SQL inspection: `services/catalog-sql/README.md`. The additive
+  `pyxis_catalog` schema combines stock views with all RPX/VPX source rows and
+  copied vectors. Never ingest these into the legacy public search tables;
+  source row numbers and search index IDs differ. This does not switch app search.
 - Client routes: `client/src/routes.jsx`. Use `API_CONFIG.buildApiUrl()` for `/api/*`
   and `API_CONFIG.buildUrl()` for top-level routes.
 - Auth state: `client/src/context/auth.jsx`. Session logout interceptor:
@@ -101,7 +106,7 @@ bun run ci                # full gate
 bun run test:staging-demo # demo/staging server contract (fixtures, privacy, refusals)
 bun run test:staging-simulation # staging Simulation: catalog/search/docking/artifacts against fixture upstreams
 bun run test:staging-build # staging client build scoping checks
-bun run test:catalog-pricing # checkout catalog re-pricing + stock refusal + pricing lifecycles
+bun run test:catalog-pricing # supplier retirement, molecule refusal, credit plans + UI
 bun run test:macrocycle-index # macrocycle index contract: RDKit parity, format-1/2, count stream
 bun run test:count-morgan    # count-Morgan support parity vs RDKit + count Tanimoto/Dice math
 ```
