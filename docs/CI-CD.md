@@ -37,8 +37,9 @@ Choose a check that exercises the changed behavior:
 | Broad release/configuration change | `bun run ci`; manual CI also checks Node and compute containers |
 
 `bun run test` is the server suite. `bun run ci` is the full local Bun gate;
-`npm run ci:node` is the Node fallback gate. A passing build or source-text check
-does not establish that a user interaction works; exercise the relevant browser
+`npm run ci:node` is the Node fallback gate. Node route-test aliases explicitly
+set `SERVER_RUNTIME=node` so they do not depend on a local Bun installation.
+A passing build or source-text check does not establish that a user interaction works; exercise the relevant browser
 or runtime path when behavior changes. Reuse existing checks before adding tests.
 
 Server integration tests use an isolated MongoDB test process. The first run may
