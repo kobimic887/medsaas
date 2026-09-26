@@ -3,7 +3,8 @@
 Simulation searches the configured stock dataset through the application API.
 Stock, macrocycle, and open-compound results remain separate sources;
 an unavailable source never falls back to another one. Stock selection passes
-a structure to docking. Stock rows cannot enter checkout.
+a structure to docking. Eligible rows also carry signed Pyxis shop offers; see
+[compound shop](COMPOUND-SHOP.md).
 
 ## API and configuration
 
@@ -62,8 +63,8 @@ Keep these values distinct:
 
 Source quantity fields are dated snapshots, not live availability. The mapper in
 [`stockResults.js`](../client/src/utils/stockResults.js) does not invent chemical
-properties or catalog offers. Any staging pack estimates are informational and
-do not authorize checkout. `/api/stock-offers` returns `503 STOCK_OFFERS_DISABLED`.
+properties or offers. It preserves server-signed offers from the search response;
+the server validates workbook prices and snapshot quantity at checkout. `/api/stock-offers` returns `503 STOCK_OFFERS_DISABLED`.
 
 New or failed searches clear old results and disable stale pagination. The
 separate Deep Similarity page can scope searches through its dataset picker;
@@ -97,4 +98,4 @@ These checks exercise API and UI contracts. Service availability and ranking
 against an installed dataset require a separate runtime check. Deployment and
 private data locations belong in [operator records](OPERATIONS.md).
 
-The [organized SQL catalog](../services/catalog-sql/README.md) also exposes existing stock and its six stored fingerprint columns alongside RPX/VPX. Retired supplier catalog aliases and molecule checkout return `503 CATALOG_RETIRED` locally; credit-pack purchases are independent and remain supported.
+The [organized SQL catalog](../services/catalog-sql/README.md) also exposes existing stock and its six stored fingerprint columns alongside RPX/VPX. Retired supplier catalog aliases and legacy molecule checkout return `503 CATALOG_RETIRED` locally; credit-pack purchases are independent and remain supported.

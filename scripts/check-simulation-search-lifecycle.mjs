@@ -271,8 +271,8 @@ checks.push(
   ['macrocycle status clamps the metric to what the dataset can score', simulation.includes('countMetricsAvailable') && simulation.includes("macrocycleSimilarityMetricRef.current = 'tanimoto'")],
   ['macrocycle result banner reports the method that produced the rows', simulation.includes('macrocycleResultMethodLabel') && simulation.includes('macrocycleMetricLabel')],
   ['macrocycle count copy never claims MOE equivalence', simulation.includes('a Pyxis method, not MOE ctanimoto')],
-  ['macrocycle rows retain source identity and docking handoff without cart controls', simulation.includes('Select structures for docking handoff.') && simulation.includes('WorkbookRowPrices source={mol.macrocycleSource}') && simulation.includes('Real RPX') && simulation.includes('Virtual VPX')],
-  ['staging rows show the approved workbook tier beside each hit', simulation.includes('WorkbookRowPrices source="stock"') && simulation.includes('WorkbookRowPrices source={mol.macrocycleSource}') && simulation.includes('Workbook 1–3 selected tier') && simulation.includes('Availability and checkout prices are unconfirmed.')],
+  ['macrocycle rows retain source identity and docking handoff alongside owned offers', simulation.includes('select structures for docking handoff.') && simulation.includes('CompoundShopPacks offer={mol.shopOffer}') && simulation.includes('Real RPX') && simulation.includes('Virtual VPX')],
+  ['owned rows show server offers and the approved workbook tier', simulation.includes('CompoundShopPacks offer={mol.shopOffer}') && simulation.includes('Workbook 1–3 selected tier') && simulation.includes('Review your order and shipping terms')],
   ['query and results are adjacent columns with a wider query panel', simulation.includes('lg:grid-cols-[minmax(25rem,29rem)_minmax(0,1fr)]') && simulation.includes('aria-labelledby="results-heading"')],
   ['results offer explicit pagination in the two-column layout', simulation.includes('Load more results')],
 );

@@ -27,7 +27,7 @@ import { stockResultsFromPayload, appendUniqueStockRows } from '@/utils/stockRes
 import { cartItemFromCatalogPrice } from '@/utils/stockOffers';
 import { openResultsFromPayload } from '@/utils/openResults';
 import { macrocycleResultsFromPayload, appendUniqueMacrocycleRows } from '@/utils/macrocycleResults';
-import { PRICE_GUIDE_EUR_USD, workbookPacksForRow } from '@/utils/compoundPriceGuide';
+import { addShopPack, readShopCart, writeShopCart, shopMoney } from '@/utils/compoundShop';
 import { MoleculePreview } from '@/components/MoleculePreview';
 
 const MACROCYCLE_SOURCES = Object.freeze({
@@ -83,25 +83,29 @@ function CompoundQueryField({ value, onChange, catalog }) {
   );
 }
 
-function WorkbookRowPrices({ source, code }) {
-  const pricing = workbookPacksForRow(source, code);
-  if (!pricing) return <span className="text-blue-gray-500">No workbook tier</span>;
+function CompoundShopPacks({ offer, onAdded }) {
+  const [amountMg, setAmountMg] = useState('');
+  const [error, setError] = useState('');
+  const packs = offer?.packs || [];
+  const selected = packs.find((pack) => String(pack.mg) === amountMg) || packs[0];
+  if (!offer?.token || !selected) return <span className="text-xs text-blue-gray-500">No purchase offer available</span>;
   return (
-    <div className="min-w-[11rem] text-xs tabular-nums">
-      <span className="sr-only">{pricing.category} workbook prices in EUR with estimated USD equivalents</span>
-      <div className="flex flex-wrap gap-x-3 gap-y-1">
-        {pricing.packs.slice(0, 3).map(({ mg, eur, usd, sourceCell }) => (
-          <span key={mg} className="inline-flex flex-col" title={`Pyxis-e-shop_PRICE_LIST.xlsx · ${sourceCell} · 1–3 compounds: €${eur}; USD = EUR × ${PRICE_GUIDE_EUR_USD.rate}`}><span>{mg} mg <strong>≈{usd} USD</strong></span><span className="text-blue-gray-600 dark:text-slate-300">€{eur} EUR · workbook</span></span>
-        ))}
-      </div>
-      {pricing.packs.length > 3 && (
-        <details className="mt-1">
-          <summary className="cursor-pointer text-brand-700 dark:text-brand-300">More pack sizes</summary>
-          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
-            {pricing.packs.slice(3).map(({ mg, eur, usd, sourceCell }) => <span key={mg} className="inline-flex flex-col" title={`Pyxis-e-shop_PRICE_LIST.xlsx · ${sourceCell} · 1–3 compounds: €${eur}; USD = EUR × ${PRICE_GUIDE_EUR_USD.rate}`}><span>{mg} mg <strong>≈{usd} USD</strong></span><span className="text-blue-gray-600 dark:text-slate-300">€{eur} EUR · workbook</span></span>)}
-          </div>
-        </details>
-      )}
+    <div className="min-w-[13rem] space-y-2 text-xs tabular-nums">
+      <label className="flex flex-col gap-1">Pack size for {offer.code}
+        <select aria-label={`Pack size for ${offer.code}`} value={selected.mg} onChange={(event) => { setAmountMg(event.target.value); setError(''); }} className="rounded border border-slate-400 bg-white p-2 text-slate-900 dark:bg-slate-900 dark:text-white">
+          {packs.map((pack) => <option key={pack.mg} value={pack.mg}>{pack.mg} mg · {shopMoney(pack.unitAmountCents)} USD</option>)}
+        </select>
+      </label>
+      <div>€{selected.eur} EUR · <strong>{shopMoney(selected.unitAmountCents)} USD</strong></div>
+      <button type="button" className="rounded-lg bg-teal-700 px-3 py-2 font-semibold text-white hover:bg-teal-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-500" onClick={() => {
+        try {
+          writeShopCart(localStorage, addShopPack(readShopCart(localStorage), offer, selected.mg));
+          window.dispatchEvent(new Event('cartUpdated'));
+          setError('');
+          onAdded(`Added ${selected.mg} mg of ${offer.code} to cart`);
+        } catch (error) { setError(error.message); }
+      }}>Add to cart</button>
+      {error && <p role="alert" className="max-w-xs text-red-700 dark:text-red-300">{error}</p>}
     </div>
   );
 }
@@ -406,9 +410,8 @@ export function Simulation() {
     stockOffsetRef.current = stockOffset;
   }, [stockOffset]);
 
-  // No automatic pricing lookups on this page. Catalog rows display the pack
-  // prices already on their browse/search response; stock workbook estimates
-  // are display-only and cannot be added to the basket.
+  // Owned search responses carry authenticated offers; there are no per-row
+  // supplier pricing lookups. The server revalidates every pack at checkout.
   // (The former per-scroll pack-quote batches re-rendered the whole table
   // mid-scroll as each slow upstream response landed — the reported slowdown.)
 
@@ -424,35 +427,9 @@ export function Simulation() {
     if (clipboardTimerRef.current) window.clearTimeout(clipboardTimerRef.current);
   }, []);
 
-  // Check for payment success/cancel from URL params
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const paymentStatus = urlParams.get('payment');
-    
-    if (paymentStatus === 'success') {
-      setMessage('Payment successful! Your order has been received. We will contact you shortly to process your order.');
-      setMessageType('success');
-      // Clear the cart after successful payment
-      localStorage.removeItem('moleculeCart');
-      setCart([]);
-      window.dispatchEvent(new Event('cartUpdated'));
-      
-      // Clear URL parameters
-      window.history.replaceState({}, document.title, window.location.pathname);
-      
-      // Scroll to top to show message
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } else if (paymentStatus === 'canceled') {
-      setMessage('Payment was canceled. Your cart items are still saved.');
-      setMessageType('error');
-      
-      // Clear URL parameters
-      window.history.replaceState({}, document.title, window.location.pathname);
-      
-      // Scroll to top to show message
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  }, []);
+  // Owned-shop returns are verified on Compound orders. URL query parameters
+  // never authorize clearing a basket or reporting a successful payment.
+
 
   // Function to fetch molecules from /asinex/all/x_10
   const fetchAllMolecules = async (page = 0, append = false, requestedPageSize = pageSizeRef.current) => {
@@ -2886,7 +2863,7 @@ export function Simulation() {
         </div>
         {['stock', 'both', 'real', 'virtual'].includes(searchSource) && topMolecules.length > 0 && (
           <p className="mb-3 text-xs text-blue-gray-600 dark:text-slate-300">
-            Workbook 1–3 selected tier: original EUR prices are shown beside each USD estimate. USD = EUR × {PRICE_GUIDE_EUR_USD.rate} (<a className="underline" href={PRICE_GUIDE_EUR_USD.sourceUrl} target="_blank" rel="noreferrer">ECB, {PRICE_GUIDE_EUR_USD.date}</a>), rounded to cents. Availability and checkout prices are unconfirmed.
+            Workbook 1–3 selected tier: choose packs for up to 3 distinct compounds per order. Original EUR and checkout USD prices are shown together. Review your order and shipping terms in the cart before payment.
           </p>
         )}
         <div id="results" className="w-full bg-slate-100 dark:bg-slate-900">
@@ -2907,7 +2884,7 @@ export function Simulation() {
             <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
                 <div className="border-b border-teal-100 bg-teal-50/60 px-4 py-3 text-xs text-blue-gray-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
-                  {MACROCYCLE_SOURCES[searchSource].label} · globally ranked by {macrocycleResultMethodLabel} over Morgan (ECFP4). RPX and VPX rows retain their source; amount and lead time are dated export fields. Pack amounts are workbook estimates. Select structures for docking handoff.
+                  {MACROCYCLE_SOURCES[searchSource].label} · globally ranked by {macrocycleResultMethodLabel} over Morgan (ECFP4). RPX and VPX rows retain their source; amount and lead time are dated export fields. Choose a pack to purchase, or select structures for docking handoff.
                 </div>
                 <table className="w-full table-fixed text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-white dark:bg-slate-900">
@@ -2934,7 +2911,7 @@ export function Simulation() {
                             <div className="mt-1 font-semibold text-teal-700 dark:text-teal-300">{mol.macrocycleSource === 'real' ? 'Real RPX' : 'Virtual VPX'}</div>
                             <div className="mt-1 text-blue-gray-500" title="Dated supplier export; amount and lead time are unverified now">{exportDetails || 'No export amount or lead time'} · {mol.macrocycleSource === 'real' ? 'stock unverified' : 'virtual'}</div>
                           </td>
-                          <td className="p-2"><WorkbookRowPrices source={mol.macrocycleSource} code={mol.macrocycleCode} /></td>
+                          <td className="p-2"><CompoundShopPacks offer={mol.shopOffer} onAdded={showMessage} /></td>
                           <td className="min-w-0 p-2 font-mono text-xs">
                             <button type="button" className="block w-full truncate text-left underline decoration-dotted" title={`Copy ${mol.SMILES_STRING}`} onMouseEnter={(e) => handleMouseEnter(mol.SMILES_STRING, e, "SMILES")} onMouseLeave={handleMouseLeave} onFocus={(e) => handleMouseEnter(mol.SMILES_STRING, e, "SMILES")} onBlur={handleMouseLeave} onClick={async () => { setSearchCode(mol.SMILES_STRING); try { await copyToClipboard(mol.SMILES_STRING); showClipboardConfirmation(); } catch { showMessage('SMILES could not be copied.', 'error'); } }}>
                               {mol.SMILES_STRING}
@@ -2951,7 +2928,7 @@ export function Simulation() {
             <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
                 <div className="border-b border-blue-gray-100 bg-blue-gray-50/60 px-4 py-2 text-xs text-blue-gray-600 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-400">
-                  Source: stock compounds, ranked by {snapFpLabel} {snapMetricLabel} similarity. µmol / mg are dated snapshot quantities, not live availability. Pack amounts are workbook estimates; selection is for docking handoff.
+                  Source: stock compounds, ranked by {snapFpLabel} {snapMetricLabel} similarity. µmol / mg are dated snapshot quantities, not live availability. Choose a pack to purchase; row selection is for docking handoff.
                 </div>
                 <table className="w-full text-left">
                   <thead className="sticky top-0 z-10 bg-white">
@@ -3008,7 +2985,7 @@ export function Simulation() {
                           >
                             {mol.stockCode}
                           </td>
-                          <td className="p-2"><WorkbookRowPrices source="stock" code={mol.stockCode} /></td>
+                          <td className="p-2"><CompoundShopPacks offer={mol.shopOffer} onAdded={showMessage} /></td>
                           <td className="p-0 font-mono text-xs">
                             <button
                               type="button"

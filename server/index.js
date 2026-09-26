@@ -96,6 +96,9 @@ import { ensureUserTenantOnLogin } from './utils/ensureUserTenant.js';
 import { safeUpstreamUrl } from './utils/upstreamRetry.js';
 import scientificServicesRouter from './routes/scientificServices.js';
 import { createStagingDemoRouter } from './routes/stagingDemo.js';
+import { createCompoundShopRouter } from './routes/compoundShop.js';
+import { handleCompoundShopSession } from './utils/compoundShopOrders.js';
+import { withCompoundShopOffers } from './utils/compoundShopSearch.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -247,7 +250,13 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
   }
 
   try {
-    if (event.type === 'checkout.session.completed') {
+    if (['checkout.session.completed', 'checkout.session.async_payment_succeeded', 'checkout.session.async_payment_failed', 'checkout.session.expired'].includes(event.type)
+      && event.data.object.metadata?.purchaseType === 'pyxis_compounds') {
+      await handleCompoundShopSession(event.data.object, {
+        orders: client.db().collection('compound_orders'),
+        eventType: event.type,
+      });
+    } else if (event.type === 'checkout.session.completed') {
       await fulfillCheckoutSession(event.data.object);
     }
     res.json({ received: true });
@@ -1180,6 +1189,7 @@ async function initializeDatabase() {
       await auditLogsCollection.createIndex({ actorUsername: 1, timestamp: -1 });
       await billingEventsCollection.createIndex({ stripeSessionId: 1 }, { unique: true, sparse: true });
       await billingEventsCollection.createIndex({ username: 1, createdAt: -1 });
+      await client.db().collection('compound_orders').createIndex({ username: 1, companyId: 1, createdAt: -1 });
       console.log('✓ Database indexes created/verified');
     } catch (indexErr) {
       console.log('Note: Database indexes already exist or creation failed:', indexErr.message);
@@ -1998,6 +2008,17 @@ app.post('/create-checkout-session-onetime', checkoutRateLimit, ensureMongoConne
     res.status(500).json({ error: 'Unable to start checkout. Please try again.' });
   }
 });
+
+// Owned-catalog checkout uses signed search rows and the shared workbook price
+// book. Keep it separate from retired supplier aliases and credit-pack billing.
+app.use('/api/compound-shop/checkout', checkoutRateLimit);
+app.use('/api/compound-shop', ensureMongoConnected, authenticateToken, requireActiveUser,
+  createCompoundShopRouter({
+    stripe,
+    getOrders: () => client.db().collection('compound_orders'),
+    secret: JWT_SECRET,
+    getAppUrl: getPublicAppUrl,
+  }));
 
 // Credit-plan checkout is restricted to company admins. Credits are granted only
 // by the verified Stripe webhook. Supplier molecule checkout is retired. See docs/STRIPE_LIVE_CUTOVER.md.
@@ -4490,7 +4511,7 @@ app.get('/api/stock-search/similarity', ensureMongoConnected, authenticateToken,
         });
       }
       return res.json({
-        ...data,
+        ...withCompoundShopOffers(data, 'stock', { secret: JWT_SECRET }),
         method: {
           fingerprint_type: params.fingerprintType,
           similarity_metric: params.similarityMetric,
@@ -4573,9 +4594,10 @@ app.get('/api/macrocycles/similarity', ensureMongoConnected, authenticateToken, 
         ...(status === 502 ? { details: `Upstream HTTP ${response.status}` } : {}),
       });
     }
-    return res.json(params.source === 'both'
+    const payload = params.source === 'both'
       ? tagCombinedMacrocycleResults(data, datasets, params)
-      : tagMacrocycleResults(data, params.source, datasets[0], params));
+      : tagMacrocycleResults(data, params.source, datasets[0], params);
+    return res.json(withCompoundShopOffers(payload, params.source, { secret: JWT_SECRET }));
   } catch (error) {
     console.error(`Macrocycle search proxy error url=${safeUpstreamUrl(upstreamUrl)}:`, error.message || error);
     return res.status(502).json({ error: 'Macrocycle search is temporarily unavailable' });

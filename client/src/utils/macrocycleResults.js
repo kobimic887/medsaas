@@ -15,6 +15,7 @@ export function macrocycleResultsFromPayload(payload, source) {
       macrocycleCode: code,
       macrocycleRowId: item.molecule_id,
       macrocycleSource: rowSource,
+      shopOffer: item.shopOffer || null,
       SMILES_STRING: smiles,
       SIMILARITY: typeof item.similarity === 'number' && Number.isFinite(item.similarity) ? item.similarity : null,
       snapshotMg: String(metadata.web_mg || metadata.CURRENT_TOT_NETTO_MG || '').trim(),

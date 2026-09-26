@@ -63,6 +63,7 @@ export function stockResultFromItem(item) {
     isStockRow: true,
     stockRowId: rowId ?? null, // engine database row id (not a stock code)
     stockCode: stockCode || 'N/A',
+    shopOffer: item.shopOffer || null,
     SMILES_STRING: smiles,
     SIMILARITY: typeof item.similarity === 'number' && Number.isFinite(item.similarity) ? item.similarity : null,
     // Dated snapshot quantities from the import (umol / mg). Shown as

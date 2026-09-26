@@ -72,7 +72,9 @@
     "test:staging-demo": "bun --cwd=server run test:staging-demo",
     "test:staging-simulation": "bun --cwd=server run test:staging-simulation",
     "test:catalog-ui": "bun scripts/check-catalog-pricing-lifecycle.mjs && bun scripts/check-stock-offers-lifecycle.mjs",
-    "test:catalog-ui:node": "node scripts/check-catalog-pricing-lifecycle.mjs && node scripts/check-stock-offers-lifecycle.mjs"
+    "test:catalog-ui:node": "node scripts/check-catalog-pricing-lifecycle.mjs && node scripts/check-stock-offers-lifecycle.mjs",
+    "test:compound-shop": "bun --cwd=server run test:compound-shop && bun run test:catalog-ui",
+    "test:compound-shop:node": "npm --prefix server run test:compound-shop:node && npm run test:catalog-ui:node"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.0",

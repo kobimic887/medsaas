@@ -11,6 +11,7 @@
       "server/**/*.{js,mjs,jsx}",
       "client/src/**/*.{js,mjs,jsx}",
       "scripts/**/*.{js,mjs}",
+      "shared/**/*.{js,mjs}",
       "!**/dist",
       "!**/node_modules"
     ]

@@ -40,8 +40,9 @@ Staging offers Pyxis stock, combined real/virtual macrocycles, and open compound
 Macrocycle filters can search both indexes or one source; matching structures keep
 their source identity. Switching sources clears previous results.
 
-Stock and macrocycle packs show workbook estimates, not verified supplier offers.
-They cannot be purchased through catalog checkout. See the
+Eligible stock and macrocycle packs use signed Pyxis offers and real Stripe
+checkout; listed USD prices include shipping. Staging payments are not a sandbox.
+See [compound shop](COMPOUND-SHOP.md) and the
 [stock](DATA-STOCK-COMPOUNDS.md), [macrocycle](DATA-MACROCYCLES.md), and
 [open-compound](DATA-OPEN-COMPOUNDS.md) contracts. Optional AI search requires
 explicit provider configuration; a failed AI request must remain visible, with

@@ -56,26 +56,36 @@ substitute providers. A retired provider refusal must not consume credits.
 
 ## Offers and checkout
 
-Source quantities/lead times are dated snapshots, not verified sale offers.
-The workbook uses only the 1–3 selected-compound euro tier; its approximate USD
-pack estimates are informational until a server-owned offer/FX policy is agreed.
-Show the original EUR price beside USD (rounded to cents), with its workbook cell
-and dated ECB conversion rate. Compact and spaced identifiers use the same prefix
-category; never invent RPX/VPX pack sizes where the workbook says n/a.
-Neither stock, RPX, VPX nor ChEMBL can enter an authorized molecule checkout.
-`POST /api/stock-offers` stays `503 STOCK_OFFERS_DISABLED`, without upstream calls.
+Stock, RPX and VPX search responses mint signed 24-hour offers from trusted engine
+rows. The browser cannot mint offers or supply authoritative prices. ChEMBL stays
+discovery-only. `shared/compoundPriceBook.js` owns the workbook's 1–3 tier and fixed
+EUR→USD conversion; at most three distinct source/row identities per order. Known
+stock/real snapshot mg bounds pack sizes and aggregate basket quantity. Virtual
+compounds are made to order. Missing pack prices or quantities never invent stock.
 
-Molecule checkout (including old baskets and the legacy description/amount
-shape) returns `503 CATALOG_RETIRED` before contacting a supplier or Stripe.
-The independent known-plan branch stays available and uses
-`buildPlanCheckoutSessionParams` for one-time credit purchases. Credits are still
-fulfilled only through the verified Stripe webhook. Preserve plans, balances,
-orders and historical billing records; retirement is not a billing rewrite.
+`/api/compound-shop` requires Mongo, JWT and an active user. `/quote` verifies offer
+signatures and calculates integer cents. `/checkout` repeats validation and requires
+an explicit matching total/version; mismatch returns409 for review. Stripe uses
+immediate card capture, listed USD prices include shipping, and checkout collects
+billing/shipping addresses. The persisted order and Stripe idempotency key prevent
+retries from creating duplicate sessions. Preserve exact request snapshots.
 
-Verify route retirement/zero supplier calls and unchanged credit-plan checkout
-with `test:catalog-pricing`; UI refusal/persistence with `test:catalog-ui`; source
-state transitions with `test:simulation-search`. The browser must keep saved
-baskets on an unavailable response and must not redirect to payment.
+Verified Stripe webhooks and server-side Stripe retrieval can mark orders paid;
+URL parameters cannot. Compound payments never grant simulation credits. Order
+history is scoped to username and company. Paid does not mean fulfilled. Clear only
+the exact purchased cart entries after verified payment; cancellation/failure keeps
+the basket. See `docs/COMPOUND-SHOP.md` for policy, tests and fulfillment limitations.
+
+Legacy molecule checkout (including old baskets and description/amount shape)
+returns `503 CATALOG_RETIRED` locally; `/api/stock-offers` remains disabled. The
+independent known-plan branch uses `buildPlanCheckoutSessionParams` for one-time
+credit purchases, fulfilled only through its existing verified Stripe webhook.
+Never restore supplier repricing. Ship the shared price module with the server.
+
+Run `test:compound-shop` for offers, real HTTP checkout, verified webhooks and cart
+state; `test:catalog-pricing` for retired paths/zero supplier calls and unchanged
+credit plans; `test:simulation-search` for source transitions. Exercise the browser
+search → pack → cart → review → checkout → order path without a real test charge.
 
 ## SQL inspection
 

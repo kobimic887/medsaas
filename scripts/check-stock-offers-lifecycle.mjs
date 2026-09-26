@@ -14,10 +14,10 @@ console.log('Owned collection reference-pricing lifecycle:\n');
 const stockTable = simulation.match(/searchSource === "stock" \? \(([\s\S]*?)\) : searchSource === "open" \? \(/)?.[1] || '';
 const macroTable = simulation.match(/MACROCYCLE_SOURCES\[searchSource\] \? \(([\s\S]*?)\) : searchSource === "stock" \? \(/)?.[1] || '';
 check('source picker and default contain no supplier catalog', simulation.includes('useState("stock")') && !simulation.includes("{ value: 'asinex', title:"));
-check('stock estimates have no purchase control', stockTable.includes('<WorkbookRowPrices source="stock"') && !stockTable.includes('addToCart('));
-check('macrocycle estimates retain each row source and have no purchase control', macroTable.includes('WorkbookRowPrices source={mol.macrocycleSource}') && !macroTable.includes('addToCart('));
+check('stock rows use their server-owned offer', stockTable.includes('<CompoundShopPacks offer={mol.shopOffer}'));
+check('macrocycle rows use their server-owned offer', macroTable.includes('<CompoundShopPacks offer={mol.shopOffer}'));
 check('page never requests stock offers', !simulation.includes('/stock-offers'));
-check('estimates disclose tier, currency conversion and unavailable checkout prices', simulation.includes('Workbook 1–3 selected tier') && simulation.includes('Availability and checkout prices are unconfirmed.'));
+check('shop discloses approved tier and review step', simulation.includes('Workbook 1–3 selected tier') && simulation.includes('Review your order and shipping terms'));
 // Independently transcribed from Sheet1, approved 1–3 tier only.
 for (const [source, code, category, column, euros, firstUsd] of [
   ['stock', 'BAS 123', 'Other codes', 'C', [170, 194, 218, 242, 302, 350, 434, 584], '$193.24'],

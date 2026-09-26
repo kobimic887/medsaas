@@ -2,8 +2,9 @@
 
 Simulation's Macrocycles collection combines real and virtual datasets, with
 All, Real, and Virtual filters. The datasets remain distinct from stock
-and ChEMBL sources. Rows support docking handoff, not checkout.
-Source quantities and lead times are dated metadata, not current offers.
+and ChEMBL sources. Rows support docking handoff and signed Pyxis shop offers.
+Source quantities and lead times remain dated snapshots; virtual packs are made
+to order. See [compound shop](COMPOUND-SHOP.md).
 
 ## API contract
 

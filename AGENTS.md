@@ -41,13 +41,17 @@ when a path or trap moves.
   `server/routes/scientificServices.js`.
 - Simulation sources (catalog, stock, macrocycles, open compounds), pricing and
   checkout: read [the search/checkout contract](.agents/skills/pyxis-feature-slice/references/search-and-checkout.md)
-  before changing these flows. Stock/macrocycles are not buyable; missing data
-  never falls back to a different source. Supplier catalog aliases and molecule
+  before changing these flows. Stock/RPX/VPX purchase through signed Pyxis offers
+  and `/api/compound-shop`; ChEMBL stays discovery-only. Missing data never falls
+  back to another source. Supplier catalog aliases and legacy molecule
   checkout refuse locally with `503 CATALOG_RETIRED`; company overrides cannot
   restore Asinex dependence. Credit-plan checkout remains available. Known
   Asinex compute URLs are refused without charging; use configured Pyxis services. Stock search belongs in Simulation.
   Structure previews depict exact SMILES with browser RDKit; workbook price displays
-  preserve the original EUR alongside dated USD conversions (1–3 tier only).
+  preserve original EUR alongside fixed USD prices (1–3 tier only, at most three
+  distinct compounds per order). Shipping is included; Stripe charges immediately.
+  Verified compound payments save `compound_orders`, never grant credits. Include
+  `shared/compoundPriceBook.js` in server releases. See `docs/COMPOUND-SHOP.md`.
 - Scientific SQL inspection: `services/catalog-sql/README.md`. The additive
   `pyxis_catalog` schema combines stock views with all RPX/VPX source rows and
   copied vectors. Never ingest these into the legacy public search tables;
@@ -111,6 +115,7 @@ bun run ci                # full gate
 bun run test:staging-demo # demo/staging server contract (fixtures, privacy, refusals)
 bun run test:staging-simulation # staging Simulation: catalog/search/docking/artifacts against fixture upstreams
 bun run test:staging-build # staging client build scoping checks
+bun run test:compound-shop   # signed offers, payment retries, orders and cart lifecycle
 bun run test:catalog-pricing # supplier retirement, molecule refusal, credit plans + UI
 bun run test:macrocycle-index # macrocycle index contract: RDKit parity, format-1/2, count stream
 bun run test:count-morgan    # count-Morgan support parity vs RDKit + count Tanimoto/Dice math

@@ -82,4 +82,9 @@ A green `build` alone does not prove a dashboard flow.
 
 Simulation search regression: execute rejected-query handlers in `test:simulation-search`; prove old rows clear and catalog browsing cannot run in stock/open mode or during a pending search. Open compounds: `bun run test:open-compounds`.
 
-Molecule checkout is unavailable until Pyxis owns authoritative offers. All old catalog aliases and molecule basket checkout refuse locally with `503 CATALOG_RETIRED`; never restore supplier repricing or invent missing prices. Known-plan credit checkout still redirects to the server-created Stripe URL. Verify actual route zero-supplier-call behavior and preserved plan checkout with `test:catalog-pricing`, and unchanged baskets/no redirect on503 with `test:catalog-ui`.
+Owned stock/RPX/VPX checkout uses signed offers, the shared workbook price book and
+`/api/compound-shop`. Use `test:compound-shop` for pricing, idempotency, verified
+payment/order ownership and cart persistence. Legacy catalog checkout remains
+`503 CATALOG_RETIRED`; never restore supplier repricing. Credit-plan checkout and
+webhook grants remain independent (`test:catalog-pricing`). Shipping is included
+and payment captured immediately. See the linked search/checkout contract.

@@ -27,6 +27,7 @@ const DashboardHome = lazy(() => import("@/pages/dashboard/dashboardhome"));
 const Notifications = lazy(() => import("@/pages/dashboard/notifications"));
 const ControlPanel = lazy(() => import("@/pages/dashboard/controlpanel"));
 const CompanyAdmin = lazy(() => import("@/pages/dashboard/company-admin"));
+const CompoundOrders = lazy(() => import("@/pages/dashboard/compound-orders"));
 const Simulation = lazy(() => import("@/pages/dashboard/simulation"));
 const MoleculeViewer = lazy(() => import("@/pages/dashboard/moleculeviewer"));
 const Molstar3D = lazy(() => import("@/pages/dashboard/molstar3d"));
@@ -194,6 +195,12 @@ export const routes = [
         name: "literature",
         path: "/literature",
         element: <Literature />,
+      },
+      {
+        icon: <CreditCardIcon {...icon} />,
+        name: "Compound orders",
+        path: "/compound-orders",
+        element: <CompoundOrders />,
       },
       {
         icon: <CreditCardIcon {...icon} />,

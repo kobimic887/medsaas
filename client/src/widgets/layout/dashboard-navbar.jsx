@@ -30,12 +30,8 @@ import {
 import { useThemeMode } from "@/context/theme";
 import { useState, useEffect, useRef } from "react";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
-import { withAppBase } from "@/utils/appEnv";
-import {
-  cartItemsFromPriceReview,
-  cartTotalFromItems,
-  persistMoleculeCart,
-} from "@/utils/moleculeCart";
+import { withAppBase, IS_STAGING_BUILD } from "@/utils/appEnv";
+import { readShopCart, writeShopCart, shopCartTotal, shopMoney, isOwnedCartItem, shopRequestItems, basketSignature, checkoutAttempt } from "@/utils/compoundShop";
 
 const NAVBAR_VALIDATE_TIMEOUT_MS = 15_000;
 const CART_FETCH_TIMEOUT_MS = 15_000;
@@ -51,6 +47,7 @@ const PAGE_DESTINATIONS = [
   { label: "Deep Similarity", path: "/dashboard/deep-similarity" },
   { label: "Literature", path: "/dashboard/literature" },
   { label: "Notifications", path: "/dashboard/notifications" },
+  { label: "Compound orders", path: "/dashboard/compound-orders" },
   { label: "Plans & Credits", path: "/dashboard/paid-plans" },
 ];
 
@@ -105,6 +102,9 @@ export function DashboardNavbar() {
   const [cartItems, setCartItems] = useState([]);
   const [cartTotal, setCartTotal] = useState(0);
   const [cartAction, setCartAction] = useState(null);
+  const [shopConfig, setShopConfig] = useState(null);
+  const [reviewedQuote, setReviewedQuote] = useState(null);
+  const reviewedQuoteRef = useRef(null);
   const [actionMessage, setActionMessage] = useState("");
   const [actionMessageType, setActionMessageType] = useState("success");
   const actionMessageTimerRef = useRef(null);
@@ -136,7 +136,7 @@ export function DashboardNavbar() {
     
     // Set up storage event listener to update cart when changed in other tabs/components
     const handleStorageChange = (e) => {
-      if (e.key === 'moleculeCart') {
+      if (e.key === (IS_STAGING_BUILD ? 'pxstg__moleculeCart' : 'moleculeCart')) {
         loadCartFromStorage();
       }
     };
@@ -212,74 +212,29 @@ export function DashboardNavbar() {
   };
 
   const loadCartFromStorage = () => {
-    try {
-      const cart = localStorage.getItem('moleculeCart');
-      if (cart) {
-        const cartData = JSON.parse(cart);
-        
-        // Handle different cart data structures
-        if (Array.isArray(cartData)) {
-          // Simple array format from simulation page
-          setCartItems(cartData);
-          const total = cartData.reduce((sum, item) => sum + (item.totalPrice || item.price || 0), 0);
-          setCartTotal(total);
-        } else if (cartData.items && Array.isArray(cartData.items)) {
-          // Object format with items and total
-          setCartItems(cartData.items);
-          setCartTotal(cartData.total || 0);
-        } else {
-          // Unknown format, reset cart
-          setCartItems([]);
-          setCartTotal(0);
-        }
-      } else {
-        setCartItems([]);
-        setCartTotal(0);
-      }
-    } catch (error) {
-      console.error('Error loading cart from storage:', error);
-      setCartItems([]);
-      setCartTotal(0);
-    }
+    const items = readShopCart(localStorage);
+    setCartItems(items);
+    setCartTotal(shopCartTotal(items) / 100);
+    reviewedQuoteRef.current = null;
+    setReviewedQuote(null);
   };
 
-  const removeFromCart = (index) => {
-    try {
-      const cart = localStorage.getItem('moleculeCart');
-      if (cart) {
-        const cartData = JSON.parse(cart);
-        
-        let updatedItems;
-        if (Array.isArray(cartData)) {
-          // Simple array format
-          updatedItems = [...cartData];
-          updatedItems.splice(index, 1);
-        } else if (cartData.items && Array.isArray(cartData.items)) {
-          // Object format with items
-          updatedItems = [...cartData.items];
-          updatedItems.splice(index, 1);
-        } else {
-          return; // Unknown format
-        }
-        
-        const newTotal = updatedItems.reduce((sum, item) => sum + (item.totalPrice || item.price || 0), 0);
-        
-        // Save in object format for consistency
-        const newCartData = {
-          items: updatedItems,
-          total: newTotal
-        };
-        
-        localStorage.setItem('moleculeCart', JSON.stringify(newCartData));
-        loadCartFromStorage();
-        
-        // Dispatch a custom event to notify other components
-        window.dispatchEvent(new Event('cartUpdated'));
-      }
-    } catch (error) {
-      console.error('Error removing item from cart:', error);
-    }
+  const updateCart = (items) => {
+    writeShopCart(localStorage, items);
+    window.dispatchEvent(new Event('cartUpdated'));
   };
+  const removeFromCart = (index) => updateCart(readShopCart(localStorage).filter((_, itemIndex) => itemIndex !== index));
+  const updateQuantity = (index, quantity) => {
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10) return;
+    updateCart(readShopCart(localStorage).map((item, itemIndex) => itemIndex === index ? { ...item, quantity } : item));
+  };
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(API_CONFIG.buildApiUrl('/compound-shop/config'), { signal: controller.signal, headers: { Authorization: `Bearer ${getAuthToken()}` } })
+      .then(async (response) => { if (response.ok) setShopConfig(await response.json()); })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
 
   const handleSendEnquiry = async () => {
     cartRequestControllerRef.current?.abort();
@@ -318,8 +273,8 @@ export function DashboardNavbar() {
       // Format cart items for email body
       const cartItemsText = cartData.items.map((item, index) => `
 ${index + 1}. SMILES: ${item.smiles || 'N/A'}
-   Amount: ${item.amount || 'N/A'}mg
-   Price: $${(item.totalPrice || item.price || 0).toFixed(2)}
+   Pack: ${item.amountMg || item.amount || 'N/A'}mg × ${item.quantity || 1}
+   Price: ${isOwnedCartItem(item) ? shopMoney(item.unitAmountCents * item.quantity) : 'Unavailable legacy item'}
    ${item.name ? `Name: ${item.name}` : ''}
       `).join('\n');
 
@@ -334,7 +289,7 @@ Customer Information:
 Cart Details:
 ${cartItemsText}
 
-TOTAL AMOUNT: ${cartData.items.reduce((sum, item) => sum + (item.amount || 0), 0)}mg
+TOTAL AMOUNT: ${cartData.items.reduce((sum, item) => sum + (item.amountMg || item.amount || 0) * (item.quantity || 1), 0)}mg
 TOTAL PRICE: $${cartData.total.toFixed(2)}
 
 Timestamp: ${new Date(cartData.timestamp).toLocaleString()}
@@ -390,109 +345,66 @@ Please contact the customer at ${userEmail} to process this order.
   };
 
   const handleCheckout = async () => {
-    let controller = null;
-    let timedOut = false;
+    let controller;
     try {
-      // Hosted Checkout uses the server-created URL; no browser Stripe key is
-      // needed. Let the authenticated server validate pricing/configuration.
-
-      if (cartItems.length === 0) {
-        showActionMessage('Your cart is empty.', 'error');
-        return;
-      }
-
-      cartRequestControllerRef.current?.abort();
-      window.clearTimeout(cartTimeoutRef.current);
+      const current = readShopCart(localStorage);
+      const items = shopRequestItems(current);
+      const signature = basketSignature(current);
+      const reviewed = reviewedQuoteRef.current;
+      const continuing = reviewed?.signature === signature;
       controller = new AbortController();
+      cartRequestControllerRef.current?.abort();
       cartRequestControllerRef.current = controller;
-      timedOut = false;
-      cartTimeoutRef.current = window.setTimeout(() => {
-        timedOut = true;
-        controller.abort();
-      }, CART_FETCH_TIMEOUT_MS);
-      setCartAction("checkout");
-
-      const token = getAuthToken();
-      
-      // Create checkout session
-      const response = await fetch(API_CONFIG.buildUrl('/create-checkout-session-onetime'), {
-        method: 'POST',
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({
-          cartItems,
-        }),
+      cartTimeoutRef.current = window.setTimeout(() => controller.abort(), CART_FETCH_TIMEOUT_MS);
+      setCartAction('checkout');
+      const response = await fetch(API_CONFIG.buildApiUrl(continuing ? '/compound-shop/checkout' : '/compound-shop/quote'), {
+        method: 'POST', signal: controller.signal,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAuthToken()}` },
+        body: JSON.stringify(continuing ? {
+          items, expectedTotalCents: reviewed.quote.totalCents, priceBookVersion: reviewed.quote.priceBookVersion,
+          idempotencyKey: checkoutAttempt(localStorage, signature, () => crypto.randomUUID()),
+        } : { items }),
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        if (response.status === 409 && errorData.code === 'MOLECULE_PRICES_CHANGED') {
-          // Supplier prices moved since the basket was reviewed: adopt the
-          // re-priced rows and stop — checkout only continues through another
-          // deliberate button click, which re-sends the refreshed prices.
-          const reviewed = cartItemsFromPriceReview(errorData);
-          if (reviewed) {
-            persistMoleculeCart(window.localStorage, reviewed.items, reviewed.total);
-            loadCartFromStorage();
-            window.dispatchEvent(new Event('cartUpdated'));
-          }
-          const reviewMessage = errorData.error
-            || 'Supplier prices have changed. Please review your basket.';
-          const totalLabel = reviewed && Number.isFinite(reviewed.total)
-            ? ` New total: $${reviewed.total.toFixed(2)}.`
-            : '';
-          showActionMessage(`${reviewMessage}${totalLabel}`, 'warning', 0);
-          return;
-        }
-        if (errorData.code === 'MOLECULE_STOCK_ITEMS_UNSUPPORTED') {
-          // Owner 2026-09-13: stock compounds are not purchasable, and the
-          // server refuses the whole basket while one is present. Drop the
-          // offending rows (the server echoes their cart-order indexes), keep
-          // the rest, and require a fresh checkout click.
-          const badIndexes = new Set(
-            (Array.isArray(errorData.unsupportedItems) ? errorData.unsupportedItems : [])
-              .map((entry) => Number(entry?.index))
-              .filter((i) => Number.isInteger(i) && i >= 0 && i < cartItems.length),
-          );
-          const surviving = cartItems.filter((_, index) => !badIndexes.has(index));
-          persistMoleculeCart(window.localStorage, surviving, cartTotalFromItems(surviving));
-          loadCartFromStorage();
-          window.dispatchEvent(new Event('cartUpdated'));
-          const removalMessage = errorData.error || 'Stock compounds are no longer purchasable.';
-          const removedLabel = badIndexes.size > 0
-            ? ` ${badIndexes.size} basket item${badIndexes.size === 1 ? ' was' : 's were'} removed.`
-            : '';
-          showActionMessage(`${removalMessage}${removedLabel}`, 'warning', 0);
-          return;
-        }
-        throw new Error(errorData.error || 'Failed to create checkout session');
-      }
-
       const result = await response.json();
-      
-      if (result.error) {
-        throw new Error(result.error);
-      }
-
-      // Redirect to checkout
-      window.location.href = result.url;
-      
-    } catch (error) {
-      if (error.name === "AbortError") {
-        if (timedOut) showActionMessage('Checkout timed out. Please try again.', 'error');
+      // Edits in another tab invalidate an in-flight quote/payment redirect.
+      if (basketSignature(readShopCart(localStorage)) !== signature) throw new Error('Your cart changed. Review the updated order before continuing.');
+      if (response.status === 409 && result.code === 'SHOP_PRICES_CHANGED' && result.quote) {
+        reviewedQuoteRef.current = { signature, quote: result.quote };
+        setReviewedQuote(result.quote);
+        showActionMessage('Prices changed. Review the new total, then select Continue to Stripe to accept it.', 'warning', 0);
         return;
       }
-      console.error('Error during checkout:', error);
-      showActionMessage(`Failed to start checkout: ${error.message}`, 'error');
+      if (response.status === 409 && result.code === 'SHOP_CHECKOUT_EXPIRED') {
+        // Only a verified expired session permits a new payment attempt. Timeouts
+        // and unknown failures retain their key to avoid a duplicate charge.
+        localStorage.removeItem('compoundCheckoutAttempt');
+        reviewedQuoteRef.current = null;
+        setReviewedQuote(null);
+        showActionMessage('The payment session expired. Your cart is saved. Review the order again before starting a new checkout.', 'warning', 0);
+        return;
+      }
+      if (response.status === 409 && ['SHOP_ORDER_ALREADY_PAID', 'SHOP_PAYMENT_PENDING'].includes(result.code) && /^pc_[a-f0-9]{64}$/.test(result.orderId || '')) {
+        localStorage.setItem(`compoundOrderCart:${result.orderId}`, JSON.stringify(current));
+        navigate(`/dashboard/compound-orders?order_id=${encodeURIComponent(result.orderId)}`);
+        return;
+      }
+      if (!response.ok) throw new Error(result.error || 'Checkout is unavailable. Your cart is saved.');
+      if (!continuing) {
+        reviewedQuoteRef.current = { signature, quote: result };
+        setReviewedQuote(result);
+        showActionMessage('Review your order total and shipping terms in the cart, then continue to Stripe.', 'success', 0);
+        return;
+      }
+      const url = new URL(result.url);
+      if (url.protocol !== 'https:' || url.hostname !== 'checkout.stripe.com') throw new Error('Invalid payment redirect. Your cart is saved.');
+      localStorage.setItem(`compoundOrderCart:${result.orderId}`, JSON.stringify(current));
+      window.location.href = url.href;
+    } catch (error) {
+      showActionMessage(error.name === 'AbortError' ? 'Checkout timed out. Your cart is saved; please try again.' : error.message, 'error', 0);
     } finally {
       window.clearTimeout(cartTimeoutRef.current);
-      if (controller && cartRequestControllerRef.current === controller) {
-        cartRequestControllerRef.current = null;
-        setCartAction(null);
-      }
+      if (cartRequestControllerRef.current === controller) cartRequestControllerRef.current = null;
+      setCartAction(null);
     }
   };
 
@@ -615,7 +527,7 @@ Please contact the customer at ${userEmail} to process this order.
           </IconButton>
 
           {/* Cart Menu */}
-          <Menu>
+          <Menu dismiss={{ itemPress: false }}>
             <MenuHandler>
               <IconButton id="cart-menu-button" variant="text" color="blue-gray" className="dark:text-slate-300" aria-label={`Open molecule cart with ${cartItems.length} items`}>
                 <div className="relative">
@@ -630,14 +542,14 @@ Please contact the customer at ${userEmail} to process this order.
                 </div>
               </IconButton>
             </MenuHandler>
-            <MenuList id="cart-menu-list" className="w-80 border-0 bg-white shadow-lg dark:border dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">
+            <MenuList id="cart-menu-list" className="w-96 max-w-[calc(100vw-2rem)] border-0 bg-white shadow-lg dark:border dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">
               <div className="border-b border-blue-gray-100 p-3 dark:border-slate-800">
                 <Typography variant="h6" color="blue-gray" className="dark:text-slate-50">
                   Molecule Cart ({cartItems.length} {cartItems.length === 1 ? 'item' : 'items'})
                 </Typography>
                 <div className="flex justify-between items-center mt-1">
                   <Typography variant="small" color="blue-gray" className="font-normal dark:text-slate-300">
-                    Total Amount: {cartItems.reduce((sum, item) => sum + (item.amount || 0), 0)}mg
+                    Total Amount: {cartItems.reduce((sum, item) => sum + (item.amountMg || item.amount || 0) * (item.quantity || 1), 0)}mg
                   </Typography>
                   <Typography variant="small" className="font-bold text-lg text-brand-500">
                     Total: ${cartTotal.toFixed(2)}
@@ -653,19 +565,24 @@ Please contact the customer at ${userEmail} to process this order.
                   </div>
                 ) : (
                   cartItems.map((item, index) => (
-                    <MenuItem key={index} className="flex items-center justify-between border-b border-blue-gray-50 p-3 dark:border-slate-800 dark:text-slate-100 dark:hover:bg-slate-800">
+                    <div key={index} className="flex items-center justify-between border-b border-blue-gray-50 p-3 dark:border-slate-800 dark:text-slate-100">
                       <div className="flex-1">
                         <Typography variant="small" color="blue-gray" className="font-medium dark:text-slate-100">
                           {item.name || `Molecule ${index + 1}`}
                         </Typography>
                         <div className="flex items-center gap-2 mt-1">
                           <Typography variant="small" color="blue-gray" className="text-xs font-normal dark:text-slate-300">
-                            {item.amount}mg
+                            {item.amountMg || item.amount} mg × {item.quantity || 1}
                           </Typography>
                           <Typography variant="small" className="font-bold text-xs text-brand-500">
-                            ${(item.totalPrice || item.price || 0).toFixed(2)}
+                            {isOwnedCartItem(item) ? shopMoney(item.unitAmountCents * item.quantity) : 'Unavailable legacy item'}
                           </Typography>
                         </div>
+                        {isOwnedCartItem(item) && <label className="mt-2 flex items-center gap-2 text-xs">Packs
+                          <select aria-label={`Quantity for ${item.name}`} value={item.quantity} disabled={cartAction !== null} onChange={(event) => updateQuantity(index, Number(event.target.value))} className="rounded border bg-white p-1 text-slate-900 dark:bg-slate-800 dark:text-white">
+                            {Array.from({ length: 10 }, (_, index) => index + 1).map((quantity) => <option key={quantity} value={quantity}>{quantity}</option>)}
+                          </select>
+                        </label>}
                         {item.smiles && (
                           <Typography variant="small" color="gray" className="max-w-48 truncate font-mono text-xs dark:text-slate-400">
                             {item.smiles.length > 30 ? `${item.smiles.substring(0, 30)}...` : item.smiles}
@@ -677,24 +594,35 @@ Please contact the customer at ${userEmail} to process this order.
                         color="red"
                         size="sm"
                         aria-label={`Remove ${item.name || `molecule ${index + 1}`} from cart`}
+                        disabled={cartAction !== null}
                         onClick={() => removeFromCart(index)}
                       >
                         <TrashIcon className="h-4 w-4" />
                       </IconButton>
-                    </MenuItem>
+                    </div>
                   ))
                 )}
               </div>
+              <button type="button" className="w-full p-3 text-left text-sm font-semibold text-teal-700 dark:text-teal-300" onClick={() => navigate('/dashboard/compound-orders')}>View compound orders</button>
               {cartItems.length > 0 && (
                 <div className="space-y-2 border-t border-blue-gray-100 p-3 dark:border-slate-800">
+                  <div className="space-y-1 text-xs">
+                    <p>Up to 3 distinct compounds per order.</p>
+                    <p>{reviewedQuote?.shippingNote || shopConfig?.shippingNote || 'Shipping terms will be shown when you review your order.'}</p>
+                    {reviewedQuote && <div role="status" className="rounded bg-teal-50 p-2 text-slate-900">
+                      {reviewedQuote.items?.map((item, index) => <p key={index}>{item.code}: {item.amountMg} mg × {item.quantity} · {shopMoney(item.lineTotalCents ?? item.totalCents ?? item.unitAmountCents * item.quantity)}</p>)}
+                      <strong>Order total: {shopMoney(reviewedQuote.totalCents)} USD</strong>
+                      <p>{reviewedQuote.paymentMode === 'manual' ? 'Your card is authorized first; fulfillment is confirmed separately.' : 'Your card will be charged when you pay in Stripe. Fulfillment is confirmed separately.'}</p>
+                    </div>}
+                  </div>
                   <Button 
                     fullWidth 
                     color="blue" 
                     size="sm"
                     onClick={handleCheckout}
-                    disabled={cartAction !== null}
+                    disabled={cartAction !== null || shopConfig?.enabled === false || cartItems.some((item) => !isOwnedCartItem(item))}
                   >
-                    {cartAction === "checkout" ? "Opening checkout…" : "Checkout with Stripe"}
+                    {cartAction === "checkout" ? "Checking order…" : reviewedQuote ? "Continue to Stripe" : "Review order"}
                   </Button>
                   <Button
                     fullWidth
