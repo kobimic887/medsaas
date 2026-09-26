@@ -11,6 +11,10 @@ and Open compounds. Sources never silently fall back to each other or to a
 supplier. Failed/new searches clear old rows and disable stale pagination.
 Retired catalog browsing cannot run from an owned source.
 
+Result previews render the exact SMILES locally with the shared lazy RDKit loader;
+do not look up proprietary structures in PubChem or change their SMILES on failure.
+Macrocycle identifiers and SMILES open the preview on hover or keyboard focus.
+
 - **Stock:** authenticated `GET /api/stock-search/status|similarity` uses the
   configured tonomitosql dataset (`STOCK_SEARCH_BASE`, `STOCK_SEARCH_DATASET_ID`
   or `STOCK_SEARCH_DATASET_NAME`). Missing configuration/dataset returns
@@ -55,6 +59,9 @@ substitute providers. A retired provider refusal must not consume credits.
 Source quantities/lead times are dated snapshots, not verified sale offers.
 The workbook uses only the 1–3 selected-compound euro tier; its approximate USD
 pack estimates are informational until a server-owned offer/FX policy is agreed.
+Show the original EUR price beside USD (rounded to cents), with its workbook cell
+and dated ECB conversion rate. Compact and spaced identifiers use the same prefix
+category; never invent RPX/VPX pack sizes where the workbook says n/a.
 Neither stock, RPX, VPX nor ChEMBL can enter an authorized molecule checkout.
 `POST /api/stock-offers` stays `503 STOCK_OFFERS_DISABLED`, without upstream calls.
 

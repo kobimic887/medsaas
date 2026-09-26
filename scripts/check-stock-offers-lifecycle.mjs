@@ -18,14 +18,20 @@ check('stock estimates have no purchase control', stockTable.includes('<Workbook
 check('macrocycle estimates retain each row source and have no purchase control', macroTable.includes('WorkbookRowPrices source={mol.macrocycleSource}') && !macroTable.includes('addToCart('));
 check('page never requests stock offers', !simulation.includes('/stock-offers'));
 check('estimates disclose tier, currency conversion and unavailable checkout prices', simulation.includes('Workbook 1–3 selected tier') && simulation.includes('Availability and checkout prices are unconfirmed.'));
-for (const [source, code, category, firstEuro] of [
-  ['stock', 'BAS 123', 'Other codes', 170], ['stock', 'LAS 123', 'LAS', 226],
-  ['real', 'RPX 123', 'RPX', 317], ['virtual', 'VPX 123', 'VPX', 400],
+// Independently transcribed from Sheet1, approved 1–3 tier only.
+for (const [source, code, category, column, euros, firstUsd] of [
+  ['stock', 'BAS 123', 'Other codes', 'C', [170, 194, 218, 242, 302, 350, 434, 584], '$193.24'],
+  ['stock', 'LAS 123', 'LAS', 'D', [226, 254, 281, 309, 391, 474, 567, 765], '$256.89'],
+  ['real', 'RPX 123', 'RPX', 'E', [317, 365, 420], '$360.33'],
+  ['virtual', 'VPX 123', 'VPX', 'F', [400, 460, 529], '$454.68'],
 ]) {
   const row = workbookPacksForRow(source, code);
-  check(`${category} maps only to its workbook category and approved first-tier amount`, row?.category === category && row.packs[0].mg === 1 && row.packs[0].eur === firstEuro);
-  check(`${category} USD display converts the documented euro amount`, row.packs[0].usd === new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(firstEuro * PRICE_GUIDE_EUR_USD.rate));
+  check(`${category} maps all approved workbook prices and cells`, row?.category === category && row.packs.length === euros.length && row.packs.every((pack, i) => pack.eur === euros[i] && pack.sourceCell === `Sheet1!${column}${12 - i}` && pack.mg === [1, 2, 5, 10, 20, 30, 50, 100][i]));
+  check(`${category} USD conversion retains cents`, row.packs[0].usd === firstUsd);
+  check(`${category} compact/lowercase identifiers keep the same category`, JSON.stringify(workbookPacksForRow(source, code.replace(' ', '').toLowerCase())) === JSON.stringify(row));
 }
+check('conversion rate has dated source provenance', PRICE_GUIDE_EUR_USD.rate === 1.1367 && PRICE_GUIDE_EUR_USD.sourceUrl.startsWith('https://www.ecb.europa.eu/'));
+check('RPX USD cents round consistently', workbookPacksForRow('real', 'RPX123').packs.map(({ usd }) => usd).join(',') === '$360.33,$414.90,$477.41');
 check('unknown or mismatched sources never acquire a price', workbookPacksForRow('open', 'CHEMBL1') === null && workbookPacksForRow('stock', 'RPX 1') === null && workbookPacksForRow('real', 'VPX 1') === null && workbookPacksForRow('both', 'RPX 1') === null);
 console.log(`\nsimulation pricing lifecycle: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

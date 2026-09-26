@@ -2,7 +2,11 @@
 // SHA-256 e06cb5f85a172ecd6dccd17348f7cafc29cb5c0bddc3a895c234b6af2042b2c9.
 // Only the 1–3 selected-compound tier is approved for this reference display.
 // ECB EUR/USD reference rate, 24 September 2026; indicative, never checkout FX.
-export const PRICE_GUIDE_EUR_USD = Object.freeze({ rate: 1.1367, date: '24 Sep 2026' });
+export const PRICE_GUIDE_EUR_USD = Object.freeze({
+  rate: 1.1367,
+  date: '24 Sep 2026',
+  sourceUrl: 'https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/eurofxref-graph-usd.de.html',
+});
 
 export const COMPOUND_PRICE_GUIDE = Object.freeze({
   stock: Object.freeze({
@@ -27,7 +31,7 @@ export const COMPOUND_PRICE_GUIDE = Object.freeze({
 
 export function approximateUsd(euros) {
   return new Intl.NumberFormat('en-US', {
-    style: 'currency', currency: 'USD', maximumFractionDigits: 0,
+    style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2,
   }).format(euros * PRICE_GUIDE_EUR_USD.rate);
 }
 
@@ -35,7 +39,9 @@ export function approximateUsd(euros) {
 // Keep source row identity and dated availability separate from this mapping.
 export function workbookPacksForRow(source, code) {
   if (!['stock', 'real', 'virtual'].includes(source)) return null;
-  const prefix = String(code || '').trim().split(/\s+/)[0].toUpperCase();
+  // Both "LAS 123" and "LAS123" are supplier codes. Splitting on whitespace
+  // alone priced compact LAS identifiers as the cheaper other-code category.
+  const prefix = String(code || '').trim().match(/^([a-z]+)\s*\d+$/i)?.[1].toUpperCase();
   if (!prefix || (source === 'real' && prefix !== 'RPX') || (source === 'virtual' && prefix !== 'VPX')) return null;
   if (source === 'stock' && ['RPX', 'VPX'].includes(prefix)) return null;
   const category = source === 'real' ? 'RPX' : source === 'virtual' ? 'VPX' : prefix === 'LAS' ? 'LAS' : 'Other codes';
@@ -44,5 +50,11 @@ export function workbookPacksForRow(source, code) {
       : COMPOUND_PRICE_GUIDE.stock;
   const column = guide.columns.find(({ label }) => label === category);
   if (!column) return null;
-  return { category, packs: guide.sizes.map((mg, index) => ({ mg, eur: column.values[index], usd: approximateUsd(column.values[index]) })) };
+  const sheetColumn = { 'Other codes': 'C', LAS: 'D', RPX: 'E', VPX: 'F' }[category];
+  return { category, packs: guide.sizes.map((mg, index) => ({
+    mg,
+    eur: column.values[index],
+    usd: approximateUsd(column.values[index]),
+    sourceCell: `Sheet1!${sheetColumn}${12 - index}`,
+  })) };
 }

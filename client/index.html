@@ -54,8 +54,8 @@
          exact name the bundle assigns. Whichever landed second won, so callers
          got the wrapper or the real module depending on network timing. The
          wrapper is now `window.loadRDKit` and the bundle's global is left alone.
-         The loader is invoked only by Molecule Viewer; public/auth/Simulation
-         routes no longer download and initialize the RDKit runtime eagerly. -->
+         Molecule Viewer and on-demand Simulation previews share this loader;
+         public/auth/Simulation routes do not initialize the runtime eagerly. -->
     <script>
         window.rdkitModule = null;
         window.rdkitLoaded = false;

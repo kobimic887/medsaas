@@ -46,6 +46,8 @@ when a path or trap moves.
   checkout refuse locally with `503 CATALOG_RETIRED`; company overrides cannot
   restore Asinex dependence. Credit-plan checkout remains available. Known
   Asinex compute URLs are refused without charging; use configured Pyxis services. Stock search belongs in Simulation.
+  Structure previews depict exact SMILES with browser RDKit; workbook price displays
+  preserve the original EUR alongside dated USD conversions (1–3 tier only).
 - Scientific SQL inspection: `services/catalog-sql/README.md`. The additive
   `pyxis_catalog` schema combines stock views with all RPX/VPX source rows and
   copied vectors. Never ingest these into the legacy public search tables;

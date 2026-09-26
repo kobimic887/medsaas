@@ -28,6 +28,7 @@ import { cartItemFromCatalogPrice } from '@/utils/stockOffers';
 import { openResultsFromPayload } from '@/utils/openResults';
 import { macrocycleResultsFromPayload, appendUniqueMacrocycleRows } from '@/utils/macrocycleResults';
 import { PRICE_GUIDE_EUR_USD, workbookPacksForRow } from '@/utils/compoundPriceGuide';
+import { MoleculePreview } from '@/components/MoleculePreview';
 
 const MACROCYCLE_SOURCES = Object.freeze({
   both: { label: 'Macrocycles', count: 2368630 },
@@ -65,22 +66,39 @@ function stockChoiceLabel(options, value, fallback) {
   return (match && match.label) || fallback;
 }
 
+function CompoundQueryField({ value, onChange, catalog }) {
+  return (
+    <label className="flex w-full flex-col gap-2 text-lg font-semibold text-blue-gray-900 dark:text-white">
+      {catalog ? 'ID, SMILES, or name' : 'Query SMILES'}
+      <textarea
+        value={value}
+        onChange={onChange}
+        rows={3}
+        spellCheck={false}
+        autoCapitalize="none"
+        placeholder={catalog ? 'Paste an identifier or structure here…' : 'Paste a SMILES structure here…'}
+        className="min-h-[112px] w-full resize-y rounded-xl border-2 border-teal-600 bg-white p-3 font-mono text-base font-normal leading-relaxed text-slate-900 placeholder:text-slate-500 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/40 dark:border-teal-400 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-400"
+      />
+    </label>
+  );
+}
+
 function WorkbookRowPrices({ source, code }) {
   const pricing = workbookPacksForRow(source, code);
   if (!pricing) return <span className="text-blue-gray-500">No workbook tier</span>;
   return (
     <div className="min-w-[11rem] text-xs tabular-nums">
-      <span className="sr-only">{pricing.category} workbook pack prices in estimated US dollars</span>
+      <span className="sr-only">{pricing.category} workbook prices in EUR with estimated USD equivalents</span>
       <div className="flex flex-wrap gap-x-3 gap-y-1">
-        {pricing.packs.slice(0, 3).map(({ mg, eur, usd }) => (
-          <span key={mg} title={`${mg} mg: €${eur} in supplier workbook`}>{mg} mg <strong>≈{usd}</strong></span>
+        {pricing.packs.slice(0, 3).map(({ mg, eur, usd, sourceCell }) => (
+          <span key={mg} className="inline-flex flex-col" title={`Pyxis-e-shop_PRICE_LIST.xlsx · ${sourceCell} · 1–3 compounds: €${eur}; USD = EUR × ${PRICE_GUIDE_EUR_USD.rate}`}><span>{mg} mg <strong>≈{usd} USD</strong></span><span className="text-blue-gray-600 dark:text-slate-300">€{eur} EUR · workbook</span></span>
         ))}
       </div>
       {pricing.packs.length > 3 && (
         <details className="mt-1">
           <summary className="cursor-pointer text-brand-700 dark:text-brand-300">More pack sizes</summary>
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
-            {pricing.packs.slice(3).map(({ mg, eur, usd }) => <span key={mg} title={`${mg} mg: €${eur} in supplier workbook`}>{mg} mg <strong>≈{usd}</strong></span>)}
+            {pricing.packs.slice(3).map(({ mg, eur, usd, sourceCell }) => <span key={mg} className="inline-flex flex-col" title={`Pyxis-e-shop_PRICE_LIST.xlsx · ${sourceCell} · 1–3 compounds: €${eur}; USD = EUR × ${PRICE_GUIDE_EUR_USD.rate}`}><span>{mg} mg <strong>≈{usd} USD</strong></span><span className="text-blue-gray-600 dark:text-slate-300">€{eur} EUR · workbook</span></span>)}
           </div>
         </details>
       )}
@@ -1807,7 +1825,7 @@ export function Simulation() {
     if (smiles && smiles !== 'N/A' && smiles.trim() !== '') {
       const rect = event.currentTarget.getBoundingClientRect();
       const windowWidth = window.innerWidth;
-      const previewWidth = 220; // Preview width + padding
+      const previewWidth = 228; // Drawing width plus padding and border
       
       // Calculate position - show on right if there's space, otherwise on left
       let xPosition = rect.right + 10;
@@ -1817,7 +1835,7 @@ export function Simulation() {
       
       setPreviewPosition({
         x: Math.max(10, xPosition), // Ensure it doesn't go off-screen
-        y: rect.top
+        y: Math.max(130, Math.min(window.innerHeight - 130, rect.top + rect.height / 2))
       });
       setHoveredPreview({
         smiles: smiles.trim(), // Trim whitespace
@@ -2090,48 +2108,19 @@ export function Simulation() {
       {/* Hover Preview Tooltip */}
       {hoveredPreview && (
         <div 
-          className="fixed z-50 bg-white border-2 border-gray-300 rounded-lg p-3"
+          role="tooltip"
+          className="pointer-events-none fixed z-50 w-[228px] bg-white border-2 border-gray-300 rounded-lg p-3 shadow-lg"
           style={{
             left: `${previewPosition.x}px`,
             top: `${previewPosition.y}px`,
             transform: 'translateY(-50%)',
-            maxWidth: '220px'
+            maxWidth: 'calc(100vw - 20px)'
           }}
         >
           <div className="text-xs text-gray-600 mb-2 font-medium">
             {hoveredPreview.type} Preview
           </div>
-          {/* Use simple image-based molecule viewer */}
-          <div className="border border-gray-300 rounded overflow-hidden bg-white" style={{ width: '200px', height: '150px' }}>
-            <img 
-              src={`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(hoveredPreview.smiles)}/PNG?record_type=2d&image_size=200x150`}
-              alt="Molecule structure"
-              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-              onError={(e) => {
-                // Retry the same structure with PubChem's simpler size parameter. Never
-                // strip SMILES characters here: that can display a different molecule.
-                if (!e.target.getAttribute('data-fallback-attempted')) {
-                  e.target.setAttribute('data-fallback-attempted', '1');
-                  e.target.src = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/${encodeURIComponent(hoveredPreview.smiles)}/PNG?image_size=small`;
-                  return;
-                }
-                
-                // Final fallback - show text message
-                e.target.style.display = 'none';
-                e.target.nextSibling.style.display = 'flex';
-              }}
-            />
-            <div 
-              className="flex items-center justify-center bg-gray-50 text-gray-500 text-sm w-full h-full"
-              style={{ display: 'none' }}
-            >
-              <div className="text-center">
-                <div>Structure Preview</div>
-                <div className="text-xs mt-1">Service Unavailable</div>
-                <div className="text-xs mt-1">Complex SMILES format</div>
-              </div>
-            </div>
-          </div>
+          <MoleculePreview key={hoveredPreview.smiles} smiles={hoveredPreview.smiles} />
           <div className="text-xs text-gray-500 mt-2 font-mono break-all">
             {hoveredPreview.smiles.length > 25 
               ? `${hoveredPreview.smiles.substring(0, 25)}...` 
@@ -2612,11 +2601,10 @@ export function Simulation() {
         <div className="flex flex-col gap-4 w-full">
           {/* Search section */}
           <div id="molecule-search" className="flex flex-col items-stretch gap-2 w-full">
-            <Input
-              label={searchSource === "asinex" ? "ID, SMILES, or name" : "Query SMILES"}
+            <CompoundQueryField
+              catalog={searchSource === "asinex"}
               value={searchCode}
               onChange={e => setSearchCode(e.target.value)}
-              className="flex-1 min-w-0 w-full" // full width within the container
             />
             {searchSource === "asinex" && <p className="text-xs text-blue-gray-500">CAS, IUPAC name, InChI, and InChIKey also work.</p>}
             <Button
@@ -2776,11 +2764,10 @@ export function Simulation() {
             {/* Search section */}
             <div className="flex flex-col gap-2">
               <Typography variant="h6" color="blue-gray">Search Molecules</Typography>
-              <Input
-                label={searchSource === "asinex" ? "ID, SMILES, or name" : "Query SMILES"}
+              <CompoundQueryField
+                catalog={searchSource === "asinex"}
                 value={searchCode}
                 onChange={e => setSearchCode(e.target.value)}
-                className="w-full"
               />
               {searchSource === "asinex" && <p className="text-xs text-blue-gray-500">CAS, IUPAC name, InChI, and InChIKey also work.</p>}
               <Button
@@ -2899,7 +2886,7 @@ export function Simulation() {
         </div>
         {['stock', 'both', 'real', 'virtual'].includes(searchSource) && topMolecules.length > 0 && (
           <p className="mb-3 text-xs text-blue-gray-600 dark:text-slate-300">
-            Pack estimates appear beside each compound. Workbook 1–3 selected tier; EUR × {PRICE_GUIDE_EUR_USD.rate} ({PRICE_GUIDE_EUR_USD.date}), rounded to USD. Availability and checkout prices are unconfirmed.
+            Workbook 1–3 selected tier: original EUR prices are shown beside each USD estimate. USD = EUR × {PRICE_GUIDE_EUR_USD.rate} (<a className="underline" href={PRICE_GUIDE_EUR_USD.sourceUrl} target="_blank" rel="noreferrer">ECB, {PRICE_GUIDE_EUR_USD.date}</a>), rounded to cents. Availability and checkout prices are unconfirmed.
           </p>
         )}
         <div id="results" className="w-full bg-slate-100 dark:bg-slate-900">
@@ -2926,7 +2913,7 @@ export function Simulation() {
                   <thead className="sticky top-0 z-10 bg-white dark:bg-slate-900">
                     <tr>
                       <th className="w-10 p-2"><input type="checkbox" aria-label="Select all macrocycles" checked={getSelectAllState().checked} ref={(el) => { if (el) el.indeterminate = getSelectAllState().indeterminate; }} onChange={(e) => handleSelectAll(e.target.checked)} /></th>
-                      <th className="w-10 p-2">#</th><th className="w-20 p-2">Similarity</th><th className="w-48 p-2">Macrocycle ID and export details</th><th className="w-48 p-2">Packs · USD estimate</th><th className="p-2">SMILES</th>
+                      <th className="w-10 p-2">#</th><th className="w-20 p-2">Similarity</th><th className="w-48 p-2">Macrocycle ID and export details</th><th className="w-48 p-2">Packs · EUR / USD</th><th className="p-2">SMILES</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2943,13 +2930,13 @@ export function Simulation() {
                           <td className="p-2">{idx + 1}</td>
                           <td className="p-2 font-semibold">{mol.SIMILARITY === null ? '—' : mol.SIMILARITY.toFixed(3)}</td>
                           <td className="p-2 text-xs">
-                            <div className="font-mono font-semibold break-all">{mol.macrocycleCode}</div>
+                            <button type="button" className="font-mono font-semibold break-all underline decoration-dotted" aria-label={`Preview ${mol.macrocycleCode}`} onMouseEnter={(e) => handleMouseEnter(mol.SMILES_STRING, e, mol.macrocycleCode)} onMouseLeave={handleMouseLeave} onFocus={(e) => handleMouseEnter(mol.SMILES_STRING, e, mol.macrocycleCode)} onBlur={handleMouseLeave}>{mol.macrocycleCode}</button>
                             <div className="mt-1 font-semibold text-teal-700 dark:text-teal-300">{mol.macrocycleSource === 'real' ? 'Real RPX' : 'Virtual VPX'}</div>
                             <div className="mt-1 text-blue-gray-500" title="Dated supplier export; amount and lead time are unverified now">{exportDetails || 'No export amount or lead time'} · {mol.macrocycleSource === 'real' ? 'stock unverified' : 'virtual'}</div>
                           </td>
                           <td className="p-2"><WorkbookRowPrices source={mol.macrocycleSource} code={mol.macrocycleCode} /></td>
                           <td className="min-w-0 p-2 font-mono text-xs">
-                            <button type="button" className="block w-full truncate text-left underline decoration-dotted" title={`Copy ${mol.SMILES_STRING}`} onClick={async () => { setSearchCode(mol.SMILES_STRING); try { await copyToClipboard(mol.SMILES_STRING); showClipboardConfirmation(); } catch { showMessage('SMILES could not be copied.', 'error'); } }}>
+                            <button type="button" className="block w-full truncate text-left underline decoration-dotted" title={`Copy ${mol.SMILES_STRING}`} onMouseEnter={(e) => handleMouseEnter(mol.SMILES_STRING, e, "SMILES")} onMouseLeave={handleMouseLeave} onFocus={(e) => handleMouseEnter(mol.SMILES_STRING, e, "SMILES")} onBlur={handleMouseLeave} onClick={async () => { setSearchCode(mol.SMILES_STRING); try { await copyToClipboard(mol.SMILES_STRING); showClipboardConfirmation(); } catch { showMessage('SMILES could not be copied.', 'error'); } }}>
                               {mol.SMILES_STRING}
                             </button>
                           </td>
@@ -2986,7 +2973,7 @@ export function Simulation() {
                       <th className="p-2 font-bold bg-white">#</th>
                       <th className="p-2 font-bold bg-white">Similarity</th>
                       <th className="p-2 font-bold bg-white">Stock ID</th>
-                      <th className="p-2 font-bold bg-white">Packs · USD estimate</th>
+                      <th className="p-2 font-bold bg-white">Packs · EUR / USD</th>
                       <th className="p-2 font-bold bg-white">SMILES</th>
                       <th className="p-2 font-bold bg-white" title="Dated snapshot quantity from the supplier export — not live availability">µmol</th>
                       <th className="p-2 font-bold bg-white" title="Dated snapshot quantity from the supplier export — not live availability">mg</th>
