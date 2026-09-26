@@ -2,7 +2,7 @@
 
 Read before changing Simulation sources, similarity metrics, offers, basket or
 checkout behavior. These are product constraints; current deployment identity
-comes from measured live state and `docs/POST-PROMOTION-HANDOFF.md`.
+comes from measured live state and the private operator record described in `docs/OPERATIONS.md`.
 
 - Stock-compound similarity lives **in Simulation** (source toggle `Internal
   catalog | Stock compounds | Open compounds`), not the Deep Similarity picker. Server
@@ -14,15 +14,15 @@ comes from measured live state and `docs/POST-PROMOTION-HANDOFF.md`.
   (defaults `morgan`/`tanimoto`; unknown → **400**); labels mark scores
   **(binary)** — no count/ctanimoto option. Contract:
   `docs/DATA-STOCK-COMPOUNDS.md` (+ `docs/REFERENCE-STOCK-FP-METRICS.md`).
-  The September 23 **Real macrocycles** (RPX) and **Virtual macrocycles** (VPX)
+  The **Real macrocycles** (RPX) and **Virtual macrocycles** (VPX)
   form one staging Simulation Macrocycles collection, with All/Real/Virtual
   filters (`docs/DATA-MACROCYCLES.md`). Their
   authenticated `/api/macrocycles/status|similarity` routes use a separate
   `MACROCYCLE_SEARCH_BASE` and `source=both|real|virtual`; combined search
   globally ranks both indexes, keeps hits with the same SMILES or supplier ID,
   and identifies rows by source plus index row ID. Missing either combined
-  dataset returns 503, never catalog/stock results. Staging's compact read-only
-  RDKit Morgan index is loopback `:8274`:
+  dataset returns 503, never catalog/stock results. The compact read-only
+  RDKit Morgan index uses two formats:
   format 1 serves binary Tanimoto, format 2 adds `<source>.cnt` (one byte per set
   bit, ascending) and the count metrics. `similarity_metric` is `tanimoto`
   (default), `count_tanimoto` or `count_dice` (unknown, including the MOE name
@@ -48,17 +48,12 @@ comes from measured live state and `docs/POST-PROMOTION-HANDOFF.md`.
   AI failures do not silently run it.
   Full stock contract in `docs/DATA-STOCK-COMPOUNDS.md`. Failed/new searches
   disable pagination and clear old rows; catalog browsing must reject stock/open
-  mode so Asinex rows cannot appear as stock/open hits. **Owner decision
-  2026-09-13 supersedes the 4b285aa live-quote pricing: the browser never
-  prices via `POST /api/stock-offers` or `/api4/bas`.** Stock rows carry workbook
+  mode so Asinex rows cannot appear as stock/open hits. The browser never prices through `POST /api/stock-offers` or upstream `/api4/bas`. Stock rows carry workbook
   pack estimates in staging but **no checkout prices** — no Purchase column, no basket adds; selection stays
   docking-handoff only. Internal catalog price columns and basket adds come
   from the catalog's **own browse/search response**: the page normalizer maps
   `PRICE_*MG` / `price_*mg` per row, and a row without a positive pack price
-  cannot be added. Measured live 2026-09-13, BAS 00132206 answers $28/$84/$224
-  (1/5/10 mg) on `/api/all` browse rows and $170/$194/$218/$242 (1/2/5/10 mg)
-  on `/api4/bas` search rows — display what the row's own response carried,
-  never a hardcoded amount. Checkout stays server-owned: it re-prices from the
+  cannot be added. Display the row’s own response; never hardcode an amount. Checkout stays server-owned: it re-prices from the
   **original catalog API per compound** — `GET /api/id/{code}` in
   `server/utils/catalogPricing.js` (code = `id_number`, prefix + space intact,
   URL-encoded; rows carry `price_1mg/5mg/10mg`, **no `price_2mg`**; unknown

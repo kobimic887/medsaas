@@ -32,6 +32,8 @@ import {
   getQueueStatus,
 } from './utils/admetQueue.js';
 import { normalizeShopSearchResponse, moleculeCartPriceReview } from './utils/asinexCompound.js';
+// "De-SaaS" branding does not remove plans, checkout, roles, or credits.
+import { buildPlanCheckoutSessionParams, getPlan, PLAN_CATALOG } from './utils/planCheckout.js';
 import {
   parseBasSearchCodes,
   priceMoleculeCartFromCatalog,
@@ -197,13 +199,9 @@ const macrocycleSearchResolver = createMacrocycleDatasetResolver({
   fetchImpl: (url) => fetchWithTimeout(url, { timeoutMs: 10000 }),
 });
 const OPEN_COMPOUNDS_CONFIG = openCompoundsConfig(process.env);
-// LANDMINE: the fallback below is the retired 83 host. Port 8001 there has been dead
-// since 2026-06-04 (docs/PRODUCTION-83-INVENTORY.md), so an unset SDF_CONVERTER_URL
-// means every SMILES ligand in /api/diffdock/generate fails. The working converter is
-// Live on 84 since 2026-08-23 is loopback docker `pyxis-convertstr`
-// (`http://127.0.0.1:8001/convertSTR` in host .env). Amsterdam box ingress
-// later: SDF_CONVERTER_URL=https://<BOX_DOMAIN>/convertSTR
-// (deploy/box/ingress/Caddyfile). Module-scope const: cutover needs a restart.
+// The fallback below targets a retired host. Set SDF_CONVERTER_URL explicitly
+// for a working converter; measure the deployed environment before changing it.
+// See docs/OPERATIONS.md. This module-scope setting requires a restart to change.
 const SDF_CONVERTER_URL = process.env.SDF_CONVERTER_URL || 'http://83.229.87.94:8001/convertSTR';
 if (!process.env.SDF_CONVERTER_URL) {
   console.warn('[diffdock] SDF_CONVERTER_URL is not set — falling back to the retired 83:8001 default, which is DOWN. SMILES ligands in /api/diffdock/generate will fail until this points at a live converter (Amsterdam box: https://<BOX_DOMAIN>/convertSTR).');
@@ -217,14 +215,6 @@ const DEFAULT_LIGAND_SERVICE_CONFIG = Object.freeze({
   diffdockApiUrl: process.env.DIFFDOCK_API_URL || 'https://services.asinex.com:58000/molecular-docking/diffdock/generate'
 });
 
-// LANDMINE: "de-SaaS" is one-company Pyxis branding. Do not delete this catalog,
-// signup, Stripe billing, roles, companies, or credits to "simplify" the product.
-const PLAN_CATALOG = Object.freeze({
-  Trial: { displayName: 'Trial', credits: 4, priceCents: 0 },
-  Standard: { displayName: 'Standard', credits: 50, priceCents: 2000 },
-  Academic: { displayName: 'Academic', credits: 300, priceCents: 4000 },
-  Professional: { displayName: 'Professional', credits: 720, priceCents: 8000 }
-});
 const PASSWORD_POLICY = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).{8,}$/;
 
 const stripe = new Stripe(DEMO_MODE ? 'sk_test_pyxis_staging_demo_disabled' : process.env.STRIPE_SECRET_KEY);
@@ -1871,11 +1861,6 @@ function getPublicAppUrl() {
   throw new Error('FRONTEND_URL or BASE_URL must be configured to generate public email links');
 }
 
-function getPlan(planName) {
-  if (typeof planName !== 'string') return null;
-  return PLAN_CATALOG[planName.trim()] || null;
-}
-
 async function fulfillCheckoutSession(session) {
   if (!billingEventsCollection || !usersCollection) {
     throw new Error('Database collections are not initialized');
@@ -1969,14 +1954,12 @@ async function fulfillCheckoutSession(session) {
  *           schema:
  *             oneOf:
  *               - type: object
- *                 required: [planName, price]
+ *                 required: [planName]
  *                 properties:
  *                   planName:
  *                     type: string
- *                     description: Legacy field for item name
- *                   price:
- *                     type: number
- *                     description: Legacy field for total amount (USD)
+ *                     enum: [Standard, Academic, Professional]
+ *                     description: Credit pack; price and credits are determined by the server
  *               - type: object
  *                 required: [description, totalAmount]
  *                 properties:
@@ -1987,11 +1970,10 @@ async function fulfillCheckoutSession(session) {
  *                     type: number
  *                     description: Total amount (USD)
  *           examples:
- *             legacy:
- *               summary: Legacy fields
+ *             creditPack:
+ *               summary: One-time credit pack
  *               value:
- *                 planName: Starter
- *                 price: 9.99
+ *                 planName: Standard
  *             new:
  *               summary: New preferred fields
  *               value:
@@ -2012,34 +1994,11 @@ app.post('/create-checkout-session-onetime', checkoutRateLimit, ensureMongoConne
         return res.status(400).json({ error: 'Trial plans do not use Stripe checkout' });
       }
 
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        line_items: [
-          {
-            price_data: {
-              currency: 'usd',
-              product_data: {
-                name: `${plan.displayName} token pack`,
-                description: `${plan.credits} simulation tokens`
-              },
-              unit_amount: plan.priceCents
-            },
-            quantity: 1
-          }
-        ],
-        mode: 'payment',
-        success_url: `${appUrl}/dashboard/paidplans?success=true&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${appUrl}/dashboard/paidplans?canceled=true`,
-        metadata: {
-          purchaseType: 'plan_tokens',
-          plan: plan.displayName,
-          credits: String(plan.credits),
-          username: req.user.username,
-          userId: req.user.userId || '',
-          companyId: req.user.companyId || '',
-          companyName: req.user.companyName || ''
-        }
-      });
+      const session = await stripe.checkout.sessions.create(buildPlanCheckoutSessionParams({
+        appUrl,
+        plan,
+        user: req.user,
+      }));
 
       await billingEventsCollection.updateOne(
         { stripeSessionId: session.id },
@@ -2213,21 +2172,16 @@ app.post('/create-checkout-session-onetime', checkoutRateLimit, ensureMongoConne
     res.json({ url: session.url, sessionId: session.id });
   } catch (error) {
     console.error('Error creating one-time checkout session:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Unable to start checkout. Please try again.' });
   }
 });
 
-// Credit-plan checkout. The self-serve plans page is gone (docs/PYXIS-ONLY.md), so
-// nothing in the UI calls this any more — it is kept, not deleted, because it is the
-// only path that buys credits through Stripe and the webhook that grants them is
-// explicitly untouched. Narrowed from requireActiveUser to requireCompanyAdmin: on a
-// single-company install, buying plans is the owner's decision, not each member's.
-//
-// Not to be confused with /create-checkout-session-onetime below, which the compound
-// cart still calls for every active user. That is the e-shop, and it stays open.
+// Credit-plan checkout is restricted to company admins. Credits are granted only
+// by the verified Stripe webhook. Compound checkout below remains a separate
+// active-user flow. See docs/STRIPE_LIVE_CUTOVER.md.
 app.post('/create-checkout-session', checkoutRateLimit, ensureMongoConnected, authenticateToken, requireCompanyAdmin, async (req, res) => {
   try {
-    const { planName, isYearly } = req.body;
+    const { planName } = req.body;
     const plan = getPlan(planName);
     if (!plan || plan.priceCents <= 0) {
       return res.status(400).json({ error: 'Unknown paid plan' });
@@ -2235,38 +2189,11 @@ app.post('/create-checkout-session', checkoutRateLimit, ensureMongoConnected, au
 
     const appUrl = getPublicAppUrl(req);
     
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [
-        {
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: `${plan.displayName} Plan`,
-              description: `${plan.displayName} subscription for molecular research tools`,
-            },
-            unit_amount: plan.priceCents,
-            recurring: {
-              interval: isYearly ? 'year' : 'month',
-            },
-          },
-          quantity: 1,
-        },
-      ],
-      mode: 'subscription',
-      success_url: `${appUrl}/dashboard/paidplans?success=true&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${appUrl}/dashboard/paidplans?canceled=true`,
-      metadata: {
-        purchaseType: 'plan_tokens',
-        plan: plan.displayName,
-        credits: String(plan.credits),
-        username: req.user.username,
-        userId: req.user.userId || '',
-        companyId: req.user.companyId || '',
-        companyName: req.user.companyName || '',
-        billing: isYearly ? 'yearly' : 'monthly',
-      }
-    });
+    const session = await stripe.checkout.sessions.create(buildPlanCheckoutSessionParams({
+      appUrl,
+      plan,
+      user: req.user,
+    }));
 
     await billingEventsCollection.updateOne(
       { stripeSessionId: session.id },
@@ -2291,7 +2218,7 @@ app.post('/create-checkout-session', checkoutRateLimit, ensureMongoConnected, au
     res.json({ url: session.url, sessionId: session.id });
   } catch (error) {
     console.error('Error creating checkout session:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Unable to start checkout. Please try again.' });
   }
 });
 
@@ -2305,7 +2232,7 @@ app.get('/checkout-session/:sessionId', ensureMongoConnected, authenticateToken,
     res.json(session);
   } catch (error) {
     console.error('Error retrieving session:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Unable to retrieve checkout details. Please try again.' });
   }
 });
 
@@ -2340,10 +2267,8 @@ app.get('/checkout-session/:sessionId', ensureMongoConnected, authenticateToken,
  *         description: Public signup is closed (the default). Accounts are invite-only.
  */
 app.post('/api/signup', authRateLimit, ensureMongoConnected, async (req, res) => {
-  // Closed by default. This is one product for one company (docs/PYXIS-ONLY.md), so
-  // an open signup is not a feature: it creates a *company* and makes the caller its
-  // owner, on an install whose compute sits behind two GPUs. Accounts come from
-  // POST /api/company/members, which requireCompanyAdmin gates.
+  // Signup creates a company and its owner, so it is closed by default. Existing
+  // companies invite members through the company-admin-gated members endpoint.
   //
   // Kept as a flag rather than deleted so bootstrapping a fresh install is still one
   // env var, and so the route keeps its tests and its swagger entry. 403, not 401 —
@@ -6457,20 +6382,19 @@ process.on('SIGINT', async () => {
  * @swagger
  * /create-checkout-session:
  *   post:
- *     summary: Create a Stripe checkout session
+ *     summary: Create a one-time credit-pack checkout session (company admin)
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
+ *             required: [planName]
  *             properties:
  *               planName:
  *                 type: string
- *               price:
- *                 type: number
- *               isYearly:
- *                 type: boolean
+ *                 enum: [Standard, Academic, Professional]
+ *                 description: Price and credits are determined by the server
  *     responses:
  *       200:
  *         description: Checkout session created

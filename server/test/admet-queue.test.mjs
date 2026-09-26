@@ -1,10 +1,7 @@
 // ADMET job queue regression suite.
 //
-// ADMET has never run in production (still true on 84 pyxis-web, 2026-08-23):
-// chem_beo published to CloudAMQP, nothing ever
-// consumed, and every job any user queued is still `queued`. The transport is a Mongo
-// collection now (docs/BOX-ARCHITECTURE.md §5), and these tests pin the properties that
-// make the failure visible instead of silent.
+// Verifies observable job states, bounded retries, atomic claims and callback
+// behavior for the Mongo-backed queue. See docs/BOX-ARCHITECTURE.md.
 //
 // Runs against a real in-memory MongoDB, not a double — the whole point of the design is
 // the atomicity of findOneAndUpdate and the unique index, and neither survives being faked.
@@ -82,7 +79,7 @@ await test('drops empties rather than queueing a blank molecule', () => {
 await test('decodes the URL-encoded form every production SMILES is stored in', () => {
   // client sends encodeURIComponent(...) (simulation.jsx:689) and server/index.js:3435
   // re-encodes anything that arrived raw, so storage is ALWAYS encoded.
-  // Values below are the ones docs/DOCKING-CONTRACT.md §4 recorded from production.
+  // These values exercise the docking artifact serialization contract.
   assert.deepEqual(normalizeSmiles('C%23Cc1ccc(cc1)C%23C'), ['C#Cc1ccc(cc1)C#C']);
   assert.deepEqual(normalizeSmiles('c1ccc2c(c1)nc(o2)SCC(%3DO)O'), ['c1ccc2c(c1)nc(o2)SCC(=O)O']);
   assert.deepEqual(

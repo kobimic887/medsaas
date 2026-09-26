@@ -138,7 +138,7 @@ async function getPayload() {
     process.exit(2);
   }
   // Exactly the request server/index.js:3191 makes. `pdbID` is capital-D on purpose,
-  // and SMILES goes out URL-encoded — see DOCKING-CONTRACT.md §0.
+  // and SMILES goes out URL-encoded — see DOCKING-CONTRACT.md.
   const body = JSON.stringify({
     pdbID: PDBID,
     smiles: SMILES === decodeURIComponent(SMILES) ? encodeURIComponent(SMILES) : SMILES

@@ -73,7 +73,7 @@ def _canonical(provenance: dict[str, Any]) -> dict[str, Any]:
 
     That is the expensive half of the warm path: computing all atom-type maps over a docking
     box is tens of seconds of CPU, and skipping it is the latency change a user actually
-    feels (docs/NEXT-SESSION.md, "the cache itself is worth every line").
+    feels.
 
     Canonicalising here rather than at the comparison keeps one definition of the provenance
     shape. The cache key is unaffected — it is already a hash of `json.dumps(...)`, and a tuple

@@ -1,28 +1,91 @@
 name: CI
 
-# Check + test gate. Runs on every push/PR to main for developer feedback, and
-# is reused by deploy.yml (workflow_call) so a deploy cannot proceed unless both
-# the default Bun runtime and the Node fallback pass.
+# Code changes run the Bun gate. Manual and reusable runs include the Node
+# fallback and compute containers; documentation changes need no full build.
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch: {}
-  workflow_call: {}
+  workflow_call:
+    inputs:
+      full_validation:
+        description: Run the complete release gate when called by another workflow
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
 concurrency:
-  # Separate push/PR runs from deploy-gate (workflow_call) runs on the same ref
-  # so a push-triggered CI can never cancel the deploy job's required test run.
-  group: ci-${{ github.event_name }}-${{ github.ref }}
+  # Reusable workflows inherit the caller's event name. Include the caller's
+  # workflow name so a standalone CI run cannot cancel a deployment gate.
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: select checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      app: ${{ steps.select.outputs.app }}
+      full: ${{ steps.select.outputs.full }}
+      convertstr: ${{ steps.select.outputs.convertstr }}
+      docking: ${{ steps.select.outputs.docking }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Select checks from changed files
+        id: select
+        env:
+          FULL_VALIDATION: ${{ github.event_name == 'workflow_dispatch' || inputs.full_validation == true }}
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import subprocess
+
+          full = os.environ['FULL_VALIDATION'] == 'true'
+          files = []
+          if not full:
+              base = os.environ['BASE_SHA']
+              head = os.environ['HEAD_SHA']
+              # New branches or missing history run everything conservatively.
+              known_base = base and subprocess.run(
+                  ['git', 'cat-file', '-e', f'{base}^{{commit}}'],
+                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+              ).returncode == 0
+              if not known_base:
+                  full = True
+              else:
+                  separator = '...' if os.environ['EVENT_NAME'] == 'pull_request' else '..'
+                  changed = subprocess.check_output([
+                      'git', 'diff', '--name-only', '--no-renames', '-z', f'{base}{separator}{head}', '--',
+                  ]).decode().split('\0')
+                  files = [p for p in changed if p and not (p.endswith('.md') or p.startswith('docs/'))]
+
+          shared_compute = {'.github/workflows/ci.yml', 'deploy/box/compose.yml'}
+          selected = {
+              'full': full,
+              'app': full or bool(files),
+              'convertstr': full or any(p.startswith('deploy/box/convertstr/') or p in shared_compute for p in files),
+              'docking': full or any(p.startswith('deploy/box/docking/') or p in shared_compute or p == 'scripts/verify-docking-response.mjs' for p in files),
+          }
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              for name, enabled in selected.items():
+                  output.write(f'{name}={str(enabled).lower()}\n')
+          print('Selected checks:', ', '.join(name for name, enabled in selected.items() if enabled) or 'documentation only')
+          PY
+
   test:
     name: check + tests (bun)
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -55,11 +118,13 @@ jobs:
         run: bun run install:all
 
       - name: Check + tests
-        # bun run ci == bun run check (server syntax + client build) && bun run test
+        # Build, lint, client contract checks, and the server suite once.
         run: bun run ci
 
   test-node:
     name: check + tests (node 24)
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -91,24 +156,18 @@ jobs:
         run: npm run ci:node
 
   box-services:
-    # The compute services that move to the Amsterdam box. Both are qualified for
-    # linux/amd64 only and both need a Docker daemon, so this is the only place they
-    # can be exercised before the hardware exists:
-    #
-    #   - the dev Macs are arm64 and have no Docker;
-    #   - legacy 83 is not production (shutdown path) and is too small (2 GB RAM,
-    #     no swap) to build rdkit + openmm + vina without OOM or filling the disk.
-    #
-    # An ubuntu-latest runner is the right architecture, is free, and risks nothing.
-    # Deliberately NOT wired into deploy.yml's gate: deploy.yml ships the API, and
-    # these are compute services with a separate lifecycle.
+    # These container suites require linux/amd64. Routine app changes do not
+    # rebuild them; manual and reusable release gates include both services.
     name: box compute services (linux/amd64)
+    needs: changes
+    if: needs.changes.outputs.convertstr == 'true' || needs.changes.outputs.docking == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
 
       - name: convertSTR — container suite, offline
+        if: needs.changes.outputs.convertstr == 'true'
         run: |
           docker build --platform linux/amd64 --target test \
             --tag pyxis-convertstr:test deploy/box/convertstr
@@ -118,6 +177,7 @@ jobs:
             pyxis-convertstr:test
 
       - name: docking — container suite, HTTP replay, and the immutable verifier
+        if: needs.changes.outputs.docking == 'true'
         # test.sh builds both targets, runs the replay suite with --network none,
         # stands the service on an internal-only network, and checks a real dock
         # against the committed 1cx7 baseline using scripts/verify-docking-response.mjs.

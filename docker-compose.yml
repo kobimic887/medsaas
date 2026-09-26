@@ -11,11 +11,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # ⚠ RabbitMQ is gone. ADMET jobs live in the `admet_jobs` collection in Mongo — see
-  # server/utils/admetQueue.js and docs/BOX-ARCHITECTURE.md §5. This service still passed
-  # RABBITMQ_URL / ADMET_QUEUE_NAME / API_BASE_URL, none of which the worker reads any more,
-  # and depended on a broker that no longer belongs here. It would not have failed with a
-  # clear configuration error; it would have crash-looped on a missing MONGODB_URI.
+  # Local ADMET test worker. Jobs use MongoDB; see server/utils/admetQueue.js.
   admet-worker:
     profiles: ["workers"]
     build:

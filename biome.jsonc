@@ -1,5 +1,5 @@
 {
-  // Lint-only gate; brownfield relaxes ratchet to error over time. See docs/IMPROVEMENTS.md item 3.
+  // Lint-only gate. Existing warning-level rules can be tightened as their findings are resolved.
   "$schema": "https://biomejs.dev/schemas/2.5.0/schema.json",
   "vcs": {
     "enabled": true,

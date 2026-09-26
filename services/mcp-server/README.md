@@ -1,135 +1,87 @@
-# ChemBench MCP Server
+# Pyxis Discovery MCP server
 
-**This is the ChemBench platform's link to Claude for Science / Claude for Life Sciences.**
+MCP adapter for the Pyxis application API, with Streamable HTTP and stdio
+transports. Each tool forwards the caller's application token; the API applies
+its normal account, role, and credit checks.
 
-It is a [Model Context Protocol](https://modelcontextprotocol.io) server that exposes
-the platform's drug-discovery capabilities — molecule generation, structure
-prediction, docking, similarity/substructure search, ADMET, molecular dynamics, and
-catalog/pricing lookup — as MCP **tools**. Once connected, Claude can call these tools
-directly to drive real computational-chemistry work on the ChemBench backend.
+Tool discovery works without a token. Tool execution requires one. A listed tool
+does not guarantee its upstream service is configured or available; use
+`platform_capabilities` to inspect platform configuration.
 
-The server is a **thin proxy**: it does not hold any platform secrets. Each caller
-supplies their own ChemBench platform token (a JWT from `POST /api/signin`), which the
-server forwards to the platform API as `Authorization: Bearer <token>`. Every tool call
-therefore runs as that user, respecting their account, roles, and simulation-token
-balance — exactly as if they'd called the REST API themselves.
+## Run locally
 
-## What Claude gets (tools)
-
-| Tool | What it does | Platform endpoint |
-|------|--------------|-------------------|
-| `platform_health` | Health of the GROMACS / glioblastoma microservices | `GET /api/platform/health` |
-| `generate_molecules` | Generate drug-like molecules around a seed (NVIDIA MolMIM) | `POST /api/generate-molecules` |
-| `predict_protein_structure` | Predict a complex structure (NVIDIA OpenFold3) | `POST /api/openfold3/predict` |
-| `dock_ligand` | Predict a ligand binding pose (DiffDock) | `POST /api/diffdock/generate` |
-| `similarity_search` | Tanimoto similarity search | `GET /tanimoto/v1/search/similarity` |
-| `exact_search` | Exact structure search | `GET /tanimoto/v1/search/exact` |
-| `substructure_search` | Substructure search | `GET /tanimoto/v1/search/substructure` |
-| `list_datasets` | List searchable compound datasets | `GET /tanimoto/v1/datasets` |
-| `search_asinex` | Search the Asinex catalog | `POST /api/asinex/search` |
-| `predict_glioblastoma` | Run the glioblastoma predictor | `POST /api/glioblastoma/predict` |
-| `run_gromacs_workflow` | Start a GROMACS MD workflow | `POST /api/gromacs/workflows/:workflow` |
-| `get_gromacs_job` | Poll a GROMACS job | `GET /api/gromacs/jobs/:jobId` |
-| `get_admet_results` | Fetch ADMET results for a simulation | `GET /api/simulation/:key/admet` |
-| `search_molecule_prices` | Search the molecule pricing catalog | `GET /api/mol-price/search` |
-
-> The search tools forward their arguments as query params to the upstream service
-> verbatim. Names like `threshold` / `dataset_id` follow the platform's Tanimoto
-> service contract — verify them against that service's API and adjust in
-> `src/tools.js` if it expects different keys (unknown params fail soft, i.e. are
-> ignored rather than erroring).
-
-## Run it
+From this directory, with Bun available:
 
 ```bash
-cd services/mcp-server
-bun install
-cp .env.example .env        # point MEDSAAS_API_BASE at your ChemBench API
-
-# Streamable HTTP (the transport Claude for Life Sciences connects to)
-bun run start                # -> http://localhost:8080/mcp   (bun run start:node for Node)
-
-# stdio (local use: Claude Desktop, Claude Code, MCP Inspector)
-MEDSAAS_TOKEN=<jwt> bun run stdio
+bun install --frozen-lockfile
+MCP_HOST=127.0.0.1 MEDSAAS_API_BASE=http://localhost:3000 bun run start
 ```
 
-Verify the link end-to-end (starts a stub platform API, runs a full
-`initialize → tools/list → tools/call` handshake, checks token forwarding):
+The HTTP endpoint is `POST http://localhost:8080/mcp`; `GET /health` is a liveness
+probe. HTTP requests supply the caller's token in `Authorization: Bearer <token>`.
+The transport is stateless; `GET /mcp` and `DELETE /mcp` return `405`.
+
+For stdio, configure your MCP client to run
+`bun /absolute/path/to/services/mcp-server/src/stdio.js` with
+`MEDSAAS_API_BASE` and `MEDSAAS_TOKEN` in its private environment. Use a token
+issued by the application's sign-in flow. Do not commit tokens to client
+configuration or this repository.
+
+Node entrypoints are available through `npm run start:node` and
+`npm run stdio:node`.
+
+## Tools
+
+The names and input schemas come from [src/tools.js](src/tools.js) and are
+available through MCP `tools/list`.
+
+| Area | Tools |
+|---|---|
+| Platform status | `platform_health`, `platform_capabilities` |
+| Docking and ADMET jobs | `list_jobs`, `get_job` |
+| Structure search | `list_datasets`, `similarity_search`, `exact_search`, `substructure_search` |
+| Molecule generation | `generate_molecules` |
+| Protein folding | `predict_protein_structure` |
+| Docking | `dock_ligand` |
+| Catalog and pricing | `search_asinex`, `search_molecule_prices` |
+| Scientific services | `predict_glioblastoma`, `run_gromacs_workflow`, `get_gromacs_job`, `get_admet_results` |
+
+Search parameters are forwarded as defined in the tool table. Scientific request
+payloads must also satisfy the corresponding application API contract. Execution
+can create jobs or consume credits; the MCP adapter does not simulate those calls.
+
+## Configuration
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MEDSAAS_API_BASE` | `http://localhost:3000` | Application API base URL |
+| `MCP_HOST` | `0.0.0.0` | HTTP bind address; use `127.0.0.1` for local access |
+| `MCP_PORT` | `8080` | HTTP port |
+| `MEDSAAS_TOKEN` | Empty | Caller token for stdio; HTTP uses the request header |
+| `MCP_REQUEST_TIMEOUT_MS` | `120000` | Upstream request timeout |
+
+For container builds, from the repository root:
 
 ```bash
-bun run smoke                # or: bun run smoke:node
+docker build -t pyxis-mcp services/mcp-server
 ```
 
-## Connect it to Claude
+Supply `MEDSAAS_API_BASE` at runtime. Hosted HTTP access should use HTTPS because
+requests carry application tokens.
 
-### Claude for Life Sciences / Claude API MCP connector (hosted, recommended)
-
-Deploy the HTTP server somewhere Claude can reach it (see the Dockerfile), then add it
-as a URL MCP server. The `authorization_token` is the caller's ChemBench platform JWT
-from `POST /api/signin` (`token` field) — it arrives as `Authorization: Bearer <token>`
-and is forwarded downstream:
-
-```jsonc
-{
-  "mcp_servers": [
-    {
-      "type": "url",
-      "name": "chembench",
-      "url": "https://mcp.your-domain.com/mcp",
-      "authorization_token": "<user's ChemBench platform JWT>"
-    }
-  ],
-  "tools": [{ "type": "mcp_toolset", "mcp_server_name": "chembench" }]
-}
-```
-
-### Claude Desktop / Claude Code (local, stdio)
-
-```jsonc
-{
-  "mcpServers": {
-    "chembench": {
-      "command": "bun",
-      "args": ["/absolute/path/to/services/mcp-server/src/stdio.js"],
-      "env": {
-        "MEDSAAS_API_BASE": "http://localhost:3000",
-        "MEDSAAS_TOKEN": "<your ChemBench platform JWT>"
-      }
-    }
-  }
-}
-```
-
-## Deploy (Docker)
+## Verification and source
 
 ```bash
-docker build -t chembench-mcp services/mcp-server
-docker run -p 8080:8080 -e MEDSAAS_API_BASE=https://api.your-domain.com chembench-mcp
+bun run smoke
+# Node alternative:
+npm run smoke:node
 ```
 
-For an all-in-one local stack, add this to `docker-compose.yml` (optional):
+The smoke test starts a stub application API and checks MCP initialization,
+tool discovery, calls, and token forwarding. It does not call scientific
+providers or prove a deployed integration.
 
-```yaml
-  mcp-server:
-    build: ./services/mcp-server
-    environment:
-      MEDSAAS_API_BASE: http://api:3000
-    ports:
-      - "8080:8080"
-    profiles: ["mcp"]
-```
-
-## How it works
-
-- `src/http.js` — Streamable HTTP entrypoint. Stateless: each `POST /mcp` gets a fresh
-  MCP server + transport, and the caller's token is read per-request from the
-  `Authorization` header. `GET /health` is a liveness probe.
-- `src/stdio.js` — stdio entrypoint; token comes from `MEDSAAS_TOKEN`.
-- `src/tools.js` — the declarative tool table + one generic handler that maps each tool
-  onto a platform endpoint and forwards the token.
-- `src/platform-client.js` — the fetch wrapper that forwards the bearer token and
-  normalizes upstream errors into tool results.
-- `src/config.js` — env-driven configuration.
-
-Discovery (`initialize`, `tools/list`) works without a token; **executing** a tool
-returns a clear error unless a platform token is supplied.
+- [src/http.js](src/http.js) and [src/stdio.js](src/stdio.js): transport entrypoints.
+- [src/tools.js](src/tools.js): tool schemas and endpoint mappings.
+- [src/platform-client.js](src/platform-client.js): authenticated requests and error handling.
+- [src/config.js](src/config.js): runtime configuration.

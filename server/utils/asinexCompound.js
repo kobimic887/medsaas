@@ -1,15 +1,6 @@
-// Server-side ASINEX stock helpers, reverse-engineered from the legacy eShop
-// storefront (eitangenis/eShop @ ad7d332). See
-// docs/ASINEX-ESHOP-REVERSE-ENGINEERING.md.
-//
-// Two jobs:
-//  - Authoritative pricing. The legacy storefront computed prices in the
-//    browser (Asinex.eShop.JS/Price.js `CalcPrice`), so a client could submit
-//    any price/total. `price_category` (1-3) is a stored compound column; the
-//    price depends on (category, weight-in-mg). This table is the server-side
-//    source of truth — never trust a browser-supplied price.
-//  - Normalising the legacy response casing (elE_ID, baS_CODE, molwt, ...) at
-//    the boundary so callers never deal with old ASP.NET serializer quirks.
+// Normalize legacy supplier response casing at the API boundary and retain its
+// price-category conversion helpers. Catalog checkout uses catalogPricing.js;
+// stock checkout is disabled. See docs/DATA-STOCK-COMPOUNDS.md.
 
 // price_category -> weight(mg) -> USD.
 export const ASINEX_PRICE_TABLE = Object.freeze({

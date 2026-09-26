@@ -1,38 +1,13 @@
-# The Amsterdam box — compute only. No API server, no database.
+# Scientific compute only. The application API and MongoDB Atlas stay separate;
+# this stack has a dedicated Postgres database for chemical search.
+# See docs/BOX-ARCHITECTURE.md and docs/ARRIVAL-RUNBOOK.md.
 #
-# The platform API stays on 84 (pyxis-web :5174) and MongoDB stays on Atlas;
-# see docs/BOX-ARCHITECTURE.md. 83 is leftover, not the caller.
-# Everything here is something the platform CALLS, addressed by one environment variable
-# each, so cutover and rollback are a variable and a restart.
+# Start and qualify one service at a time with an operator-managed environment.
+# Keep published ports on loopback and configure verified HTTPS ingress/access
+# controls before application traffic. These endpoints do not authenticate users.
 #
-#   docker compose -f deploy/box/compose.yml --env-file deploy/box/.env up -d docking
-#
-# Bring services up ONE AT A TIME, verifying each against its acceptance test before the
-# next (ARRIVAL-RUNBOOK Phase 2 and 6). `docker compose up -d` with no service name starts
-# everything at once, which is the opposite of the plan.
-#
-# ── Ports, and why these numbers ──────────────────────────────────────────────
-#   8000  docking      AutoDock-GPU. Replaces services.asinex.com:8000/docking
-#   8001  convertstr   SMILES->SDF. Same port as the dead 83:8001, so the cutover is a
-#                      HOST swap only and SDF_CONVERTER_URL keeps its shape
-#   8002  diffdock     Replaces services.asinex.com:58000
-#   8003  tanimoto     Replaces Oracle 151.145.91.17:8000
-#   8005  glioblastoma
-#   8006  gromacs      NOTE: 8004 deliberately skipped — leftover 83 still has GROMACS on
-#                      :8000; 84 does not. Reusing a low number invites a copy-paste miss.
-#
-# ⚠ NONE of these may be exposed to the internet. They are unauthenticated compute on a
-# EUR 24,727 machine, and chem_beo's open /api/diffdock/generate is exactly how the NVIDIA
-# quota got drained.
-#
-# How that is enforced, decided 2026-07-29 (ARRIVAL-RUNBOOK Phase 3.1) — NO VPN:
-#   1. every port below binds ${BIND_ADDR}, which defaults to 127.0.0.1
-#   2. Caddy on :443 with a Let's Encrypt cert reverse-proxies to those loopback ports
-#   3. the host firewall admits only 84's IP to :443 (live app host)
-# So the box is reached by a public hostname over HTTPS — exactly how Asinex is reached
-# today — and the firewall, not a tunnel, is what keeps everyone else out. An earlier
-# version of this comment suggested WireGuard/Tailscale; that was never a decision and
-# four documents repeated it as if it were. It is rejected.
+# Local service ports: docking 8000, convertSTR 8001, DiffDock 8002,
+# Tanimoto 8003, glioblastoma 8005, GROMACS 8006.
 
 # ⚠ There is deliberately no shared `x-gpu` anchor any more.
 #
@@ -176,9 +151,8 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── ADMET. Has NEVER been deployed. Every job ever queued is still "queued". ──
-  # No port: it is a worker. It polls a Mongo job collection — CloudAMQP is retired,
-  # see docs/BOX-ARCHITECTURE.md §5.
+  # ADMET polls MongoDB jobs and sends authenticated callbacks; it has no public port.
+  # See docs/BOX-ARCHITECTURE.md.
   admet:
     <<: [*base, *gpu1]
     build: ../../services/admet

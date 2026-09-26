@@ -26,7 +26,7 @@ updates:
     ignore:
       # react-router / react-router-dom: the fix for the open-redirect and constructor-
       # injection advisories lands only in v7, and this app is on 6.30.4. That is a framework
-      # migration with breaking route API changes, not a patch bump — see docs/NEXT-SESSION.md
+      # migration with breaking route API changes, not a patch bump; verify route compatibility explicitly
       # "Do NOT do these" #2. Revisit as a planned migration, never as a Dependabot PR.
       - dependency-name: "react-router"
         versions: ["< 7"]

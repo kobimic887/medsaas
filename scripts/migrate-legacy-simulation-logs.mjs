@@ -2,39 +2,11 @@
 /**
  * Backfill `username` and `companyId` onto legacy simulation_logs documents.
  *
- * WHY THIS EXISTS
- * ---------------
- * `scripts/migrate-legacy-users.mjs` fixes the `users` collection and stops there. That is not
- * enough, and the gap only opens *because* that script succeeds.
- *
- * Once every user has a `companyId`, `buildTenantFilter` (server/index.js:1065) stops taking the
- * legacy branch and returns `{companyId}` for everyone:
- *
- *     if (user?.companyId) return { companyId: user.companyId };      // after the user migration
- *     if (user?.username)  return { 'user.username': user.username }; // before it
- *
- * Every simulation_logs document in production was written by `chem_beo`, which nests
- * `user: {username, iat, exp}` and writes **no `companyId` at all** — verified against Atlas on
- * 2026-07-29: 5 documents, 5 with `user.username`, 0 with `username`, 0 with `companyId`.
- *
- * So the moment the user migration lands, that filter matches nothing, and:
- *
- *   - `/api/simulation-logs` returns empty. Every user's dock history disappears.
- *   - `/api/simulation` (GET and POST) looks up the cache with
- *     `findOne({...tenantFilter, pdbid, smiles})` — server/index.js:3165. It misses, so an
- *     identical re-dock **charges a credit again for a dock already paid for** and re-runs it.
- *
- * That is the same failure the runbook attributes to reusing `chem_beo`'s JWT_SECRET, but it
- * arrives by a different road and rotating the secret does not prevent it.
- *
- * DESIGN — additive only, so rollback still works
- * -----------------------------------------------
- * This never removes or rewrites `user`. `chem_beo` reads `user.username` and is the rollback
- * target for at least a week after cutover (runbook 5.0 step 9); deleting the field it reads
- * would make the rollback lossy. After this runs, a document carries BOTH shapes and either
- * server can find it. That redundancy is the point, not an oversight.
- *
- * Idempotent. Only fills what is missing. Re-running is a no-op; a partial run can be re-run.
+ * Adds top-level identity fields while preserving legacy nested user records.
+ * This is an optional data migration, not an application startup requirement:
+ * the maintained simulation-log reader also understands legacy records.
+ * Dry-run is the default; applying requires --apply and --yes-i-have-a-backup.
+ * Check the current schema and private operator record before applying.
  *
  * USAGE
  * -----

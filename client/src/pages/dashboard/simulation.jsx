@@ -69,7 +69,8 @@ function WorkbookRowPrices({ source, code }) {
   const pricing = workbookPacksForRow(source, code);
   if (!pricing) return <span className="text-blue-gray-500">No workbook tier</span>;
   return (
-    <div className="min-w-[11rem] text-xs tabular-nums" aria-label={`${pricing.category} workbook pack prices in estimated US dollars`}>
+    <div className="min-w-[11rem] text-xs tabular-nums">
+      <span className="sr-only">{pricing.category} workbook pack prices in estimated US dollars</span>
       <div className="flex flex-wrap gap-x-3 gap-y-1">
         {pricing.packs.slice(0, 3).map(({ mg, eur, usd }) => (
           <span key={mg} title={`${mg} mg: €${eur} in supplier workbook`}>{mg} mg <strong>≈{usd}</strong></span>
@@ -392,7 +393,8 @@ export function Simulation() {
   }, [stockOffset]);
 
   // No automatic pricing lookups on this page. Catalog rows display the pack
-  // prices already on their browse/search response; stock rows are not priced.
+  // prices already on their browse/search response; stock workbook estimates
+  // are display-only and cannot be added to the basket.
   // (The former per-scroll pack-quote batches re-rendered the whole table
   // mid-scroll as each slow upstream response landed — the reported slowdown.)
 

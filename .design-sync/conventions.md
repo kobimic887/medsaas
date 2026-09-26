@@ -1,4 +1,4 @@
-# ChemBench Design System — how to build with it
+# Pyxis Discovery design components
 
 These components are React, built on **Material Tailwind** (`@material-tailwind/react`) and **Tailwind CSS**. Style with Tailwind utility classes and Material Tailwind component props — do not hand-write CSS.
 

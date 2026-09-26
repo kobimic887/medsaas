@@ -54,6 +54,15 @@ Never return same-origin **401** for authorization or upstream credential failur
    `refundOnDisconnect: false` rules — do not invent a new refund policy.
 5. Do not add new tenant or billing products unless the user explicitly asks.
 
+## Plan checkout
+
+Use `PLAN_CATALOG`, `getPlan`, and `buildPlanCheckoutSessionParams` from
+`server/utils/planCheckout.js` for both existing plan routes. Credit packs use
+one-time `payment` sessions and return to `/dashboard/paid-plans`. Preserve the
+separate molecule-cart branch and verified webhook fulfillment. Check the actual
+route wiring as well as the helper; a passing helper test alone does not prove
+that a route uses it.
+
 ## Proxies
 
 - Remap upstream **401 → 502** (`relayUpstreamStatus` / scientific router).

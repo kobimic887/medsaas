@@ -1,19 +1,7 @@
-// ADMET job queue, backed by MongoDB.
-//
-// This replaces server/utils/rabbitMQUtils.js. The broker is gone; the reason is not
-// fashion. ADMET has never once run in production: chem_beo has been publishing to
-// CloudAMQP since the feature shipped, no consumer has ever connected, and every job any
-// user ever queued is still `status: "queued"`. Nobody noticed for months, because
-// noticing would have meant watching a broker's queue depth.
-//
-// A collection fixes exactly that. "How many jobs are stuck?" becomes a find(). The real
-// workload is four docking results in three months, so a network broker between two
-// processes was solving a problem that does not exist. Decided in docs/BOX-ARCHITECTURE.md
-// §5 and confirmed by the owner 2026-07-30.
-//
-// Nothing here talks to the worker directly. The worker polls `admet_jobs`, claims one
-// atomically, and PUTs its result back through /api/simulation/:key/admet — which already
-// exists and is already authenticated by requireAdmetCallbackAuth.
+// ADMET jobs are stored in MongoDB so queue state is observable with application
+// data. The worker atomically claims a job from admet_jobs and returns its result
+// through the authenticated /api/simulation/:key/admet callback.
+// See docs/BOX-ARCHITECTURE.md for the application/worker boundary.
 
 export const ADMET_JOBS_COLLECTION = 'admet_jobs';
 
@@ -53,7 +41,7 @@ const VALID_PRIORITIES = new Set(['low', 'normal', 'high']);
  * ⚠ `simulation_logs.smiles` is stored URL-ENCODED, always. The client sends
  * `encodeURIComponent(_searchSmiles)` (client/src/pages/dashboard/simulation.jsx:689) and
  * the server then *enforces* the encoding on the way in — `server/index.js:3435` re-encodes
- * anything that arrived raw. docs/DOCKING-CONTRACT.md §4 records the stored values.
+ * anything that arrived raw. docs/DOCKING-CONTRACT.md describes the stored artifact format.
  *
  * That matters far more than it looks, because RDKit does not reject the encoded form —
  * it misreads it. Measured against this repo's own @rdkit/rdkit:

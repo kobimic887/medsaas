@@ -1,202 +1,89 @@
 # GROMACS API
 
-All-in-one Docker container with GROMACS and REST API for molecular dynamics simulations.
+FastAPI wrapper for GROMACS commands, molecular-dynamics workflows, input files,
+and asynchronous jobs. The Docker image includes a CUDA-enabled GROMACS build.
 
-## Features
+This service has no built-in authentication and can run commands and manage
+files. Keep direct access local or behind an authenticated application proxy.
 
-- 🐳 **Single Docker Image** - GROMACS + API in one container
-- 🚀 **Complete REST API** - All GROMACS commands accessible via HTTP
-- 📦 **Workflow Endpoints** - Common operations pre-configured
-- 📝 **MDP Templates** - Ready-to-use simulation parameter files
-- 🔄 **Job Management** - Async execution with status tracking
-- 📊 **System Monitoring** - Resource usage and health checks
-- 📚 **Interactive Docs** - Swagger UI at `/docs`
+## Run on a GPU development host
 
-## Quick Start
+The [Dockerfile](Dockerfile) targets x86_64, CUDA 12.8, and `sm_120`. Build on a
+compatible host with Docker; running with `--gpus all` requires NVIDIA container
+support and compatible hardware.
 
-### Using Docker
+From the repository root:
 
 ```bash
-# Build the image
-docker build -t gromacs-api .
-
-# Run the container
-docker run -d -p 8000:8000 -v ./data:/data gromacs-api
-
-# Access the API
-curl http://localhost:8000/health
+docker build -t pyxis-gromacs services/gromacs-api
+docker run --rm --gpus all \
+  -p 127.0.0.1:8000:8000 \
+  -v pyxis-gromacs-data:/data \
+  pyxis-gromacs
 ```
 
-### Using Docker Compose
+Use a persistent volume for input files, results, job metadata, and templates.
+The image provides templates in `/data/.templates`; a bind mount over `/data`
+hides them unless that directory is populated in the mount.
+
+Once running, [Swagger UI](http://localhost:8000/docs) provides the complete API
+schema and interactive requests. `GET /health` and `GET /gromacs/version` report
+service and GROMACS status.
+
+## Example workflow
+
+Upload a local PDB file, then start topology generation. **Workflow parameters
+are query parameters**; the generic command endpoints accept JSON bodies.
 
 ```bash
-# Start the service
-docker-compose up -d
+curl --fail-with-body http://localhost:8000/files/upload \
+  -F 'file=@protein.pdb'
 
-# View logs
-docker-compose logs -f
-
-# Stop the service
-docker-compose down
+curl --fail-with-body -X POST \
+  'http://localhost:8000/workflows/pdb2gmx?pdb_file=protein.pdb&force_field=oplsaa&water=spce&output_prefix=processed'
 ```
 
-## API Documentation
+Use the returned `job_id` to poll `GET /jobs/{job_id}`. After the job completes,
+download outputs from `/files/download/processed.gro` and
+`/files/download/processed.top`. Inspect failed-job details and
+`GET /jobs/{job_id}/logs` when a command fails.
 
-Once running, access the interactive API documentation at:
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-
-## Usage Examples
-
-### Upload a PDB File
+For a synchronous command:
 
 ```bash
-curl -X POST "http://localhost:8000/files/upload" \
-  -F "file=@protein.pdb"
+curl --fail-with-body http://localhost:8000/gromacs/execute/sync \
+  -H 'Content-Type: application/json' \
+  -d '{"command":"editconf","args":["-f","processed.gro","-o","boxed.gro","-bt","cubic","-d","1.0"],"working_dir":"."}'
 ```
 
-### Run pdb2gmx Workflow
+The [Python client example](examples_python_client.py) implements upload, workflow
+submission, polling, and download calls.
 
-```bash
-curl -X POST "http://localhost:8000/workflows/pdb2gmx" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "pdb_file": "protein.pdb",
-    "force_field": "oplsaa",
-    "water": "spce",
-    "output_prefix": "processed"
-  }'
-```
+## API areas
 
-### Check Job Status
+| Path family | Purpose |
+|---|---|
+| `/files/*` | Upload, list, view, download, and delete files |
+| `/gromacs/*` | Run commands asynchronously or synchronously; inspect version and help |
+| `/jobs/*` | List jobs, inspect status and logs, cancel or delete jobs |
+| `/workflows/*` | `pdb2gmx`, `editconf`, `solvate`, `genion`, `grompp`, `mdrun`, `energy`, `trjconv` |
+| `/templates/*` | List, read, and create MDP templates |
+| `/workspaces/*` | Create, list, and delete working directories |
+| `/health`, `/info`, `/metrics` | Service health, configuration, and resource usage |
 
-```bash
-curl "http://localhost:8000/jobs/{job_id}"
-```
+Included MDP templates cover energy minimization (`em.mdp`), NVT (`nvt.mdp`),
+NPT (`npt.mdp`), and production dynamics (`md.mdp`). Review their parameters for
+the intended simulation before use.
 
-### Download Results
+## Configuration
 
-```bash
-curl "http://localhost:8000/files/download/processed.gro" -o processed.gro
-```
+| Variable | Default | Purpose |
+|---|---|---|
+| `WORK_DIR` | `/data` | Files, `.jobs.json`, job logs, and `.templates` |
+| `MAX_UPLOAD_SIZE` | `104857600` | Maximum upload size in bytes |
+| `JOB_TIMEOUT` | `3600` | Command timeout in seconds |
 
-### Execute Custom GROMACS Command
-
-```bash
-curl -X POST "http://localhost:8000/gromacs/execute/sync" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "command": "editconf",
-    "args": ["-f", "protein.gro", "-o", "boxed.gro", "-bt", "cubic", "-d", "1.0"],
-    "working_dir": "."
-  }'
-```
-
-## Python Client
-
-See `examples/python_client.py` for a complete Python client implementation.
-
-```python
-from python_client import GromacsAPI
-
-api = GromacsAPI("http://localhost:8000")
-
-# Upload file
-api.upload_file("protein.pdb")
-
-# Run workflow
-job = api.run_workflow("pdb2gmx", pdb_file="protein.pdb")
-
-# Wait for completion
-result = api.wait_for_job(job["job_id"])
-
-# Download results
-api.download_file("processed.gro", "processed.gro")
-```
-
-## Available Workflows
-
-- `pdb2gmx` - Generate topology from PDB
-- `editconf` - Define simulation box
-- `solvate` - Add solvent
-- `genion` - Add ions
-- `grompp` - Preprocess MD parameters
-- `mdrun` - Run MD simulation
-- `energy` - Energy analysis
-- `trjconv` - Trajectory conversion
-
-## MDP Templates
-
-Pre-configured templates available at `/data/.templates/`:
-- `em.mdp` - Energy minimization
-- `nvt.mdp` - NVT equilibration
-- `npt.mdp` - NPT equilibration
-- `md.mdp` - Production MD
-
-Access templates via API:
-
-```bash
-curl "http://localhost:8000/templates/list"
-curl "http://localhost:8000/templates/em.mdp"
-```
-
-## Environment Variables
-
-- `WORK_DIR` - Working directory (default: `/data`)
-- `MAX_UPLOAD_SIZE` - Max file upload size in bytes (default: `104857600`)
-- `JOB_TIMEOUT` - Job timeout in seconds (default: `3600`)
-
-## API Endpoints
-
-### Files
-- `POST /files/upload` - Upload file
-- `GET /files/list` - List files
-- `GET /files/download/{path}` - Download file
-- `GET /files/view/{path}` - View file content
-- `DELETE /files/delete/{path}` - Delete file
-
-### GROMACS
-- `POST /gromacs/execute` - Execute command (async)
-- `POST /gromacs/execute/sync` - Execute command (sync)
-- `GET /gromacs/version` - Get version
-- `GET /gromacs/commands` - List commands
-- `GET /gromacs/help/{command}` - Get help
-
-### Jobs
-- `GET /jobs` - List jobs
-- `GET /jobs/{job_id}` - Get job details
-- `DELETE /jobs/{job_id}` - Delete job
-- `POST /jobs/{job_id}/cancel` - Cancel job
-- `GET /jobs/{job_id}/logs` - Get logs
-
-### System
-- `GET /health` - Health check
-- `GET /info` - System info
-- `GET /metrics` - Resource metrics
-
-## Development
-
-### Local Development
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Run locally (requires GROMACS installed)
-python app.py
-```
-
-### Build Custom Image
-
-```bash
-docker build -t my-gromacs-api .
-docker run -d -p 8000:8000 -v ./data:/data my-gromacs-api
-```
-
-## License
-
-MIT
-
-## Support
-
-For issues and questions, please open an issue on GitHub.
+For development with an existing Python environment and GROMACS installation,
+run `python app.py` from this directory after installing [requirements.txt](requirements.txt).
+`gmx` must be on `PATH` and `WORK_DIR` must be writable. The API implementation
+is in [app.py](app.py).

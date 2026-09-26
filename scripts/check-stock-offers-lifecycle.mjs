@@ -32,18 +32,19 @@ function check(label, condition, extra = '') {
   }
 }
 
-// Owner decision 2026-09-13: the Internal catalog displays and baskets the
-// original catalog API's per-compound pack prices from its own browse/search
-// responses; stock compounds carry no prices; the browser never prices via
+// The Internal catalog displays and baskets the catalog API's per-compound pack
+// prices. Stock workbook estimates are display-only; the browser never prices via
 // POST /api/stock-offers (or /api4/bas). Checkout review stays server-owned.
-console.log('Simulation pricing lifecycle (catalog pack prices, stock unpriced):\n');
+console.log('Simulation pricing lifecycle (catalog checkout, stock estimates):\n');
+
+const stockTable = simulation.match(/searchSource === "stock" \? \(([\s\S]*?)\) : searchSource === "open" \? \(/)?.[1] || '';
 
 check('simulation imports the catalog price cart helper', simulation.includes("cartItemFromCatalogPrice } from '@/utils/stockOffers'"));
 check('no automatic offer lookups remain on the page', !simulation.includes('/stock-offers'));
 check('offer state map is gone', !simulation.includes('stockOffersByCode') && !simulation.includes('stockOffersRequestRef'));
 check('catalog price cell / retry banner machinery is gone', !simulation.includes('catalogPriceCell') && !simulation.includes('Retry live prices') && !simulation.includes('Quote required'));
 check('stock table has no Purchase column', !simulation.includes('>Purchase</'));
-check('stock banner states rows are not priced or purchasable', simulation.includes('not priced or purchasable here'));
+check('stock workbook estimates have no add-to-cart control', stockTable.includes('<WorkbookRowPrices source="stock"') && !stockTable.includes('addToCart('));
 check('catalog normalizer maps the catalog pack prices (both spellings)', simulation.includes('PRICE_1MG: molecule.PRICE_1MG ?? molecule.price_1mg') && simulation.includes('PRICE_5MG: molecule.PRICE_5MG ?? molecule.price_5mg') && simulation.includes('PRICE_10MG: molecule.PRICE_10MG ?? molecule.price_10mg'));
 check('catalog price headers are the plain pack columns', simulation.includes('>Price 1mg</') && simulation.includes('>Price 5mg</') && simulation.includes('>Price 10mg</'));
 check('catalog cells basket the displayed pack prices', simulation.includes('addToCart(mol, 1, mol.PRICE_1MG)') && simulation.includes('addToCart(mol, 5, mol.PRICE_5MG)') && simulation.includes('addToCart(mol, 10, mol.PRICE_10MG)'));

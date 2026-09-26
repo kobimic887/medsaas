@@ -2,42 +2,11 @@
 /**
  * Bring legacy user documents up to the shape server/index.js requires.
  *
- * WHY THIS EXISTS
- * ---------------
- * Production (MongoDB Atlas, database `test`) holds 50 users written by the legacy `chem_beo`
- * server. This repo's server expects fields that server never wrote. Inventory 2026-07-28:
- *
- *     companyId    1/50        role       1/50
- *     active       1/50        createdAt  1/50
- *     simulationTokens:  int 2 · string 1 · MISSING 47
- *
- * Deploy this repo's server against that data untouched and:
- *
- *   - chargeSimulationToken filters `simulationTokens: {$gt: 0}`, so the 47 users with no such
- *     field get "403 No simulation tokens left" on every metered action. Unconditional.
- *
- *   - one user has simulationTokens as a STRING, and `$inc` on a string is a MongoDB error,
- *     not a coercion — so that account errors rather than being charged.
- *
- *   - results go missing as they are created. buildTenantFilter (server/index.js:1065) falls
- *     back to `{'user.username': …}` when companyId is absent, which matches the LEGACY
- *     simulation_logs shape that chem_beo wrote (`user: {username, iat, exp}`). But THIS repo
- *     writes `username` at the top level instead. So a user without companyId still sees their
- *     old docks and never sees a new one — and because the cache lookup misses too, they are
- *     charged again for a dock they already paid for.
- *
- * See docs/PRODUCTION-83-INVENTORY.md §5.
- *
- * DESIGN
- * ------
- * Idempotent: only ever fills in what is missing. It never overwrites a value that is already
- * the right type, so re-running is safe and a partial run can simply be re-run.
- *
- * Dry-run by default. It refuses to write unless --apply is passed, and --apply refuses to run
- * without --yes-i-have-a-backup, because this edits the production user collection.
- *
- * Credits are NOT invented. Users missing simulationTokens get --default-tokens, which
- * defaults to 0 rather than a free grant — see the note on that flag below.
+ * Fills missing tenant/user fields in an explicitly selected database. Dry-run
+ * is the default; applying requires --apply and --yes-i-have-a-backup.
+ * Existing correctly typed values are preserved. Missing credit balances use
+ * --default-tokens (zero unless supplied), not an implicit credit grant.
+ * Check the current schema and private operator record before applying.
  *
  * USAGE
  * -----
@@ -47,9 +16,7 @@
  *
  * Flags:
  *   --uri <s>             connection string. Falls back to $MONGODB_URI. Never hardcode it.
- *   --db <s>              database name. Default `test` — the production URI carries no
- *                         database name, so the driver falls back to `test` and that is where
- *                         the data actually is. Do not "fix" this without checking.
+ *   --db <s>              database name. Default `test`; explicitly confirm the intended target.
  *   --company <id>        companyId to assign. Default: the single existing company, if there
  *                         is exactly one. Fails loudly if there are several.
  *   --default-tokens <n>  balance for users with no simulationTokens field. Default 0.

@@ -1,131 +1,76 @@
-# Open compounds (ChEMBL + AI tool loop) — Simulation search source
+# Open compound search
 
-Third “Search in” source on the Simulation page. The **product intent** is an
-AI-driven request: SMILES + Morgan/Tanimoto threshold + result count (+ optional
-instruction) go to a model that **must call** a bounded chemical-search tool.
-Displayed structures, public IDs, and similarity scores come only from that
-tool’s validated ChEMBL + RDKit path — never from model-written numbers.
+Simulation retrieves candidates from ChEMBL and scores them locally with RDKit.
+Users can search directly or, when enabled, ask an AI model to call the same
+bounded search tool. Structures, identifiers, and scores always come from the
+validated tool output. An AI failure never silently becomes a direct search.
 
-An explicit **Search without AI** control reuses the deterministic ChEMBL path.
-AI failures do **not** silently run that path.
+## Search contract
 
-## Chosen public source
+ChEMBL Data Web Services is the retrieval provider. `OPEN_COMPOUNDS_BASE`
+configures its base URL; the default is `https://www.ebi.ac.uk/chembl/api/data`.
+The application retrieves at most 300 candidates and returns at most 100 ranked
+results. This is a ranking of retrieved candidates, not a guarantee of the
+database's exhaustive top matches.
 
-| | |
-|---|---|
-| Provider | **ChEMBL** Data Web Services (EMBL-EBI) |
-| Endpoint | `GET {OPEN_COMPOUNDS_BASE}/similarity/{smiles}/{pct}?format=json&limit=&offset=` |
-| Default base | `https://www.ebi.ac.uk/chembl/api/data` |
-| Why not PubChem for v1 | PubChem `fastsimilarity_2d` uses the **PubChem 881-bit** fingerprint, not Morgan. |
-
-Reference probe (2026-09-09): `c1ccc2c(c1)nc(s2)SCC(=O)O` @ 70% → six ChEMBL
-hits including `CHEMBL1373993` @ 100%. Local `@rdkit/rdkit` Morgan r=2 / 2048-bit
-Tanimoto matched ChEMBL’s reported percentages to `< 1e-6`.
-
-## Declared final score
-
-Identical settings for query and every candidate:
+Query and candidates use the same settings:
 
 | Setting | Value |
 |---|---|
-| Fingerprint | RDKit Morgan bit vector |
-| radius | 2 |
-| nBits | 2048 |
-| useChirality | **false** |
-| useBondTypes | true |
-| useFeatures | false |
-| Metric | Tanimoto |
-| Standardization | `RDKit.get_mol` as written — **no** charge/bond repair |
-| Identity / dedup | InChIKey when ChEMBL provides one, else RDKit canonical SMILES |
+| Fingerprint | RDKit Morgan, radius 2, 2048 bits |
+| Chirality | Off |
+| Bond types | On |
+| Feature invariants | Off |
+| Metric | Binary Tanimoto |
+| Structure handling | RDKit parsing; no automatic charge or bond repair |
+| Deduplication | InChIKey when supplied, otherwise canonical SMILES |
 
-Results are ranked among retrieved candidates — **not** guaranteed exhaustive
-database-wide top-N. Retrieval cap 300; requested final count ≤ 100.
+## API and AI behavior
 
-## AI tool loop
+All routes require an authenticated, active user:
 
-1. Client `POST /api/open-compounds/ai-search` with locked `smiles`, `threshold`,
-   `maxResults`, optional `instruction`.
-2. Server calls an OpenAI-compatible chat-completions API with tools.
-3. Model must call `search_similar_open_compounds` with the **locked** args.
-4. Backend validates args (rejects SMILES/threshold/count changes), runs the
-   existing ChEMBL + RDKit pipeline, returns tool JSON to the model.
-5. Displayed table rows are taken from the successful tool output only.
-6. Optional short model summary may appear; scores are never taken from it.
-
-Limits: ≤4 model rounds, ≤2 tool calls, 90s timeout, 1200 max tokens,
-instruction ≤500 chars. No arbitrary URL/SQL/shell. Provider allowlist:
-`openrouter`, `openai`, or the staging `omniroute` loopback proxy.
-
-### Provider / cost gate
-
-| Env | Meaning |
+| Route | Purpose |
 |---|---|
-| `OPEN_COMPOUNDS_AI_ENABLED=true` | Opt-in |
-| `OPEN_COMPOUNDS_AI_PROVIDER` | `openrouter`, `openai`, or `omniroute` |
-| `OPEN_COMPOUNDS_AI_MODEL` | e.g. `openrouter/free`; OmniRoute uses only `openrouter/openrouter/free` |
-| `OPEN_COMPOUNDS_AI_API_KEY` (or `OPENROUTER_API_KEY` / `OPENAI_API_KEY`) | Secret — never logged |
-| `OPEN_COMPOUNDS_AI_BASE_URL` | For `omniroute` only: operator-provisioned `http://127.0.0.1:<port>/v1` proxy |
-| `OPEN_COMPOUNDS_AI_ALLOW_PAID=true` | Required for non-free / OpenAI models |
+| `GET /api/open-compounds/status` | Availability, method, and AI enablement |
+| `GET /api/open-compounds/similarity` | Direct search |
+| `GET /api/open-compounds/export` | CSV/SDF for the ranked result window |
+| `POST /api/open-compounds/ai-search` | AI-assisted search |
 
-Measured 2026-09-24: OmniRoute's `openrouter/openrouter/free` returned a
-required tool call successfully. Its `oc/*-free` routes returned 403 for generic
-API use (OpenCode-only), so staging pins the verified OpenRouter route. The
-staging app reaches a `127.0.0.1` SSH tunnel on 84; a small proxy on oracleOld
-injects the existing OmniRoute client key into requests to its own loopback
-gateway. The key is never copied to 84 or sent over the public HTTP listener.
-The proxy accepts only the chemical-search tool and pinned free model.
-**Do not invoke paid models without budget approval.**
+The AI route locks the submitted SMILES, threshold, and result count. The model
+must call `search_similar_open_compounds` with those arguments; the backend
+rejects changes. An optional model summary may accompany results, but the model
+cannot supply table rows or scores. Limits are four model rounds, two tool
+calls, a 90-second timeout, and a 500-character user instruction.
 
-Privacy: query SMILES and optional instruction are sent through OmniRoute to
-OpenRouter (or directly to the selected provider) and to ChEMBL. UI states
-this. No cross-user result cache.
+Validation errors return 400, inactive accounts 403, unavailable search 503,
+and upstream failures 502. A 401 is reserved for a dead application session.
+No route substitutes catalog or stock results. Open-compound rows support
+export and docking handoff, with no purchase controls.
 
-## API (authenticated)
+## Configuration and privacy
 
-| Route | Role |
-|---|---|
-| `GET /api/open-compounds/status` | Availability, fingerprint, AI enablement |
-| `POST /api/open-compounds/ai-search` | AI tool loop (fails closed if AI unavailable) |
-| `GET /api/open-compounds/similarity` | Deterministic “Search without AI” |
-| `GET /api/open-compounds/export` | CSV/SDF of the deterministic ranked window |
+AI is opt-in through `OPEN_COMPOUNDS_AI_ENABLED`. Provider, model, credentials,
+and any operator-provisioned proxy are configured server-side. Supported
+provider adapters are `openrouter`, `openai`, and `omniroute`; paid models
+require `OPEN_COMPOUNDS_AI_ALLOW_PAID`. Credentials stay outside source control.
 
-Status codes: `400` validation, `401` dead session, `403` inactive,
-`503 OPEN_COMPOUNDS_*_UNAVAILABLE`, `502` upstream / AI failures. Never silent
-fallback to Internal catalog or Stock compounds.
+Query structures go to ChEMBL. AI mode also sends the structure and optional
+instruction to the selected AI provider. The UI discloses that behavior.
+Results are not cached across users.
 
-## UI
-
-Simulation → **Open compounds (ChEMBL)**:
-
-- AI search (when `status.ai.enabled`) vs **Search without AI**
-- Optional instruction
-- Live stages: Interpreting request → Searching compound sources → …
-- Explanation from the model (grounded); table scores from RDKit
-- CSV/SDF; selection → existing docking SMILES handoff
-- No purchase controls
-
-## Tests
+## Verification
 
 ```bash
-bun run test:open-compounds          # unit + AI stub loop + route
-bun run test:simulation-search       # UI lifecycle
-LIVE_OPEN_VERIFY=1 bun run test:open-compounds   # real ChEMBL (deterministic route)
-# Real model (requires approved key in env — not written by agents):
-LIVE_OPEN_AI_VERIFY=1 OPEN_COMPOUNDS_AI_ENABLED=true \
-  OPEN_COMPOUNDS_AI_PROVIDER=openrouter OPEN_COMPOUNDS_AI_MODEL=openrouter/free \
-  OPEN_COMPOUNDS_AI_API_KEY=… bun server/test/open-compounds-ai-live.test.mjs
+bun run test:open-compounds
+bun run test:simulation-search
 ```
 
-## Deploy / rollback
+For an explicitly intended live ChEMBL probe:
 
-- Ship from `main` after owner approval for 84 / staging.
-- Deterministic search needs no AI secrets.
-- AI needs owner-approved key file / host env (do not commit secrets).
-- Rollback: `OPEN_COMPOUNDS_AI_ENABLED=false` and/or
-  `OPEN_COMPOUNDS_ENABLED=false`; catalog + stock untouched.
+```bash
+LIVE_OPEN_VERIFY=1 bun run test:open-compounds
+```
 
-## Unresolved product decisions
-
-1. Which free OpenRouter model is preferred long-term (`openrouter/free` vs a pinned `:free` id).
-2. Whether PubChem should become a second retrieval pool (always re-score).
-3. Paid OpenAI budget, if any.
+Fixture checks do not prove provider availability. AI provider probes use
+separately supplied credentials and may incur cost. Host configuration belongs
+in [operator records](OPERATIONS.md).

@@ -2,11 +2,8 @@
 // Brand regression guard: fail if a retired brand name leaks into user-facing source.
 // Cross-platform (no grep/findstr) so it runs identically in local + CI/Docker.
 //
-// History, because this file has flipped once and will read as a mistake otherwise:
-// v1 ("ChemBench Cleanup") renamed Pyxis -> ChemBench and this guard banned "pyxis".
-// docs/PYXIS-ONLY.md reverses that decision — the product is Pyxis Discovery, one
-// product for one company — so the retired names are now ChemBench and MedSaaS.
-// If the brand ever moves again, change RETIRED and the message, not the walker.
+// Pyxis Discovery is the product name; repository/package identifiers are separate.
+// If branding changes, update RETIRED and the message together with AGENTS.md.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, extname, relative } from "node:path";
 
@@ -30,7 +27,7 @@ const EXCLUDE_DIRS = new Set([
 
 // Deliberate, documented exceptions — path prefixes that keep a retired name on purpose.
 // `chembench-mcp` is a published MCP server name: renaming it is a client-visible
-// contract change for no benefit (docs/PYXIS-ONLY.md section 2).
+// contract change for no benefit (see AGENTS.md).
 const ALLOW_PREFIXES = ["services/mcp-server"];
 
 // The git repo is still called `medsaas`, and nothing proposes renaming it. Package
@@ -97,7 +94,7 @@ for (const root of SCAN_ROOTS) {
 if (hits.length > 0) {
   console.error(`✗ Brand check failed: ${hits.length} user-facing reference(s) to a retired brand:\n`);
   for (const h of hits) console.error("  " + h);
-  console.error("\nThe product is Pyxis Discovery (docs/PYXIS-ONLY.md). Replace these, or add a");
+  console.error("\nThe product is Pyxis Discovery (see AGENTS.md). Replace these, or add a");
   console.error("documented exception to ALLOW_PREFIXES if the name is a published contract.");
   process.exit(1);
 }

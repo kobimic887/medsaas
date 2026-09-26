@@ -1,16 +1,16 @@
 # Folding sample structures
 
-Example coordinate files used by the Protein Folding page's "Sample structures
-for viewer testing" (PDB and mmCIF cases). These are **pre-existing example
-structures, not newly generated NVIDIA predictions**, and carry no confidence
-scores.
+Public crambin coordinates from RCSB PDB entry 1CRN, used to test the Protein
+Folding viewer in PDB and mmCIF formats. These are pre-existing structures, not
+newly generated predictions, and carry no prediction confidence scores.
 
-| File | Content | Provenance |
+| File | Format | Source |
 |---|---|---|
-| `1crn.pdb` | Crambin, PDB format | RCSB PDB entry **1CRN** — `https://files.rcsb.org/download/1CRN.pdb` (crambin, 46-residue plant protein; public scientific data). Fetched 2026-09-07, stored unmodified. |
-| `1crn.cif` | Crambin, mmCIF format | RCSB PDB entry **1CRN** — `https://files.rcsb.org/download/1CRN.cif`. Fetched 2026-09-07, stored unmodified. |
+| [1crn.pdb](1crn.pdb) | PDB | [RCSB coordinate file](https://files.rcsb.org/download/1CRN.pdb) |
+| [1crn.cif](1crn.cif) | mmCIF | [RCSB coordinate file](https://files.rcsb.org/download/1CRN.cif) |
 
-The UI labels anything loaded from here as an example structure for viewer
-testing and records this provenance; the files are never presented as a fresh
-prediction. Input presets (guided form examples) reference the same public
-1CRN sequence and are documented in `client/src/data/foldingSamples.js`.
+Both files were fetched on 2026-09-07 and stored unmodified. Preserve their source
+attribution and example labels when changing the viewer.
+
+Viewer metadata and guided-form input presets are defined separately in
+[foldingSamples.js](../../src/data/foldingSamples.js).

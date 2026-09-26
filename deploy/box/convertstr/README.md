@@ -1,182 +1,60 @@
-# convertSTR — SMILES to 3D SDF
+# convertSTR
 
-`convertSTR` is the small, CPU-only conversion service used by the DiffDock path. It replaces
-what was formerly expected at `83.229.87.94:8001`, which is currently down. It runs on the
-Amsterdam compute box only; it is not an API-server component and has no GPU, database, volume,
-or network dependency at request time.
+A CPU service that converts one raw SMILES string into a validated 3D SDF. It uses
+RDKit and has no GPU, database or network dependency during conversion.
 
-**Verification status:** 16 service tests and a live Uvicorn health/conversion/error smoke pass in
-an isolated local dependency directory. This host has no Docker daemon, so container build and
-offline container smoke remain required on a Docker host before deployment.
-
-## HTTP contract and parity
-
-The only consumer contract captured from `chem_beo/index.js:2540` is:
+## HTTP contract
 
 ```http
 POST /convertSTR
 Content-Type: application/json
 
-{ "smiles": "CC(=O)Oc1ccccc1C(=O)O" }
+{"smiles":"CC(=O)Oc1ccccc1C(=O)O"}
 ```
 
-The value is a **raw SMILES string**, not URL-encoded. On a usable conversion the service returns:
+Success returns `200` with `{"sdf":"<SDF text>"}`. `GET /health` returns
+`{"status":"ok"}`. Send raw SMILES, not URL-encoded input.
 
-```http
-200 OK
-Content-Type: application/json
+The converter trims surrounding whitespace, adds explicit hydrogens, embeds with ETKDGv3
+using a fixed seed and optimizes with MMFF94. It re-parses the generated SDF to verify
+finite 3D coordinates and atom/hydrogen preservation. Output uses LF newlines and ends
+with `$$$$`.
 
-{ "sdf": "<SDF text>" }
-```
+| Failure | Status |
+|---|---|
+| Missing or non-string `smiles`, malformed request | `422` |
+| Invalid/empty SMILES, unsupported chemistry, failed embedding/optimization/serialization | `400` |
+| Unexpected server failure | `500` |
 
-The service creates an explicit-hydrogen, embedded **3D** conformer with RDKit ETKDGv3 followed
-by MMFF optimization. Its successful SDF is newline (`\n`) delimited and ends with an SDF record
-separator (`$$$$`), so the existing caller can use it without relying on its compatibility
-fallback:
+Errors return a readable `error` field. Semicolons are rejected; callers must not encode
+multiple inputs with separators. A 2xx response must contain a usable 3D structure.
 
-```js
-const normalizedSdf = sdfJson.sdf.replace(/\r\n/g, '\n');
-const sdfWithDelimiter = normalizedSdf.includes('$$$$')
-  ? normalizedSdf
-  : `${normalizedSdf}\n$$$$\n`;
-```
+The fixed seed makes results reproducible for a given image and RDKit version. It does
+not promise identical coordinates, atom order or SDF bytes to a different converter.
 
-`GET /health` is the liveness endpoint used by Compose. Its body is not a platform data contract;
-a successful 2xx response is the requirement.
+## Build and verify
 
-### Deliberate, documented differences
-
-These choices are intentional rather than claims about the missing production implementation:
-
-- **Fixed embedding seed.** The service fixes the ETKDG embedding random seed. The same accepted
-  SMILES therefore produces reproducible coordinates and SDF output for a given image/RDKit
-  version. Production's seed behavior is unknown.
-- **Strict failures.** Invalid JSON, a missing or non-string `smiles`, an unparsable molecule,
-  failed conformer embedding, failed MMFF optimization, or failed SDF serialization returns a
-  non-2xx JSON response with a readable `error`. In particular, the service must never return a
-  2xx response containing an empty, flat, partial, or otherwise unusable `sdf`. Chemistry-input
-  and conversion failures are `400`, request-shape validation is `422`, and unexpected server
-  faults are `500`.
-- **Semicolons are rejected.** A `;` in `smiles` returns `400` with an explanation. The frontend
-  has historically rewritten commas to semicolons, but accepting that ambiguous value would
-  silently change molecular meaning. Callers must send valid SMILES rather than relying on a
-  separator rewrite.
-
-## Genuine unknowns
-
-The original `:8001` service has no recoverable source copy and nothing listens on that port. The
-success request/response above is the full observed platform contract, not a byte-for-byte
-reference implementation. The following remain unknown and must not be represented as parity:
-
-- the original RDKit version, embedding algorithm and parameters, random seed, force-field
-  handling, conformer selection, atom ordering, and exact SDF header/formatting;
-- whether it wrote explicit hydrogens, CRLF versus LF, or a trailing `$$$$` record delimiter;
-- its status codes and error-body shape for malformed JSON, invalid SMILES, embedding/optimization
-  failures, or a semicolon; and
-- whether it accepted extra request fields or any non-raw/encoded SMILES variant.
-
-The service guarantees chemical and HTTP usability, not identical coordinates or SDF bytes to the
-unavailable service. The required acceptance checks are: aspirin (`CC(=O)Oc1ccccc1C(=O)O`) round
-trips through RDKit to the same canonical SMILES, output has non-zero Z coordinates, and garbage
-input produces a readable non-2xx error.
-
-## Docker-only x86_64 build, test, and offline smoke check
-
-Do not install Python, RDKit, or application dependencies on the operator's machine. Build and
-run only the container image. Run these from a checkout on an x86_64 Docker host (the box), or use
-a Docker builder capable of `linux/amd64`:
+Run on a Docker host with a `linux/amd64` builder, from the repository root:
 
 ```bash
-export REPO=/path/to/medsaas
-
-docker build --platform linux/amd64 \
-  --target test \
-  --tag box-convertstr:test \
-  "$REPO/deploy/box/convertstr"
-
-docker run --rm --network none --platform linux/amd64 \
-  box-convertstr:test
-
-docker build --platform linux/amd64 \
-  --target runtime \
-  --tag box-convertstr:local \
-  "$REPO/deploy/box/convertstr"
+docker build --platform linux/amd64 --target test -t pyxis-convertstr-test deploy/box/convertstr
+docker run --rm --network none --platform linux/amd64 pyxis-convertstr-test
+docker build --platform linux/amd64 --target runtime -t pyxis-convertstr deploy/box/convertstr
 ```
 
-The build may fetch immutable image/package layers; the test container itself has no network. The
-following smoke check starts the already-built image with Docker networking disabled, verifies the
-health endpoint from inside the container, and submits one known SMILES. `curl` is required in the
-image because the Compose healthcheck uses it too.
+Use the container instead of installing RDKit on the development laptop. Before deployment,
+exercise health, an aspirin conversion, invalid SMILES and malformed input through the
+runtime HTTP service. Verify canonical SMILES round-trip and non-flat 3D output; passing
+unit tests alone does not prove the deployed container.
 
-```bash
-docker rm -f box-convertstr-offline 2>/dev/null || true
-cleanup() { docker rm -f box-convertstr-offline >/dev/null 2>&1 || true; }
-trap cleanup EXIT
+## Integration
 
-docker run -d --network none --platform linux/amd64 \
-  --name box-convertstr-offline box-convertstr:local
+The shared [Compose file](../compose.yml) binds port `8001` to loopback by default.
+DiffDock can call `http://convertstr:8001/convertSTR` within the Compose network.
+The application setting `SDF_CONVERTER_URL` must retain the `/convertSTR` path.
+It is read at application startup, so changing it requires an application restart.
 
-healthy=false
-attempt=1
-while [ "$attempt" -le 30 ]; do
-  if [ "$(docker inspect -f '{{.State.Running}}' box-convertstr-offline 2>/dev/null)" != "true" ]; then
-    docker logs box-convertstr-offline >&2
-    exit 1
-  fi
-  if docker exec box-convertstr-offline \
-    curl --fail --silent --show-error http://127.0.0.1:8001/health; then
-    healthy=true
-    break
-  fi
-  attempt=$((attempt + 1))
-  sleep 1
-done
-
-if [ "$healthy" != "true" ]; then
-  docker logs box-convertstr-offline >&2
-  exit 1
-fi
-
-docker exec box-convertstr-offline \
-  curl --fail --silent --show-error \
-  -H 'Content-Type: application/json' \
-  --data '{"smiles":"CC(=O)Oc1ccccc1C(=O)O"}' \
-  http://127.0.0.1:8001/convertSTR
-```
-
-For the Compose-managed service, build and start this service alone, not the complete stack:
-
-```bash
-docker compose -f "$REPO/deploy/box/compose.yml" \
-  --env-file "$REPO/deploy/box/.env" build convertstr
-
-docker compose -f "$REPO/deploy/box/compose.yml" \
-  --env-file "$REPO/deploy/box/.env" up -d convertstr
-```
-
-## Existing Compose integration and exposure boundary
-
-No Compose change is required. `deploy/box/compose.yml` already defines `convertstr` with:
-
-- build context `./convertstr`, container name `box-convertstr`, and port `8001`;
-- health probe `curl -fsS http://localhost:8001/health` every 30 seconds; and
-- published-port binding `${BIND_ADDR:-127.0.0.1}:8001:8001`.
-
-The service also belongs to the private `box` Compose network. DiffDock reaches it only over that
-network through `http://convertstr:8001/convertSTR` and declares `depends_on: [convertstr]`.
-
-`convertSTR` is unauthenticated by design only because it is a **private compute dependency**. It
-must never be reachable by an unauthorised caller.
-
-⚠ **Corrected 2026-08-01 — this paragraph used to say "bind it to the approved private/VPN
-interface". There is no VPN.** That approach was considered and **rejected** on 2026-07-29. The
-settled shape is: `BIND_ADDR` stays on **loopback permanently**, **Caddy on `:443`** fronts it
-with a Let's Encrypt certificate, and the **host firewall admits only the platform API host** (`84` today; `83` is retiring). So it *is*
-served through a public proxy and a public DNS record — the access control is the firewall, not
-the absence of a route. See `docs/ARRIVAL-RUNBOOK.md` §6.
-
-Do not set `BIND_ADDR=0.0.0.0`. The platform-side `SDF_CONVERTER_URL` retains the `/convertSTR`
-path and changes host only — to `https://<BOX_DOMAIN>/convertSTR`. ⚠ It is a module-scope
-constant (`server/index.js:96`), so that cutover needs a **restart**, not just an edit. Cut it
-over after the offline and live probes pass. No functioning converter rollback exists:
-port `8001` on 83 is already down and its source is gone.
+This service has no application authentication. Preserve the loopback binding and
+[ingress access controls](../ingress/README.md). Validate a working previous converter
+before treating its URL as a rollback. Current installations are recorded in
+[operations](../../../docs/OPERATIONS.md).

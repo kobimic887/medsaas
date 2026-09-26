@@ -22,6 +22,8 @@ when a path or trap moves.
 - **`401` is a dead session only.** The client logs out on any same-origin `401`.
   Authorization failures are `403`, validation `400`, upstream auth failures `502`.
 - Credits are granted server-side from the Stripe webhook, never from the client.
+  Credit packs are one-time purchases. Both plan checkout routes must use
+  `server/utils/planCheckout.js`; do not duplicate the catalog or restore recurring billing.
 - Company branding and role checks are server-owned. Do not trust client-only enforcement.
 - MongoDB Atlas is the production application database. Do not replace it with a local dump.
   Pyxis and FinSrv use separate Atlas projects.
@@ -49,31 +51,14 @@ when a path or trap moves.
   `client/src/utils/authInterceptor.js`.
 - Amsterdam box is **compute-only** (docking, DiffDock, conversion, Tanimoto/Postgres,
   GROMACS, ADMET, glioblastoma). It does not receive the application API or MongoDB.
-- `oracleOld` (`151.145.91.17`) is a distinct host and a temporary Tanimoto source.
-  `oracleNew` (`84.13.81.51`) is the **live** application host — measure DNS.
-- Owner-test **staging** is the same hostname at `/staging/`: separate loopback
-  service `pyxis-web-staging` `:5274` (tree `/root/pyxis-STAGING-5274`), normal
-  Mongo-backed app with `PYXIS_STAGING_MODE=true` and `PYXIS_DEMO_MODE=false`.
-  Its unit reads the existing production environment in place: accounts,
-  history, credits, orders, checkout, providers and Atlas data are **shared
-  read/write with production**. The staging build has `/staging/` asset URLs,
-  namespaced browser storage and no consumer redirect. Stock uses the same
-  tonomitosql dataset; real/virtual macrocycles use a separate loopback index
-  `:8274`. Open compounds AI uses a private oracleOld OmniRoute tunnel and
-  verified free model; the consumer app's AI remains disabled. Both staging
-  units and the AI bridge units are enabled at boot. The external Asinex
-  catalog endpoint `dev.asinex.com:58181` refused connections from Mac, 151
-  and 84 on 2026-09-24; this affects both apps. The old demo router remains
-  only as a rollback option. Contract and rollback: `docs/STAGING.md` and
-  `deploy/staging/README.md`.
-  Public Pyxis is systemd + Bun **`pyxis-web` `:5174`** (nginx `:443` → `127.0.0.1:5174`).
-  Legacy Vite `:5173` / `chem_beo` `:3000` = rollback on disk (units **stopped**, still
-  **enabled**). `83` (`83.229.87.94`) is leftover, **not DNS**, and is **not** production.
-  `SDF_CONVERTER_URL` code default is dead `83:8001` (boot warns when unset). Live on
-  `84` since 2026-08-23 via interim loopback container `pyxis-convertstr`
-  (`http://127.0.0.1:8001/convertSTR`); replace with `https://<box-domain>/convertSTR`
-  when the Amsterdam box ingress exists. Do not change the code default without
-  measuring env on `84`.
+- Full staging at `/staging/` uses `PYXIS_STAGING_MODE=true` and
+  `PYXIS_DEMO_MODE=false`. It shares production Atlas, accounts, history, credits,
+  orders, and providers. Browser storage is namespaced, but data is not isolated.
+  See `docs/STAGING.md` and `deploy/staging/README.md`.
+- Host identities, release evidence, and backup locations belong in private operator
+  records. Read `docs/OPERATIONS.md` before remote work and measure current state.
+- `SDF_CONVERTER_URL` has a retired-host fallback in code. Measure the deployed
+  environment before changing it; a code default is not deployment policy.
 - Root, `client/`, and `server/` keep both Bun and npm lockfiles. After a dependency
   change run `bun run lockfiles:refresh` and commit both families.
 
@@ -81,19 +66,19 @@ when a path or trap moves.
 
 Read only the entry that matches the task; ordinary edits do not require ops runbooks.
 
-1. Resolve `app.pyxis-discovery.com` and inspect the working tree when identity matters.
-2. **Where is X / leftover copies:** [`docs/WHERE.md`](docs/WHERE.md) first.
-3. If DNS points at oracleNew (`84.13.81.51`), read `docs/POST-PROMOTION-HANDOFF.md`.
-4. For box work: `docs/ARRIVAL-RUNBOOK.md` and `docs/BOX-ARCHITECTURE.md`.
-5. `docs/README.md` is an index. Measure live state. The post-promotion handoff
-   outranks older “`83` is production” prose.
-6. Roadmap / unclear priority only: `GOAL.md`. Not for a narrow bugfix or API slice.
-7. Architecture relationships: global `graphify` skill if `graphify-out/` exists
-   (confirm live facts in files). Docking contract: `docs/DOCKING-CONTRACT.md`.
-8. Staging / demo-mode / folding-history work: `docs/STAGING.md` +
-   `deploy/staging/README.md` (the current full `/staging/` app shares production
-   accounts, Atlas, credits, orders and providers; the older isolated demo is
-   rollback only).
+| Task | Read |
+| --- | --- |
+| Deploy, host identity, rollback, or leftover copies | `docs/OPERATIONS.md`, then the relevant private operator record |
+| Compute cutover | `docs/ARRIVAL-RUNBOOK.md` and `docs/BOX-ARCHITECTURE.md` |
+| Roadmap or unclear priority | `GOAL.md` |
+| Docking | `docs/DOCKING-CONTRACT.md` |
+| Staging, demo mode, or folding history | `docs/STAGING.md` and `deploy/staging/README.md` |
+| Other documentation | `docs/README.md` |
+
+Use global `graphify` only when `graphify-out/` exists or explicitly requested.
+Keep shared docs about maintained behavior; do not append private incident,
+account, purchasing, host, or deployment histories. Existing private records are
+located through `docs/OPERATIONS.md` and must be checked against current evidence.
 
 ## Local development
 
@@ -175,5 +160,5 @@ Subagent limits: `~/.codex/AGENTS.md` (Skills, subagents, cheap mode). Use the n
 
 Do not spawn `pyxis-ops` for ordinary one-file work.
 
-Deployment history and rollback archives live in `docs/POST-PROMOTION-HANDOFF.md`;
-never treat a dated release hash as the current live identity.
+Deployment history and rollback locations live in private operator records;
+`docs/OPERATIONS.md` explains access. Never treat a dated hash as live identity.

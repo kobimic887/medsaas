@@ -19,11 +19,9 @@ import { join, relative } from 'node:path';
 const ROOT = new URL('..', import.meta.url).pathname;
 const SCAN_DIRS = ['client/src'];
 
-// Routes that genuinely answer without authenticateToken in THIS repo
-// (server/index.js — live 84 pyxis-web :5174 since 2026-08-23). chem_beo
-// left many of these open; do not copy that inventory or Vite :5173.
-// Adding a route here is a claim that the live handler has no
-// authenticateToken — check first.
+// Routes that answer without authenticateToken in the current server handlers.
+// Check the handler before adding a route here; a public-looking path is not
+// evidence that it accepts unauthenticated requests.
 //
 // Not public here: /company/branding (authenticateToken + requireActiveUser).
 // A bare fetch 401s and the interceptor logs the user out.
@@ -38,6 +36,8 @@ const PUBLIC_ROUTES = [
   // Contact form: publicEmailRateLimit, no authenticateToken.
   '/send-email',
   '/demo-session',
+  // Public environment label in server/index.js and routes/stagingDemo.js.
+  '/staging/status',
   '/password-reset/request',
   '/password-reset/confirm',
   '/validate-token',

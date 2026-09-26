@@ -358,7 +358,7 @@ async function main() {
     check('reset confirm with weak password returns 400', weakPass.status === 400, `(got ${weakPass.status})`);
 
     // --- Test 5b: public signup is closed ---
-    // This install is one product for one company (docs/PYXIS-ONLY.md). An open
+    // This install is one product for one company (AGENTS.md). An open
     // /api/signup does not just create a user, it creates a COMPANY and makes the
     // caller its owner. The smoke env sets no ALLOW_PUBLIC_SIGNUP, which is the
     // production configuration, so the route must refuse — and refuse with 403,

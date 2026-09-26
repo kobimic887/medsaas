@@ -1,80 +1,63 @@
-# Pyxis full staging at `/staging/`
+# Staging deployment
 
-**Live since 2026-09-24:** [https://app.pyxis-discovery.com/staging/](https://app.pyxis-discovery.com/staging/) runs the normal Pyxis application in a separate loopback process on 84. It shares production Atlas, accounts, signing key, history, credits, orders, Stripe, and scientific providers. **Staging actions can change real production data and balances.** The consumer root app has no link or redirect to staging; its service and bundle were unchanged during the switch. The browser uses separate `pxstg__` storage keys, so the same account signs in separately.
+The full `/staging/` application uses a separate process and frontend build, but shares
+production accounts, Atlas data, history, credits, orders, Stripe and scientific providers.
+**Staging actions can change real production data and balances.** Separate browser storage
+and a different URL do not make it a sandbox.
 
-Current state and measured evidence: [`docs/STAGING.md`](../../docs/STAGING.md). The old isolated demo mode is retained only as a rollback option.
+See [the staging contract](../../docs/STAGING.md) for behavior and [operations](../../docs/OPERATIONS.md)
+for host paths, deployed identities and release-specific rollback records.
 
-## Runtime map
+## Assets in this directory
 
-| Component | Location | Role |
-|---|---|---|
-| Public app | 84 `pyxis-web` `:5174` | Consumer site; unchanged by staging release |
-| Full staging app | 84 `pyxis-web-staging` `127.0.0.1:5274` | `/staging/` through existing nginx location; enabled at boot |
-| Staging tree | 84 `/root/pyxis-STAGING-5274` | Separate source and Vite `--mode staging` bundle |
-| Shared environment | 84 `/root/pyxis-LIVE-5174/server/.env` | Read in place by staging systemd unit; do not copy or log |
-| Macrocycle search | 84 `pyxis-macrocycle-search-staging` `127.0.0.1:8274` | Separate read-only real and virtual macrocycle indexes; enabled at boot |
-| Stock search | oracleOld tonomitosql | Same dataset used by consumer app |
-| Free AI proxy | oracleOld `pyxis-open-compounds-ai-proxy` `127.0.0.1:20130` | Injects existing OmniRoute key, allows only verified free model/tool; enabled at boot |
-| Private AI tunnel | oracleOld `pyxis-open-compounds-ai-tunnel` → 84 `127.0.0.1:20129` | Reverse SSH; enabled at boot; no OmniRoute key copied to 84 |
+| Asset | Purpose |
+|---|---|
+| `pyxis-web-staging-full.service` | Full application with staging mode and demo mode disabled |
+| `pyxis-macrocycle-search-staging.service`, `10-macrocycle-search.conf` | Separate macrocycle index and application URL configuration |
+| `pyxis-open-compounds-ai-proxy.service`, `pyxis-open-compounds-ai-tunnel.service` | Restricted AI bridge and its transport |
+| `nginx-staging.conf` | `/staging/` proxy configuration |
+| `pyxis-web-staging.service`, `env.server.template` | Older isolated demo assets |
 
-`pyxis-web-staging-full.service` is the installed staging unit. It uses `EnvironmentFile=/root/pyxis-LIVE-5174/server/.env` and overrides the stage port, bind address, asset path, base URL, `PYXIS_DEMO_MODE=false`, `PYXIS_STAGING_MODE=true`, and free AI endpoint. The `10-macrocycle-search.conf` drop-in supplies the staging-only index URL. Normal app routes therefore serve real login, history, stock, ChEMBL, folding, checkout and paid actions. Open compounds AI uses `openrouter/openrouter/free` through the local OmniRoute bridge. An AI bridge failure is visible; **Search without AI** remains an explicit option.
+Unit files contain installation-specific values. Review the intended service, paths,
+environment and access boundaries before installing or changing them. Keep credentials
+in operator-managed configuration and out of source archives and command output.
 
-The browser build must be `bun --cwd=client run build:staging` and use `/staging/` asset URLs. A normal `bun --cwd=client run build` restores the local production build after transferring staging artifacts. Do not transfer that normal build into the staging tree. Source uploads via `git archive` exclude ignored `.env` files.
+## Build and verify
 
-## Checks after a staging update
-
-Run the focused repository checks (`bun run check`, `bun run test:staging-build`, `bun run test:simulation-search`, `bun run test:count-morgan`, and `bun --cwd=server run test:open-compounds:bun`) before shipping. On 84, verify only the staging service is restarted and confirm:
+From the repository root:
 
 ```bash
-systemctl is-active pyxis-web-staging pyxis-macrocycle-search-staging
-curl -fsS http://127.0.0.1:5274/health
-curl -fsS http://127.0.0.1:5274/api/staging/status
-curl -fsS http://127.0.0.1:8274/v1/datasets   # each dataset lists fingerprint_type + metrics
-curl -fsS http://127.0.0.1:20129/health
-curl -I https://app.pyxis-discovery.com/staging/
-curl -I https://app.pyxis-discovery.com/
+bun --cwd=client run build:staging
+bun run test:staging-build
 ```
 
-A format-2 macrocycle index lists `metrics: [tanimoto, count_tanimoto, count_dice]` and needs `<source>.cnt` beside `<source>.fpb`; install the complete `*.fpb`, `*.rows.csv`, `*.cnt`, `*.manifest.json` set or the format check reports that dataset unavailable. A format-1 artifact stays valid and advertises `tanimoto` alone.
+The build uses `/staging/` asset URLs and writes `client/dist`. After packaging the staging
+artifact, restore the normal local build with `bun --cwd=client run build` before preparing
+a consumer release. A normal bundle must not be installed as the staging bundle.
 
-The 2026-09-25 count-metric update has a staging-only rollback snapshot at
-`/root/pyxis-staging-count-rollback-20260925/` (`staging-before.tgz`,
-`index-before/`, and saved frontend bundles). Its real and virtual fingerprint
-and row files matched the previous index byte for byte, so only `.cnt` and
-`.manifest.json` changed in the deployed index. Restore the saved staging tree
-and index files, then restart only `pyxis-web-staging` and
-`pyxis-macrocycle-search-staging`. See [`docs/STAGING.md`](../../docs/STAGING.md)
-for deployed identities and browser evidence.
+Run the focused server/lifecycle checks for the changed surface. After an approved release,
+check process health and `/api/staging/status`; full staging must report `demo:false` and
+`sharedProductionData:true`. Check sign-in, existing history, source availability and the
+changed user flow. Verify the consumer service and bundle remain unchanged. Do not treat
+these checks as proof of payment completion or a paid scientific request.
 
-The later Pyxis catalog preview has a separate staging-only rollback at
-`/root/pyxis-staging-catalog-rollback-20260925/staging-source-and-bundle-before.tgz`.
-It contains the pre-preview staging source and frontend bundle, without `.env`.
-To reverse that UI release, extract it over `/root/pyxis-STAGING-5274` and restart
-only `pyxis-web-staging`. Do not restore the older count-metric index for this
-UI-only rollback. The consumer app must retain its own process and bundle.
+For a format-2 macrocycle index, deploy the complete `.fpb`, `.rows.csv`, `.cnt` and
+`.manifest.json` artifact set. Missing count files make the dataset unavailable. Format-1
+indexes remain valid and advertise binary Tanimoto only. Preserve the existing index for
+UI-only changes; use the matching prior index when rolling back an index-format change.
 
-The later inline price and panel update has its own rollback snapshot at
-`/root/pyxis-staging-inline-prices-rollback-20260925.tgz`. Restore it over the
-staging tree and restart only `pyxis-web-staging` to return to the preceding
-catalog preview. The macrocycle index and consumer app are outside this rollback.
+## Recovery
 
-The combined RPX + VPX search update has a staging-only rollback snapshot at
-`/root/pyxis-staging-rpx-vpx-rollback-20260925.tgz`. It contains the preceding
-frontend bundle, relevant source and macrocycle search service, without any
-`.env` or dataset files. Restore it over `/root/pyxis-STAGING-5274` and restart
-only `pyxis-web-staging` and `pyxis-macrocycle-search-staging`. Keep the existing
-macrocycle indexes and public `pyxis-web` untouched.
+Use the snapshot recorded for the specific release. Restore only the affected staging
+source/bundle, service configuration and, when necessary, matching search artifacts.
+Restart only the affected staging services. Do not restore shared Mongo records, alter
+production credentials or replace the consumer bundle as a side effect of code recovery.
 
-`/api/staging/status` must say `demo:false` and `sharedProductionData:true`. Also check a real sign-in, existing history, macrocycle/stock source status, an Open compounds AI search, and the unchanged consumer service PID and bundle SHA. These read-only checks do not prove a completed payment or a paid scientific provider round trip.
+The older demo mode uses separate signing configuration, in-process history and fixtures,
+and refuses checkout. Restoring it is a deliberate mode change, not a routine full-staging
+rollback. Older demo teardown procedures remove the staging route and tree; they are not
+a substitute for restoring a full-staging release. Use the procedure matched to the intended
+mode and verify `/api/staging/status` afterward.
 
-The external catalog endpoint `dev.asinex.com:58181` refused connections from Mac, oracleOld and 84 on 2026-09-24. The consumer app still uses that endpoint. The staging Simulation source picker now uses the Pyxis stock and macrocycle indexes plus ChEMBL, so its search does not require the failed supplier catalog. This does not turn the dated exports into verified offers or enable their checkout. See the replacement-catalog gaps in [`docs/STAGING.md`](../../docs/STAGING.md).
-
-## Rollback to the former isolated demo
-
-The pre-switch staging unit and source/frontend archive are at `/root/pyxis-staging-full-rollback-20260924/` on 84. `staging-before.tar` excludes `.env`. Restore the original stage unit and frontend bundle, run `systemctl daemon-reload`, and restart **only** `pyxis-web-staging`. Check `/api/staging/status` returns `demo:true`; disable that older stage unit at boot. Stop and disable both oracleOld AI bridge units if they are no longer needed. Do not restart `pyxis-web`, change DNS/nginx, alter the production env file, or roll back shared Mongo records for a stage code failure.
-
-The old demo used `PYXIS_DEMO_MODE=true`, its own JWT signing secret, in-process history, fixture folding, and refused checkout; these are **not** the current full stage behavior. `pyxis-web-staging.service`, `env.server.template`, `deploy-staging.sh`, and `rollback-staging.sh` are legacy first-install/demo assets. Do not run `rollback-staging.sh` for the full-to-demo rollback: it removes the entire `/staging/` route and tree.
-
-## Nginx trap
-
-The existing `/staging/` location proxies to loopback `:5274`; this switch required no nginx or DNS edit. `/etc/nginx/sites-enabled/app.pyxis-discovery.com` is a symlink into `sites-available/`. If restoring nginx for a separate reason, back up and restore **file content**, not the symlink (`cp -a` would keep pointing at the live file). Pre-staging content backup: `/root/pyxis-staging-nginx-backup.20260907T152427.original`; backup with the `/staging/` block: `/root/pyxis-staging-nginx-backup.20260907T152427.current`.
+When backing up an nginx configuration reached through a `sites-enabled` symlink, preserve
+the target file's contents. Copying the symlink alone does not preserve the previous config.

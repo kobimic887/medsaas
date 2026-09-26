@@ -1,11 +1,13 @@
 # Rollback
 
-**Moved.** Bun↔Node / Docker rollback notes (not live Pyxis ops):
+A rollback must use the previous verified release for the affected environment.
+Record its source, frontend bundle, service configuration, and restore procedure
+before deploying. Keep the record and backups private; see
+[Operations](docs/OPERATIONS.md).
 
-[`docs/archive/ROLLBACK-BUN-NODE.md`](./docs/archive/ROLLBACK-BUN-NODE.md)
+Restore only the components changed by that release, restart only their services,
+and verify health, artifact identity, and the affected user path. Code rollback
+does not undo database writes, payments, credits, or provider jobs. A staging code
+failure is not a reason to restore the shared production database.
 
-**Production product rollback** after DNS → `84`: start the three rollback units (stopped,
-still enabled), then nginx `:443` → `:5173`
-([`docs/PYXIS-WEB-FLIP.md`](./docs/PYXIS-WEB-FLIP.md)). Trees stay on disk. Classic port-swap
-reverse in [`docs/ARRIVAL-RUNBOOK.md`](./docs/ARRIVAL-RUNBOOK.md) §8 is unused history.
-Host roles: [`docs/POST-PROMOTION-HANDOFF.md`](./docs/POST-PROMOTION-HANDOFF.md).
+Historical port swaps and retired stacks are not general-purpose rollback plans.

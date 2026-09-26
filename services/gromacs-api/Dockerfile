@@ -1,9 +1,5 @@
-# GROMACS built from source against CUDA, for the Amsterdam box (2× RTX 5090).
-#
-# This was `apt-get install gromacs` on ubuntu:22.04 — a CPU-only Debian build. Moving
-# that image onto a machine with two Blackwell cards buys nothing, which is why
-# docs/NEXT-SESSION.md listed it as needing a source build before the move is worth
-# making at all.
+# CUDA-enabled GROMACS source build for GPU-capable compute hosts.
+# Validate the GPU architecture and runtime with the service README before deployment.
 #
 # Two things here are load-bearing and both are version-sensitive:
 #

@@ -5,16 +5,16 @@ description: Prepare, audit, execute, or resume the Pyxis Amsterdam GPU-box arri
 
 # Pyxis arrival
 
-**Current public Pyxis:** `84` + systemd `pyxis-web` `:5174`. Legacy `:5173` / `chem_beo` =
-rollback on disk (**stopped**, still enabled — not public). `83` is leftover, not DNS. Do not
-polish the rollback stack.
+The compute box hosts scientific services only. The application API and MongoDB
+Atlas stay separate. Current host identities and rollback records are private;
+read `docs/OPERATIONS.md` to locate them and confirm operational facts read-only.
 
 ## Establish the mode
 
-1. Read `GOAL.md` and inspect `git status`.
+1. Inspect `git status`; read `GOAL.md` only when product priorities are relevant.
 2. Resolve `app.pyxis-discovery.com`; do not infer the live application host from an old prompt.
-3. Read `docs/POST-PROMOTION-HANDOFF.md` first — it is the ops authority. `docs/NEXT-SESSION.md`
-   holds standing owner decisions and do-nots.
+3. Read `docs/OPERATIONS.md`, the relevant private operator record, and `AGENTS.md`.
+   Historical records provide context; measured state determines the current target.
 4. Read `docs/ARRIVAL-RUNBOOK.md`, `docs/BOX-ARCHITECTURE.md`, and the specific service contract.
 5. Summarize the measured host roles, approved scope, next gate, rollback, and stop condition before
    any mutation.
@@ -30,12 +30,10 @@ polish the rollback stack.
   replay fixtures alone are insufficient.
 - Repoint one production path at a time and retain the previous Asinex/host value as rollback.
 - Verify credit consumption/refund behavior and the actual user path after each relevant cutover.
-- Change shared Atlas company configuration once. Apply host-local environment configuration on
-  the one application host (`84`). `83` is leftover and not DNS.
-- Keep `oracleOld` Tanimoto containers, leftover Mongo volume `medsaas_mongo-data`, and source
-  intact until all documented gates are green and the owner explicitly authorizes the exact
-  cleanup. Measured 2026-08-23: no `medsaas` / `mongo` containers and no `:27017` — do **not**
-  start Mongo.
+- Change shared Atlas company configuration only within the approved cutover. Apply
+  host-local environment changes on the measured application host.
+- Keep source datasets, containers, and volumes intact until all service gates pass
+  and cleanup of the named resources is explicitly authorized. Do not start local Mongo.
 
 ## Stop instead of improvising
 
