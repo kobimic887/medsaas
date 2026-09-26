@@ -37,82 +37,12 @@ when a path or trap moves.
   scientific + MCP; `deploy/` host and box.
 - Routes primarily in `server/index.js`; scientific proxies also in
   `server/routes/scientificServices.js`.
-- Stock-compound similarity lives **in Simulation** (source toggle `Internal
-  catalog | Stock compounds | Open compounds`), not the Deep Similarity picker. Server
-  `GET /api/stock-search/status|similarity` proxy an internal tonomitosql
-  dataset via `STOCK_SEARCH_BASE` / `STOCK_SEARCH_DATASET_ID` /
-  `STOCK_SEARCH_DATASET_NAME`; unprovisioned = **503 `STOCK_SEARCH_UNAVAILABLE`**
-  (never a silent fallback to Asinex). Stock similarity accepts client
-  `fingerprint_type` / `similarity_metric` from the verified binary allowlist
-  (defaults `morgan`/`tanimoto`; unknown → **400**); labels mark scores
-  **(binary)** — no count/ctanimoto option. Contract:
-  `docs/DATA-STOCK-COMPOUNDS.md` (+ `docs/REFERENCE-STOCK-FP-METRICS.md`).
-  The September 23 **Real macrocycles** (RPX) and **Virtual macrocycles** (VPX)
-  form one staging Simulation Macrocycles collection, with All/Real/Virtual
-  filters (`docs/DATA-MACROCYCLES.md`). Their
-  authenticated `/api/macrocycles/status|similarity` routes use a separate
-  `MACROCYCLE_SEARCH_BASE` and `source=both|real|virtual`; combined search
-  globally ranks both indexes, keeps hits with the same SMILES or supplier ID,
-  and identifies rows by source plus index row ID. Missing either combined
-  dataset returns 503, never catalog/stock results. Staging's compact read-only
-  RDKit Morgan index is loopback `:8274`:
-  format 1 serves binary Tanimoto, format 2 adds `<source>.cnt` (one byte per set
-  bit, ascending) and the count metrics. `similarity_metric` is `tanimoto`
-  (default), `count_tanimoto` or `count_dice` (unknown, including the MOE name
-  `ctanimoto`, → **400**); a format-1 dataset advertises Tanimoto alone and
-  refuses a count metric with 400 before any scan. The count metrics are a Pyxis
-  method over RDKit's own Morgan environments (`server/utils/countMorgan.js`) —
-  **not MOE ctanimoto, not MOE-comparable**; labels must say "(frequency-weighted)"
-  or "(binary)". MOE btanimoto/ctanimoto parity stays unbuilt. Source IDs can
-  repeat, so use source plus index row ID for selection. Neither source has
-  per-row offers or can enter the cart; source
-  amounts/lead times are not verified offers. Staging may show the separate
-  `Pyxis-e-shop_PRICE_LIST.xlsx` 1–3 selected-compound euro tier for other
-  stock codes, LAS, RPX and VPX as approximate USD amounts beside each staging result;
-  it is not a checkout price source without confirmed FX and offer rules.
-  The staging build starts Simulation on Pyxis stock; its source picker contains
-  stock, combined Macrocycles and ChEMBL, not the failed supplier
-  catalog. The consumer build still starts on Internal catalog.
-  Open compounds: AI tool loop
-  (`POST /api/open-compounds/ai-search`) plus deterministic
-  `GET /api/open-compounds/status|similarity|export` — ChEMBL retrieval + local
-  RDKit Morgan re-score (`docs/DATA-OPEN-COMPOUNDS.md`); never fall back to
-  catalog or stock. Explicit “Search without AI” uses the deterministic path;
-  AI failures do not silently run it.
-  Full stock contract in `docs/DATA-STOCK-COMPOUNDS.md`. Failed/new searches
-  disable pagination and clear old rows; catalog browsing must reject stock/open
-  mode so Asinex rows cannot appear as stock/open hits. **Owner decision
-  2026-09-13 supersedes the 4b285aa live-quote pricing: the browser never
-  prices via `POST /api/stock-offers` or `/api4/bas`.** Stock rows carry workbook
-  pack estimates in staging but **no checkout prices** — no Purchase column, no basket adds; selection stays
-  docking-handoff only. Internal catalog price columns and basket adds come
-  from the catalog's **own browse/search response**: the page normalizer maps
-  `PRICE_*MG` / `price_*mg` per row, and a row without a positive pack price
-  cannot be added. Measured live 2026-09-13, BAS 00132206 answers $28/$84/$224
-  (1/5/10 mg) on `/api/all` browse rows and $170/$194/$218/$242 (1/2/5/10 mg)
-  on `/api4/bas` search rows — display what the row's own response carried,
-  never a hardcoded amount. Checkout stays server-owned: it re-prices from the
-  **original catalog API per compound** — `GET /api/id/{code}` in
-  `server/utils/catalogPricing.js` (code = `id_number`, prefix + space intact,
-  URL-encoded; rows carry `price_1mg/5mg/10mg`, **no `price_2mg`**; unknown
-  code = 200 + empty body → unresolved → 400, never a zero price; upstream
-  failure = 502 `CATALOG_PRICING_UNAVAILABLE`). Stock-origin basket rows are
-  refused with **400 `MOLECULE_STOCK_ITEMS_UNSUPPORTED`** + `unsupportedItems`
-  (navbar removes them and requires a fresh click); legacy baskets without a
-  `source` field are catalog rows — absence of `source` never means stock, and
-  stock rows are never silently converted into catalog purchases.
-  `POST /api/stock-offers` is an explicit refusal: **503 `STOCK_OFFERS_DISABLED`**,
-  no upstream call. A changed/absent
-  displayed price answers **409 `MOLECULE_PRICES_CHANGED`** with re-priced
-  `updatedCartItems` before any Stripe session (navbar persists them and
-  requires a fresh checkout click); explicit `quantity` ≠ numeric 1 is a 400 —
-  each row is one pack. Hosted Stripe Checkout redirects to the server-created
-  URL and must not require `VITE_STRIPE_PUBLISHABLE_KEY` in the browser.
-  Staging still refuses `/api/stock-offers`. Upstream `/api4/bas` has **zero
-  runtime callers**: BAS-code search keeps the `POST /api/api4/bas` client
-  contract but answers from the same `GET /api/id` wrapper
-  (`searchCatalogRowsByBasCodes`); because `/api/id` cannot price
-  2 mg, catalog display must not offer 2 mg packs from `/api4` search rows.
+- Simulation sources (catalog, stock, macrocycles, open compounds), pricing and
+  checkout: read [the search/checkout contract](.agents/skills/pyxis-feature-slice/references/search-and-checkout.md)
+  before changing these flows. Stock/macrocycles are not buyable; missing data
+  never falls back to a different source. Catalog checkout re-prices server-side
+  from `GET /api/id/{code}`; changed prices require explicit 409 review. Upstream
+  `/api4/bas` has no runtime callers. Stock search belongs in Simulation.
 - Client routes: `client/src/routes.jsx`. Use `API_CONFIG.buildApiUrl()` for `/api/*`
   and `API_CONFIG.buildUrl()` for top-level routes.
 - Auth state: `client/src/context/auth.jsx`. Session logout interceptor:
@@ -149,7 +79,7 @@ when a path or trap moves.
 
 ## Conditional docs
 
-Do not open these unless the task is prod, deploy, continuation, or box work.
+Read only the entry that matches the task; ordinary edits do not require ops runbooks.
 
 1. Resolve `app.pyxis-discovery.com` and inspect the working tree when identity matters.
 2. **Where is X / leftover copies:** [`docs/WHERE.md`](docs/WHERE.md) first.
@@ -165,17 +95,27 @@ Do not open these unless the task is prod, deploy, continuation, or box work.
    accounts, Atlas, credits, orders and providers; the older isolated demo is
    rollback only).
 
+## Local development
+
+Start with `git status --short`, then read only the files/docs relevant to the task.
+Do not start Mongo to make the app work: application data is Atlas. Existing
+`services:up` and `scripts/ensure-dev.mjs` contain stale local-Mongo guidance.
+`bun run dev` can invoke `predev`, which creates `.env` when missing. Until that
+helper is repaired, prefer `bun run dev:bun` to start both services without the
+bootstrap helper; do not create/edit environment files without named approval.
+Frontend-only preview: `bun --cwd=client run dev` (API must be available separately).
+
 ## Commands
 
 ```bash
-bun run dev               # API + Vite
+bun run dev:bun           # API + Vite; avoids legacy predev helper
 bun run check             # server compile + client build
 bun run lint
 bun run test              # server suite
 bun run ci                # full gate
 bun run test:staging-demo # demo/staging server contract (fixtures, privacy, refusals)
 bun run test:staging-simulation # staging Simulation: catalog/search/docking/artifacts against fixture upstreams
-bun run test:staging-build# staging client build scoping checks
+bun run test:staging-build # staging client build scoping checks
 bun run test:catalog-pricing # checkout catalog re-pricing + stock refusal + pricing lifecycles
 bun run test:macrocycle-index # macrocycle index contract: RDKit parity, format-1/2, count stream
 bun run test:count-morgan    # count-Morgan support parity vs RDKit + count Tanimoto/Dice math
@@ -202,13 +142,23 @@ does not prove a dashboard flow.
 Production deploy is manual. Source upload, built `client/dist`, service restart, and
 deployed identity are separate — follow the current runbook; do not reconstruct
 commands from memory. Pushes run CI and do **not** deploy. After a finished
-shippable change, **ask** whether to put it on 84. Do not silently skip; wait for
-yes this turn.
+shippable live-app change that actually runs on 84, **ask** whether to deploy
+it unless the user already authorized deployment this turn. Docs, skills, hooks
+and agent settings have no live artifact and do not require a deploy question.
 
 Begin remote work with read-only identity, DNS, listener, service, build, and database
 checks. On shared hosts, never modify nginx, TLS, DNS, firewall, unrelated apps, or
 database volumes unless the user names that action. Kill only measured PIDs or named
 units — never broad `pkill`.
+
+## Claude automation
+
+`CLAUDE.md` imports this file. `.claude/skills/` links to `.agents/skills/`;
+maintain the source, not a duplicate. The post-edit Biome hook lints only the
+changed supported source file, never formats or fixes it, and reports diagnostics
+as model context. It does not replace the final focused check and does not catch
+shell-based edits. The secret-file hook is an authorization reminder for file
+editing tools, not a sandbox; global approval/secrecy rules still apply.
 
 ## Skills and subagents
 
@@ -218,19 +168,12 @@ Subagent limits: `~/.codex/AGENTS.md` (Skills, subagents, cheap mode). Use the n
 |---|---|
 | Box arrival, cutover prep, arrival readiness | `pyxis-arrival` |
 | Express `/api` routes, auth middleware, credits, proxies, 401/403/502 | `pyxis-api-route` |
-| Product change that needs client + server + the right test harness | `pyxis-feature-slice` |
-| Session start / bun missing / lockfile or local-mongo confusion | `pyxis-dev-ready` (user-only) |
+| Product behavior / Simulation sources / basket or checkout / the right test harness | `pyxis-feature-slice` |
+| Explicit coding-box readiness / bun missing / lockfile or local-mongo confusion | `/pyxis-dev-ready` (user-only; normal startup commands are above) |
 | Read-only topology / runbook / deploy-risk / live-identity audit | `pyxis_ops` (Codex) / `pyxis-ops` (Claude) |
 | Improvements everywhere / vibe coding / agent setup (in this repo) | `mac-oracleold-sync`. Usual: this repo’s product leftovers **and** AGENTS.md / skills / hooks **and** Mac+151 files that serve medsaas. Not FinSrv product, Hermes, or 83-kill. “Agent setups for everything” also covers globals + `finbs` agent files — how in `~/.codex/AGENTS.md`. A product-only ask stays product-only. Recommend 1–2 per type, then implement. |
 
 Do not spawn `pyxis-ops` for ordinary one-file work.
 
-Stock search: failed/new queries clear old rows and disable paging; catalog fetches refuse stock mode. Generic RDKit rejection explains charges/bonds without modifying the submitted structure. Stock rows have staging workbook estimates but no buyable offers; checkout price review stays server-owned.
-
-Integration (2026-09-09): completed stock, Open compounds, and staging/folding work is consolidated on main. Deployment remains separate. Open compounds AI is a real tool-calling loop when `OPEN_COMPOUNDS_AI_*` is provisioned (prefer free OpenRouter models with tools); otherwise use “Search without AI”.
-
-Release (2026-09-12): public pyxis-web now b2d554f; live tonomitosql API b36da33 (global ranking, parallel gather disabled, no candidate cap). AI remained disabled on the consumer app; staging AI was enabled 2026-09-24. Database container was not recreated. Fresh public stock search/pack/cart-reload evidence and rollback: docs/POST-PROMOTION-HANDOFF.md.
-
-Release (2026-09-13): public `pyxis-web` now `0e932a1` with catalog/Stock `/api4/bas` pricing and 409 review. Hosted Stripe checkout verified through unpaid review ($170, BAS 00132206 1 mg); browser publishable key is not required. Payment completion is untested. Evidence/rollback: `docs/POST-PROMOTION-HANDOFF.md`.
-
-Release (2026-09-13, later): public `pyxis-web` now `916ea57` — the working-tree policy above is **deployed**. Catalog prices live (BAS 00132206 $28/$84/$224), stock unpurchasable, zero `/api4/bas` runtime callers; served bundle verified (no `stock-offers` refs, asset SHA matched Mac build). Payment completion still untested. Rollback: `/root/pyxis-rollback-0e932a1-20260913-catalog-pricing.tgz` (validated). Evidence: `docs/POST-PROMOTION-HANDOFF.md` § Release 2026-09-13 (later).
+Deployment history and rollback archives live in `docs/POST-PROMOTION-HANDOFF.md`;
+never treat a dated release hash as the current live identity.

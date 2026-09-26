@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-secret-writes.py\"",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/secret-write-reminder.py\"",
             "timeout": 10
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/biome-lint.sh\"",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/biome-lint.py\"",
             "timeout": 30
           }
         ]

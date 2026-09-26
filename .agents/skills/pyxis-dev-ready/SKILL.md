@@ -1,12 +1,12 @@
 ---
 name: pyxis-dev-ready
-description: Confirm Pyxis coding box is ready (bun on PATH, dual lockfiles, no local mongo start). Use at session start on 151/T3 or when bun/npm commands fail.
+description: Confirm Pyxis coding box is ready (bun on PATH, dual lockfiles, no local mongo start). Invoke /pyxis-dev-ready for an explicit readiness check or when bun/npm commands fail.
 disable-model-invocation: true
 ---
 
 # Pyxis dev-ready
 
-User-only. Run when a box cannot `bun run`, lockfiles look split, or an agent wants to start local Mongo.
+Explicit `/pyxis-dev-ready` only. Run when a box cannot `bun run`, lockfiles look split, or an agent wants to start local Mongo.
 
 ## Measure
 
@@ -30,6 +30,14 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 - Package scripts are **bun-first** (`dev`, `check`, `lint`, `ci`). Prefer `bun run …`, not a Node-only rewrite.
 - Root, `client/`, and `server/` keep **both** Bun and npm lockfiles. After a dependency change: `bun run lockfiles:refresh` and commit **both** families.
 - `bun run lint` is Biome **lint only**. Formatter is off. Do not `biome format --write` or `lint:fix` unless asked.
+
+## Start development without the legacy bootstrap
+
+`bun run dev:bun` starts API + Vite without `predev`. The legacy `dev` bootstrap
+can copy `.env.example` to `.env` and prints stale local-Mongo advice. Do not run
+it to manufacture configuration. Use the existing environment; if missing, report
+which configuration is needed without printing secrets. Global policy requires a
+named file and explicit approval before any environment-file write.
 
 ## Never start local Mongo
 

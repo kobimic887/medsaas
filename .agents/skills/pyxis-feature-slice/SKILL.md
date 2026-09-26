@@ -3,21 +3,23 @@ name: pyxis-feature-slice
 description: >-
   Ship a Pyxis feature across client + server and pick the right test harness
   (server/test *.mjs or scripts/check-*-lifecycle.mjs). Use when adding a
-  dashboard flow, API+UI change, scientific viewer path, or when a patch would
-  otherwise be UI-only. Includes gen-test guidance for choosing/creating tests.
+  dashboard flow, API+UI change, scientific viewer path, Simulation source,
+  basket or checkout behavior. Chooses the smallest relevant verification.
 ---
 
 # Pyxis feature slice
 
-Stop UI-only patches. A product change that touches behavior usually needs
-**client + server + a verifier** in the same unit of work.
+Trace the user-visible path through the existing client and server boundaries.
+Change only the layers needed for the requested outcome; UI-only work can stay
+UI-only when the server contract already supports it. For Simulation sources,
+pricing, basket or checkout, read [search-and-checkout.md](references/search-and-checkout.md).
 
 ## Slice checklist
 
 1. **Outcome** — one user-visible path (e.g. “researcher runs X and sees Y”).
-2. **Server** — route/middleware in `server/index.js` or `server/routes/*`.
+2. **Server, when needed** — route/middleware in `server/index.js` or `server/routes/*`.
    Follow the `pyxis-api-route` skill for auth/credits/status codes.
-3. **Client** — route in `client/src/routes.jsx`, screens under `client/src/`,
+3. **Client, when needed** — route in `client/src/routes.jsx`, screens under `client/src/`,
    HTTP via `API_CONFIG.buildApiUrl()` / `buildUrl()`, auth from
    `client/src/context/auth.jsx`. Do not enforce company role only in the UI.
 4. **Verify** — pick one primary harness below; run it. Add a new test only
@@ -44,9 +46,11 @@ Stop UI-only patches. A product change that touches behavior usually needs
 
 ### When to extend a lifecycle / UX script
 
-- React route, layout, or viewer behavior that string/AST checks already catch.
-- Prefer extending `scripts/check-*-lifecycle.mjs` over a heavyweight E2E.
-- Keep assertions tight to the bug class (e.g. missing Authorization).
+- Use string/AST checks for structural rules (e.g. missing Authorization).
+- Use existing executable lifecycle checks for state transitions; static matches
+  do not prove that a real interaction works. Exercise the affected browser path
+  when UI behavior is the claim.
+- Extend an existing harness before adding another testing platform.
 
 ### When not to add a test
 
@@ -72,7 +76,7 @@ A green `build` alone does not prove a dashboard flow.
 
 - Client-only credit or role checks
 - New `fetch('/api/...')` without Authorization (trips logout on 401)
-- Skipping server tests for “just JSX”
+- Treating source-string assertions as proof of a working browser interaction
 - Stacking many overlapping smokes for one assertion
 ---
 

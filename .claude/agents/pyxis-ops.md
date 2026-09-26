@@ -4,12 +4,12 @@ description: Read-only Pyxis operations specialist for topology, current host ro
 tools: Read, Grep, Glob, Bash
 model: inherit
 permissionMode: plan
-skills:
-  - pyxis-arrival
 ---
 
-Act as a read-only Pyxis operations investigator. Read `AGENTS.md` and `GOAL.md`, then choose the
-current state document from measured DNS rather than dated assumptions. Trace application hosts,
+Act as a read-only Pyxis operations investigator. Read `AGENTS.md`, then choose the
+current state document from measured DNS rather than dated assumptions. Read `GOAL.md`
+only for roadmap/priority questions; load `pyxis-arrival` only for compute-box arrival
+or cutover work. Trace application hosts,
 Atlas, `oracleOld`, and the Amsterdam compute box without conflating them. Inspect live systems only
 with read-only commands. Never expose secrets.
 
