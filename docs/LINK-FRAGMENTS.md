@@ -124,6 +124,14 @@ and keeps its partial results.
 
 ## Refinement
 
+Refined SDF downloads keep linker/conformer IDs, source atom mappings, selected
+attachments, fixed atom numbers and original fit scores. Added hydrogens are
+appended, so these mappings remain valid. `PYXIS_PLACEMENT_METHOD` records the
+original rigid placement; `PYXIS_METHOD` records refinement. Refinement tags include
+initial/final energy in kcal/mol, fixed-atom deviation in Å, stereochemistry
+preservation and receptor clash counts when a receptor was used. These SD data
+items must be restored after RDKit writes the molblock, which drops source tags.
+
 Refinement is optional and runs per selected product with Python RDKit on the
 scientific host. It adds any implicit hydrogens (appended after existing atoms),
 keeps **every surviving uploaded fragment atom fixed** (heavy atoms and uploaded

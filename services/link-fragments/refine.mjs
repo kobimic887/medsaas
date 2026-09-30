@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { withSdfData } from './sdf.mjs';
 /**
  * Python RDKit refinement wrapper. JSON over stdin/stdout; stderr stays in the service log and
  * is never returned to users. One refinement at a time by default; timeouts kill the child.
@@ -20,6 +21,28 @@ const python = () => process.env.LINK_FRAGMENTS_PYTHON || '/usr/bin/python3';
 const concurrency = () => Math.max(1, Number.parseInt(process.env.LINK_FRAGMENTS_REFINE_CONCURRENCY, 10) || 1);
 const failure = (code, message, extra) => ({ ok: false, errors: [{ code, message, ...extra }] });
 const bytes = (text) => Buffer.byteLength(text, 'utf8');
+// RDKit reads the molblock and writes a new one: it does not carry SD properties.
+// Atom order survives AddHs (new H atoms are appended), so these source mappings
+// remain valid for the refined download. Do not copy stale refinement properties.
+const sourceKeys = new Set(['PYXIS_SOURCE_ATOM_MAP', 'PYXIS_ATTACHMENTS', 'PYXIS_FIXED_ATOMS',
+  'PYXIS_LINKER_ID', 'PYXIS_CONFORMER_ID', 'PYXIS_LINKER_ATOMS', 'PYXIS_FIT_RMSD', 'PYXIS_ANCHOR_RMSD']);
+function annotateRefinement(result, sdf) {
+  const data = {};
+  const record = sdf.replaceAll('\r', '').split('$$$$')[0];
+  for (const match of record.matchAll(/^>[^\n]*<([^>]+)>[^\n]*\n([^\n]*(?:\n[^\n]+)*)/gm)) {
+    if (sourceKeys.has(match[1])) data[match[1]] = match[2];
+    if (match[1] === 'PYXIS_METHOD') data.PYXIS_PLACEMENT_METHOD = match[2];
+  }
+  data.PYXIS_METHOD = result.method;
+  data.PYXIS_REFINEMENT_INITIAL_ENERGY_KCAL_MOL = String(result.initialEnergy);
+  data.PYXIS_REFINEMENT_FIXED_MAX_DEVIATION_ANGSTROM = String(result.fixedAtoms.maxDeviation);
+  data.PYXIS_REFINEMENT_STEREO_PRESERVED = String(result.stereo.preserved);
+  if (result.receptor) {
+    data.PYXIS_REFINEMENT_RECEPTOR_CLASHES_BEFORE = String(result.receptor.clashesBefore);
+    data.PYXIS_REFINEMENT_RECEPTOR_CLASHES_AFTER = String(result.receptor.clashesAfter);
+  }
+  return withSdfData(result.sdf, data);
+}
 // A minimal environment: service secrets never reach the child process.
 const childEnv = () => {
   const env = { PATH: process.env.PATH || '/usr/bin:/bin', LANG: 'C.UTF-8', PYTHONIOENCODING: 'utf-8', PYTHONDONTWRITEBYTECODE: '1', OMP_NUM_THREADS: '1', OPENBLAS_NUM_THREADS: '1', MKL_NUM_THREADS: '1' };
@@ -143,6 +166,7 @@ export async function refineProduct(input = {}) {
     } catch {}
     if (run.stderr && (!result || !result.ok)) console.warn('link-fragments refinement stderr:', run.stderr.slice(-2000));
     if (!result || typeof result.ok !== 'boolean' || (!result.ok && !Array.isArray(result.errors))) return failure('REFINEMENT_FAILED', 'Refinement failed unexpectedly.');
+    if (result.ok) result.sdf = annotateRefinement(result, input.sdf);
     return result;
   } finally {
     active--;

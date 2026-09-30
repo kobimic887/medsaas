@@ -68,7 +68,9 @@ when a path or trap moves.
   finished full scan is "complete". MMFF94/UFF refinement keeps uploaded atoms
   fixed and is not MOE refinement, affinity or synthesis scoring. Assembled
   products are discovery-only. Ship `services/link-fragments/sdf.mjs` with the
-  application server for input parsing.
+  application server for input parsing. Refined SDF downloads retain linker IDs,
+  source atom mapping and original placement scores; new hydrogens are appended,
+  so source atom numbers remain valid. RDKit molblock output alone drops SD tags.
 - Client routes: `client/src/routes.jsx`. Use `API_CONFIG.buildApiUrl()` for `/api/*`
   and `API_CONFIG.buildUrl()` for top-level routes.
 - Auth state: `client/src/context/auth.jsx`. Session logout interceptor:

@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'bun:test';
 import { refineProduct, refinementStatus } from './refine.mjs';
+import { withSdfData } from './sdf.mjs';
 // Real Python RDKit refinement runs only where LINK_FRAGMENTS_PYTHON (default /usr/bin/python3)
 // imports RDKit, i.e. the scientific host. Elsewhere those tests are reported as skipped.
 const fixture = (name) => readFile(new URL(`fixtures/${name}`, import.meta.url), 'utf8');
@@ -114,7 +115,14 @@ test('an aborted request kills the Python child and frees the slot; the timeout 
 });
 
 rdkitTest('MMFF94 refines the reference product with uploaded atoms fixed and stereo preserved', async () => {
-  const result = await timed('MMFF94 reference product', { ...reference, forceField: 'MMFF94' });
+  const provenance = {
+    PYXIS_LINKER_ID: 'reference-linker', PYXIS_CONFORMER_ID: '42',
+    PYXIS_SOURCE_ATOM_MAP: '1.1=1 2.6=17 2.7=-', PYXIS_ATTACHMENTS: '2.6:H7>17-35',
+    PYXIS_FIXED_ATOMS: '1-29', PYXIS_FIT_RMSD: '0.163060',
+    PYXIS_METHOD: 'Rigid placement; no energy minimization.',
+    PYXIS_REFINEMENT_FORCE_FIELD: 'stale value must not survive',
+  };
+  const result = await timed('MMFF94 reference product', { ...reference, sdf: withSdfData(product, provenance), forceField: 'MMFF94' });
   assert.equal(result.ok, true, JSON.stringify(result.errors));
   assert.equal(result.forceField, 'MMFF94');
   assert.equal(result.requestedForceField, 'MMFF94');
@@ -138,6 +146,12 @@ rdkitTest('MMFF94 refines the reference product with uploaded atoms fixed and st
   assert.match(result.sdf, /> <PYXIS_REFINEMENT_FORCE_FIELD>\nMMFF94\n/);
   assert.match(result.sdf, new RegExp(`> <PYXIS_REFINEMENT_CONVERGED>\\n${result.converged}\\n`));
   assert.match(result.sdf, /> <PYXIS_REFINEMENT_ENERGY_KCAL_MOL>\n-?\d+\.\d{4}\n/);
+  for (const key of ['PYXIS_LINKER_ID', 'PYXIS_CONFORMER_ID', 'PYXIS_SOURCE_ATOM_MAP', 'PYXIS_ATTACHMENTS', 'PYXIS_FIXED_ATOMS', 'PYXIS_FIT_RMSD']) {
+    assert.ok(result.sdf.includes(`> <${key}>\n${provenance[key]}\n\n`), `refined download lost ${key}`);
+  }
+  assert.ok(result.sdf.includes(`> <PYXIS_PLACEMENT_METHOD>\n${provenance.PYXIS_METHOD}\n\n`));
+  assert.ok(result.sdf.includes(`> <PYXIS_METHOD>\n${result.method}\n\n`));
+  assert.ok(!result.sdf.includes('stale value must not survive'));
   assert.ok(result.sdf.trimEnd().endsWith('$$$$'));
   assert.ok(result.limitations.some((l) => /not binding affinities/.test(l)));
   assert.ok(result.limitations.some((l) => /Not equivalent to MOE/.test(l)));
@@ -187,6 +201,8 @@ rdkitTest('ligand-free 7WH5 pocket in the uploaded frame: clashes reported befor
   assert.ok(result.fixedAtoms.maxDeviation < 1e-4);
   assert.equal(result.stereo.preserved, true);
   assertFixedExactly(product, result.sdf, FRAGMENT_ATOMS);
+  assert.ok(result.sdf.includes(`> <PYXIS_REFINEMENT_RECEPTOR_CLASHES_BEFORE>\n${receptor.clashesBefore}\n\n`));
+  assert.ok(result.sdf.includes(`> <PYXIS_REFINEMENT_RECEPTOR_CLASHES_AFTER>\n${receptor.clashesAfter}\n\n`));
   assert.ok(result.limitations.some((l) => /rigid excluded volume/.test(l)));
 });
 

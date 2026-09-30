@@ -79,7 +79,9 @@ overlay and SDF download in the browser. The index, workers and refinement stay 
 the scientific host; application releases must include
 `services/link-fragments/sdf.mjs`. Never label a canceled, failed or partial scan
 complete; keep geometric-only and non-MOE refinement limits visible. Linker
-products do not become purchasable catalog rows.
+products do not become purchasable catalog rows. Verify downloaded refined SDFs
+retain the linker/conformer ID, source atom mapping and fit score as well as the
+refinement report; RDKit molblock serialization does not preserve SD properties.
 
 ## Anti-patterns
 
