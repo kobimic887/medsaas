@@ -2,7 +2,6 @@ import {
   CloudIcon,
 } from "@heroicons/react/24/outline";
 import { ShoppingCartIcon } from '@heroicons/react/24/solid';
-import { withAppBase } from "@/utils/appEnv";
 import {
   Alert,
   Button,
@@ -19,16 +18,18 @@ import {
   useState,
 } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { CompoundDescriptorCells } from '@/components/CompoundDescriptorCells';
+import { MoleculePreview } from '@/components/MoleculePreview';
 import { convertPriceToEuro, formatPrice } from '@/utils/algo/algo';
+import { withAppBase } from "@/utils/appEnv";
+import { addShopPack, readShopCart, shopMoney, writeShopCart } from '@/utils/compoundShop';
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 import { copyToClipboard } from '@/utils/copyToClipboard';
-import { clearViewerStorage, markViewerHandoff, normalizePdbId, rcsbPdbDownloadUrl } from '@/utils/viewerStorage';
-import { stockResultsFromPayload, appendUniqueStockRows } from '@/utils/stockResults';
-import { cartItemFromCatalogPrice } from '@/utils/stockOffers';
+import { appendUniqueMacrocycleRows, macrocycleResultsFromPayload } from '@/utils/macrocycleResults';
 import { openResultsFromPayload } from '@/utils/openResults';
-import { macrocycleResultsFromPayload, appendUniqueMacrocycleRows } from '@/utils/macrocycleResults';
-import { addShopPack, readShopCart, writeShopCart, shopMoney } from '@/utils/compoundShop';
-import { MoleculePreview } from '@/components/MoleculePreview';
+import { cartItemFromCatalogPrice } from '@/utils/stockOffers';
+import { appendUniqueStockRows, stockResultsFromPayload } from '@/utils/stockResults';
+import { clearViewerStorage, markViewerHandoff, normalizePdbId, rcsbPdbDownloadUrl } from '@/utils/viewerStorage';
 
 const MACROCYCLE_SOURCES = Object.freeze({
   both: { label: 'Macrocycles', count: 2368630 },
@@ -2884,13 +2885,20 @@ export function Simulation() {
             <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
                 <div className="border-b border-teal-100 bg-teal-50/60 px-4 py-3 text-xs text-blue-gray-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
-                  {MACROCYCLE_SOURCES[searchSource].label} · globally ranked by {macrocycleResultMethodLabel} over Morgan (ECFP4). RPX and VPX rows retain their source; amount and lead time are dated export fields. Choose a pack to purchase, or select structures for docking handoff.
+                  {MACROCYCLE_SOURCES[searchSource].label} · globally ranked by {macrocycleResultMethodLabel} over Morgan (ECFP4). RPX and VPX rows retain their source; amount and lead time are dated export fields. Formula and MW are calculated locally from the exact SMILES with RDKit. Choose a pack to purchase, or select structures for docking handoff.
                 </div>
-                <table className="w-full table-fixed text-left text-sm">
+                <table className="w-full min-w-[1080px] table-fixed text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-white dark:bg-slate-900">
                     <tr>
                       <th className="w-10 p-2"><input type="checkbox" aria-label="Select all macrocycles" checked={getSelectAllState().checked} ref={(el) => { if (el) el.indeterminate = getSelectAllState().indeterminate; }} onChange={(e) => handleSelectAll(e.target.checked)} /></th>
-                      <th className="w-10 p-2">#</th><th className="w-20 p-2">Similarity</th><th className="w-48 p-2">Macrocycle ID and export details</th><th className="w-48 p-2">Packs · EUR / USD</th><th className="p-2">SMILES</th>
+                      <th className="w-10 p-2">#</th>
+                      <th className="w-44 p-2">IDNUMBER</th>
+                      <th className="w-32 p-2" title="Calculated locally from exact SMILES with RDKit">Formula <span className="block text-xs font-normal">calculated</span></th>
+                      <th className="w-20 p-2" title="Average molecular weight calculated with RDKit">MW <span className="block text-xs font-normal">g/mol · calculated</span></th>
+                      <th className="w-28 p-2">Lead time</th>
+                      <th className="w-48 p-2">Pack size · price <span className="block text-xs font-normal">EUR / USD</span></th>
+                      <th className="w-20 p-2">Similarity</th>
+                      <th className="p-2">SMILES</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2899,19 +2907,20 @@ export function Simulation() {
                       const exportDetails = [
                         mol.snapshotMg && `${mol.snapshotMg} mg`,
                         mol.snapshotUm && `${mol.snapshotUm} µmol`,
-                        mol.snapshotLeadTime,
                       ].filter(Boolean).join(' · ');
                       return (
                         <tr key={`${mol.macrocycleSource}-${mol.macrocycleRowId}-${idx}`} className="border-b border-blue-gray-100 dark:border-slate-800">
                           <td className="p-2"><input type="checkbox" aria-label={`Select ${mol.macrocycleCode}`} checked={selectedMolecules.has(id)} onChange={(e) => handleCheckboxChange(mol, idx, e.target.checked)} /></td>
                           <td className="p-2">{idx + 1}</td>
-                          <td className="p-2 font-semibold">{mol.SIMILARITY === null ? '—' : mol.SIMILARITY.toFixed(3)}</td>
                           <td className="p-2 text-xs">
                             <button type="button" className="font-mono font-semibold break-all underline decoration-dotted" aria-label={`Preview ${mol.macrocycleCode}`} onMouseEnter={(e) => handleMouseEnter(mol.SMILES_STRING, e, mol.macrocycleCode)} onMouseLeave={handleMouseLeave} onFocus={(e) => handleMouseEnter(mol.SMILES_STRING, e, mol.macrocycleCode)} onBlur={handleMouseLeave}>{mol.macrocycleCode}</button>
                             <div className="mt-1 font-semibold text-teal-700 dark:text-teal-300">{mol.macrocycleSource === 'real' ? 'Real RPX' : 'Virtual VPX'}</div>
-                            <div className="mt-1 text-blue-gray-500" title="Dated supplier export; amount and lead time are unverified now">{exportDetails || 'No export amount or lead time'} · {mol.macrocycleSource === 'real' ? 'stock unverified' : 'virtual'}</div>
+                            <div className="mt-1 text-blue-gray-500" title="Dated supplier export; amount and lead time are unverified now">{exportDetails || 'No export amount'} · {mol.macrocycleSource === 'real' ? 'stock unverified' : 'virtual'}</div>
                           </td>
+                          <CompoundDescriptorCells smiles={mol.SMILES_STRING} />
+                          <td className="p-2 text-xs" title="Dated supplier export; amount and lead time are unverified now">{mol.snapshotLeadTime || '—'}</td>
                           <td className="p-2"><CompoundShopPacks offer={mol.shopOffer} onAdded={showMessage} /></td>
+                          <td className="p-2 font-semibold">{mol.SIMILARITY === null ? '—' : mol.SIMILARITY.toFixed(3)}</td>
                           <td className="min-w-0 p-2 font-mono text-xs">
                             <button type="button" className="block w-full truncate text-left underline decoration-dotted" title={`Copy ${mol.SMILES_STRING}`} onMouseEnter={(e) => handleMouseEnter(mol.SMILES_STRING, e, "SMILES")} onMouseLeave={handleMouseLeave} onFocus={(e) => handleMouseEnter(mol.SMILES_STRING, e, "SMILES")} onBlur={handleMouseLeave} onClick={async () => { setSearchCode(mol.SMILES_STRING); try { await copyToClipboard(mol.SMILES_STRING); showClipboardConfirmation(); } catch { showMessage('SMILES could not be copied.', 'error'); } }}>
                               {mol.SMILES_STRING}
@@ -2928,9 +2937,9 @@ export function Simulation() {
             <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
                 <div className="border-b border-blue-gray-100 bg-blue-gray-50/60 px-4 py-2 text-xs text-blue-gray-600 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-400">
-                  Source: stock compounds, ranked by {snapFpLabel} {snapMetricLabel} similarity. µmol / mg are dated snapshot quantities, not live availability. Choose a pack to purchase; row selection is for docking handoff.
+                  Source: stock compounds, ranked by {snapFpLabel} {snapMetricLabel} similarity. µmol / mg and lead time are dated snapshot fields. Formula and MW are calculated locally from the exact SMILES with RDKit. Choose a pack to purchase; row selection is for docking handoff.
                 </div>
-                <table className="w-full text-left">
+                <table className="w-full min-w-[1080px] text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-white">
                     <tr>
                       <th className="p-2 font-bold bg-white">
@@ -2948,9 +2957,12 @@ export function Simulation() {
                         </div>
                       </th>
                       <th className="p-2 font-bold bg-white">#</th>
+                      <th className="p-2 font-bold bg-white">IDNUMBER</th>
+                      <th className="p-2 font-bold bg-white" title="Calculated locally from exact SMILES with RDKit">Formula <span className="block text-xs font-normal">calculated</span></th>
+                      <th className="p-2 font-bold bg-white" title="Average molecular weight calculated with RDKit">MW <span className="block text-xs font-normal">g/mol · calculated</span></th>
+                      <th className="p-2 font-bold bg-white">Lead time</th>
+                      <th className="p-2 font-bold bg-white">Pack size · price <span className="block text-xs font-normal">EUR / USD</span></th>
                       <th className="p-2 font-bold bg-white">Similarity</th>
-                      <th className="p-2 font-bold bg-white">Stock ID</th>
-                      <th className="p-2 font-bold bg-white">Packs · EUR / USD</th>
                       <th className="p-2 font-bold bg-white">SMILES</th>
                       <th className="p-2 font-bold bg-white" title="Dated snapshot quantity from the supplier export — not live availability">µmol</th>
                       <th className="p-2 font-bold bg-white" title="Dated snapshot quantity from the supplier export — not live availability">mg</th>
@@ -2974,9 +2986,6 @@ export function Simulation() {
                             />
                           </td>
                           <td className="p-2">{idx + 1}</td>
-                          <td className="p-2 font-bold text-blue-600" title={mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? `Similarity: ${mol.SIMILARITY}` : "N/A"}>
-                            {mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? parseFloat(mol.SIMILARITY).toFixed(3) : "N/A"}
-                          </td>
                           <td
                             className="p-2 font-mono text-xs whitespace-nowrap"
                             title={mol.stockCode}
@@ -2985,7 +2994,12 @@ export function Simulation() {
                           >
                             {mol.stockCode}
                           </td>
+                          <CompoundDescriptorCells smiles={stockSmiles} />
+                          <td className="p-2 text-xs" title="Dated supplier export lead time; unverified now">{mol.snapshotLeadTime || '—'}</td>
                           <td className="p-2"><CompoundShopPacks offer={mol.shopOffer} onAdded={showMessage} /></td>
+                          <td className="p-2 font-bold text-blue-600" title={mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? `Similarity: ${mol.SIMILARITY}` : "N/A"}>
+                            {mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? parseFloat(mol.SIMILARITY).toFixed(3) : "N/A"}
+                          </td>
                           <td className="p-0 font-mono text-xs">
                             <button
                               type="button"

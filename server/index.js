@@ -96,6 +96,7 @@ import { ensureUserTenantOnLogin } from './utils/ensureUserTenant.js';
 import { safeUpstreamUrl } from './utils/upstreamRetry.js';
 import scientificServicesRouter from './routes/scientificServices.js';
 import { createStagingDemoRouter } from './routes/stagingDemo.js';
+import { createLinkFragmentsRouter } from './routes/linkFragments.js';
 import { createCompoundShopRouter } from './routes/compoundShop.js';
 import { handleCompoundShopSession } from './utils/compoundShopOrders.js';
 import { withCompoundShopOffers } from './utils/compoundShopSearch.js';
@@ -2008,6 +2009,11 @@ app.post('/create-checkout-session-onetime', checkoutRateLimit, ensureMongoConne
     res.status(500).json({ error: 'Unable to start checkout. Please try again.' });
   }
 });
+
+// Linker data and geometry run on the scientific host. Unconfigured builds
+// report unavailable; uploaded structures never go to an external supplier.
+app.use('/api/link-fragments', ensureMongoConnected, authenticateToken, requireActiveUser,
+  createLinkFragmentsRouter({ baseUrl: process.env.LINK_FRAGMENTS_BASE }));
 
 // Owned-catalog checkout uses signed search rows and the shared workbook price
 // book. Keep it separate from retired supplier aliases and credit-pack billing.

@@ -12,6 +12,7 @@
       "client/src/**/*.{js,mjs,jsx}",
       "scripts/**/*.{js,mjs}",
       "shared/**/*.{js,mjs}",
+      "services/link-fragments/**/*.mjs",
       "!**/dist",
       "!**/node_modules"
     ]

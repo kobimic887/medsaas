@@ -1,0 +1,20 @@
+[Unit]
+Description=Pyxis owned 3D linker matching on the scientific data host
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/projects/medsaas
+Environment=PORT=8374
+Environment=LINKER_INDEX_PATH=/home/ubuntu/.local/share/pyxis/link-fragments-20260929/linkers.sqlite
+ExecStart=/home/ubuntu/.bun/bin/bun services/link-fragments/serve.mjs
+Restart=on-failure
+RestartSec=5
+CPUQuota=80%
+MemoryMax=512M
+Nice=10
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

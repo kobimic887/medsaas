@@ -59,6 +59,12 @@ when a path or trap moves.
   RPX/VPX data and derived search artifacts stay on the scientific data host;
   the staging app reaches its loopback index through the private SSH tunnel.
   Do not leave dataset or dataset-backup copies on the application host.
+- Link Fragments: `docs/LINK-FRAGMENTS.md`, `services/link-fragments/README.md`.
+  Owned 3D linker archive/index stay on the scientific data host. Two connected
+  V2000 fragments, explicit one-based atom selections and implicit-H substitution;
+  geometric matching preserves fragment coordinates and is not MOE refinement.
+  Bounded searches expose coverage; assembled products are discovery-only. Ship
+  `services/link-fragments/sdf.mjs` with the application server for inspection.
 - Client routes: `client/src/routes.jsx`. Use `API_CONFIG.buildApiUrl()` for `/api/*`
   and `API_CONFIG.buildUrl()` for top-level routes.
 - Auth state: `client/src/context/auth.jsx`. Session logout interceptor:
@@ -116,6 +122,7 @@ bun run test:staging-demo # demo/staging server contract (fixtures, privacy, ref
 bun run test:staging-simulation # staging Simulation: catalog/search/docking/artifacts against fixture upstreams
 bun run test:staging-build # staging client build scoping checks
 bun run test:compound-shop   # signed offers, payment retries, orders and cart lifecycle
+bun run test:link-fragments  # 3D matching, compressed index, API and UI lifecycle
 bun run test:catalog-pricing # supplier retirement, molecule refusal, credit plans + UI
 bun run test:macrocycle-index # macrocycle index contract: RDKit parity, format-1/2, count stream
 bun run test:count-morgan    # count-Morgan support parity vs RDKit + count Tanimoto/Dice math

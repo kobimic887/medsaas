@@ -15,10 +15,10 @@
 //
 // The Simulation page needs: a recognizable stock code, the structure, and the
 // similarity score for ranking and the docking/DiffDock handoff. Stock rows
-// must NOT invent Asinex IUPAC/InChI/formula/MW on the search hit itself —
-// purchasable packs come from a separate /api/stock-offers lookup keyed by
-// stock code (docs/DATA-STOCK-COMPOUNDS.md § Purchasable offers). Snapshot
-// µmol/mg remain dated export quantities, never live availability.
+// must NOT invent supplier IUPAC/InChI/formula/MW. The result table calculates
+// formula/MW from exact SMILES with browser RDKit and labels them calculated.
+// Purchasable packs come from signed shopOffer payloads. Snapshot µmol/mg and
+// lead time remain dated export fields, never live availability.
 // Database row id (molecule_id), stock code (MAIN_BAS/compound_id) and the
 // pagination cursor (offset, kept in the page) are deliberately separate.
 
@@ -70,6 +70,7 @@ export function stockResultFromItem(item) {
     // "snapshot", never as availability, never priced.
     STOCK_UM: amountFrom(meta, 'CURRENT_TOT_AMOUNT_UM'),
     STOCK_MG: amountFrom(meta, 'CURRENT_TOT_NETTO_MG'),
+    snapshotLeadTime: String(meta.Lead_TIME ?? meta.LEAD_TIME ?? meta.lead_time ?? '').trim(),
   };
 }
 

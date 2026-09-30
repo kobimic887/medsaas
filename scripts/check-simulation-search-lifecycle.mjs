@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const simulation = readFileSync(
@@ -159,6 +159,29 @@ const emptyPayload = JSON.parse(readFileSync(path.join(fixtureDir, 'stock-simila
 
 const mappedRows = stockResultsFromPayload(page1Payload);
 const firstRow = mappedRows[0];
+const { formulaFromRdkitJson, calculateCompoundDescriptors, loadCompoundDescriptors } = await import(
+  pathToFileURL(path.join(root, 'client/src/utils/compoundDescriptors.js')).href
+);
+const ethanolJson = { defaults: { atom: { z: 6, impHs: 0, chg: 0 } }, molecules: [{ atoms: [{ impHs: 3 }, { impHs: 2 }, { z: 8, impHs: 1 }] }] };
+let deletedDescriptors = 0;
+const descriptorRdkit = { get_mol: () => ({ is_valid: () => true, get_json: () => JSON.stringify(ethanolJson), get_descriptors: () => JSON.stringify({ amw: 46.069 }), delete: () => { deletedDescriptors++; } }) };
+const ethanolDescriptors = calculateCompoundDescriptors(descriptorRdkit, 'CCO');
+let descriptorLoads = 0;
+const loadDescriptors = async () => { descriptorLoads++; return descriptorRdkit; };
+const [cachedFirst, cachedSecond] = await Promise.all([loadCompoundDescriptors('CCO', loadDescriptors), loadCompoundDescriptors('CCO', loadDescriptors)]);
+let invalidDescriptorsRejected = false;
+try {
+  calculateCompoundDescriptors({ get_mol: () => ({ is_valid: () => false, delete: () => { deletedDescriptors++; } }) }, 'broken');
+} catch { invalidDescriptorsRejected = true; }
+checks.push(
+  ['owned result tables render the requested identifier, calculated formula/MW, lead-time and pack-price columns', simulation.includes('>IDNUMBER</th>') && simulation.includes('>Lead time</th>') && simulation.includes('>Pack size · price') && simulation.includes('<CompoundDescriptorCells smiles={mol.SMILES_STRING} />') && simulation.includes('<CompoundDescriptorCells smiles={stockSmiles} />')],
+  ['missing export lead time renders an em dash without invention', simulation.includes("{mol.snapshotLeadTime || '—'}") && mappedRows.every(row => typeof row.snapshotLeadTime === 'string')],
+  ['formula derives implicit hydrogens from RDKit atoms', ethanolDescriptors.formula === 'C2H6O' && ethanolDescriptors.mw === 46.069],
+  ['charged formula includes charge and explicit hydrogen exactly once', formulaFromRdkitJson({ defaults: ethanolJson.defaults, molecules: [{ atoms: [{ z: 7, impHs: 3, chg: 1 }, { z: 1 }] }] }) === 'H4N+'],
+  ['formula does not invent an element for dummy attachment atoms', formulaFromRdkitJson({ defaults: ethanolJson.defaults, molecules: [{ atoms: [{ z: 0 }] }] }) === null],
+  ['descriptor cache shares one parse for repeated exact SMILES', descriptorLoads === 1 && cachedFirst === cachedSecond],
+  ['RDKit molecules are deleted on success and invalid structure', deletedDescriptors === 3 && invalidDescriptorsRejected],
+);
 checks.push(
   ['real scratch page maps to one Simulation row per engine hit', mappedRows.length === page1Payload.results.length],
   ['stock code survives mapping as a string with its prefix', firstRow && /^[A-Z]+ \d+$/.test(firstRow.stockCode) && firstRow.ASINEX_ID === firstRow.stockCode],
@@ -175,12 +198,13 @@ checks.push(
     found: true, count: 1, query_smiles: 'CCO',
     results: [{
       molecule_id: 999, canonical_smiles: 'CCO', similarity: 1,
-      metadata: { ID: '04188606', MAIN_BAS: 'ASN 04188606', compound_id: 'ASN 04188606', CURRENT_TOT_AMOUNT_UM: '2012', CURRENT_TOT_NETTO_MG: '277.89999' },
+      metadata: { ID: '04188606', MAIN_BAS: 'ASN 04188606', compound_id: 'ASN 04188606', CURRENT_TOT_AMOUNT_UM: '2012', CURRENT_TOT_NETTO_MG: '277.89999', Lead_TIME: '14 days' },
     }],
   })[0];
   checks.push(
     ['leading-zero stock IDs stay strings (ASN 04188606)', row && row.stockCode === 'ASN 04188606' && row.ASINEX_ID === 'ASN 04188606'],
     ['database row id is kept separate from the stock code', row && row.stockRowId === 999],
+    ['stock export lead time survives mapping when present', row?.snapshotLeadTime === '14 days'],
   );
 }
 

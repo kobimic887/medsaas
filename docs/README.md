@@ -19,6 +19,7 @@ cover behavior and maintenance; private deployment records are kept separately.
 | --- | --- |
 | [Stock compounds](DATA-STOCK-COMPOUNDS.md) | Import format and stock similarity search |
 | [Macrocycles](DATA-MACROCYCLES.md) | Real/virtual sources and index formats |
+| [Link Fragments](LINK-FRAGMENTS.md) | Two-fragment 3D matching, attachment rules and scientific limits |
 | [Open compounds](DATA-OPEN-COMPOUNDS.md) | ChEMBL search and optional AI assistance |
 | [Fingerprint metrics](REFERENCE-STOCK-FP-METRICS.md) | Comparing engines and similarity scores |
 | [Docking](DOCKING-CONTRACT.md) | Request/response format and result verification |

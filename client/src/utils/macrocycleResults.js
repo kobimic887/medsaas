@@ -20,7 +20,7 @@ export function macrocycleResultsFromPayload(payload, source) {
       SIMILARITY: typeof item.similarity === 'number' && Number.isFinite(item.similarity) ? item.similarity : null,
       snapshotMg: String(metadata.web_mg || metadata.CURRENT_TOT_NETTO_MG || '').trim(),
       snapshotUm: String(metadata.web_uM || metadata.CURRENT_TOT_AMOUNT_UM || '').trim(),
-      snapshotLeadTime: String(metadata.Lead_TIME ?? '').trim(),
+      snapshotLeadTime: String(metadata.Lead_TIME ?? metadata.LEAD_TIME ?? metadata.lead_time ?? '').trim(),
       isMacrocycleRow: true,
     };
   }).filter(Boolean);

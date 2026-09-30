@@ -15,6 +15,7 @@ for host paths, deployed identities and release-specific rollback records.
 | `pyxis-web-staging-full.service` | Full application with staging mode and demo mode disabled |
 | `pyxis-macrocycle-search-staging.service`, `pyxis-macrocycle-search-tunnel.service`, `10-macrocycle-search.conf` | Index on the scientific data host, private SSH transport, staging application URL |
 | `pyxis-open-compounds-ai-proxy.service`, `pyxis-open-compounds-ai-tunnel.service` | Restricted AI bridge and its transport |
+| `pyxis-link-fragments-staging.service`, `pyxis-link-fragments-tunnel.service`, `20-link-fragments.conf` | Owned 3D linker index, private transport and staging application URL |
 | `nginx-staging.conf` | `/staging/` proxy configuration |
 | `pyxis-web-staging.service`, `env.server.template` | Older isolated demo assets |
 
@@ -57,6 +58,10 @@ archive, not on the application host. A transport failure reports unavailable;
 it must not fall back to a supplier or an application-host dataset.
 
 ## Recovery
+
+Link Fragments source archives and SQLite indexes follow the same scientific-host
+boundary. The application needs only its input parser and the forwarded loopback URL.
+Review `docs/LINK-FRAGMENTS.md` for supported inputs, partial coverage and score limits.
 
 Use the snapshot recorded for the specific release. Restore only the affected staging
 source/bundle, service configuration and, when necessary, matching search artifacts.

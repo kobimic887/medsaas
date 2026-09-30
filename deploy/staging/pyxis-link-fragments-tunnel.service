@@ -1,0 +1,15 @@
+[Unit]
+Description=Private 3D linker search transport to the staging application
+After=network-online.target pyxis-link-fragments-staging.service
+Wants=network-online.target pyxis-link-fragments-staging.service
+
+[Service]
+Type=simple
+User=ubuntu
+ExecStart=/usr/bin/ssh -N -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=yes -R 127.0.0.1:18275:127.0.0.1:8374 oracleNew
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
