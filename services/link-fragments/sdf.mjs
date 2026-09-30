@@ -14,6 +14,31 @@ const fail = (code, message) => {
 };
 const chargeCodes = [0, 3, 2, 1, 0, -1, -2, -3];
 const integer = (s) => (/^\s*-?\d+\s*$/.test(s) ? Number(s) : NaN);
+// V2000 atom-block mass differences (columns 35-36) are relative to the most
+// common isotope; values match RDKit's getMostCommonIsotope. A nonzero mass
+// difference on any other element is refused instead of guessed.
+const MOST_COMMON_ISOTOPE = Object.freeze({
+  H: 1, He: 4, Li: 7, Be: 9, B: 11, C: 12, N: 14, O: 16, F: 19, Ne: 20,
+  Na: 23, Mg: 24, Al: 27, Si: 28, P: 31, S: 32, Cl: 35, Ar: 40, K: 39,
+  Ca: 40, Ti: 48, V: 51, Cr: 52, Mn: 55, Fe: 56, Co: 59, Ni: 58, Cu: 63,
+  Zn: 64, Ga: 69, Ge: 74, As: 75, Se: 80, Br: 79, Kr: 84, Rb: 85, Sr: 88,
+  Mo: 98, Ru: 102, Rh: 103, Pd: 106, Ag: 107, Cd: 114, In: 115, Sn: 120,
+  Sb: 121, Te: 130, I: 127, Xe: 132, Cs: 133, Ba: 138, Pt: 195, Au: 197,
+  Hg: 202, Tl: 205, Pb: 208, Bi: 209,
+});
+function massDifferenceIsotope(field, element, i) {
+  const difference = field.trim() ? integer(field) : 0;
+  if (!Number.isInteger(difference))
+    fail('UNSUPPORTED_ATOM', `Atom ${i + 1} has an invalid mass difference.`);
+  if (!difference) return null;
+  const isotope = (MOST_COMMON_ISOTOPE[element] ?? NaN) + difference;
+  if (!(isotope >= 1))
+    fail(
+      'UNSUPPORTED_ATOM',
+      `Atom ${i + 1}: use M  ISO for the ${element} isotope; its atom-block mass difference is not supported.`,
+    );
+  return isotope;
+}
 export function parseSdf(input) {
   if (typeof input !== 'string' || input.length > 20_000_000)
     fail('INVALID_SDF', 'Supply an SDF text under 20 MB.');
@@ -57,7 +82,8 @@ export function parseMolBlock(record) {
       element,
       xyz,
       charge: chargeCodes[code],
-      isotope: null,
+      // M  ISO later overrides this per listed atom, as RDKit does.
+      isotope: massDifferenceIsotope(line.slice(34, 36), element, i),
       parity: integer(line.slice(39, 42)) || 0,
       tail: line.slice(34),
     };
@@ -138,7 +164,7 @@ export function writeMolBlock(molecule) {
     fail('UNSUPPORTED_SDF', 'Product exceeds V2000 size limits.');
   const lines = [
     molecule.title || 'Pyxis Link Fragments',
-    '  Pyxis            3D',
+    '  Pyxis             3D', // V2000 dimension code occupies columns 21-22.
     '',
     `${field(molecule.atoms.length)}${field(molecule.bonds.length)}  0  0${field(molecule.chiral || 0)}  0  0  0  0  0999 V2000`,
   ];
@@ -149,8 +175,9 @@ export function writeMolBlock(molecule) {
         'Coordinates cannot be represented in V2000.',
       );
     let tail = a.tail || '  0  0  0  0  0  0  0  0  0  0  0  0';
-    // Preserve isotope mass differences and remaining atom flags; absolute ISO/CHG follow.
-    tail = tail.slice(0, 2) + field(0) + field(a.parity || 0) + tail.slice(8);
+    // Isotopes are written only as absolute M  ISO (mass difference 0), charges
+    // only as M  CHG; the remaining atom flags are preserved verbatim.
+    tail = field(0, 2) + field(0) + field(a.parity || 0) + tail.slice(8);
     lines.push(
       a.xyz.map((v) => v.toFixed(4).padStart(10)).join('') +
         ` ${a.element.padEnd(3)}` +
@@ -179,6 +206,52 @@ export function writeMolBlock(molecule) {
   lines.push('M  END');
   return lines.join('\n') + '\n';
 }
-export function writeSdf(molecule) {
-  return `${writeMolBlock(molecule)}$$$$\n`;
+const DATA_KEY = /^[A-Za-z0-9_.:-]{1,64}$/;
+/** SD data items (`> <KEY>` + value lines + blank line). Values never span records. */
+function dataItems(data = {}) {
+  // Array.map(writeSdf) passes an index here; only a plain object is data.
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return '';
+  return Object.entries(data)
+    .map(([key, value]) => {
+      if (!DATA_KEY.test(key))
+        fail('INVALID_SDF_DATA', 'SD data keys use letters, digits, _ . : -.');
+      if (value === undefined || value === null) return '';
+      const text = String(value).replaceAll('\r', '');
+      if (text.includes('$$$$'))
+        fail('INVALID_SDF_DATA', 'SD data values cannot contain $$$$.');
+      // A blank line ends an SD value, so blank lines inside it are dropped.
+      const lines = text.split('\n').filter((line) => line.trim());
+      return `> <${key}>\n${lines.join('\n')}\n\n`;
+    })
+    .join('');
+}
+export function writeSdf(molecule, data) {
+  return `${writeMolBlock(molecule)}${dataItems(data)}$$$$\n`;
+}
+/** Add or replace SD data items in every record, before its $$$$ separator. */
+export function withSdfData(sdfText, data) {
+  if (typeof sdfText !== 'string')
+    fail('INVALID_SDF', 'Supply SDF text to annotate.');
+  const items = dataItems(data),
+    keys = new Set(Object.keys(data));
+  const records = sdfText.replaceAll('\r', '').split(/^\$\$\$\$[^\n]*\n?/m);
+  if (records.length > 1 && !records.at(-1).trim()) records.pop();
+  return records
+    .map((record) => {
+      const lines = record.replace(/\n+$/, '').split('\n'),
+        end = lines.indexOf('M  END');
+      if (end < 0) fail('INVALID_SDF', 'Missing M END.');
+      const kept = lines.slice(0, end + 1);
+      // Drop existing items with the same key: header line through its blank terminator.
+      for (let i = end + 1, skip = false; i < lines.length; i++) {
+        const key = /^>.*<([^>]+)>/.exec(lines[i])?.[1];
+        if (key !== undefined) skip = keys.has(key);
+        if (!skip) kept.push(lines[i]);
+        else if (!lines[i].trim()) skip = false;
+      }
+      while (kept.length > end + 1 && !kept.at(-1).trim()) kept.pop();
+      // Terminate the last retained item with its blank line.
+      return `${kept.join('\n')}\n${kept.length > end + 1 ? '\n' : ''}${items}$$$$\n`;
+    })
+    .join('');
 }

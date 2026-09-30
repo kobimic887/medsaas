@@ -8,11 +8,21 @@ User=ubuntu
 WorkingDirectory=/home/ubuntu/projects/medsaas
 Environment=PORT=8374
 Environment=LINKER_INDEX_PATH=/home/ubuntu/.local/share/pyxis/link-fragments-20260929/linkers.sqlite
+Environment=LINK_FRAGMENTS_WORKERS=2
+Environment=LINK_FRAGMENTS_MAX_JOB_SECONDS=21600
+Environment=LINK_FRAGMENTS_PYTHON=/usr/bin/python3
+# Python child limit; must stay below the app relay (140 s) and the browser (150 s).
+Environment=LINK_FRAGMENTS_REFINE_TIMEOUT_MS=90000
 ExecStart=/home/ubuntu/.bun/bin/bun services/link-fragments/serve.mjs
 Restart=on-failure
 RestartSec=5
-CPUQuota=80%
-MemoryMax=512M
+# Measured on the scientific host (arm64, 2 niced workers, reference full scan):
+# ~202% CPU steady; peak service VmHWM 553 MB plus one MMFF94 refinement child
+# (~60 MB), ~0.61 GB together. The extra 50% CPU keeps HTTP and one refinement
+# responsive. MemoryMax gives ~2.5x headroom over that peak (page cache is
+# reclaimable) so a wider window or a large receptor is not OOM-killed mid-scan.
+CPUQuota=250%
+MemoryMax=1536M
 Nice=10
 NoNewPrivileges=true
 

@@ -61,7 +61,9 @@ it must not fall back to a supplier or an application-host dataset.
 
 Link Fragments source archives and SQLite indexes follow the same scientific-host
 boundary. The application needs only its input parser and the forwarded loopback URL.
-Review `docs/LINK-FRAGMENTS.md` for supported inputs, partial coverage and score limits.
+The linker service runs complete-scan jobs in memory (a restart loses them) and
+needs Python RDKit for refinement. Review `docs/LINK-FRAGMENTS.md` for supported
+inputs, job semantics and score limits.
 
 Use the snapshot recorded for the specific release. Restore only the affected staging
 source/bundle, service configuration and, when necessary, matching search artifacts.

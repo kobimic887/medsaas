@@ -72,11 +72,14 @@ bun run ci                    # only when blast radius warrants full gate
 
 A green `build` alone does not prove a dashboard flow.
 
-Link Fragments: read `docs/LINK-FRAGMENTS.md`; run `test:link-fragments` and
-exercise upload, atom selection, 3D overlay and SDF download in the browser.
-The index stays on the scientific host; application releases must include
-`services/link-fragments/sdf.mjs`. Bounded coverage and geometric-only scores
-must remain visible. Linker products do not become purchasable catalog rows.
+Link Fragments: read `docs/LINK-FRAGMENTS.md`; run `test:link-fragments` (and
+`refine-test.mjs` on the scientific host, where Python RDKit exists) and exercise
+upload, attachment/hydrogen selection, job progress and cancel, refinement, 3D
+overlay and SDF download in the browser. The index, workers and refinement stay on
+the scientific host; application releases must include
+`services/link-fragments/sdf.mjs`. Never label a canceled, failed or partial scan
+complete; keep geometric-only and non-MOE refinement limits visible. Linker
+products do not become purchasable catalog rows.
 
 ## Anti-patterns
 

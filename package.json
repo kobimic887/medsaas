@@ -75,7 +75,7 @@
     "test:catalog-ui:node": "node scripts/check-catalog-pricing-lifecycle.mjs && node scripts/check-stock-offers-lifecycle.mjs",
     "test:compound-shop": "bun --cwd=server run test:compound-shop && bun run test:catalog-ui",
     "test:compound-shop:node": "npm --prefix server run test:compound-shop:node && npm run test:catalog-ui:node",
-    "test:link-fragments": "bun test ./services/link-fragments/test.mjs ./services/link-fragments/service-test.mjs ./server/test/link-fragments-route.test.mjs && bun scripts/check-link-fragments-ui.mjs"
+    "test:link-fragments": "bun test ./services/link-fragments/test.mjs ./services/link-fragments/service-test.mjs ./services/link-fragments/refine-test.mjs ./server/test/link-fragments-route.test.mjs && bun scripts/check-link-fragments-ui.mjs && bun scripts/check-link-fragments-jobs.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.0",
