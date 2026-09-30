@@ -53,7 +53,9 @@ export function Fragment3DViewer({ querySdf, productSdf, attachmentAtoms = [], o
         model.setStyle({}, productSdf ? { stick: { radius: 0.07, color: '#94a3b8', opacity: 0.45 } } : { stick: { radius: 0.16, colorscheme: fragmentIndex === 0 ? 'orangeCarbon' : 'cyanCarbon' } });
         if (attachmentAtoms[fragmentIndex]) {
           const selection = { index: attachmentAtoms[fragmentIndex] - 1 };
-          model.addStyle(selection, { sphere: { radius: 0.55, color: fragmentIndex === 0 ? '#f97316' : '#06b6d4' } });
+          // GLModel exposes setStyle(..., true) for additive styling;
+          // addStyle belongs to GLViewer in the bundled 3Dmol version.
+          model.setStyle(selection, { sphere: { radius: 0.55, color: fragmentIndex === 0 ? '#f97316' : '#06b6d4' } }, true);
           const atom = model.selectedAtoms(selection)[0];
           if (atom) v.addLabel(`${fragmentIndex + 1}:${attachmentAtoms[fragmentIndex]}`, { position: atom, fontSize: 13, backgroundColor: '#0f172a', fontColor: 'white' });
         }
