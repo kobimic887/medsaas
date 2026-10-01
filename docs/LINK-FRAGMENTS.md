@@ -30,10 +30,16 @@ create a stock offer, enter a cart or establish synthesis availability.
 7. The search runs as a background job. Progress shows examined/total candidate
    pairs, conformers and valid placements; partial results update while it runs and
    **Cancel** stops it. Returning to the page resumes the newest active job.
-8. Select a product to overlay it on the query, inspect the attachment mapping in
-   original numbering, optionally refine it, and download the original or refined
-   SDF and a JSON quality report. **Saved searches** restores previous inputs,
-   attachment selections, receptor, results and successful refinements.
+8. Preview provisional candidates while searching. Downloads and refinement unlock
+   after the service finishes or stops the scan; a stopped scan remains partial.
+   Completion freezes the search ranking and does not automatically refine any
+   product. Refinement is a separate operation on the selected candidate.
+9. Open **Home → Linker searches** to restore original inputs, attachment selections,
+   receptor, results and successful refinements. Links use
+   `/dashboard/link-fragments?job=<id>` and never substitute another job if it is
+   unavailable. A fresh query page resumes an active scan but does not automatically
+   reopen an old finished search. Method, chemistry and detailed reports are available
+   in collapsed sections; errors, partial status and unresolved clashes remain visible.
 
 ## Attachment rules
 

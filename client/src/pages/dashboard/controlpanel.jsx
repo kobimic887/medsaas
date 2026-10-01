@@ -22,6 +22,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { ClockIcon } from "@heroicons/react/24/solid";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
+import { LinkFragmentHistory } from "@/components/LinkFragmentHistory";
 
 const CONTROL_PANEL_FETCH_TIMEOUT_MS = 15_000;
 
@@ -264,6 +265,7 @@ export function ControlPanel() {
 
   return (
     <div className="mt-12">
+      <LinkFragmentHistory />
 
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-12">

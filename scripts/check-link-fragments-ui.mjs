@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import {
-  attachmentMappingLines, defaultHydrogenChoice, formatQuerySelection, formatUnsupported, hydrogenClickHint, hydrogenOptions, hydrogenParent, receptorPocket,
+  attachmentMappingLines, canUseResult, defaultHydrogenChoice, formatQuerySelection, formatUnsupported, hydrogenClickHint, hydrogenOptions, hydrogenParent, receptorPocket,
   refinementRows, receptorForView, receptorValidationReady, restoreJobInput, resultReport, releaseViewerCanvases, resultFileName, sdfCoordinates, selectionForAtom, selectionLabel, selectionPayload, selectionReady, unavailableReasons,
 } from '../client/src/utils/linkFragmentsJobs.js';
 import { linkFragmentsRequest } from '../client/src/utils/linkFragmentsRequest.js';
@@ -169,7 +169,7 @@ assert(page.includes('file.size > MAX_SDF_BYTES') && page.includes('file.size > 
 assert(page.includes('not equivalent to MOE refinement') && page.includes('does not estimate binding affinity or synthesis feasibility'), 'refinement disclaimer is visible');
 assert(page.includes('all uploaded fragment atoms (heavy atoms and uploaded explicit hydrogens) held fixed') && !page.includes('uploaded fragment heavy atoms held fixed'), 'refinement text names every fixed uploaded atom');
 assert(page.includes('A search covers replacement of the selected hydrogen only.'), 'attachment scope is stated near the selectors');
-assert(!page.includes('upload the SDF again') && page.includes('Uploading an SDF starts a new query and removes this search from the page, so download any products you need first.'), 'resumed note never invites an upload that erases the job');
+assert(!page.includes('upload the SDF again') && page.includes('Saved searches') && page.includes('/dashboard/controlpanel#linker-history'), 'saved searches have a persistent Home destination');
 const receptorInput = page.indexOf('accept=".pdb,chemical/x-pdb"');
 assert(receptorInput > 0 && receptorInput < page.indexOf('id="fragment-results-heading"') && page.split('accept=".pdb,chemical/x-pdb"').length === 2, 'one receptor control, outside the product detail block');
 assert(page.includes('>Remove receptor</button>') && /clearReceptor\(\); \/\/ a receptor belongs to the previous query/.test(page), 'receptor can be removed and a new SDF clears it');
@@ -197,7 +197,18 @@ assert.equal(restored.sdf, querySdf); assert.equal(restored.receptor.text, 'same
 assert.equal(restoreJobInput({...savedJob, input: {...savedJob.input, attachments: [1]}}), null);
 assert.equal(restoreJobInput({...savedJob, input: {...savedJob.input, attachments: [0, 1]}}), null);
 assert.equal(restoreJobInput({}), null);
-assert(page.includes('setJobQuerySdf(restored.sdf)') && page.includes('setSelections(restored.selections)') && page.includes('aria-label="Saved searches"'), 'saved original query and original-number attachments restored for viewer');
+assert(page.includes('setJobQuerySdf(restored.sdf)') && page.includes('setSelections(restored.selections)') && page.includes('useSearchParams'), 'Home deep link restores exact original query and original-number attachments');
+const retained = { ...savedJob, results: [{id: 'candidate'}] };
+assert.equal(canUseResult(retained, 'candidate'), true);
+for (const state of ['queued', 'running']) assert.equal(canUseResult({...retained, state}, 'candidate'), false, 'active scans only allow provisional previews');
+for (const state of ['canceled', 'failed']) assert.equal(canUseResult({...retained, state, complete: false}, 'candidate'), true, 'server-stopped partial results can be used honestly');
+assert.equal(canUseResult({...retained, local: true}, 'candidate'), false, 'polling failure cannot establish the remote worker stopped');
+assert.equal(canUseResult(retained, 'candidate', {fatal: true}), false);
+assert.equal(canUseResult(retained, 'evicted'), false);
+const historyPage = readFileSync(new URL('../client/src/components/LinkFragmentHistory.jsx', import.meta.url), 'utf8');
+const homePage = readFileSync(new URL('../client/src/pages/dashboard/controlpanel.jsx', import.meta.url), 'utf8');
+assert(historyPage.includes("API_CONFIG.buildApiUrl('/link-fragments/jobs')") && historyPage.includes('token: getAuthToken()') && historyPage.includes('controller.current?.abort()'), 'history remains authenticated, bounded and independently canceled');
+assert(historyPage.includes('link-fragments?job=${encodeURIComponent(job.id)}') && homePage.includes('<LinkFragmentHistory />'), 'Home opens the selected scientific history record');
 const report = resultReport(savedJob, {...detail, sourceAtomMappings: [{fragment: 2, original: 6, product: 16}], refinement: {ok: true, sdf: 'large molblock', energyUnits: 'kcal/mol', converged: false}});
 assert.equal(report.search.complete, true);
 assert.equal(report.refinement.converged, false);

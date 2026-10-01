@@ -71,7 +71,10 @@ when a path or trap moves.
   a separate bounded SQLite database on the scientific host; interrupted scans
   restore as failed/partial, never complete. MMFF94/UFF refinement keeps uploaded atoms
   fixed and is not MOE refinement, affinity or synthesis scoring. Assembled
-  products are discovery-only. Ship `services/link-fragments/sdf.mjs` with the
+  products are discovery-only. Home owns saved Linker searches; query deep links
+  reopen that exact job. Active scans allow provisional previews; exports and
+  refinement require a retained result and a server-confirmed terminal state,
+  never a local polling failure. Ship `services/link-fragments/sdf.mjs` with the
   application server for input parsing. Refined SDF downloads retain linker IDs,
   source atom mapping and original placement scores; new hydrogens are appended,
   so source atom numbers remain valid. RDKit molblock output alone drops SD tags.

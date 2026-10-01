@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Fragment3DViewer } from '@/components/Fragment3DViewer';
 import { API_CONFIG, getAuthToken } from '@/utils/constants';
 import {
-  attachmentMappingLines, createJobPoller, defaultHydrogenChoice, formatCount, formatQuerySelection, hydrogenClickHint, hydrogenOptions, isActiveJob,
-  isHydrogenElement, isTerminalJob, jobStatusLabel, markJobUnfollowable, pickRecentJob, pickResumableJob, pollFailureMessage, progressOf, receptorPocket,
-  refinementRows, receptorForView, receptorValidationReady, restoreJobInput, resultReport, resultFileName, sdfCoordinates, selectionForAtom, selectionLabel, selectionPayload, selectionReady, unavailableReasons,
+  attachmentMappingLines, canUseResult, createJobPoller, defaultHydrogenChoice, formatCount, formatQuerySelection, hydrogenClickHint, hydrogenOptions, isActiveJob,
+  isHydrogenElement, isTerminalJob, jobStatusLabel, markJobUnfollowable, pickResumableJob, pollFailureMessage, progressOf, receptorForView, receptorPocket, receptorValidationReady,
+  refinementRows, restoreJobInput, resultFileName, resultReport, sdfCoordinates, selectionForAtom, selectionLabel, selectionPayload, selectionReady, unavailableReasons,
 } from '@/utils/linkFragmentsJobs';
 import { linkFragmentsRequest, REFINE_REQUEST_TIMEOUT_MS } from '@/utils/linkFragmentsRequest';
 
@@ -29,16 +30,21 @@ function saveSdf(text, fileName, type = 'chemical/x-mdl-sdfile') {
   const link = document.createElement('a');
   link.href = url;
   link.download = fileName;
+  document.body.appendChild(link);
   link.click();
+  link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 const errorText = error => [error.message, ...(error.details || []).map(item => item?.message).filter(message => message && message !== error.message)].join(' ');
 const atomTag = atom => `${atom.isotope ? atom.isotope : ''}${atom.element}${atom.charge ? (atom.charge > 0 ? `+${atom.charge > 1 ? atom.charge : ''}` : `−${atom.charge < -1 ? -atom.charge : ''}`) : ''}`;
 
 export function LinkFragments() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedJobId = searchParams.get('job');
   const [status, setStatus] = useState(null);
   const [statusError, setStatusError] = useState('');
   const [fileName, setFileName] = useState('');
+  const [queryInputKey, setQueryInputKey] = useState(0);
   const [sdf, setSdf] = useState('');
   const [fragments, setFragments] = useState([]);
   const [eligibility, setEligibility] = useState({ state: '', error: '' });
@@ -52,7 +58,6 @@ export function LinkFragments() {
   // Restore the exact saved input when reopening a job; never overlay another upload.
   const [jobQuerySdf, setJobQuerySdf] = useState('');
   const [jobNotice, setJobNotice] = useState(null);
-  const [recentJobs, setRecentJobs] = useState([]);
   // '' | 'running' (resumed) | 'finished' (reopened) | 'busy' (owner already had a scan).
   const [resumed, setResumed] = useState('');
   const [selectedId, setSelectedId] = useState('');
@@ -83,7 +88,7 @@ export function LinkFragments() {
   if (!poller.current) poller.current = createJobPoller({
     interval: POLL_INTERVAL_MS,
     fetchJob: (id, controller) => request(`jobs/${encodeURIComponent(id)}?input=0`, controller, undefined, 20000).then(data => data?.job),
-    onUpdate: next => { setJob(next); setJobNotice(null); setRecentJobs(previous => [{ id: next.id, state: next.state, complete: next.complete, createdAt: next.createdAt, finishedAt: next.finishedAt, progress: next.progress, query: next.query }, ...previous.filter(item => item.id !== next.id)].slice(0, 30)); },
+    onUpdate: next => { setJob(next); setJobNotice(null); },
     onError: (failure, { fatal }) => {
       if (!fatal) { setJobNotice({ fatal: false, text: `Could not check progress (${failure.message}). Retrying…` }); return; }
       // A job that cannot be followed becomes terminal locally so the form unlocks.
@@ -93,14 +98,16 @@ export function LinkFragments() {
     },
   });
   useEffect(() => {
+    clearQuery();
     refreshStatus();
-    resumeLatestJob();
+    if (requestedJobId) openSavedJob({ id: requestedJobId });
+    else resumeLatestJob();
     return () => {
       revision.current++;
       poller.current.stop();
       for (const ref of [activeRequest, statusRequest, detailRequest, refineRequest, cancelRequest, receptorRequest]) ref.current?.abort();
     };
-  }, []);
+  }, [requestedJobId]);
 
   // Changing either file aborts its preflight. The identity check also discards
   // late responses from servers that completed after the request was aborted.
@@ -121,7 +128,7 @@ export function LinkFragments() {
   }, [sdf, receptor]);
 
   const jobActive = isActiveJob(job);
-  const locked = jobActive || ['start', 'restore', 'receptor', 'inspect'].includes(busy);
+  const locked = jobActive || refining || ['start', 'restore', 'receptor', 'inspect'].includes(busy);
   async function refreshStatus() {
     statusRequest.current?.abort();
     const controller = new AbortController();
@@ -130,8 +137,7 @@ export function LinkFragments() {
     try { const data = await request('status', controller); if (statusRequest.current === controller && !controller.signal.aborted) setStatus(data); }
     catch (failure) { if (statusRequest.current === controller && failure.name !== 'AbortError') { setStatus(null); setStatusError(failure.message); } }
   }
-  // Background jobs survive navigation: pick up this user's newest running scan,
-  // else reopen the newest finished one (one poll loads its retained products).
+  // Fresh visits resume only active work. Finished searches open from Home.
   // preferredId names the scan the service reported as already running.
   async function resumeLatestJob(preferredId) {
     const currentRevision = revision.current;
@@ -141,8 +147,7 @@ export function LinkFragments() {
       const data = await request('jobs', controller);
       if (revision.current !== currentRevision || activeRequest.current !== controller || poller.current.jobId) return;
       const jobs = Array.isArray(data?.jobs) ? data.jobs : [];
-      setRecentJobs(jobs);
-      const target = (preferredId && jobs.find(item => item?.id === preferredId)) || pickResumableJob(jobs) || (preferredId === undefined ? pickRecentJob(jobs) : null);
+      const target = (preferredId && jobs.find(item => item?.id === preferredId)) || pickResumableJob(jobs);
       if (!target) return;
       activeRequest.current = null;
       await openSavedJob(target, preferredId !== undefined ? 'busy' : isActiveJob(target) ? 'running' : 'finished');
@@ -150,7 +155,7 @@ export function LinkFragments() {
     finally { if (activeRequest.current === controller) activeRequest.current = null; }
   }
   async function openSavedJob(target, reason = 'finished') {
-    if (!target?.id || locked) return;
+    if (!target?.id) return;
     resetResults();
     const currentRevision = revision.current;
     const controller = new AbortController();
@@ -169,7 +174,7 @@ export function LinkFragments() {
       setMaxRmsd(String(restored.maxRmsd)); setLimit(String(restored.limit));
       receptorReadRevision.current++; setReceptor(restored.receptor); setReceptorError('');
       setReceptorInputKey(key => key + 1);
-      setJob(data.job); setResumed(reason); poller.current.start(target.id);
+      setJob(data.job); setResumed(isActiveJob(data.job) ? reason === 'busy' ? 'busy' : 'running' : 'finished'); poller.current.start(target.id);
     } catch (failure) { if (revision.current === currentRevision && failure.name !== 'AbortError') setError(errorText(failure)); }
     finally { if (activeRequest.current === controller) { activeRequest.current = null; setBusy(''); } }
   }
@@ -183,6 +188,17 @@ export function LinkFragments() {
     lastProductView.current = null;
     setJob(null); setJobQuerySdf(''); setJobNotice(null); setResumed(''); setSelectedId(''); setDetail(null); setDetailState({ busy: false, error: '' });
     setRefining(false); setRefineError(''); setView('original'); setError(''); setBusy('');
+  }
+  function clearQuery() {
+    resetResults(); clearReceptor();
+    setSdf(''); setFragments([]); setSelections(EMPTY_SELECTIONS);
+    setEligibility({ state: '', error: '' }); setAtomHint(''); setFileName('');
+    setQueryInputKey(key => key + 1);
+  }
+  function newQuery() {
+    if (locked || busy) return;
+    clearQuery();
+    setSearchParams(previous => { const next = new URLSearchParams(previous); next.delete('job'); return next; });
   }
   function updateSelection(fragmentIndex, selection) {
     if (locked) return;
@@ -254,7 +270,7 @@ export function LinkFragments() {
       if (failure.status === 429 && failure.code === 'LINK_FRAGMENTS_OWNER_BUSY') {
         // This user already has a scan: show it (progress and Cancel) instead of a dead end.
         ownerBusy = { jobId: failure.jobId || null };
-        setError(`${failure.message} It is shown under Matching products.`);
+        setError(`${failure.message} It is shown under Linker candidates.`);
       } else setError(failure.code === 'LINK_FRAGMENTS_QUEUE_FULL' ? `${failure.message} Try again when a running search finishes.` : errorText(failure));
     } finally { if (activeRequest.current === controller) { activeRequest.current = null; setBusy(''); } }
     if (ownerBusy) resumeLatestJob(ownerBusy.jobId);
@@ -325,7 +341,7 @@ export function LinkFragments() {
   }
   async function refine() {
     const target = detail, jobId = job?.id;
-    if (!target || !jobId || !receptorValidationReady(receptor, sdf, receptorValidation)) return;
+    if (!target || !jobId || refining || detailState.busy || !canUseResult(job, target.id, jobNotice) || !receptorValidationReady(receptor, sdf, receptorValidation)) return;
     refineRequest.current?.abort();
     const controller = new AbortController();
     refineRequest.current = controller;
@@ -346,7 +362,11 @@ export function LinkFragments() {
 
   const results = job?.results || [];
   const firstResultId = results[0]?.id;
-  useEffect(() => { if (job?.id && firstResultId && !selectedId) selectResult(job.id, firstResultId); }, [job?.id, firstResultId, selectedId]);
+  const selectedRetained = results.some(item => item.id === selectedId);
+  useEffect(() => {
+    if (job?.id && firstResultId && !selectedRetained && !refining) selectResult(job.id, firstResultId);
+  }, [job?.id, firstResultId, selectedRetained, refining]);
+  const resultActionsReady = canUseResult(job, detail?.id, jobNotice) && !detailState.busy && !refining;
   const validRmsd = Number.isFinite(Number(maxRmsd)) && Number(maxRmsd) >= 0.1 && Number(maxRmsd) <= 1;
   const validLimit = Number.isInteger(Number(limit)) && Number(limit) >= 1 && Number(limit) <= 50;
   const canSearch = status?.available && sdf && selections.every(selectionReady) && validRmsd && validLimit && !locked && !busy && !receptorError && !['reading', 'checking'].includes(receptorValidation.state) && receptorValidationReady(receptor, sdf, receptorValidation);
@@ -365,38 +385,55 @@ export function LinkFragments() {
   if (detail) lastProductView.current = productView;
   const resultsKnown = Array.isArray(job?.results);
   const eligibleAtoms = eligibility.state === 'checked' ? fragments.map(fragment => fragment.atoms.filter(atom => atom.eligible).map(atom => atom.number)) : null;
-  const summary = results.find(item => item.id === selectedId) || detail;
+  const summary = results.find(item => item.id === selectedId);
+  function downloadResult(kind) {
+    // A locally disconnected scan may still be running on the server.
+    if (!resultActionsReady || !detail || !summary) return;
+    if (kind === 'report') saveSdf(JSON.stringify(resultReport(job, detail), null, 2), resultFileName(summary).replace(/\.sdf$/, '-report.json'), 'application/json');
+    else if (kind === 'refined' && refinement) saveSdf(refinement.sdf, resultFileName(summary, refinement));
+    else if (kind === 'original') saveSdf(detail.sdf, resultFileName(summary));
+  }
   const refineStatus = status?.refinement;
   const limitations = status?.limitations;
   return (
     <div className="mx-auto max-w-7xl space-y-6 pb-12">
-      <div><h1 className="text-2xl font-bold text-slate-900 dark:text-white">Link Fragments</h1><p className="mt-2 text-sm text-slate-600 dark:text-slate-300">Find macrocyclic skeletons that connect two fragments in their uploaded 3D arrangement. Choose one attachment atom on each fragment; every distance-compatible linker pair is examined in the background.</p></div>
-      <div className="rounded-xl border border-brand-200 bg-brand-50 p-4 text-sm text-blue-gray-700 dark:border-slate-700 dark:text-slate-100">
-        <div className="flex flex-wrap items-center justify-between gap-3"><span>{statusError || (status ? status.available ? `Linker collection ready · ${formatCount(status.records)} conformers · ${formatCount(status.pairs)} attachment pairs${status.jobs ? ` · ${formatCount(status.jobs.running)} running, ${formatCount(status.jobs.queued)} queued searches` : ''}` : 'Linker search is not available yet. You can inspect your fragments and choose attachment atoms.' : 'Checking linker collection…')}</span><button type="button" className="font-semibold underline" onClick={refreshStatus}>Check again</button></div>
-        {status?.method && <p className="mt-2">Method: {status.method}</p>}
-        {refineStatus && <p className="mt-1">Refinement: {refineStatus.available ? `available (RDKit ${refineStatus.rdkitVersion || ''}; ${(refineStatus.forceFields || []).join(', ')})` : `unavailable${refineStatus.reason ? ` — ${refineStatus.reason}` : ''}`}</p>}
-      </div>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div><h1 className="text-2xl font-bold text-slate-900 dark:text-white">Link Fragments</h1><p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Connect two 3D fragments with a macrocyclic linker.</p></div>
+        <div className="flex items-center gap-4"><button type="button" onClick={newQuery} disabled={locked || !!busy} className="text-sm font-semibold text-brand-700 underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-brand-200">New query</button><Link to="/dashboard/controlpanel#linker-history" className="text-sm font-semibold text-brand-700 underline dark:text-brand-200">Saved searches</Link></div>
+      </header>
+      {(statusError || status?.available === false) && <div role="alert" className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm ${TONES.warning}`}><span>{statusError || 'Linker search is unavailable. You can still inspect your fragments.'}</span><button type="button" className="font-semibold underline" onClick={refreshStatus}>Check again</button></div>}
+      <details className="rounded-lg border border-slate-200 px-4 py-3 text-sm dark:border-slate-700 dark:text-slate-200">
+        <summary className="cursor-pointer font-medium">Collection and method</summary>
+        <div className="mt-3 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2"><p>{status ? `${formatCount(status.records)} conformers · ${formatCount(status.pairs)} attachment pairs` : 'Checking linker collection…'}</p><button type="button" className="font-semibold underline" onClick={refreshStatus}>Check again</button></div>
+          {status?.method && <p>{status.method}</p>}
+          {refineStatus && <p>Refinement: {refineStatus.available ? `RDKit ${refineStatus.rdkitVersion || ''} · ${(refineStatus.forceFields || []).join(', ')}` : refineStatus.reason || 'unavailable'}</p>}
+          <p>Candidates do not establish binding activity, synthesis feasibility or availability. Refinement is not equivalent to MOE refinement and does not estimate binding affinity or synthesis feasibility.</p>
+          {limitations && <p className={muted}>{Array.isArray(limitations) ? limitations.join(' ') : String(limitations)}</p>}
+        </div>
+      </details>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900" aria-labelledby="fragment-query-heading">
+        <section className="min-w-0 space-y-4 rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900" aria-labelledby="fragment-query-heading">
           <h2 id="fragment-query-heading" className="text-lg font-semibold dark:text-white">1. Query fragments</h2>
-          <label className="block text-sm font-medium dark:text-slate-200">Upload 3D SDF (two records, maximum 800 KB)<input type="file" accept=".sdf,chemical/x-mdl-sdfile" disabled={locked || !!busy} className="mt-2 block w-full rounded border border-slate-300 p-2 text-sm disabled:opacity-50 dark:border-slate-600" onChange={event => upload(event.target.files?.[0])} /></label>
-          <p className={muted}>V2000 SDF with two molecules in the same coordinate frame. Coordinates, charges, isotopes and atom numbers are preserved. {fileName && `File: ${fileName}`}</p>
-          <div className="space-y-1">
-            <label className="block text-sm font-medium dark:text-slate-200">Receptor PDB (optional: search ranking, pocket display and refinement; ligand-free, same frame as the SDF, ≤ 5 MB)<input key={receptorInputKey} type="file" accept=".pdb,chemical/x-pdb" disabled={locked || !!busy} className="mt-2 block w-full rounded border border-slate-300 p-2 text-sm dark:border-slate-600" onChange={event => loadReceptor(event.target.files?.[0])} /></label>
+          <label className="block text-sm font-medium dark:text-slate-200">Fragment SDF (two molecules)<input key={queryInputKey} type="file" accept=".sdf,chemical/x-mdl-sdfile" disabled={locked || !!busy} className="mt-2 block w-full rounded border border-slate-300 p-2 text-sm disabled:opacity-50 dark:border-slate-600" onChange={event => upload(event.target.files?.[0])} /></label>
+          <p className={muted}>One 3D V2000 file containing both fragments in the same frame · up to 800 KB.{fileName && ` ${fileName}`}</p>
+          <details className="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700" open={!!receptor || !!receptorError || receptorValidation.state === 'reading'}>
+            <summary className="cursor-pointer text-sm font-medium dark:text-slate-200">Include a receptor</summary>
+            <p className={muted}>Ligand-free PDB in the fragments’ coordinate frame · up to 5 MB. Used for clash ranking and refinement.</p>
+            <label className="block text-sm font-medium dark:text-slate-200">Receptor PDB (optional)<input key={receptorInputKey} type="file" accept=".pdb,chemical/x-pdb" disabled={locked || !!busy} className="mt-2 block w-full rounded border border-slate-300 p-2 text-sm dark:border-slate-600" onChange={event => loadReceptor(event.target.files?.[0])} /></label>
             {receptor && <p className="flex flex-wrap items-center gap-2 text-sm dark:text-slate-200">Receptor: {receptor.name}<button type="button" onClick={() => { resetResults(); clearReceptor(); }} disabled={locked || !!busy} className="font-semibold underline disabled:opacity-50">Remove receptor</button></p>}
             {receptorError && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{receptorError}</p>}
             {['reading', 'checking'].includes(receptorValidation.state) && <p role="status" className="text-sm dark:text-slate-200">Checking receptor coordinates and ligand overlap…</p>}
             {receptorValidation.state === 'waiting' && <p role="status" className={muted}>Upload query fragments to check that the receptor shares their coordinate frame.</p>}
             {receptorValidation.state === 'invalid' && receptorValidation.error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{receptorValidation.error}</p>}
-            {receptor && receptorValidationReady(receptor, sdf, receptorValidation) && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-300">Receptor passed the coordinate and overlap checks. Candidates will be ranked by receptor clash severity before attachment fit. This is an excluded-volume check, not an affinity score.</p>}
+            {receptor && receptorValidationReady(receptor, sdf, receptorValidation) && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-300">Receptor checked. Products will be ranked by clashes, then fit.</p>}
             {(receptorValidation.report?.warnings || []).map(warning => <p key={warning} className={muted}>{warning}</p>)}
-            <p className={muted}>Uploading a new SDF clears the receptor. Changing the receptor starts a new query.</p>
-          </div>
+          </details>
           {jobActive && <p className={muted}>Cancel the running search to change the query.</p>}
           {busy === 'inspect' && <p role="status" className="text-sm dark:text-slate-200">Inspecting fragments and attachment sites…</p>}
           {sdf && <>
             <Fragment3DViewer querySdf={sdf} attachmentAtoms={selections.map(selection => selection?.atom || null)} hydrogenAtoms={selections.map(selection => Number.isInteger(selection?.hydrogen) ? selection.hydrogen : null)} eligibleAtoms={eligibleAtoms} onAtomSelect={chooseFromViewer} />
-            <p className={muted}>Drag to rotate, scroll to zoom. Small green spheres mark eligible attachment atoms. Click a heavy atom to select it, or click an explicit hydrogen to replace that hydrogen. Selected atoms appear as orange and cyan spheres; the hydrogen to be replaced is magenta.</p>
+            <p className={muted}>Click a green attachment site or use the selectors below. Drag to rotate; scroll to zoom.</p>
             {atomHint && <p role="status" className="text-sm text-slate-700 dark:text-slate-200">{atomHint}</p>}
             {eligibility.state === 'unavailable' && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">{eligibility.error || 'Attachment eligibility could not be checked.'} All heavy atoms are listed; the search validates your choice.</p>}
             <div className="grid gap-4 sm:grid-cols-2">{fragments.map((fragment, index) => {
@@ -417,84 +454,76 @@ export function LinkFragments() {
                 </fieldset>
               );
             })}</div>
-            <p className={muted}>A search covers replacement of the selected hydrogen only. To try a different hydrogen on the same atom, run another search.</p>
+            <details className={muted}><summary className="cursor-pointer">Attachment help</summary><p className="mt-1">A search covers replacement of the selected hydrogen only. Click an explicit hydrogen to choose it; the replaced hydrogen is magenta. A different hydrogen requires another search. Surviving atoms keep their coordinates and original numbering.</p></details>
           </>}
-          <div className="flex flex-wrap gap-4">
+          <details className="rounded-lg border border-slate-200 p-3 dark:border-slate-700"><summary className="cursor-pointer text-sm font-medium dark:text-slate-200">Search settings <span className="font-normal">· RMSD ≤ {maxRmsd} Å · keep {limit}</span></summary><div className="mt-3 flex flex-wrap gap-4">
             <label className="block text-sm font-medium dark:text-slate-200">Maximum attachment fit RMSD (Å)<input type="number" min="0.1" max="1" step="0.05" value={maxRmsd} disabled={locked} className={`ml-3 w-24 ${input}`} onChange={event => { resetResults(); setMaxRmsd(event.target.value); }} /></label>
             <label className="block text-sm font-medium dark:text-slate-200">Products to keep<input type="number" min="1" max="50" step="1" value={limit} disabled={locked} className={`ml-3 w-20 ${input}`} onChange={event => { resetResults(); setLimit(event.target.value); }} /></label>
           </div>
-          <p className={muted}>A smaller RMSD requires a closer geometric fit. The search keeps the best distinct products (1–50) and validates attachment chemistry again before fitting.</p>
+          <p className={`mt-2 ${muted}`}>Lower RMSD means a closer attachment fit. Keep 1–50 distinct products.</p></details>
           <button type="button" onClick={startSearch} disabled={!canSearch} className="w-full rounded-lg bg-brand-500 px-4 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{busy === 'start' ? 'Starting search…' : jobActive ? 'Search running…' : 'Start linker search'}</button>
           {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
         </section>
-        <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900" aria-labelledby="fragment-results-heading">
-          <h2 id="fragment-results-heading" className="text-lg font-semibold dark:text-white">2. Matching products</h2>
-          {recentJobs.length > 0 && <div className="space-y-1"><label className="block text-sm font-medium dark:text-slate-200">Saved searches<select aria-label="Saved searches" disabled={locked || !!busy} value={job?.id || ''} onChange={event => openSavedJob(recentJobs.find(item => item.id === event.target.value))} className={`mt-1 w-full ${input}`}><option value="">Choose a saved search</option>{recentJobs.map(item => <option key={item.id} value={item.id}>{new Date(item.createdAt).toLocaleString()} · {jobStatusLabel(item).title}{item.query?.receptorReport ? ' · receptor' : ''}</option>)}</select></label><p className={muted}>Your searches and original inputs are retained for up to 30 days, subject to storage limits. Reopen one to inspect its fragments, receptor and products. Unfinished searches interrupted by a service restart remain partial.</p></div>}
+        <section className="min-w-0 space-y-4 rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900" aria-labelledby="fragment-results-heading">
+          <h2 id="fragment-results-heading" className="text-lg font-semibold dark:text-white">2. Linker candidates</h2>
           {busy === 'restore' && <p role="status" className="text-sm dark:text-slate-200">Restoring saved query and products…</p>}
-          {!job && <p className="text-sm text-slate-500 dark:text-slate-300">Upload fragments, select two attachment sites and start a search. Products appear here while the search runs.</p>}
+          {!job && <p className="text-sm text-slate-500 dark:text-slate-300">Choose an attachment on each fragment, then start the search.</p>}
           {job && <div className={`space-y-3 rounded-lg border p-3 text-sm ${TONES[label.tone] || TONES.idle}`}>
             <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold" aria-live="polite">{label.title}</p>{jobActive && <button type="button" onClick={cancelSearch} disabled={busy === 'cancel'} className="rounded border border-current px-3 py-1 text-sm font-semibold disabled:opacity-50">{busy === 'cancel' ? 'Canceling…' : 'Cancel search'}</button>}</div>
-            <p>{label.detail}</p>
+            {jobActive ? <p>Live previews may change. Downloads and refinement unlock when the search finishes or you stop it.</p> : <p>{label.detail}</p>}
             <div role="progressbar" aria-label="Search progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.percent} aria-valuetext={`${formatCount(progress.examined)} of ${formatCount(progress.total)} pairs examined`} className="h-2 w-full overflow-hidden rounded bg-white/70 dark:bg-slate-700"><div className="h-2 bg-brand-500 transition-[width]" style={{ width: `${progress.percent}%` }} /></div>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
-              <div><dt className="opacity-75">Pairs examined</dt><dd className="font-semibold">{formatCount(progress.examined)} / {formatCount(progress.total)}</dd></div>
-              <div><dt className="opacity-75">Progress</dt><dd className="font-semibold">{progress.percent.toFixed(1)} %</dd></div>
-              <div><dt className="opacity-75">Conformers examined</dt><dd className="font-semibold">{formatCount(progress.conformers)}</dd></div>
-              <div><dt className="opacity-75">Valid placements</dt><dd className="font-semibold">{formatCount(progress.placements)}</dd></div>
-            </dl>
-            <p className="text-xs opacity-80">{(job.query?.attachments || []).map(formatQuerySelection).join(' · ')}{job.query?.maxRmsd ? ` · RMSD ≤ ${job.query.maxRmsd} Å` : ''}{job.query?.limit ? ` · keep ${job.query.limit}` : ''}{progress.window ? ` · anchor distance window ${Number(progress.window.lo).toFixed(2)}–${Number(progress.window.hi).toFixed(2)} Å` : ''}</p>
-            {resumed && <p className="text-xs">{resumed === 'busy' ? 'You already have a search queued or running; it is shown here. Cancel it or wait for it to finish before starting another.' : resumed === 'finished' ? 'Reopened your most recent finished search; the label above states whether it examined every pair.' : 'Resumed your most recent running search.'} Its original fragments, attachment selections and receptor have been restored. Uploading an SDF starts a new query and removes this search from the page, so download any products you need first.</p>}
+            <p className="text-xs font-medium">{progress.percent.toFixed(1)}% · {formatCount(progress.examined)} / {formatCount(progress.total)} pairs checked · {results.length} retained</p>
+            <details className="text-xs"><summary className="cursor-pointer">Search details</summary><div className="mt-2 space-y-1"><p>{formatCount(progress.conformers)} conformers checked · {formatCount(progress.placements)} valid placements</p><p>{(job.query?.attachments || []).map(formatQuerySelection).join(' · ')}{job.query?.maxRmsd ? ` · RMSD ≤ ${job.query.maxRmsd} Å` : ''}{progress.window ? ` · distance window ${Number(progress.window.lo).toFixed(2)}–${Number(progress.window.hi).toFixed(2)} Å` : ''}</p></div></details>
+            {resumed && <p className="text-xs">{resumed === 'busy' ? 'Your existing search is shown here.' : resumed === 'finished' ? 'Saved search reopened.' : 'Your running search has been restored.'}</p>}
             {jobNotice && (jobNotice.text || jobNotice.retry) && <div role={jobNotice.fatal ? 'alert' : 'status'} className="text-xs">{jobNotice.text}{jobNotice.retry && job?.id && <button type="button" className={`${jobNotice.text ? 'ml-2 ' : ''}font-semibold underline`} onClick={() => { setJobNotice(null); poller.current.start(job.id); }}>Check again</button>}</div>}
           </div>}
           {job && results.length === 0 && (jobActive || resultsKnown) && <p role="status" className="text-sm dark:text-slate-200">{jobActive ? 'No valid products yet.' : 'No valid linker products matched these attachment sites and fit limit in the pairs examined.'}</p>}
           {job && !jobActive && !resultsKnown && !jobNotice?.fatal && <p role="status" className="text-sm dark:text-slate-200">Loading products…</p>}
-          {results.length > 0 && <ol className="max-h-72 space-y-1 overflow-y-auto" aria-label={receptor ? "Products ranked by receptor clash severity, then fit RMSD" : "Products ranked by fit RMSD"}>{results.map(item => <li key={item.id}><button type="button" aria-pressed={item.id === selectedId} onClick={() => selectResult(job.id, item.id)} className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${item.id === selectedId ? 'border-brand-500 bg-brand-50 dark:bg-slate-800' : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'} dark:text-slate-100`}>
-            <span className="font-semibold">{item.rank}. Linker {item.linkerId} · conformer {item.conformerId}</span> · RMSD {Number(item.rmsd).toFixed(3)} Å · {item.heavyAtoms} heavy atoms{item.conformerMatches > 1 ? ` · ${item.conformerMatches} matching placements` : ''}{item.refined ? ' · refined' : ''}{item.receptor ? ` · receptor clashes ${formatCount(item.receptor.clashes)} (${formatCount(item.receptor.severeClashes)} severe)` : ''}
-            <span className="block truncate font-mono text-xs text-slate-500 dark:text-slate-300">{item.smiles}</span>
+          {results.length > 0 && <ol className="max-h-72 space-y-1 overflow-y-auto" aria-label={receptor ? "Products ranked by receptor clash severity, then fit RMSD" : "Products ranked by fit RMSD"}>{results.map(item => <li key={item.id}><button type="button" aria-pressed={item.id === selectedId} onClick={() => selectResult(job.id, item.id)} disabled={refining} className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${item.id === selectedId ? 'border-brand-500 bg-brand-50 dark:bg-slate-800' : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'} dark:text-slate-100`}>
+            <span className="block truncate font-semibold">{item.rank}. {item.linkerId}{item.refined ? ' · refined' : ''}</span><span className="mt-1 block text-xs text-slate-500 dark:text-slate-300">Fit {Number(item.rmsd).toFixed(3)} Å{item.receptor ? ` · ${formatCount(item.receptor.clashes)} clashes (${formatCount(item.receptor.severeClashes)} severe)` : ''}</span>
           </button></li>)}</ol>}
-          {selectedId && results.length > 0 && !results.some(item => item.id === selectedId) && <p className={muted}>The selected product is no longer among the best retained results.</p>}
           {detailState.busy && !productView && <p role="status" className="text-sm dark:text-slate-200">Loading product…</p>}
           {detailState.error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{detailState.error}</p>}
           {detail && refinement && <fieldset className="inline-flex overflow-hidden rounded-lg border border-slate-300 text-sm dark:border-slate-600"><legend className="sr-only">Structure shown</legend>{['original', 'refined'].map(option => <button key={option} type="button" aria-pressed={view === option} onClick={() => setView(option)} className={`px-3 py-1 ${view === option ? 'bg-brand-500 text-white' : 'dark:text-slate-200'}`}>{option === 'original' ? 'Original placement' : `Refined (${refinement.forceField})`}</button>)}</fieldset>}
           {/* Mounted at a stable position so selecting another product reuses the WebGL viewer. */}
           {productView && <Fragment3DViewer querySdf={jobQuerySdf} {...productView} loading={detailState.busy ? 'Loading product…' : ''} />}
-          {detail && <>
-            <p className={muted}>Green: {view === 'refined' && refinement ? 'refined' : 'assembled'} product{jobQuerySdf ? '. Gray: uploaded fragments in the same 3D frame' : ''}{pocket?.atoms ? `. Gray lines: ${formatCount(pocket.residues)} receptor residues within 8 Å` : ''}. Fit RMSD: {Number(detail.rmsd).toFixed(3)} Å{Number.isFinite(detail.minimumNonbondedRadiusRatio) ? ` · closest nonbonded contact ${Number(detail.minimumNonbondedRadiusRatio).toFixed(2)} × radius sum` : ''}. Linker attachment atoms: {detail.linkerAtoms?.join(', ') || '—'}.</p>
-            {receptor && <label className="flex items-center gap-2 text-sm dark:text-slate-200"><input type="checkbox" checked={showReceptor} onChange={event => setShowReceptor(event.target.checked)} />Show receptor pocket ({receptor.name})</label>}
-            <div className="text-sm dark:text-slate-200"><p className="font-semibold">Attachment mapping (original atom numbers)</p><ul className="mt-1 list-disc space-y-0.5 pl-5">{attachmentMappingLines(detail).map(line => <li key={line}>{line}</li>)}</ul>{Number.isInteger(detail.fragmentAtomCount) && <p className={`mt-1 ${muted}`}>Surviving uploaded atoms (heavy atoms and uploaded explicit hydrogens) are product atoms 1–{detail.fragmentAtomCount} in original order and keep their uploaded coordinates.</p>}</div>
+          {detail && selectedRetained && <>
+            <p className={muted}>{jobActive ? 'Provisional preview · ' : ''}Green: product · gray: uploaded fragments{pocket?.atoms ? ' and receptor pocket' : ''}.</p>
+            {receptor && <label className="flex items-center gap-2 text-sm dark:text-slate-200"><input type="checkbox" checked={showReceptor} onChange={event => setShowReceptor(event.target.checked)} />Show receptor pocket</label>}
+            <details className="text-sm dark:text-slate-200"><summary className="cursor-pointer font-medium">Product details and atom mapping</summary><div className="mt-2 space-y-2"><p className={muted}>Conformer {detail.conformerId} · fit RMSD {Number(detail.rmsd).toFixed(3)} Å · {detail.heavyAtoms} heavy atoms{Number.isFinite(detail.minimumNonbondedRadiusRatio) ? ` · closest contact ${Number(detail.minimumNonbondedRadiusRatio).toFixed(2)} × radius sum` : ''}.</p><ul className="list-disc space-y-1 pl-5">{attachmentMappingLines(detail).map(line => <li key={line}>{line}</li>)}</ul>{Number.isInteger(detail.fragmentAtomCount) && <p className={muted}>Uploaded atoms are product atoms 1–{detail.fragmentAtomCount} and keep their coordinates.</p>}{detail.smiles && <p className="break-all font-mono text-xs">{detail.smiles}</p>}</div></details>
+            <p className={muted}>Candidates need scientific review.</p>
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => saveSdf(detail.sdf, resultFileName(summary || detail))} className="rounded-lg bg-brand-500 px-4 py-2 font-semibold text-white">Download original placement SDF</button>
-              <button type="button" onClick={() => saveSdf(JSON.stringify(resultReport(job, detail), null, 2), resultFileName(summary || detail).replace(/\.sdf$/, '-report.json'), 'application/json')} className="rounded-lg border border-slate-300 px-4 py-2 font-semibold dark:text-slate-100">Download quality report</button>
-              {refinement && <button type="button" onClick={() => saveSdf(refinement.sdf, resultFileName(summary || detail, refinement))} className="rounded-lg border border-brand-500 px-4 py-2 font-semibold text-brand-700 dark:text-slate-100">Download refined SDF</button>}
+              <button type="button" onClick={() => downloadResult('original')} disabled={!resultActionsReady} className="rounded-lg bg-brand-500 px-4 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Download original SDF</button>
+              <button type="button" onClick={() => downloadResult('report')} disabled={!resultActionsReady} className="rounded-lg border border-slate-300 px-4 py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-100">Quality report</button>
+              {refinement && <button type="button" onClick={() => downloadResult('refined')} disabled={!resultActionsReady} className="rounded-lg border border-brand-500 px-4 py-2 font-semibold text-brand-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-100">Download refined SDF</button>}
             </div>
-            <p className={muted}>Original placement and refined downloads are separate structures. Both retain source atom mapping and linker identifiers; only the refined download includes the minimization report.</p>
-            {detail.receptor && <p className={`rounded-lg p-3 text-sm ${detail.receptor.clashes > 0 ? TONES.warning : TONES.success}`}>Original placement receptor check: {formatCount(detail.receptor.clashes)} clashes, including {formatCount(detail.receptor.severeClashes)} severe overlaps. Ranking prefers fewer severe overlaps and lower overlap burden; the best retained candidates may still clash. Review or refine these structures before using them.</p>}
-            {detail.smiles && <p className="break-all font-mono text-xs text-slate-600 dark:text-slate-300">{detail.smiles}</p>}
+            {detail.receptor?.clashes > 0 && <p className={`rounded-lg p-2 text-sm ${TONES.warning}`}>Original placement: {formatCount(detail.receptor.clashes)} receptor clashes ({formatCount(detail.receptor.severeClashes)} severe).</p>}
             <section className="space-y-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700" aria-labelledby="refinement-heading">
-              <h3 id="refinement-heading" className="font-semibold dark:text-white">3. Refine geometry (optional)</h3>
-              <p className={muted}>Energies show this product before and after minimization; do not compare them as affinity scores across different molecules.</p>
-              <p className={muted}>Force-field geometry cleanup only: RDKit minimization with all uploaded fragment atoms (heavy atoms and uploaded explicit hydrogens) held fixed and the linker free to move. It is not equivalent to MOE refinement and does not estimate binding affinity or synthesis feasibility.</p>
+              <h3 id="refinement-heading" className="font-semibold dark:text-white">Refine this product</h3>
+              <p className={muted}>Relax the linker; your uploaded atoms stay fixed. This does not predict binding.</p>
               <div className="flex flex-wrap items-end gap-3">
                 <label className="block text-sm font-medium dark:text-slate-200">Force field<select className={`mt-1 block ${input}`} value={forceField} onChange={event => setForceField(event.target.value)}><option value="auto">Auto: MMFF94, then UFF</option><option value="MMFF94">MMFF94</option><option value="UFF">UFF</option></select></label>
-                <p className={muted}>{receptor ? `Receptor ${receptor.name} will be used as excluded volume.` : 'No receptor loaded; add one under Query fragments to include it.'}</p>
+                <p className={muted}>{receptor ? `Receptor ${receptor.name} will be used as excluded volume.` : 'No receptor included.'}</p>
               </div>
-              <button type="button" onClick={refine} disabled={jobActive || refining || refineStatus?.available === false || !receptorValidationReady(receptor, sdf, receptorValidation)} className="rounded-lg bg-brand-500 px-4 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{refining ? 'Refining…' : refinement ? 'Refine again' : 'Refine product'}</button>
-              {jobActive && <p className={muted}>Wait for the search to finish, or cancel it, before refining a retained result.</p>}
+              <button type="button" onClick={refine} disabled={!resultActionsReady || refineStatus?.available === false || !receptorValidationReady(receptor, sdf, receptorValidation)} className="rounded-lg bg-brand-500 px-4 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{refining ? 'Refining…' : refinement ? 'Refine again' : 'Refine product'}</button>
               {refineStatus?.available === false && <p className={muted}>Refinement is unavailable{refineStatus.reason ? `: ${refineStatus.reason}` : '.'}</p>}
               {refineError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{refineError}</p>}
               {refinement && <div className="space-y-2 text-sm dark:text-slate-200">
-                {refinement.receptor?.clashesAfter > 0 && <p className={`rounded p-2 ${TONES.warning}`}>Refinement left {formatCount(refinement.receptor.clashesAfter)} receptor clashes. Convergence alone does not mean the product fits the pocket.</p>}
-                {!refinement.converged && <p className="rounded bg-amber-50 p-2 text-amber-900 dark:bg-amber-950 dark:text-amber-100">The minimization did not converge; treat this geometry as unfinished.</p>}
-                <dl className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">{refinementRows(refinement).map(([name, value]) => <div key={name}><dt className="text-xs text-slate-500 dark:text-slate-400">{name}</dt><dd>{value}</dd></div>)}</dl>
-                {detail.refinementReceptor !== undefined && <p className={muted}>{detail.refinementReceptor ? `Receptor used: ${detail.refinementReceptor}.` : 'No receptor was used for this refinement.'}</p>}
-                {[...(refinement.receptor?.warnings || []), ...(refinement.limitations || [])].map(text => <p key={text} className={muted}>{text}</p>)}
-                {refinement.method && <p className={muted}>Method: {refinement.method}</p>}
+                {refinement.receptor?.clashesAfter > 0 && <p className={`rounded p-2 ${TONES.warning}`}>Refined product still has {formatCount(refinement.receptor.clashesAfter)} receptor clashes.</p>}
+                {!refinement.converged && <p className="rounded bg-amber-50 p-2 text-amber-900 dark:bg-amber-950 dark:text-amber-100">Minimization did not converge. Review before use.</p>}
+                <p className="font-medium">{refinement.forceField} · {refinement.converged ? 'converged' : 'not converged'}</p>
+                <details><summary className="cursor-pointer font-medium">Refinement report</summary><div className="mt-2 space-y-2"><dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">{refinementRows(refinement).map(([name, value]) => <div key={name}><dt className="text-xs text-slate-500 dark:text-slate-400">{name}</dt><dd>{value}</dd></div>)}</dl>
+                  <p className={muted}>Energies compare this product before and after cleanup, not binding affinity across molecules. RDKit keeps all uploaded fragment atoms (heavy atoms and uploaded explicit hydrogens) held fixed.</p>
+                  {detail.refinementReceptor && <p className={muted}>Receptor: {detail.refinementReceptor}.</p>}
+                  {[...(refinement.receptor?.warnings || []), ...(refinement.limitations || [])].map(text => <p key={text} className={muted}>{text}</p>)}
+                  {refinement.method && <p className={muted}>{refinement.method}</p>}
+                </div></details>
               </div>}
             </section>
           </>}
         </section>
       </div>
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"><p className="font-semibold">About these results</p><p className="mt-1">Candidates are geometric and chemical starting points for review. They do not establish binding activity, synthesis feasibility or compound availability. Only a search labelled complete has examined every distance-compatible linker pair.</p>{limitations && <p className="mt-2">{Array.isArray(limitations) ? limitations.join(' ') : String(limitations)}</p>}</div>
+
     </div>
   );
 }

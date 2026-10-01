@@ -58,7 +58,7 @@ assert.equal(markJobUnfollowable(null), null);
 const page = readFileSync(new URL('../client/src/pages/dashboard/link-fragments.jsx', import.meta.url), 'utf8');
 assert(page.includes('setJob(previous => markJobUnfollowable(previous, pollFailureMessage(failure)))'), 'fatal poll errors end the local job');
 assert(/failure\.status === 404\) \{[^}]*poller\.current\.stop\(\);\s*setJob\(previous => previous\?\.id === id \? markJobUnfollowable\(previous\)/.test(page), 'cancel 404 ends the local job');
-assert(page.includes('pickResumableJob(jobs) || (preferredId === undefined ? pickRecentJob(jobs) : null)'), 'mount reopens the newest finished job when nothing runs');
+assert(page.includes('pickResumableJob(jobs)') && !page.includes('pickRecentJob(jobs)'), 'fresh page resumes active scans only; finished searches open from Home');
 assert(page.includes("failure.code === 'LINK_FRAGMENTS_OWNER_BUSY'") && page.includes('resumeLatestJob(ownerBusy.jobId)'), 'owner-busy shows the running job with progress and Cancel');
 
 // 2. Poller state machine with manual timers.

@@ -87,6 +87,12 @@ torsion and result ranking across the full scan (no RMSD-only pruning), and sepa
 search/refinement receptor provenance. Reopen a saved search after service restart;
 completed jobs keep results while interrupted jobs remain partial. History and raw
 uploads stay on the scientific host in a bounded private database, never on 84.
+Linker history appears on Home, independently of the application activity fetch;
+verify an exact job deep link and an unavailable link without fallback. Downloads
+and refinement unlock only for retained candidates after a server-confirmed stop;
+provisional previews remain available during scans. A fatal polling failure must
+not imply the remote scan stopped or unlock those actions. Keep essential errors
+visible and put method/chemistry detail behind disclosures.
 
 ## Anti-patterns
 
