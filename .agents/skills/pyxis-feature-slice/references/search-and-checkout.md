@@ -13,7 +13,10 @@ Retired catalog browsing cannot run from an owned source.
 
 Result previews render the exact SMILES locally with the shared lazy RDKit loader;
 do not look up proprietary structures in PubChem or change their SMILES on failure.
-Macrocycle identifiers and SMILES open the preview on hover or keyboard focus.
+Identifier and SMILES cells open the preview on hover or keyboard focus. Stock and
+macrocycle codes, and the open-compound eye button, also pin it on click/tap/Enter
+for touch users; Escape, pressing elsewhere or scrolling dismisses it. Previews are
+cached per exact SMILES and size as image data URLs (`client/src/utils/moleculePreview.js`).
 Stock and macrocycle tables show IDNUMBER, Formula, MW, Lead time, Pack size/price
 and Similarity. Formula and MW are calculated from exact SMILES with browser RDKit
 and explicitly labeled calculated; absent lead time stays unavailable.

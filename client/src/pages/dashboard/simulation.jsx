@@ -1,5 +1,6 @@
 import {
   CloudIcon,
+  EyeIcon,
 } from "@heroicons/react/24/outline";
 import { ShoppingCartIcon } from '@heroicons/react/24/solid';
 import {
@@ -19,7 +20,7 @@ import {
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CompoundDescriptorCells } from '@/components/CompoundDescriptorCells';
-import { MoleculePreview } from '@/components/MoleculePreview';
+import { MoleculePreviewTooltip, useStructurePreview } from '@/components/MoleculePreview';
 import { convertPriceToEuro, formatPrice } from '@/utils/algo/algo';
 import { withAppBase } from "@/utils/appEnv";
 import { addShopPack, readShopCart, shopMoney, writeShopCart } from '@/utils/compoundShop';
@@ -262,8 +263,13 @@ export function Simulation() {
   const [pageSize, setPageSize] = useState(10);
   
   // Hover preview state
-  const [hoveredPreview, setHoveredPreview] = useState(null);
-  const [previewPosition, setPreviewPosition] = useState({ x: 0, y: 0 });
+  const {
+    preview: structurePreview,
+    tooltipId: structurePreviewId,
+    show: handleMouseEnter,
+    hide: handleMouseLeave,
+    triggerProps: structurePreviewTrigger,
+  } = useStructurePreview();
   
   // Checkbox selection state
   const [selectedMolecules, setSelectedMolecules] = useState(new Set());
@@ -1798,34 +1804,6 @@ export function Simulation() {
     showMessage(`Added ${amount} mg of ${cartItem.name} to cart`);
   };
 
-  // Hover preview functions
-  const handleMouseEnter = (smiles, event, type) => {
-    if (smiles && smiles !== 'N/A' && smiles.trim() !== '') {
-      const rect = event.currentTarget.getBoundingClientRect();
-      const windowWidth = window.innerWidth;
-      const previewWidth = 228; // Drawing width plus padding and border
-      
-      // Calculate position - show on right if there's space, otherwise on left
-      let xPosition = rect.right + 10;
-      if (xPosition + previewWidth > windowWidth) {
-        xPosition = rect.left - previewWidth - 10;
-      }
-      
-      setPreviewPosition({
-        x: Math.max(10, xPosition), // Ensure it doesn't go off-screen
-        y: Math.max(130, Math.min(window.innerHeight - 130, rect.top + rect.height / 2))
-      });
-      setHoveredPreview({
-        smiles: smiles.trim(), // Trim whitespace
-        type: type
-      });
-    }
-  };
-
-  const handleMouseLeave = () => {
-    setHoveredPreview(null);
-  };
-
   // Helper function to extract SMILES from molecule object
   const extractSmiles = (mol) => {
     // Try different possible field names for SMILES
@@ -2083,30 +2061,7 @@ export function Simulation() {
           </Alert>
         </div>
       )}
-      {/* Hover Preview Tooltip */}
-      {hoveredPreview && (
-        <div 
-          role="tooltip"
-          className="pointer-events-none fixed z-50 w-[228px] bg-white border-2 border-gray-300 rounded-lg p-3 shadow-lg"
-          style={{
-            left: `${previewPosition.x}px`,
-            top: `${previewPosition.y}px`,
-            transform: 'translateY(-50%)',
-            maxWidth: 'calc(100vw - 20px)'
-          }}
-        >
-          <div className="text-xs text-gray-600 mb-2 font-medium">
-            {hoveredPreview.type} Preview
-          </div>
-          <MoleculePreview key={hoveredPreview.smiles} smiles={hoveredPreview.smiles} />
-          <div className="text-xs text-gray-500 mt-2 font-mono break-all">
-            {hoveredPreview.smiles.length > 25 
-              ? `${hoveredPreview.smiles.substring(0, 25)}...` 
-              : hoveredPreview.smiles
-            }
-          </div>
-        </div>
-      )}
+      <MoleculePreviewTooltip preview={structurePreview} id={structurePreviewId} />
 
       <fieldset className="mb-4 min-w-0 rounded-2xl border border-blue-gray-100 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950 sm:p-4">
         <legend className="sr-only">Compound collection</legend>
@@ -2913,7 +2868,7 @@ export function Simulation() {
                           <td className="p-2"><input type="checkbox" aria-label={`Select ${mol.macrocycleCode}`} checked={selectedMolecules.has(id)} onChange={(e) => handleCheckboxChange(mol, idx, e.target.checked)} /></td>
                           <td className="p-2">{idx + 1}</td>
                           <td className="p-2 text-xs">
-                            <button type="button" className="font-mono font-semibold break-all underline decoration-dotted" aria-label={`Preview ${mol.macrocycleCode}`} onMouseEnter={(e) => handleMouseEnter(mol.SMILES_STRING, e, mol.macrocycleCode)} onMouseLeave={handleMouseLeave} onFocus={(e) => handleMouseEnter(mol.SMILES_STRING, e, mol.macrocycleCode)} onBlur={handleMouseLeave}>{mol.macrocycleCode}</button>
+                            <button type="button" className="font-mono font-semibold break-all underline decoration-dotted" aria-label={`Preview ${mol.macrocycleCode}`} {...structurePreviewTrigger(mol.SMILES_STRING, mol.macrocycleCode)}>{mol.macrocycleCode}</button>
                             <div className="mt-1 font-semibold text-teal-700 dark:text-teal-300">{mol.macrocycleSource === 'real' ? 'Real RPX' : 'Virtual VPX'}</div>
                             <div className="mt-1 text-blue-gray-500" title="Dated supplier export; amount and lead time are unverified now">{exportDetails || 'No export amount'} · {mol.macrocycleSource === 'real' ? 'stock unverified' : 'virtual'}</div>
                           </td>
@@ -2986,13 +2941,16 @@ export function Simulation() {
                             />
                           </td>
                           <td className="p-2">{idx + 1}</td>
-                          <td
-                            className="p-2 font-mono text-xs whitespace-nowrap"
-                            title={mol.stockCode}
-                            onMouseEnter={(e) => handleMouseEnter(stockSmiles, e, "Stock compound")}
-                            onMouseLeave={handleMouseLeave}
-                          >
-                            {mol.stockCode}
+                          <td className="p-0 font-mono text-xs whitespace-nowrap">
+                            <button
+                              type="button"
+                              className="w-full p-2 text-left underline decoration-dotted hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 dark:hover:bg-slate-800"
+                              title={mol.stockCode}
+                              aria-label={`Preview ${mol.stockCode}`}
+                              {...structurePreviewTrigger(stockSmiles, mol.stockCode)}
+                            >
+                              {mol.stockCode}
+                            </button>
                           </td>
                           <CompoundDescriptorCells smiles={stockSmiles} />
                           <td className="p-2 text-xs" title="Dated supplier export lead time; unverified now">{mol.snapshotLeadTime || '—'}</td>
@@ -3122,6 +3080,14 @@ export function Simulation() {
                                 {mol.chemblId}
                               </a>
                             ) : mol.chemblId}
+                            <button
+                              type="button"
+                              className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded align-middle text-indigo-700 hover:bg-indigo-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500"
+                              aria-label={`Preview ${mol.chemblId} structure`}
+                              {...structurePreviewTrigger(openSmiles, mol.chemblId, { hover: false })}
+                            >
+                              <EyeIcon className="h-4 w-4" aria-hidden="true" />
+                            </button>
                           </td>
                           <td className="p-0 font-mono text-xs">
                             <button

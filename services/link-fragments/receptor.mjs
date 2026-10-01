@@ -47,7 +47,11 @@ export function parseReceptor(text) {
   const hetGroups = [...hets.values()];
   if (hetGroups.length) warnings.push('HET groups are retained as excluded volume. Remove bound ligands; required cofactors can remain.');
   const buckets = Object.create(null);
-  atoms.forEach((atom, i) => { const key = cellKey(...atom.xyz.map((v) => Math.floor(v / RECEPTOR_LIMITS.cell))); (buckets[key] ||= []).push(i); });
+  atoms.forEach((atom, i) => {
+    const key = cellKey(...atom.xyz.map((v) => Math.floor(v / RECEPTOR_LIMITS.cell)));
+    if (!buckets[key]) buckets[key] = [];
+    buckets[key].push(i);
+  });
   return { atoms, buckets, report: { heavyAtoms: atoms.length, atomsRead, watersRemoved, hydrogensRemoved, hetGroups, warnings, sha256: createHash('sha256').update(text).digest('hex'), screeningDuringSearch: true, clashOverlap: RECEPTOR_LIMITS.clashOverlap, severeOverlap: RECEPTOR_LIMITS.severeOverlap, method: 'Rigid heavy-atom excluded volume; clashes rank candidates, without affinity scoring.' } };
 }
 function eachNearby(context, xyz, reach, visit) {
