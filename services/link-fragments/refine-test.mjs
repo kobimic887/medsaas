@@ -120,6 +120,10 @@ rdkitTest('MMFF94 refines the reference product with uploaded atoms fixed and st
     PYXIS_SOURCE_ATOM_MAP: '1.1=1 2.6=17 2.7=-', PYXIS_ATTACHMENTS: '2.6:H7>17-35',
     PYXIS_FIXED_ATOMS: '1-29', PYXIS_FIT_RMSD: '0.163060',
     PYXIS_METHOD: 'Rigid placement; no energy minimization.',
+    PYXIS_SEARCH_RECEPTOR_SHA256: 'original-search-receptor',
+    PYXIS_SEARCH_RECEPTOR_SCREENING: 'Excluded volume during search',
+    PYXIS_SEARCH_RECEPTOR_CLASHES: '4', PYXIS_SEARCH_RECEPTOR_SEVERE_CLASHES: '1',
+    PYXIS_SEARCH_RECEPTOR_OVERLAP_SQUARED: '5.5',
     PYXIS_REFINEMENT_FORCE_FIELD: 'stale value must not survive',
   };
   const result = await timed('MMFF94 reference product', { ...reference, sdf: withSdfData(product, provenance), forceField: 'MMFF94' });
@@ -146,7 +150,7 @@ rdkitTest('MMFF94 refines the reference product with uploaded atoms fixed and st
   assert.match(result.sdf, /> <PYXIS_REFINEMENT_FORCE_FIELD>\nMMFF94\n/);
   assert.match(result.sdf, new RegExp(`> <PYXIS_REFINEMENT_CONVERGED>\\n${result.converged}\\n`));
   assert.match(result.sdf, /> <PYXIS_REFINEMENT_ENERGY_KCAL_MOL>\n-?\d+\.\d{4}\n/);
-  for (const key of ['PYXIS_LINKER_ID', 'PYXIS_CONFORMER_ID', 'PYXIS_SOURCE_ATOM_MAP', 'PYXIS_ATTACHMENTS', 'PYXIS_FIXED_ATOMS', 'PYXIS_FIT_RMSD']) {
+  for (const key of ['PYXIS_LINKER_ID', 'PYXIS_CONFORMER_ID', 'PYXIS_SOURCE_ATOM_MAP', 'PYXIS_ATTACHMENTS', 'PYXIS_FIXED_ATOMS', 'PYXIS_FIT_RMSD', 'PYXIS_SEARCH_RECEPTOR_SHA256', 'PYXIS_SEARCH_RECEPTOR_SCREENING', 'PYXIS_SEARCH_RECEPTOR_CLASHES', 'PYXIS_SEARCH_RECEPTOR_SEVERE_CLASHES', 'PYXIS_SEARCH_RECEPTOR_OVERLAP_SQUARED']) {
     assert.ok(result.sdf.includes(`> <${key}>\n${provenance[key]}\n\n`), `refined download lost ${key}`);
   }
   assert.ok(result.sdf.includes(`> <PYXIS_PLACEMENT_METHOD>\n${provenance.PYXIS_METHOD}\n\n`));
@@ -184,8 +188,13 @@ rdkitTest('auto falls back to UFF for boron, which MMFF94 cannot type; explicit 
 });
 
 rdkitTest('ligand-free 7WH5 pocket in the uploaded frame: clashes reported before and after', async () => {
-  const result = await timed('MMFF94 with 7WH5 pocket', { ...reference, receptorPdb: pocket });
+  const searchTag = 'different-search-receptor-sha256';
+  const result = await timed('MMFF94 with 7WH5 pocket', { ...reference, sdf: withSdfData(product, { PYXIS_SEARCH_RECEPTOR_SHA256: searchTag, PYXIS_SEARCH_RECEPTOR_CLASHES: '99' }), receptorPdb: pocket });
   assert.equal(result.ok, true, JSON.stringify(result.errors));
+  assert.ok(result.sdf.includes(`> <PYXIS_SEARCH_RECEPTOR_SHA256>\n${searchTag}\n\n`));
+  assert.ok(result.sdf.includes('> <PYXIS_SEARCH_RECEPTOR_CLASHES>\n99\n\n'));
+  const { createHash } = await import('node:crypto');
+  assert.ok(result.sdf.includes(`> <PYXIS_REFINEMENT_RECEPTOR_SHA256>\n${createHash('sha256').update(pocket).digest('hex')}\n\n`));
   const receptor = result.receptor;
   console.log(`pocket: ${receptor.atomsUsed} excluded-volume atoms, ${receptor.restraints} restraints, clashes ${receptor.clashesBefore} -> ${receptor.clashesAfter}, min heavy distance ${receptor.minHeavyDistanceBefore} -> ${receptor.minHeavyDistanceAfter} A, restraint energy ${result.restraintEnergy}`);
   assert.equal(receptor.atomsRead, pocket.split('\n').filter((l) => /^(ATOM {2}|HETATM)/.test(l)).length);

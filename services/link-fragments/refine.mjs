@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { withSdfData } from './sdf.mjs';
 /**
@@ -25,8 +26,12 @@ const bytes = (text) => Buffer.byteLength(text, 'utf8');
 // Atom order survives AddHs (new H atoms are appended), so these source mappings
 // remain valid for the refined download. Do not copy stale refinement properties.
 const sourceKeys = new Set(['PYXIS_SOURCE_ATOM_MAP', 'PYXIS_ATTACHMENTS', 'PYXIS_FIXED_ATOMS',
-  'PYXIS_LINKER_ID', 'PYXIS_CONFORMER_ID', 'PYXIS_LINKER_ATOMS', 'PYXIS_FIT_RMSD', 'PYXIS_ANCHOR_RMSD']);
-function annotateRefinement(result, sdf) {
+  'PYXIS_LINKER_ID', 'PYXIS_CONFORMER_ID', 'PYXIS_LINKER_ATOMS', 'PYXIS_FIT_RMSD', 'PYXIS_ANCHOR_RMSD',
+  // Search volume and scores refer to the original rigid placement. The user
+  // may refine against a different receptor: never rename them as refined values.
+  'PYXIS_SEARCH_RECEPTOR_SHA256', 'PYXIS_SEARCH_RECEPTOR_SCREENING', 'PYXIS_SEARCH_RECEPTOR_CLASHES',
+  'PYXIS_SEARCH_RECEPTOR_SEVERE_CLASHES', 'PYXIS_SEARCH_RECEPTOR_OVERLAP_SQUARED']);
+function annotateRefinement(result, sdf, receptorPdb) {
   const data = {};
   const record = sdf.replaceAll('\r', '').split('$$$$')[0];
   for (const match of record.matchAll(/^>[^\n]*<([^>]+)>[^\n]*\n([^\n]*(?:\n[^\n]+)*)/gm)) {
@@ -38,6 +43,7 @@ function annotateRefinement(result, sdf) {
   data.PYXIS_REFINEMENT_FIXED_MAX_DEVIATION_ANGSTROM = String(result.fixedAtoms.maxDeviation);
   data.PYXIS_REFINEMENT_STEREO_PRESERVED = String(result.stereo.preserved);
   if (result.receptor) {
+    data.PYXIS_REFINEMENT_RECEPTOR_SHA256 = createHash('sha256').update(receptorPdb).digest('hex');
     data.PYXIS_REFINEMENT_RECEPTOR_CLASHES_BEFORE = String(result.receptor.clashesBefore);
     data.PYXIS_REFINEMENT_RECEPTOR_CLASHES_AFTER = String(result.receptor.clashesAfter);
   }
@@ -166,7 +172,7 @@ export async function refineProduct(input = {}) {
     } catch {}
     if (run.stderr && (!result || !result.ok)) console.warn('link-fragments refinement stderr:', run.stderr.slice(-2000));
     if (!result || typeof result.ok !== 'boolean' || (!result.ok && !Array.isArray(result.errors))) return failure('REFINEMENT_FAILED', 'Refinement failed unexpectedly.');
-    if (result.ok) result.sdf = annotateRefinement(result, input.sdf);
+    if (result.ok) result.sdf = annotateRefinement(result, input.sdf, input.receptorPdb);
     return result;
   } finally {
     active--;

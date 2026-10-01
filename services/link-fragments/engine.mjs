@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { scoreReceptor, compareReceptorScores } from './receptor.mjs';
 import initRDKit from '../../server/node_modules/@rdkit/rdkit/dist/RDKit_minimal.js';
 import {
   LinkFragmentsError,
@@ -1191,6 +1192,11 @@ export async function productGraphOutcome(product) {
   }
   return outcome;
 }
+// Receptor volume is ranked before anchor fit. It is never an affinity score.
+const betterWithReceptor = (best, rmsd, ratio, receptor) => !best ||
+  (receptor && best.receptor && compareReceptorScores(receptor, best.receptor) !== 0
+    ? compareReceptorScores(receptor, best.receptor) < 0
+    : better(best, rmsd, ratio));
 async function finish(prepared, descriptor, best, failures, record) {
   if (!best)
     return {
@@ -1255,6 +1261,7 @@ async function finish(prepared, descriptor, best, failures, record) {
       )
       .join(' '),
     PYXIS_FIXED_ATOMS: compactRanges(fixedAtoms),
+    ...(best.receptor ? { PYXIS_SEARCH_RECEPTOR_CLASHES: String(best.receptor.clashes), PYXIS_SEARCH_RECEPTOR_SEVERE_CLASHES: String(best.receptor.severeClashes), PYXIS_SEARCH_RECEPTOR_OVERLAP_SQUARED: String(best.receptor.overlapSquared), PYXIS_SEARCH_RECEPTOR_SHA256: prepared.receptor.report.sha256, PYXIS_SEARCH_RECEPTOR_SCREENING: 'Rigid heavy-atom excluded volume during candidate scan; overlap >= 0.6 A; severe overlap >= 1.2 A; no affinity score.' } : {}),
   };
   return {
     ok: true,
@@ -1263,6 +1270,7 @@ async function finish(prepared, descriptor, best, failures, record) {
     torsionDegrees: best.torsionDegrees,
     selectedLabels: best.pair,
     minimumNonbondedRadiusRatio: best.minimumNonbondedRadiusRatio,
+    receptor: best.receptor ?? null,
     sdf: writeSdf(product, data),
     smiles,
     descriptors,
@@ -1324,8 +1332,10 @@ export async function fitAndJoinReference(prepared, linker, options = {}) {
           failures.set(checked.code, checked);
           continue;
         }
-        if (better(best, rmsd, checked.minimumNonbondedRadiusRatio))
+        const receptor = prepared.receptor ? scoreReceptor(prepared.receptor, product.atoms) : null;
+        if (betterWithReceptor(best, rmsd, checked.minimumNonbondedRadiusRatio, receptor))
           best = {
+            receptor,
             selected,
             source,
             rmsd,
@@ -1513,7 +1523,11 @@ export async function fitAndJoin(prepared, linker, options = {}) {
       options,
     );
     if (failure) return failure;
-    const deferAbove = options.deferAbove ?? Infinity;
+    // A worse RMSD can still have better receptor clearance. Geometry-only
+    // threshold deferral and dominance shortcuts are unsafe in this mode.
+    const receptorContext = options.receptor ?? prepared.receptor ?? null;
+    if (receptorContext && !prepared.receptor) prepared = { ...prepared, receptor: receptorContext };
+    const deferAbove = receptorContext ? Infinity : (options.deferAbove ?? Infinity);
     if (typeof deferAbove !== 'number' || Number.isNaN(deferAbove))
       error('INVALID_SETTINGS', 'Invalid deferAbove.');
     const failures = new Map();
@@ -1528,7 +1542,7 @@ export async function fitAndJoin(prepared, linker, options = {}) {
       return await finish(prepared, descriptor, null, failures);
     const state = queryState(prepared);
     const shortcuts = shortcutsSafe(state, molecule, candidates);
-    let firstPass = shortcuts && candidates.every((c) => c.rmsd > deferAbove);
+    let firstPass = !receptorContext && shortcuts && candidates.every((c) => c.rmsd > deferAbove);
     if (firstPass) {
       const ordered = [...candidates].sort((x, y) => x.rmsd - y.rmsd);
       for (let i = 1; i < ordered.length && firstPass; i++)
@@ -1541,7 +1555,7 @@ export async function fitAndJoin(prepared, linker, options = {}) {
       aromatic = null;
     for (const { selected, source, rmsd } of candidates) {
       if (
-        best &&
+        !receptorContext && best &&
         !(rmsd < best.rmsd - 1e-8) &&
         !(Math.abs(rmsd - best.rmsd) < 1e-8)
       )
@@ -1699,7 +1713,7 @@ export async function fitAndJoin(prepared, linker, options = {}) {
         // At an RMSD tie better() needs a strictly larger minimum ratio, so a
         // torsion whose running minimum reaches the best ratio cannot win.
         const bound =
-          best &&
+          !receptorContext && best &&
           Math.abs(rmsd - best.rmsd) < 1e-8 &&
           best.minimumNonbondedRadiusRatio !== null
             ? best.minimumNonbondedRadiusRatio
@@ -1743,8 +1757,11 @@ export async function fitAndJoin(prepared, linker, options = {}) {
         }
         if (dominated) continue;
         const ratio = Number.isFinite(minimumRatio) ? minimumRatio : null;
-        if (better(best, rmsd, ratio))
+        const receptor = receptorContext ? scoreReceptor(receptorContext,
+          linkerIndex.map((i) => ({ element: molecule.atoms[i].element === 'He' ? 'H' : molecule.atoms[i].element, xyz: [mx[i], my[i], mz[i]] })), receptorContext.fixedScore) : null;
+        if (betterWithReceptor(best, rmsd, ratio, receptor))
           best = {
+            receptor,
             selected,
             source,
             rmsd,

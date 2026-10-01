@@ -46,12 +46,13 @@ test('real Express relay: owner scoping, validation, inspection merge, jobs, ref
     if (req.url === '/inspect') {
       if (inspectMode === 'down') return send(500, { error: 'boom' });
       if (inspectMode === 'refused') return send(400, { error: 'Unsupported element Xe.', details: [{ code: 'UNSUPPORTED_ELEMENT', message: 'Unsupported element Xe.' }] });
-      if (inspectMode === 'huge') return res.end(JSON.stringify({ padding: 'x'.repeat(4100000) }));
+      if (inspectMode === 'huge') return res.end(JSON.stringify({ padding: 'x'.repeat(9 * 1024 * 1024) }));
       const site = (atom, element, extra = {}) => ({ atom, element, charge: 0, isotope: null, aromatic: false, heavy: element !== 'H', eligible: false, reason: element === 'H' ? `Select the heavy atom bonded to H${atom}.` : 'No hydrogen to replace.', implicitHydrogens: 0, explicitHydrogens: [], recommendedHydrogenAtom: null, requiresHydrogenSelection: false, ...extra });
       return send(200, { ok: true, fragments: parsed.map((fragment, index) => ({ name: fragment.title, atoms: fragment.atoms.map((atom, j) => index === 1 && j === 5
         ? site(6, 'C', { aromatic: true, eligible: true, reason: null, explicitHydrogens: [7], recommendedHydrogenAtom: 7 })
         : j === 0 ? site(1, atom.element, { eligible: true, reason: null, implicitHydrogens: 3 }) : site(j + 1, atom.element)) })) });
     }
+    if (req.url === '/receptor/inspect') return send(422, { code: 'RECEPTOR_FRAME', error: 'No receptor atom lies within 8 A of the query.' });
     if (req.url === '/jobs' && req.method === 'POST' && jobsMode === 'busy') return send(429, { error: 'You already have a linker scan queued or running.', code: 'LINK_FRAGMENTS_OWNER_BUSY', jobId: JOB });
     if (req.url === '/jobs' && req.method === 'POST') return send(202, { job: { id: JOB, state: 'queued', complete: false, partial: true } });
     if (req.url === '/jobs') return send(200, { jobs: [{ id: JOB, state: 'running' }] });
@@ -171,6 +172,15 @@ test('real Express relay: owner scoping, validation, inspection merge, jobs, ref
 
     // Refinement forwarding with a receptor.
     const receptorPdb = 'ATOM      1  N   ALA A   1     -12.000 -15.000  30.000  1.00  0.00           N\nEND\n';
+    const preflight = await json(await call('/ready/receptor/inspect', { body: { sdf, receptorPdb, owner: 'forged' } }));
+    assert.deepEqual([preflight.status, preflight.body.code], [422, 'RECEPTOR_FRAME']);
+    assert.deepEqual(requests.at(-1).body, { sdf, receptorPdb });
+    assert.equal(requests.at(-1).owner, ownerKey('company-a', 'anna'));
+    assert.equal((await call('/ready/receptor/inspect', { body: { sdf, receptorPdb: '' } })).status, 400);
+    assert.equal((await call('/ready/receptor/inspect', { body: { sdf, receptorPdb }, user: null })).status, 403);
+    await call('/ready/jobs', { body: { sdf, attachments: [1, 1], receptorPdb } });
+    assert.equal(requests.at(-1).body.receptorPdb, receptorPdb, 'the initial scan receives the receptor, not just refinement');
+    assert.equal((await call('/ready/jobs', { body: { sdf, attachments: [1, 1], receptorPdb: 42 } })).status, 400);
     const refined = await json(await call(`/ready/jobs/${JOB}/results/12-3-4/refine`, { body: { forceField: 'MMFF94', receptorPdb } }));
     assert.equal(refined.status, 200); assert.equal(refined.body.refinement.forceField, 'MMFF94');
     assert.deepEqual(requests.at(-1).body, { forceField: 'MMFF94', receptorPdb });

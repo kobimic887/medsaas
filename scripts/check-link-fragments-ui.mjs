@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import {
   attachmentMappingLines, defaultHydrogenChoice, formatQuerySelection, formatUnsupported, hydrogenClickHint, hydrogenOptions, hydrogenParent, receptorPocket,
-  refinementRows, releaseViewerCanvases, resultFileName, sdfCoordinates, selectionForAtom, selectionLabel, selectionPayload, selectionReady, unavailableReasons,
+  refinementRows, receptorForView, receptorValidationReady, restoreJobInput, resultReport, releaseViewerCanvases, resultFileName, sdfCoordinates, selectionForAtom, selectionLabel, selectionPayload, selectionReady, unavailableReasons,
 } from '../client/src/utils/linkFragmentsJobs.js';
 import { linkFragmentsRequest } from '../client/src/utils/linkFragmentsRequest.js';
 
@@ -21,6 +21,7 @@ const server = http.createServer(async (req, res) => {
   if (req.url === '/invalid') { res.statusCode = 400; res.end(JSON.stringify({ error: 'Pick an atom that can accept a bond.', code: 'LINK_FRAGMENTS_INVALID_INPUT', details: [{ code: 'NO_HYDROGEN', message: 'Atom 2 has no hydrogen.' }] })); }
   else if (req.url === '/queue') { res.statusCode = 429; res.end(JSON.stringify({ error: 'Too many searches are queued.', code: 'LINK_FRAGMENTS_QUEUE_FULL' })); }
   else if (req.url === '/busy') { res.statusCode = 429; res.end(JSON.stringify({ error: 'You already have a linker scan queued or running.', code: 'LINK_FRAGMENTS_OWNER_BUSY', jobId: '0b5f8f0e-6f4c-4c7e-9a51-3c1d2e4f5a6b' })); }
+  else if (req.url === '/receptor/inspect') { if (JSON.parse(body).receptorPdb === 'unrelated') { res.statusCode = 422; res.end(JSON.stringify({error: 'No receptor atom lies within 8 A of the fragments.', code: 'RECEPTOR_FRAME'})); } else res.end(JSON.stringify({ok: true, report: {atomsRead: 123}})); }
   else if (req.url === '/jobs') { res.statusCode = 202; res.end(JSON.stringify({ job: { id: 'j1', state: 'queued' } })); }
   else res.end(JSON.stringify({ available: true }));
 });
@@ -35,6 +36,13 @@ try {
   assert.equal(received[0].authorization, 'Bearer fixture-token');
   assert.deepEqual(JSON.parse(received[1].body), query, 'exact uploaded 3D text and original-number selections survive requests');
   assert.equal(received[2].method, 'POST');
+  const receptorRequest = {sdf: querySdf, receptorPdb: 'same frame'};
+  const inspected = await linkFragmentsRequest(`${base}/receptor/inspect`, {controller: new AbortController(), token: 'fixture-token', body: receptorRequest});
+  assert.equal(inspected.ok, true); assert.equal(inspected.report.atomsRead, 123);
+  assert.deepEqual(JSON.parse(received[3].body), receptorRequest);
+  const rejectedReceptor = await linkFragmentsRequest(`${base}/receptor/inspect`, {controller: new AbortController(), body: {...receptorRequest, receptorPdb: 'unrelated'}}).catch(error => error);
+  assert.equal(rejectedReceptor.status, 422); assert.equal(rejectedReceptor.code, 'RECEPTOR_FRAME');
+  assert.match(rejectedReceptor.message, /within 8 A/);
   const invalid = await linkFragmentsRequest(`${base}/invalid`, { controller: new AbortController() }).catch(error => error);
   assert.match(invalid.message, /Pick an atom/); assert.equal(invalid.status, 400); assert.equal(invalid.code, 'LINK_FRAGMENTS_INVALID_INPUT');
   assert.equal(invalid.details[0].code, 'NO_HYDROGEN');
@@ -166,7 +174,40 @@ const receptorInput = page.indexOf('accept=".pdb,chemical/x-pdb"');
 assert(receptorInput > 0 && receptorInput < page.indexOf('id="fragment-results-heading"') && page.split('accept=".pdb,chemical/x-pdb"').length === 2, 'one receptor control, outside the product detail block');
 assert(page.includes('>Remove receptor</button>') && /clearReceptor\(\); \/\/ a receptor belongs to the previous query/.test(page), 'receptor can be removed and a new SDF clears it');
 assert(page.includes('REFINE_REQUEST_TIMEOUT_MS);') && !page.includes('130000'), 'client refinement timeout comes from the shared ordering constant');
-assert(page.includes("new Blob([text], { type: 'chemical/x-mdl-sdfile' })") && !page.includes('addShopPack'), 'assembled SDF is downloadable without inventing a catalog purchase');
+assert(page.includes("type = 'chemical/x-mdl-sdfile'") && page.includes('new Blob([text], { type })') && !page.includes('addShopPack'), 'assembled SDF is downloadable without inventing a catalog purchase');
 assert(viewer.includes("withAppBase('/3dmol/3Dmol-min.js')") && viewer.includes('keepH: true') && viewer.includes('atom.index + 1'), 'local 3D viewer preserves original numbering including explicit hydrogens');
 assert(!viewer.includes('get_mol') && !viewer.includes('generate') && viewer.includes("v.addModel(productSdf, 'sdf'") && viewer.includes("v.addModel(receptorPdb, 'pdb')"), 'query, product and receptor coordinates are rendered without new conformers or conversion');
 console.log('✓ Link Fragments UI: authenticated job requests, explicit-H selection (fragment 2 atom 6/H7), original-number mapping, refinement honesty and receptor pocket checks passed');
+
+// Exact-text validation locks searches during async reads and stale preflights.
+const uploadedReceptor = {name: 'pocket.pdb', text: 'same frame'};
+const validation = {state: 'valid', sdf: querySdf, receptorPdb: uploadedReceptor.text};
+assert.equal(receptorValidationReady(null, querySdf, {state: 'idle'}), true);
+assert.equal(receptorValidationReady(null, querySdf, {state: 'reading'}), false);
+for (const state of ['waiting', 'checking', 'invalid']) assert.equal(receptorValidationReady(uploadedReceptor, querySdf, {...validation, state}), false);
+assert.equal(receptorValidationReady(uploadedReceptor, querySdf, validation), true);
+assert.equal(receptorValidationReady(uploadedReceptor, querySdf + 'new query', validation), false);
+assert.equal(receptorValidationReady({...uploadedReceptor, text: 'new pdb'}, querySdf, validation), false);
+assert(page.includes('receptorRequest.current !== controller || controller.signal.aborted') && page.includes('readRevision !== receptorReadRevision.current'), 'late validation and file read responses cannot restore old inputs');
+assert(page.includes("request('receptor/inspect'") && page.includes('...(receptor ? { receptorPdb: receptor.text } : {})'), 'server preflight and receptor-aware job use the same exact text');
+const savedJob = {id: 'saved', state: 'completed', complete: true, progress: {examinedPairs: 2, totalPairs: 2}, owner: 'private', input: {sdf: querySdf, attachments: [1, {atom: 6, hydrogenAtom: 7}], maxRmsd: .75, limit: 20, receptorPdb: 'same frame'}};
+const restored = restoreJobInput(savedJob);
+assert.deepEqual(restored.selections, [{atom: 1, hydrogen: 'auto'}, {atom: 6, hydrogen: 7}]);
+assert.equal(restored.sdf, querySdf); assert.equal(restored.receptor.text, 'same frame');
+assert.equal(restoreJobInput({...savedJob, input: {...savedJob.input, attachments: [1]}}), null);
+assert.equal(restoreJobInput({...savedJob, input: {...savedJob.input, attachments: [0, 1]}}), null);
+assert.equal(restoreJobInput({}), null);
+assert(page.includes('setJobQuerySdf(restored.sdf)') && page.includes('setSelections(restored.selections)') && page.includes('aria-label="Saved searches"'), 'saved original query and original-number attachments restored for viewer');
+const report = resultReport(savedJob, {...detail, sourceAtomMappings: [{fragment: 2, original: 6, product: 16}], refinement: {ok: true, sdf: 'large molblock', energyUnits: 'kcal/mol', converged: false}});
+assert.equal(report.search.complete, true);
+assert.equal(report.refinement.converged, false);
+assert.deepEqual(report.product.sourceAtomMappings, [{fragment: 2, original: 6, product: 16}]);
+assert(!JSON.stringify(report).includes('private') && !JSON.stringify(report).includes('large molblock') && !JSON.stringify(report).includes('same frame'), 'report allowlist excludes ownership and duplicated raw uploads');
+assert.match(report.limitations, /not comparable affinity scores/);
+const otherReceptor = { ...detail, refinement: {ok: true, sdf: `> <PYXIS_REFINEMENT_RECEPTOR_SHA256>\n${'a'.repeat(64)}\n`}, refinementInput: {receptorPdb: 'refinement frame'} };
+assert.equal(receptorForView('original', otherReceptor, {text: 'search frame'}), 'search frame');
+assert.equal(receptorForView('refined', otherReceptor, {text: 'search frame'}), 'refinement frame');
+assert.equal(receptorForView('refined', {...otherReceptor, refinementInput: {receptorPdb: null}}, {text: 'search frame'}), '');
+assert.equal(resultReport(savedJob, otherReceptor).refinementReceptor.sha256, 'a'.repeat(64));
+assert(!JSON.stringify(resultReport(savedJob, otherReceptor)).includes('refinement frame'), 'JSON identifies refinement receptor without duplicating its upload');
+console.log('✓ Link Fragments receptor preflight, exact-input validation, saved input restoration and quality report checks passed');

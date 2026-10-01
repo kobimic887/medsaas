@@ -9,6 +9,7 @@ import * as sdfModule from './sdf.mjs';
 import { createLinkerServer, refinementFailureStatus } from './serve.mjs';
 import { TopProducts, mergeProducts, conformerMatchesOf } from './jobs.mjs';
 import { prepareQuery, linkerDescriptor, fitAndJoinReference } from './engine.mjs';
+import { scoreReceptor, inspectReceptor } from './receptor.mjs';
 
 const OWNER_A = 'a'.repeat(64);
 const OWNER_B = 'b'.repeat(64);
@@ -53,6 +54,46 @@ async function stop(server) {
   await new Promise((resolve) => server.close(resolve));
 }
 const reference = { sdf: query, attachments: [1, 1], maxRmsd: 0.75, limit: 10 };
+
+test('HTTP receptor preflight and full worker scan apply receptor ranking before retaining hits', { timeout: 120_000 }, async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), 'pyxis-linker-receptor-job-'));
+  let server;
+  try {
+    const { indexPath } = buildIndex(temporary, 260);
+    const prepared = await prepareQuery(query, [1, 1]);
+    const original = await fitAndJoinReference(prepared, linkerDescriptor(await readFile(linkerPath, 'utf8')));
+    const obstruction = sdfModule.parseSdf(original.sdf)[0].atoms[original.fragmentAtomCount].xyz;
+    const pdb = xyz => `ATOM      1  CA  ALA A   1    ${xyz.map(v => v.toFixed(3).padStart(8)).join('')}  1.00 20.00           C  \nEND\n`;
+    const receptorPdb = pdb(obstruction);
+    const runtime = await start(indexPath, { workers: 1, chunkRows: 10 }); server = runtime.server;
+    const preflight = await runtime.call('/receptor/inspect', { method: 'POST', body: { sdf: query, receptorPdb } });
+    assert.equal(preflight.status, 200, JSON.stringify(preflight.body));
+    assert.equal(preflight.body.report.screeningDuringSearch, true);
+    const bad = { ...reference, receptorPdb: pdb([1000, 1000, 1000]) };
+    assert.equal((await runtime.call('/receptor/inspect', { method: 'POST', body: bad })).body.code, 'RECEPTOR_FRAME');
+    assert.equal((await runtime.call('/jobs', { method: 'POST', body: bad })).status, 422, 'job submit validates even if preflight was bypassed');
+    const created = await runtime.call('/jobs', { method: 'POST', body: { ...reference, limit: 1, receptorPdb } });
+    assert.equal(created.status, 202, JSON.stringify(created.body));
+    const finished = await runtime.poll(created.body.job.id, job => job.finishedAt);
+    assert.equal(finished.state, 'completed', JSON.stringify(finished));
+    assert.equal(finished.progress.examinedPairs, 260, 'including all duplicate candidates beyond the former cap');
+    assert.equal(finished.progress.validPlacements, 260);
+    assert.equal(finished.results[0].conformerMatches, 260, 'no geometry-only deferral in receptor mode');
+    assert.equal(finished.results[0].receptor.severeClashes, 0);
+    assert.equal(server.jobs.findResult(OWNER_A, finished.id, finished.results[0].id).job.receptor, null, 'terminal history releases the parsed receptor spatial index');
+    const checked = inspectReceptor(receptorPdb, prepared.fragments);
+    assert(scoreReceptor(checked.context, sdfModule.parseSdf(original.sdf)[0].atoms).severeClashes > 0, 'geometry-only placement clashes');
+    assert.equal(finished.input.receptorPdb, receptorPdb);
+    assert.equal((await runtime.call('/jobs')).body.jobs[0].input, undefined, 'history listing stays small');
+    await stop(server); server = null;
+    const reopened = await start(indexPath, { workers: 1 }); server = reopened.server;
+    const saved = await reopened.call(`/jobs/${finished.id}`);
+    assert.equal(saved.body.job.complete, true);
+    assert.equal(saved.body.job.input.sdf, query);
+    assert.equal(saved.body.job.results[0].receptor.severeClashes, 0);
+    assert.equal((await reopened.call(`/jobs/${finished.id}`, { owner: OWNER_B })).status, 404);
+  } finally { await stop(server); await rm(temporary, { recursive: true, force: true }); }
+});
 
 test('full-scan job: duplicate candidates, results, exact coordinates, owner isolation and status', { timeout: 120_000 }, async () => {
   const temporary = await mkdtemp(path.join(os.tmpdir(), 'pyxis-linker-jobs-'));
@@ -176,6 +217,10 @@ test('cancel, per-owner and global queue limits, worker failure and wall-time li
     const running = await slow.poll(first.id, (value) => value.progress.examinedPairs > 0);
     assert.equal(running.state, 'running');
     assert.equal(running.progress.totalPairs, 40);
+    if (running.results[0]) {
+      const premature = await slow.call(`/jobs/${first.id}/results/${running.results[0].id}/refine`, { method: 'POST', body: {} });
+      assert.deepEqual([premature.status, premature.body.code], [409, 'LINK_FRAGMENTS_SEARCH_ACTIVE']);
+    }
     assert.equal((await slow.call('/status', { owner: null })).body.jobs.running, 1);
     const canceled = await slow.call(`/jobs/${first.id}/cancel`, { method: 'POST' });
     assert.equal(canceled.status, 200);

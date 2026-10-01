@@ -292,3 +292,43 @@ export function releaseViewerCanvases(element) {
     canvas.remove();
   }
 }
+
+// Validation is tied to exact file text, so an old successful response cannot
+// enable a search after either uploaded file changes (even before effects run).
+export function receptorValidationReady(receptor, sdf, validation) {
+  if (!receptor) return validation?.state !== 'reading';
+  return validation?.state === 'valid' && validation.sdf === sdf && validation.receptorPdb === receptor.text;
+}
+
+export function restoreJobInput(job) {
+  const saved = job?.input;
+  if (!saved || typeof saved.sdf !== 'string' || !Array.isArray(saved.attachments) || saved.attachments.length !== 2) return null;
+  const selections = saved.attachments.map(value => {
+    const atom = typeof value === 'object' && value ? value.atom : value;
+    const hydrogen = Number.isInteger(value?.hydrogenAtom) ? value.hydrogenAtom : 'auto';
+    return Number.isInteger(atom) && atom > 0 ? { atom, hydrogen } : null;
+  });
+  if (selections.some(selection => !selection)) return null;
+  return { sdf: saved.sdf, selections, maxRmsd: saved.maxRmsd, limit: saved.limit, receptor: saved.receptorPdb ? { name: 'Saved search receptor', text: saved.receptorPdb } : null };
+}
+
+// Reproducibility report uses an explicit allowlist: no credentials or server
+// ownership tokens, and no extra receptor/query file contents are duplicated.
+export function receptorForView(view, detail, receptor) {
+  return view === 'refined' && detail?.refinement?.ok && detail.refinementInput
+    ? detail.refinementInput.receptorPdb || '' : receptor?.text || '';
+}
+export function resultReport(job, detail) {
+  return {
+    schema: 'pyxis-link-fragments-result-1', jobId: job?.id,
+    createdAt: job?.createdAt, finishedAt: job?.finishedAt,
+    search: { state: job?.state, complete: isCompleteJob(job), progress: job?.progress, settings: job?.query },
+    product: { linkerId: detail?.linkerId, conformerId: detail?.conformerId, smiles: detail?.smiles, rmsd: detail?.rmsd, minimumNonbondedRadiusRatio: detail?.minimumNonbondedRadiusRatio, attachments: detail?.attachments, sourceAtomMappings: detail?.sourceAtomMappings, receptor: detail?.receptor },
+    refinement: detail?.refinement ? Object.fromEntries(Object.entries(detail.refinement).filter(([key]) => key !== 'sdf')) : null,
+    refinementReceptor: detail?.refinement?.ok ? {
+      supplied: detail.refinementInput ? Boolean(detail.refinementInput.receptorPdb) : Boolean(detail.refinement.receptor),
+      sha256: detail.refinement.sdf?.match(/<PYXIS_REFINEMENT_RECEPTOR_SHA256>\s*\n([a-f0-9]{64})/)?.[1] || null,
+    } : null,
+    limitations: 'Geometric matching and local refinement do not establish binding affinity, synthesis feasibility or availability. Force-field energies describe this product before and after minimization and are not comparable affinity scores across products.',
+  };
+}

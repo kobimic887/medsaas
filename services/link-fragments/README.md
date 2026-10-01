@@ -39,8 +39,9 @@ signed-in user and company); other owners' jobs return 404.
 | Route | Purpose |
 | --- | --- |
 | `POST /inspect` | Attachment eligibility and reasons for every atom |
-| `POST /jobs` | Start a complete scan: `sdf`, two `attachments` (atom number or `{atom, hydrogenAtom}`), `maxRmsd` 0.1–1, `limit` 1–50 |
-| `GET /jobs`, `GET /jobs/:id` | Owner's jobs; one job with progress and ranked result summaries |
+| `POST /receptor/inspect` | Validate `sdf` and `receptorPdb` frame, overlap and excluded-volume support before search |
+| `POST /jobs` | Start a complete scan: `sdf`, two `attachments` (atom number or `{atom, hydrogenAtom}`), `maxRmsd` 0.1–1, `limit` 1–50, optional `receptorPdb`; receptor is validated again server-side |
+| `GET /jobs`, `GET /jobs/:id` | Owner's compact history; one job includes original input, progress and ranked result summaries. `?input=0` omits uploaded files during polling |
 | `POST /jobs/:id/cancel` | Cancel; partial results stay available |
 | `GET /jobs/:id/results/:resultId` | Product SDF, atom mapping and any refinement |
 | `POST /jobs/:id/results/:resultId/refine` | MMFF94/UFF refinement, optional receptor PDB (≤ 5 MB) |
@@ -53,8 +54,14 @@ the queue is bounded (429 `LINK_FRAGMENTS_QUEUE_FULL`) and each owner may have o
 queued or running job (429 `LINK_FRAGMENTS_OWNER_BUSY` with that `jobId`).
 Refinement failures keep their code: 422 for `REFINEMENT_UNSUPPORTED` and
 `RECEPTOR_*`, 400 for invalid input, 504 for `REFINEMENT_TIMEOUT`, 503 for busy,
-unavailable or failed; a closed request kills the Python child. Finished jobs stay in
-memory for six hours. Refinement runs one at a time in a child process with a
+unavailable or failed; a closed request kills the Python child. Private history uses
+`LINK_FRAGMENTS_JOBS_PATH` (default `jobs.sqlite` beside the linker index), a separate
+writable SQLite file with mode 0600. Never point it at the linker index; same-file,
+symlink and hardlink aliases are refused. Terminal jobs stay up to 30 days, 30 per
+owner/200 overall, subject to 128 MiB total and 16 MiB per-job payload budgets.
+Interrupted scans restore as failed/partial; successful refinement outputs survive
+restart. Keep this database outside versioned service releases so upgrades preserve
+history. Refinement runs one at a time in a child process with a
 minimal environment and a timeout. No raw source records or credentials are sent to
 the application.
 
@@ -77,3 +84,6 @@ RCSB PDB entry 7WH5 (CC0): the pocket keeps residues within 10 Å of ligand 9DF 
 with unchanged coordinates, all 9DF copies and waters removed; the query fragments'
 heavy atoms coincide with 9DF A301. `refine-test.mjs` needs Python RDKit and skips
 visibly without it — run it on the scientific host. The full library is not committed.
+`bun run benchmark:link-fragments` compares Anna's supplied product and preserved
+query atoms, without claiming MOE search/refinement parity. Custom manifests and
+comparison scope are described in the dashboard contract.

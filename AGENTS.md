@@ -65,7 +65,11 @@ when a path or trap moves.
   atom selections (original numbering) replacing an implicit or explicit H;
   geometric matching preserves fragment coordinates. Searches are owner-scoped
   background jobs over every pair in a provably safe distance window; only a
-  finished full scan is "complete". MMFF94/UFF refinement keeps uploaded atoms
+  finished full scan is "complete". Optional receptors are validated before search
+  and rank every accepted pose by rigid excluded-volume overlaps before RMSD;
+  receptor jobs must never use RMSD-only retention pruning. Private job history is
+  a separate bounded SQLite database on the scientific host; interrupted scans
+  restore as failed/partial, never complete. MMFF94/UFF refinement keeps uploaded atoms
   fixed and is not MOE refinement, affinity or synthesis scoring. Assembled
   products are discovery-only. Ship `services/link-fragments/sdf.mjs` with the
   application server for input parsing. Refined SDF downloads retain linker IDs,

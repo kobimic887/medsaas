@@ -4,7 +4,7 @@ import { API_CONFIG, getAuthToken } from '@/utils/constants';
 import {
   attachmentMappingLines, createJobPoller, defaultHydrogenChoice, formatCount, formatQuerySelection, hydrogenClickHint, hydrogenOptions, isActiveJob,
   isHydrogenElement, isTerminalJob, jobStatusLabel, markJobUnfollowable, pickRecentJob, pickResumableJob, pollFailureMessage, progressOf, receptorPocket,
-  refinementRows, resultFileName, sdfCoordinates, selectionForAtom, selectionLabel, selectionPayload, selectionReady, unavailableReasons,
+  refinementRows, receptorForView, receptorValidationReady, restoreJobInput, resultReport, resultFileName, sdfCoordinates, selectionForAtom, selectionLabel, selectionPayload, selectionReady, unavailableReasons,
 } from '@/utils/linkFragmentsJobs';
 import { linkFragmentsRequest, REFINE_REQUEST_TIMEOUT_MS } from '@/utils/linkFragmentsRequest';
 
@@ -24,8 +24,8 @@ const TONES = {
 function request(endpoint, controller, body, timeout, method) {
   return linkFragmentsRequest(API_CONFIG.buildApiUrl(`/link-fragments/${endpoint}`), { controller, token: getAuthToken(), body, timeout, method });
 }
-function saveSdf(text, fileName) {
-  const url = URL.createObjectURL(new Blob([text], { type: 'chemical/x-mdl-sdfile' }));
+function saveSdf(text, fileName, type = 'chemical/x-mdl-sdfile') {
+  const url = URL.createObjectURL(new Blob([text], { type }));
   const link = document.createElement('a');
   link.href = url;
   link.download = fileName;
@@ -49,10 +49,10 @@ export function LinkFragments() {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [job, setJob] = useState(null);
-  // The SDF this page submitted for `job`; empty for a resumed or reopened job,
-  // whose query text the service does not return (never overlay another upload).
+  // Restore the exact saved input when reopening a job; never overlay another upload.
   const [jobQuerySdf, setJobQuerySdf] = useState('');
   const [jobNotice, setJobNotice] = useState(null);
+  const [recentJobs, setRecentJobs] = useState([]);
   // '' | 'running' (resumed) | 'finished' (reopened) | 'busy' (owner already had a scan).
   const [resumed, setResumed] = useState('');
   const [selectedId, setSelectedId] = useState('');
@@ -61,6 +61,7 @@ export function LinkFragments() {
   const [forceField, setForceField] = useState('auto');
   const [receptor, setReceptor] = useState(null);
   const [receptorError, setReceptorError] = useState('');
+  const [receptorValidation, setReceptorValidation] = useState({ state: 'idle' });
   const [receptorInputKey, setReceptorInputKey] = useState(0);
   const [showReceptor, setShowReceptor] = useState(true);
   const [refining, setRefining] = useState(false);
@@ -71,6 +72,8 @@ export function LinkFragments() {
   const detailRequest = useRef(null);
   const refineRequest = useRef(null);
   const cancelRequest = useRef(null);
+  const receptorRequest = useRef(null);
+  const receptorReadRevision = useRef(0);
   const detailCache = useRef(new Map());
   const lastProductView = useRef(null);
   const revision = useRef(0);
@@ -79,8 +82,8 @@ export function LinkFragments() {
   const poller = useRef(null);
   if (!poller.current) poller.current = createJobPoller({
     interval: POLL_INTERVAL_MS,
-    fetchJob: (id, controller) => request(`jobs/${encodeURIComponent(id)}`, controller, undefined, 20000).then(data => data?.job),
-    onUpdate: next => { setJob(next); setJobNotice(null); },
+    fetchJob: (id, controller) => request(`jobs/${encodeURIComponent(id)}?input=0`, controller, undefined, 20000).then(data => data?.job),
+    onUpdate: next => { setJob(next); setJobNotice(null); setRecentJobs(previous => [{ id: next.id, state: next.state, complete: next.complete, createdAt: next.createdAt, finishedAt: next.finishedAt, progress: next.progress, query: next.query }, ...previous.filter(item => item.id !== next.id)].slice(0, 30)); },
     onError: (failure, { fatal }) => {
       if (!fatal) { setJobNotice({ fatal: false, text: `Could not check progress (${failure.message}). Retrying…` }); return; }
       // A job that cannot be followed becomes terminal locally so the form unlocks.
@@ -95,12 +98,30 @@ export function LinkFragments() {
     return () => {
       revision.current++;
       poller.current.stop();
-      for (const ref of [activeRequest, statusRequest, detailRequest, refineRequest, cancelRequest]) ref.current?.abort();
+      for (const ref of [activeRequest, statusRequest, detailRequest, refineRequest, cancelRequest, receptorRequest]) ref.current?.abort();
     };
   }, []);
 
+  // Changing either file aborts its preflight. The identity check also discards
+  // late responses from servers that completed after the request was aborted.
+  useEffect(() => {
+    receptorRequest.current?.abort();
+    setReceptorValidation({ state: receptor ? (sdf ? 'checking' : 'waiting') : 'idle' });
+    if (!receptor || !sdf) return;
+    const controller = new AbortController();
+    receptorRequest.current = controller;
+    request('receptor/inspect', controller, { sdf, receptorPdb: receptor.text }, 25000).then(data => {
+      if (receptorRequest.current !== controller || controller.signal.aborted) return;
+      if (data?.ok !== true) throw new Error('The receptor could not be validated.');
+      setReceptorValidation({ state: 'valid', report: data.report, sdf, receptorPdb: receptor.text });
+    }).catch(failure => {
+      if (receptorRequest.current === controller && failure.name !== 'AbortError') setReceptorValidation({ state: 'invalid', error: errorText(failure) });
+    });
+    return () => controller.abort();
+  }, [sdf, receptor]);
+
   const jobActive = isActiveJob(job);
-  const locked = jobActive || busy === 'start';
+  const locked = jobActive || ['start', 'restore', 'receptor', 'inspect'].includes(busy);
   async function refreshStatus() {
     statusRequest.current?.abort();
     const controller = new AbortController();
@@ -120,12 +141,37 @@ export function LinkFragments() {
       const data = await request('jobs', controller);
       if (revision.current !== currentRevision || activeRequest.current !== controller || poller.current.jobId) return;
       const jobs = Array.isArray(data?.jobs) ? data.jobs : [];
+      setRecentJobs(jobs);
       const target = (preferredId && jobs.find(item => item?.id === preferredId)) || pickResumableJob(jobs) || (preferredId === undefined ? pickRecentJob(jobs) : null);
       if (!target) return;
-      setJob(target); setJobQuerySdf(''); setResumed(preferredId !== undefined ? 'busy' : isActiveJob(target) ? 'running' : 'finished');
-      poller.current.start(target.id);
+      activeRequest.current = null;
+      await openSavedJob(target, preferredId !== undefined ? 'busy' : isActiveJob(target) ? 'running' : 'finished');
     } catch { /* Resuming is a convenience; status and search errors are reported elsewhere. */ }
     finally { if (activeRequest.current === controller) activeRequest.current = null; }
+  }
+  async function openSavedJob(target, reason = 'finished') {
+    if (!target?.id || locked) return;
+    resetResults();
+    const currentRevision = revision.current;
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    setBusy('restore');
+    try {
+      const data = await request(`jobs/${encodeURIComponent(target.id)}`, controller, undefined, 20000);
+      const restored = restoreJobInput(data?.job);
+      if (!restored) throw new Error('This saved search does not include its original input.');
+      const inspection = await request('inspect', controller, { sdf: restored.sdf }, 25000);
+      if (revision.current !== currentRevision || controller.signal.aborted) return;
+      if (!Array.isArray(inspection?.fragments) || inspection.fragments.length !== 2) throw new Error('The saved query could not be inspected.');
+      setSdf(restored.sdf); setJobQuerySdf(restored.sdf); setFileName('Saved search fragments');
+      setFragments(inspection.fragments); setSelections(restored.selections);
+      setEligibility({ state: inspection.eligibility === 'checked' ? 'checked' : 'unavailable', error: inspection.eligibilityError || '' });
+      setMaxRmsd(String(restored.maxRmsd)); setLimit(String(restored.limit));
+      receptorReadRevision.current++; setReceptor(restored.receptor); setReceptorError('');
+      setReceptorInputKey(key => key + 1);
+      setJob(data.job); setResumed(reason); poller.current.start(target.id);
+    } catch (failure) { if (revision.current === currentRevision && failure.name !== 'AbortError') setError(errorText(failure)); }
+    finally { if (activeRequest.current === controller) { activeRequest.current = null; setBusy(''); } }
   }
   // Any query change stops following the old job and clears its products so a
   // stale result is never shown against a different query.
@@ -191,14 +237,14 @@ export function LinkFragments() {
     finally { if (activeRequest.current === controller) { activeRequest.current = null; setBusy(''); } }
   }
   async function startSearch() {
-    if (locked) return;
+    if (locked || receptorError || !receptorValidationReady(receptor, sdf, receptorValidation)) return;
     resetResults();
     const controller = new AbortController();
     activeRequest.current = controller;
     setBusy('start');
     let ownerBusy = null;
     try {
-      const data = await request('jobs', controller, { sdf, attachments: selections.map(selectionPayload), maxRmsd: Number(maxRmsd), limit: Number(limit) }, 25000);
+      const data = await request('jobs', controller, { sdf, attachments: selections.map(selectionPayload), maxRmsd: Number(maxRmsd), limit: Number(limit), ...(receptor ? { receptorPdb: receptor.text } : {}) }, 25000);
       if (activeRequest.current !== controller || controller.signal.aborted) return;
       if (!data?.job?.id) throw new Error('The linker service did not return a search job.');
       setJob(data.job); setJobQuerySdf(sdf);
@@ -257,22 +303,29 @@ export function LinkFragments() {
     }).finally(() => { if (detailRequest.current === controller) detailRequest.current = null; });
   }
   function clearReceptor() {
-    refineRequest.current?.abort();
-    setReceptor(null); setReceptorError('');
+    receptorReadRevision.current++;
+    receptorRequest.current?.abort(); refineRequest.current?.abort();
+    setReceptor(null); setReceptorError(''); setReceptorValidation({ state: 'idle' });
     setReceptorInputKey(key => key + 1); // resets the file input so the same file can be chosen again
   }
   async function loadReceptor(file) {
-    setReceptorError('');
-    refineRequest.current?.abort();
-    if (!file) { setReceptor(null); return; }
-    if (file.size > MAX_RECEPTOR_BYTES) { setReceptor(null); setReceptorError('The receptor PDB must be at most 5 MB.'); return; }
-    const text = await file.text();
-    if (!/^(ATOM {2}|HETATM)/m.test(text)) { setReceptor(null); setReceptorError('No ATOM or HETATM records were found in this PDB file.'); return; }
-    setReceptor({ name: file.name, text });
+    if (locked) return;
+    resetResults(); clearReceptor();
+    const readRevision = receptorReadRevision.current;
+    if (!file) return;
+    if (file.size > MAX_RECEPTOR_BYTES) { setReceptorError('The receptor PDB must be at most 5 MB.'); return; }
+    setReceptorValidation({ state: 'reading' }); setBusy('receptor');
+    try {
+      const text = await file.text();
+      if (readRevision !== receptorReadRevision.current) return;
+      if (!/^(ATOM {2}|HETATM)/m.test(text)) throw new Error('No ATOM or HETATM records were found in this PDB file.');
+      setReceptor({ name: file.name, text });
+    } catch (failure) { if (readRevision === receptorReadRevision.current) { setReceptorError(failure.message); setReceptorValidation({ state: 'invalid' }); } }
+    finally { if (readRevision === receptorReadRevision.current) setBusy(''); }
   }
   async function refine() {
     const target = detail, jobId = job?.id;
-    if (!target || !jobId) return;
+    if (!target || !jobId || !receptorValidationReady(receptor, sdf, receptorValidation)) return;
     refineRequest.current?.abort();
     const controller = new AbortController();
     refineRequest.current = controller;
@@ -282,9 +335,10 @@ export function LinkFragments() {
       if (refineRequest.current !== controller) return;
       const refinement = data?.refinement;
       if (!refinement?.ok || !refinement.sdf) throw new Error(refinement?.errors?.map(item => item.message).join(' ') || 'Refinement did not return a structure.');
-      const updated = { ...target, refined: true, refinement, refinementReceptor: receptor?.name || null };
+      const updated = { ...target, refined: true, refinement, refinementReceptor: receptor?.name || null, refinementInput: { forceField, receptorPdb: receptor?.text || null } };
       detailCache.current.set(`${jobId}/${target.id}`, updated);
       setDetail(updated); setView('refined');
+      setJob(previous => previous?.id === jobId ? { ...previous, results: previous.results?.map(item => item.id === target.id ? { ...item, refined: true } : item) } : previous);
     } catch (failure) {
       if (refineRequest.current === controller && failure.name !== 'AbortError') setRefineError(failure.code === 'REFINEMENT_BUSY' ? 'Another refinement is running. Try again in a moment.' : failure.code === 'REFINEMENT_TIMEOUT' ? `${failure.message || 'Refinement took too long and was stopped.'} Try UFF or refine without a receptor.` : errorText(failure));
     } finally { if (refineRequest.current === controller) { refineRequest.current = null; setRefining(false); } }
@@ -295,12 +349,13 @@ export function LinkFragments() {
   useEffect(() => { if (job?.id && firstResultId && !selectedId) selectResult(job.id, firstResultId); }, [job?.id, firstResultId, selectedId]);
   const validRmsd = Number.isFinite(Number(maxRmsd)) && Number(maxRmsd) >= 0.1 && Number(maxRmsd) <= 1;
   const validLimit = Number.isInteger(Number(limit)) && Number(limit) >= 1 && Number(limit) <= 50;
-  const canSearch = status?.available && sdf && selections.every(selectionReady) && validRmsd && validLimit && !locked && !busy;
+  const canSearch = status?.available && sdf && selections.every(selectionReady) && validRmsd && validLimit && !locked && !busy && !receptorError && !['reading', 'checking'].includes(receptorValidation.state) && receptorValidationReady(receptor, sdf, receptorValidation);
   const label = jobStatusLabel(job);
   const progress = progressOf(job);
   const refinement = detail?.refinement?.ok ? detail.refinement : null;
   const shownSdf = view === 'refined' && refinement ? refinement.sdf : detail?.sdf;
-  const pocket = useMemo(() => receptor && showReceptor && shownSdf ? receptorPocket(receptor.text, sdfCoordinates(shownSdf), 8) : null, [receptor, showReceptor, shownSdf]);
+  const displayedReceptorPdb = receptorForView(view, detail, receptor);
+  const pocket = useMemo(() => displayedReceptorPdb && showReceptor && shownSdf ? receptorPocket(displayedReceptorPdb, sdfCoordinates(shownSdf), 8) : null, [displayedReceptorPdb, showReceptor, shownSdf]);
   const productAttachments = [1, 2].map(fragment => detail?.attachments?.find(item => item.fragment === fragment));
   const productView = detail ? {
     productSdf: shownSdf, receptorPdb: pocket?.pdb || '',
@@ -324,15 +379,20 @@ export function LinkFragments() {
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900" aria-labelledby="fragment-query-heading">
           <h2 id="fragment-query-heading" className="text-lg font-semibold dark:text-white">1. Query fragments</h2>
-          <label className="block text-sm font-medium dark:text-slate-200">Upload 3D SDF (two records, maximum 800 KB)<input type="file" accept=".sdf,chemical/x-mdl-sdfile" disabled={locked} className="mt-2 block w-full rounded border border-slate-300 p-2 text-sm disabled:opacity-50 dark:border-slate-600" onChange={event => upload(event.target.files?.[0])} /></label>
+          <label className="block text-sm font-medium dark:text-slate-200">Upload 3D SDF (two records, maximum 800 KB)<input type="file" accept=".sdf,chemical/x-mdl-sdfile" disabled={locked || !!busy} className="mt-2 block w-full rounded border border-slate-300 p-2 text-sm disabled:opacity-50 dark:border-slate-600" onChange={event => upload(event.target.files?.[0])} /></label>
           <p className={muted}>V2000 SDF with two molecules in the same coordinate frame. Coordinates, charges, isotopes and atom numbers are preserved. {fileName && `File: ${fileName}`}</p>
           <div className="space-y-1">
-            <label className="block text-sm font-medium dark:text-slate-200">Receptor PDB (optional: pocket display and refinement; ligand-free, same frame as the SDF, ≤ 5 MB)<input key={receptorInputKey} type="file" accept=".pdb,chemical/x-pdb" className="mt-2 block w-full rounded border border-slate-300 p-2 text-sm dark:border-slate-600" onChange={event => loadReceptor(event.target.files?.[0])} /></label>
-            {receptor && <p className="flex flex-wrap items-center gap-2 text-sm dark:text-slate-200">Receptor: {receptor.name}<button type="button" onClick={clearReceptor} className="font-semibold underline">Remove receptor</button></p>}
+            <label className="block text-sm font-medium dark:text-slate-200">Receptor PDB (optional: search ranking, pocket display and refinement; ligand-free, same frame as the SDF, ≤ 5 MB)<input key={receptorInputKey} type="file" accept=".pdb,chemical/x-pdb" disabled={locked || !!busy} className="mt-2 block w-full rounded border border-slate-300 p-2 text-sm dark:border-slate-600" onChange={event => loadReceptor(event.target.files?.[0])} /></label>
+            {receptor && <p className="flex flex-wrap items-center gap-2 text-sm dark:text-slate-200">Receptor: {receptor.name}<button type="button" onClick={() => { resetResults(); clearReceptor(); }} disabled={locked || !!busy} className="font-semibold underline disabled:opacity-50">Remove receptor</button></p>}
             {receptorError && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{receptorError}</p>}
-            <p className={muted}>Uploading a new SDF clears the receptor.</p>
+            {['reading', 'checking'].includes(receptorValidation.state) && <p role="status" className="text-sm dark:text-slate-200">Checking receptor coordinates and ligand overlap…</p>}
+            {receptorValidation.state === 'waiting' && <p role="status" className={muted}>Upload query fragments to check that the receptor shares their coordinate frame.</p>}
+            {receptorValidation.state === 'invalid' && receptorValidation.error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{receptorValidation.error}</p>}
+            {receptor && receptorValidationReady(receptor, sdf, receptorValidation) && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-300">Receptor passed the coordinate and overlap checks. Candidates will be ranked by receptor clash severity before attachment fit. This is an excluded-volume check, not an affinity score.</p>}
+            {(receptorValidation.report?.warnings || []).map(warning => <p key={warning} className={muted}>{warning}</p>)}
+            <p className={muted}>Uploading a new SDF clears the receptor. Changing the receptor starts a new query.</p>
           </div>
-          {locked && <p className={muted}>Cancel the running search to change the query.</p>}
+          {jobActive && <p className={muted}>Cancel the running search to change the query.</p>}
           {busy === 'inspect' && <p role="status" className="text-sm dark:text-slate-200">Inspecting fragments and attachment sites…</p>}
           {sdf && <>
             <Fragment3DViewer querySdf={sdf} attachmentAtoms={selections.map(selection => selection?.atom || null)} hydrogenAtoms={selections.map(selection => Number.isInteger(selection?.hydrogen) ? selection.hydrogen : null)} eligibleAtoms={eligibleAtoms} onAtomSelect={chooseFromViewer} />
@@ -369,6 +429,8 @@ export function LinkFragments() {
         </section>
         <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900" aria-labelledby="fragment-results-heading">
           <h2 id="fragment-results-heading" className="text-lg font-semibold dark:text-white">2. Matching products</h2>
+          {recentJobs.length > 0 && <div className="space-y-1"><label className="block text-sm font-medium dark:text-slate-200">Saved searches<select aria-label="Saved searches" disabled={locked || !!busy} value={job?.id || ''} onChange={event => openSavedJob(recentJobs.find(item => item.id === event.target.value))} className={`mt-1 w-full ${input}`}><option value="">Choose a saved search</option>{recentJobs.map(item => <option key={item.id} value={item.id}>{new Date(item.createdAt).toLocaleString()} · {jobStatusLabel(item).title}{item.query?.receptorReport ? ' · receptor' : ''}</option>)}</select></label><p className={muted}>Your searches and original inputs are retained for up to 30 days, subject to storage limits. Reopen one to inspect its fragments, receptor and products. Unfinished searches interrupted by a service restart remain partial.</p></div>}
+          {busy === 'restore' && <p role="status" className="text-sm dark:text-slate-200">Restoring saved query and products…</p>}
           {!job && <p className="text-sm text-slate-500 dark:text-slate-300">Upload fragments, select two attachment sites and start a search. Products appear here while the search runs.</p>}
           {job && <div className={`space-y-3 rounded-lg border p-3 text-sm ${TONES[label.tone] || TONES.idle}`}>
             <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold" aria-live="polite">{label.title}</p>{jobActive && <button type="button" onClick={cancelSearch} disabled={busy === 'cancel'} className="rounded border border-current px-3 py-1 text-sm font-semibold disabled:opacity-50">{busy === 'cancel' ? 'Canceling…' : 'Cancel search'}</button>}</div>
@@ -381,13 +443,13 @@ export function LinkFragments() {
               <div><dt className="opacity-75">Valid placements</dt><dd className="font-semibold">{formatCount(progress.placements)}</dd></div>
             </dl>
             <p className="text-xs opacity-80">{(job.query?.attachments || []).map(formatQuerySelection).join(' · ')}{job.query?.maxRmsd ? ` · RMSD ≤ ${job.query.maxRmsd} Å` : ''}{job.query?.limit ? ` · keep ${job.query.limit}` : ''}{progress.window ? ` · anchor distance window ${Number(progress.window.lo).toFixed(2)}–${Number(progress.window.hi).toFixed(2)} Å` : ''}</p>
-            {resumed && <p className="text-xs">{resumed === 'busy' ? 'You already have a search queued or running; it is shown here. Cancel it or wait for it to finish before starting another.' : resumed === 'finished' ? 'Reopened your most recent finished search; the label above states whether it examined every pair.' : 'Resumed your most recent running search.'} Its query fragments are not shown in the product view. Uploading an SDF starts a new query and removes this search from the page, so download any products you need first.</p>}
+            {resumed && <p className="text-xs">{resumed === 'busy' ? 'You already have a search queued or running; it is shown here. Cancel it or wait for it to finish before starting another.' : resumed === 'finished' ? 'Reopened your most recent finished search; the label above states whether it examined every pair.' : 'Resumed your most recent running search.'} Its original fragments, attachment selections and receptor have been restored. Uploading an SDF starts a new query and removes this search from the page, so download any products you need first.</p>}
             {jobNotice && (jobNotice.text || jobNotice.retry) && <div role={jobNotice.fatal ? 'alert' : 'status'} className="text-xs">{jobNotice.text}{jobNotice.retry && job?.id && <button type="button" className={`${jobNotice.text ? 'ml-2 ' : ''}font-semibold underline`} onClick={() => { setJobNotice(null); poller.current.start(job.id); }}>Check again</button>}</div>}
           </div>}
           {job && results.length === 0 && (jobActive || resultsKnown) && <p role="status" className="text-sm dark:text-slate-200">{jobActive ? 'No valid products yet.' : 'No valid linker products matched these attachment sites and fit limit in the pairs examined.'}</p>}
           {job && !jobActive && !resultsKnown && !jobNotice?.fatal && <p role="status" className="text-sm dark:text-slate-200">Loading products…</p>}
-          {results.length > 0 && <ol className="max-h-72 space-y-1 overflow-y-auto" aria-label="Products ranked by fit RMSD">{results.map(item => <li key={item.id}><button type="button" aria-pressed={item.id === selectedId} onClick={() => selectResult(job.id, item.id)} className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${item.id === selectedId ? 'border-brand-500 bg-brand-50 dark:bg-slate-800' : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'} dark:text-slate-100`}>
-            <span className="font-semibold">{item.rank}. Linker {item.linkerId} · conformer {item.conformerId}</span> · RMSD {Number(item.rmsd).toFixed(3)} Å · {item.heavyAtoms} heavy atoms{item.conformerMatches > 1 ? ` · ${item.conformerMatches} matching placements` : ''}{item.refined ? ' · refined' : ''}
+          {results.length > 0 && <ol className="max-h-72 space-y-1 overflow-y-auto" aria-label={receptor ? "Products ranked by receptor clash severity, then fit RMSD" : "Products ranked by fit RMSD"}>{results.map(item => <li key={item.id}><button type="button" aria-pressed={item.id === selectedId} onClick={() => selectResult(job.id, item.id)} className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${item.id === selectedId ? 'border-brand-500 bg-brand-50 dark:bg-slate-800' : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'} dark:text-slate-100`}>
+            <span className="font-semibold">{item.rank}. Linker {item.linkerId} · conformer {item.conformerId}</span> · RMSD {Number(item.rmsd).toFixed(3)} Å · {item.heavyAtoms} heavy atoms{item.conformerMatches > 1 ? ` · ${item.conformerMatches} matching placements` : ''}{item.refined ? ' · refined' : ''}{item.receptor ? ` · receptor clashes ${formatCount(item.receptor.clashes)} (${formatCount(item.receptor.severeClashes)} severe)` : ''}
             <span className="block truncate font-mono text-xs text-slate-500 dark:text-slate-300">{item.smiles}</span>
           </button></li>)}</ol>}
           {selectedId && results.length > 0 && !results.some(item => item.id === selectedId) && <p className={muted}>The selected product is no longer among the best retained results.</p>}
@@ -401,21 +463,27 @@ export function LinkFragments() {
             {receptor && <label className="flex items-center gap-2 text-sm dark:text-slate-200"><input type="checkbox" checked={showReceptor} onChange={event => setShowReceptor(event.target.checked)} />Show receptor pocket ({receptor.name})</label>}
             <div className="text-sm dark:text-slate-200"><p className="font-semibold">Attachment mapping (original atom numbers)</p><ul className="mt-1 list-disc space-y-0.5 pl-5">{attachmentMappingLines(detail).map(line => <li key={line}>{line}</li>)}</ul>{Number.isInteger(detail.fragmentAtomCount) && <p className={`mt-1 ${muted}`}>Surviving uploaded atoms (heavy atoms and uploaded explicit hydrogens) are product atoms 1–{detail.fragmentAtomCount} in original order and keep their uploaded coordinates.</p>}</div>
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => saveSdf(detail.sdf, resultFileName(summary || detail))} className="rounded-lg bg-brand-500 px-4 py-2 font-semibold text-white">Download product SDF</button>
+              <button type="button" onClick={() => saveSdf(detail.sdf, resultFileName(summary || detail))} className="rounded-lg bg-brand-500 px-4 py-2 font-semibold text-white">Download original placement SDF</button>
+              <button type="button" onClick={() => saveSdf(JSON.stringify(resultReport(job, detail), null, 2), resultFileName(summary || detail).replace(/\.sdf$/, '-report.json'), 'application/json')} className="rounded-lg border border-slate-300 px-4 py-2 font-semibold dark:text-slate-100">Download quality report</button>
               {refinement && <button type="button" onClick={() => saveSdf(refinement.sdf, resultFileName(summary || detail, refinement))} className="rounded-lg border border-brand-500 px-4 py-2 font-semibold text-brand-700 dark:text-slate-100">Download refined SDF</button>}
             </div>
+            <p className={muted}>Original placement and refined downloads are separate structures. Both retain source atom mapping and linker identifiers; only the refined download includes the minimization report.</p>
+            {detail.receptor && <p className={`rounded-lg p-3 text-sm ${detail.receptor.clashes > 0 ? TONES.warning : TONES.success}`}>Original placement receptor check: {formatCount(detail.receptor.clashes)} clashes, including {formatCount(detail.receptor.severeClashes)} severe overlaps. Ranking prefers fewer severe overlaps and lower overlap burden; the best retained candidates may still clash. Review or refine these structures before using them.</p>}
             {detail.smiles && <p className="break-all font-mono text-xs text-slate-600 dark:text-slate-300">{detail.smiles}</p>}
             <section className="space-y-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700" aria-labelledby="refinement-heading">
               <h3 id="refinement-heading" className="font-semibold dark:text-white">3. Refine geometry (optional)</h3>
+              <p className={muted}>Energies show this product before and after minimization; do not compare them as affinity scores across different molecules.</p>
               <p className={muted}>Force-field geometry cleanup only: RDKit minimization with all uploaded fragment atoms (heavy atoms and uploaded explicit hydrogens) held fixed and the linker free to move. It is not equivalent to MOE refinement and does not estimate binding affinity or synthesis feasibility.</p>
               <div className="flex flex-wrap items-end gap-3">
                 <label className="block text-sm font-medium dark:text-slate-200">Force field<select className={`mt-1 block ${input}`} value={forceField} onChange={event => setForceField(event.target.value)}><option value="auto">Auto: MMFF94, then UFF</option><option value="MMFF94">MMFF94</option><option value="UFF">UFF</option></select></label>
                 <p className={muted}>{receptor ? `Receptor ${receptor.name} will be used as excluded volume.` : 'No receptor loaded; add one under Query fragments to include it.'}</p>
               </div>
-              <button type="button" onClick={refine} disabled={refining || refineStatus?.available === false} className="rounded-lg bg-brand-500 px-4 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{refining ? 'Refining…' : refinement ? 'Refine again' : 'Refine product'}</button>
+              <button type="button" onClick={refine} disabled={jobActive || refining || refineStatus?.available === false || !receptorValidationReady(receptor, sdf, receptorValidation)} className="rounded-lg bg-brand-500 px-4 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{refining ? 'Refining…' : refinement ? 'Refine again' : 'Refine product'}</button>
+              {jobActive && <p className={muted}>Wait for the search to finish, or cancel it, before refining a retained result.</p>}
               {refineStatus?.available === false && <p className={muted}>Refinement is unavailable{refineStatus.reason ? `: ${refineStatus.reason}` : '.'}</p>}
               {refineError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{refineError}</p>}
               {refinement && <div className="space-y-2 text-sm dark:text-slate-200">
+                {refinement.receptor?.clashesAfter > 0 && <p className={`rounded p-2 ${TONES.warning}`}>Refinement left {formatCount(refinement.receptor.clashesAfter)} receptor clashes. Convergence alone does not mean the product fits the pocket.</p>}
                 {!refinement.converged && <p className="rounded bg-amber-50 p-2 text-amber-900 dark:bg-amber-950 dark:text-amber-100">The minimization did not converge; treat this geometry as unfinished.</p>}
                 <dl className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">{refinementRows(refinement).map(([name, value]) => <div key={name}><dt className="text-xs text-slate-500 dark:text-slate-400">{name}</dt><dd>{value}</dd></div>)}</dl>
                 {detail.refinementReceptor !== undefined && <p className={muted}>{detail.refinementReceptor ? `Receptor used: ${detail.refinementReceptor}.` : 'No receptor was used for this refinement.'}</p>}

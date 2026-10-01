@@ -20,13 +20,20 @@ create a stock offer, enter a cart or establish synthesis availability.
    hydrogen selects both). The supplied `R-groups_from7WH5lig.sdf` reference uses
    **atom 1 in each record** (implicit hydrogens); fragment 2 atom 6 with its
    explicit hydrogen 7 is also valid.
-5. Choose maximum attachment RMSD (0.1–1 Å; default 0.75), the number of distinct
+5. Optionally upload a ligand-free receptor PDB (≤ 5 MB) in the fragments' coordinate
+   frame. Validation runs before search: a receptor more than 8 Å from every query
+   heavy atom, or within 1.2 Å of any query heavy atom, is refused. Uploading another
+   protein does not align or dock the fragments. Waters/hydrogens are removed; HET
+   groups remain and are listed. Unknown excluded-volume radii are refused.
+6. Choose maximum attachment RMSD (0.1–1 Å; default 0.75), the number of distinct
    products to retain (1–50; default 20) and start the search.
-6. The search runs as a background job. Progress shows examined/total candidate
+7. The search runs as a background job. Progress shows examined/total candidate
    pairs, conformers and valid placements; partial results update while it runs and
    **Cancel** stops it. Returning to the page resumes the newest active job.
-7. Select a product to overlay it on the query, inspect the attachment mapping in
-   original numbering, optionally refine it, and download the product or refined SDF.
+8. Select a product to overlay it on the query, inspect the attachment mapping in
+   original numbering, optionally refine it, and download the original or refined
+   SDF and a JSON quality report. **Saved searches** restores previous inputs,
+   attachment selections, receptor, results and successful refinements.
 
 ## Attachment rules
 
@@ -116,11 +123,27 @@ than the retained K-th product is counted as valid without a SMILES, and at most
 `conformerMatchesExact: false` and both numbers are lower bounds; otherwise they are
 exact.
 
+With a receptor, every accepted torsion and placement is ranked by severe receptor
+overlaps (≥ 1.2 Å van der Waals overlap), then sum of squared overlaps for clashing
+heavy-atom pairs (overlap ≥ 0.6 Å), then clash count, and finally the geometric order
+above. These are rigid excluded-volume measurements, not energies or affinity scores.
+Candidates with clashes remain visible; the best retained candidate may still clash.
+All distance-compatible pairs are scanned; RMSD-only retention pruning is disabled
+because a worse-RMSD placement can fit the receptor better. The unchanged fragments'
+clashes are included and reported separately at inspection. No receptor electrostatics,
+solvation, flexibility or chemical-stability scoring is performed.
+
 Jobs belong to the authenticated user within their company; other users receive
 not-found. One job runs at a time with a small queue; each user may have one queued
-or running job. Jobs live in memory on the scientific host for six hours after they
-finish, so a service restart loses them. A job exceeding its wall-time limit fails
-and keeps its partial results.
+or running job. Private history is persisted in a separate SQLite database on the
+scientific host, retaining terminal jobs for **up to 30 days**, subject to 30 jobs
+per owner, 200 overall and a 128 MiB payload budget (16 MiB per job). Old terminal
+jobs are removed first. Query uploads and results are saved atomically at submission,
+completion and refinement, with progress checkpoints at most once per five seconds.
+After restart, queued/running jobs become failed `LINK_FRAGMENTS_INTERRUPTED` with
+saved partial results; they never become complete or automatically resume scanning.
+A job exceeding its wall-time limit fails and keeps its partial results. History
+uses owner-scoped APIs; compact polling omits uploaded query/receptor text.
 
 ## Refinement
 
@@ -131,9 +154,14 @@ original rigid placement; `PYXIS_METHOD` records refinement. Refinement tags inc
 initial/final energy in kcal/mol, fixed-atom deviation in Å, stereochemistry
 preservation and receptor clash counts when a receptor was used. These SD data
 items must be restored after RDKit writes the molblock, which drops source tags.
+`PYXIS_SEARCH_RECEPTOR_*` records the original search receptor hash and clash
+measurements. `PYXIS_REFINEMENT_RECEPTOR_SHA256` identifies the refinement receptor
+separately; before/after refinement clash counts never overwrite search measurements.
 
 Refinement is optional and runs per selected product with Python RDKit on the
-scientific host. It adds any implicit hydrogens (appended after existing atoms),
+scientific host after the search finishes or is canceled. Running scans can replace
+retained candidates, so refinement during an active scan is refused with
+`409 LINK_FRAGMENTS_SEARCH_ACTIVE`. It adds any implicit hydrogens (appended after existing atoms),
 keeps **every surviving uploaded fragment atom fixed** (heavy atoms and uploaded
 explicit hydrogens) and minimizes the linker and added hydrogens with MMFF94
 (or UFF). *Auto* uses MMFF94 when every atom is parameterized and otherwise falls back
@@ -167,8 +195,8 @@ the server derives the job owner from the session and never trusts a client-supp
 owner. This workflow does not charge credits.
 
 Staging shares application accounts and records with production. Link Fragments
-does not persist searches in the application database or purchase anything; uploads
-go to owned compute. See [service instructions](../services/link-fragments/README.md)
+does not persist searches in the application database or purchase anything; private
+uploads and history stay on owned compute. See [service instructions](../services/link-fragments/README.md)
 and [staging deployment](../deploy/staging/README.md).
 
 ## Verification
@@ -182,3 +210,17 @@ elsewhere; run them on the scientific host. For release, also exercise upload,
 attachment selection, job progress and cancel, refinement, preview and SDF download
 in the browser. A fixture match alone does not qualify a scientific result or MOE
 replacement.
+
+## Reference comparison
+
+`bun run benchmark:link-fragments` compares the supplied selected-linker example
+against Anna's reference product: canonical graph/stereochemistry, source-file
+SHA-256 values and coordinates of every surviving query atom. A custom JSON
+manifest can provide additional query/linker/expected-product files, attachment
+selections, RMSD limit and optional receptor: `bun services/link-fragments/benchmark.mjs
+--manifest /path/to/cases.json --out /path/to/report.json`. Paths are relative to
+the manifest. See `services/link-fragments/benchmark-cases.json` for the format.
+The report deliberately does not establish MOE parity or whole-library recall.
+Those require Anna's exact MOE version, molecule preparation, search/refinement
+settings and additional reference outputs. Do not interpret raw force-field
+energies across different products as a ranking or binding estimate.

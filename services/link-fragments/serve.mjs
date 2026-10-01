@@ -6,6 +6,8 @@
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { prepareQuery, inspectAttachmentSites } from './engine.mjs';
+import { parseSdf } from './sdf.mjs';
+import { inspectReceptor } from './receptor.mjs';
 import { createJobManager } from './jobs.mjs';
 
 export const METHOD = 'Pyxis rigid two-fragment matching; complete background scans of the owned 3D linker index';
@@ -14,6 +16,7 @@ export const LIMITATIONS = [
   'Each attachment is a single bond replacing one implicit or explicit hydrogen on a C, N, O or S centre (O/S only as neutral two-coordinate O-H/S-H); supported pairs are C-C, C-N, N-N, C-O, C-S, N-O and N-S; phosphorus and O-O/O-S/S-S links are refused. Unused He labels are capped with hydrogen.',
   'N-O and N-S links are checked for valence and geometry only; their chemical stability is not assessed.',
   'A scan examines every indexed linker label pair inside a provably safe anchor-distance window. Queued, running, canceled and failed scans are partial.',
+  'An optional ligand-free receptor is validated against the query before search; rigid heavy-atom overlaps rank every accepted pose before geometric fit. Clash candidates are retained with their warnings, not certified as viable.',
   'Geometry fit and clash screening. Optional force-field refinement is a local constrained minimization, not MOE refinement, binding affinity or synthesis feasibility.',
 ];
 const MAX_BODY = 1024 * 1024;
@@ -114,14 +117,27 @@ export async function createLinkerServer({ indexPath, jobOptions = {}, refineMod
   const server = http.createServer(async (req, res) => {
     const send = (status, data) => { if (!res.destroyed) { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); } };
     try {
-      const { pathname } = new URL(req.url, 'http://loopback');
+      const { pathname, searchParams } = new URL(req.url, 'http://loopback');
       const parts = pathname.split('/').filter(Boolean);
       if (pathname === '/status' && req.method === 'GET')
         return send(200, { available: true, records: manifest.records, pairs: manifest.pairs, rejected: manifest.rejected, method: METHOD, limitations: LIMITATIONS, jobs: jobs.stats(), refinement: await refinementStatus() });
-      if (parts[0] !== 'inspect' && parts[0] !== 'jobs') return send(404, { error: 'Route not found' });
+      if (parts[0] !== 'inspect' && parts[0] !== 'jobs' && parts[0] !== 'receptor') return send(404, { error: 'Route not found' });
       const owner = req.headers['x-pyxis-owner'];
       if (typeof owner !== 'string' || !OWNER.test(owner)) return send(400, { error: 'Owner key required.', code: 'OWNER_REQUIRED' });
       const notFound = () => send(404, { error: 'Search job not found.', code: 'JOB_NOT_FOUND' });
+
+      if (pathname === '/receptor/inspect' && req.method === 'POST') {
+        const input = await readJson(req, MAX_REFINE_BODY);
+        if (typeof input.sdf !== 'string' || !input.sdf.trim() || Buffer.byteLength(input.sdf) > 800000)
+          return send(400, { error: 'Supply the two-fragment SDF smaller than 800 KB.', code: 'SDF_REQUIRED' });
+        let fragments;
+        try { fragments = parseSdf(input.sdf); } catch (error) { return send(400, { error: error.message, code: 'INVALID_SDF' }); }
+        if (fragments.length !== 2 || fragments.some(f => !f.is3D || f.atoms.length < 2 || f.atoms.length > 200))
+          return send(400, { error: 'Supply exactly two 3D fragments of 2–200 atoms.', code: 'INVALID_SDF' });
+        const checked = inspectReceptor(input.receptorPdb, fragments);
+        return checked.ok ? send(200, { ok: true, report: checked.report })
+          : send(422, { error: checked.errors[0].message, code: checked.errors[0].code, details: checked.errors });
+      }
 
       if (pathname === '/inspect' && req.method === 'POST') {
         const { sdf } = await readJson(req, MAX_BODY);
@@ -130,7 +146,7 @@ export async function createLinkerServer({ indexPath, jobOptions = {}, refineMod
         return result.ok ? send(200, result) : send(400, { error: result.errors?.[0]?.message || 'Invalid fragments', details: result.errors });
       }
       if (pathname === '/jobs' && req.method === 'POST') {
-        const input = await readJson(req, MAX_BODY);
+        const input = await readJson(req, MAX_REFINE_BODY);
         const maxRmsd = input.maxRmsd ?? 0.75;
         const limit = input.limit ?? 20;
         if (typeof input.sdf !== 'string' || !input.sdf.trim() || !Array.isArray(input.attachments) || input.attachments.length !== 2 || !input.attachments.every(selectionValid))
@@ -139,8 +155,15 @@ export async function createLinkerServer({ indexPath, jobOptions = {}, refineMod
           return send(400, { error: 'Choose RMSD 0.1–1 Å and 1–50 results.', details: [{ code: 'INVALID_SETTINGS', message: 'Choose RMSD 0.1–1 Å and 1–50 results.' }] });
         const prepared = await prepareQuery(input.sdf, input.attachments);
         if (!prepared.ok) return send(400, { error: prepared.errors?.[0]?.message || 'Invalid fragments', details: prepared.errors });
+        let receptorReport;
+        if (input.receptorPdb != null) {
+          const checked = inspectReceptor(input.receptorPdb, prepared.fragments);
+          if (!checked.ok) return send(422, { error: checked.errors[0].message, code: checked.errors[0].code, details: checked.errors });
+          prepared.receptor = checked.context;
+          receptorReport = checked.report;
+        }
         try {
-          return send(202, { job: jobs.submit(owner, { sdf: input.sdf, attachments: input.attachments, maxRmsd, limit }, prepared) });
+          return send(202, { job: jobs.submit(owner, { sdf: input.sdf, attachments: input.attachments, maxRmsd, limit, ...(receptorReport ? { receptorPdb: input.receptorPdb, receptorReport } : {}) }, prepared) });
         } catch (error) {
           if (error.status) return send(error.status, { error: error.message, code: error.code, ...(error.jobId ? { jobId: error.jobId } : {}) });
           return send(400, { error: 'The candidate window could not be bounded for this attachment.', details: [{ code: 'UNBOUNDED_WINDOW', message: error.message }] });
@@ -150,7 +173,7 @@ export async function createLinkerServer({ indexPath, jobOptions = {}, refineMod
       if (parts[0] !== 'jobs' || parts.length < 2) return send(404, { error: 'Route not found' });
       if (!JOB_ID.test(parts[1])) return notFound();
       if (parts.length === 2 && req.method === 'GET') {
-        const job = jobs.get(owner, parts[1]);
+        const job = jobs.get(owner, parts[1], { includeInput: searchParams.get('input') !== '0' });
         return job ? send(200, { job }) : notFound();
       }
       if (parts.length === 3 && parts[2] === 'cancel' && req.method === 'POST') {
@@ -169,7 +192,11 @@ export async function createLinkerServer({ indexPath, jobOptions = {}, refineMod
           return found && send(200, { result: jobs.resultDetail(found.job, found.entry, found.index) });
         }
         if (parts.length === 5 && parts[4] === 'refine' && req.method === 'POST') {
-          if (!lookup()) return;
+          const initial = lookup();
+          if (!initial) return;
+          // A running scan can evict this retained candidate while Python runs.
+          // Refine only terminal searches so a successful response is durable.
+          if (!initial.job.finishedAt) return send(409, { error: 'Wait for the search to finish, or cancel it, before refining a retained product.', code: 'LINK_FRAGMENTS_SEARCH_ACTIVE' });
           const input = await readJson(req, MAX_REFINE_BODY);
           const forceField = input.forceField ?? 'auto';
           if (!FORCE_FIELDS.includes(forceField)) return send(400, { error: 'Choose auto, MMFF94 or UFF.', details: [{ code: 'INVALID_FORCE_FIELD', message: 'Choose auto, MMFF94 or UFF.' }] });
@@ -189,7 +216,11 @@ export async function createLinkerServer({ indexPath, jobOptions = {}, refineMod
           } catch {
             return send(503, { error: 'Refinement could not run.', code: 'REFINEMENT_UNAVAILABLE' });
           } finally { refining = false; client.dispose(); }
-          if (refinement?.ok) { found.entry.refinement = refinement; return send(200, { refinement }); }
+          if (refinement?.ok) {
+            if (!jobs.recordRefinement(owner, parts[1], parts[3], refinement, { forceField, receptorPdb: input.receptorPdb || null }))
+              return send(409, { error: 'This result is no longer retained. Select a saved result and try again.', code: 'RESULT_REPLACED' });
+            return send(200, { refinement });
+          }
           if (client.signal.aborted) return; // the caller left; its child was killed
           const first = refinement?.errors?.[0] || {};
           const code = typeof first.code === 'string' && first.code ? first.code : 'REFINEMENT_FAILED';

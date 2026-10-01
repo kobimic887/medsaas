@@ -4,8 +4,11 @@
 // no candidate cap, distance ranking or geometric pre-exclusion here: a scan is
 // `completed` only when examinedPairs === totalPairs (the index count).
 import { Worker } from 'node:worker_threads';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import * as engine from './engine.mjs';
+import { dirname, join, resolve } from 'node:path';
+import { existsSync, statSync } from 'node:fs';
+import { createJobStore } from './job-store.mjs';
 
 const HOUR = 3600_000;
 const INDEX_BOND = 1.5; // build.py indexes nominal 1.5 A anchors
@@ -45,11 +48,15 @@ export function fallbackDistanceWindow(prepared, maxRmsd) {
 export const distanceWindow = (prepared, maxRmsd) =>
   (typeof engine.candidateDistanceWindow === 'function' ? engine.candidateDistanceWindow : fallbackDistanceWindow)(prepared, maxRmsd);
 
-// Ranking: rmsd asc, minimum nonbonded radius ratio desc (null = no contacts),
+// Ranking: receptor severe contacts/overlap/contacts first when supplied, then
+// rmsd asc, minimum nonbonded radius ratio desc (null = no contacts),
 // conformer asc, then label pair for a total, deterministic order.
 const ratioKey = (value) => (Number.isFinite(value) ? value : Infinity);
 export function comparePlacements(x, y) {
-  return x.rmsd - y.rmsd || ratioKey(y.ratio) - ratioKey(x.ratio) || x.conformerId - y.conformerId ||
+  const receptor = x.receptor && y.receptor
+    ? x.receptor.severeClashes - y.receptor.severeClashes || x.receptor.overlapSquared - y.receptor.overlapSquared || x.receptor.clashes - y.receptor.clashes
+    : 0;
+  return receptor || x.rmsd - y.rmsd || ratioKey(y.ratio) - ratioKey(x.ratio) || x.conformerId - y.conformerId ||
     x.pair[0] - y.pair[0] || x.pair[1] - y.pair[1];
 }
 export const resultId = (placement) => `${placement.conformerId}-${placement.pair[0]}-${placement.pair[1]}`;
@@ -109,7 +116,9 @@ export const conformerMatchesOf = (matchCounts, entry) => matchCounts?.get(entry
 export function createJobManager({
   indexPath, db,
   workers = envInt('LINK_FRAGMENTS_WORKERS', 2, 1, 4),
-  queueLimit = 4, retainPerOwner = 5, retainTotal = 50, ttlMs = 6 * HOUR,
+  queueLimit = 4, retainPerOwner = 30, retainTotal = 200, ttlMs = 30 * 24 * HOUR,
+  storePath = process.env.LINK_FRAGMENTS_JOBS_PATH || join(dirname(resolve(indexPath)), 'jobs.sqlite'),
+  checkpointMs = 5000, storeOptions = {},
   // A generous ceiling, not an expected duration. Measured on oracleOld: the
   // reference full scan (2,519,224 pairs) takes ~526 s with 2 workers (~4,800
   // pairs/s); an explicit-H query ran ~10,700 pairs/s. 6 h leaves room for far
@@ -119,6 +128,13 @@ export function createJobManager({
   testHooks = null,
 } = {}) {
   workers = Math.min(4, Math.max(1, workers));
+  if (storePath !== null) {
+    const indexStat = statSync(indexPath);
+    const storeStat = existsSync(storePath) ? statSync(storePath) : null;
+    if (resolve(storePath) === resolve(indexPath) || (storeStat?.ino === indexStat.ino && storeStat?.dev === indexStat.dev))
+      throw new Error('The writable jobs database must be separate from the linker index.');
+  }
+  const store = createJobStore(storePath, storeOptions);
   const jobs = new Map();
   const queue = [];
   const pool = [];
@@ -129,6 +145,62 @@ export function createJobManager({
   const conformerAt = db.query('SELECT conformer_id AS c FROM pairs WHERE rowid = ?');
   // At most C(8,2)=28 pairs per conformer, contiguous in rowid order.
   const conformerEnd = db.query('SELECT max(rowid) AS r FROM pairs WHERE rowid BETWEEN ? AND ? AND conformer_id = ?');
+
+  function durable(job) {
+    snapshotCounts(job);
+    return {
+      version: 1, id: job.id, owner: job.owner, state: job.state, createdAt: job.createdAt,
+      startedAt: job.startedAt, finishedAt: job.finishedAt, finishedMs: job.finishedMs,
+      input: job.input, distance: job.distance, window: job.window,
+      refinementReceptors: Object.fromEntries(job.top.entries.filter((entry) => entry.refinementInput?.receptorKey).map((entry) => [entry.refinementInput.receptorKey, job.refinementReceptors[entry.refinementInput.receptorKey]])),
+      totalPairs: job.totalPairs, examinedPairs: job.examinedPairs,
+      conformersExamined: job.conformersExamined, validPlacements: job.validPlacements,
+      error: job.error, limit: job.top.limit, entries: job.top.entries,
+      distinctProducts: job.matchCounts?.size ?? job.distinctProducts,
+      matchCountsExact: job.matchCountsExact,
+    };
+  }
+  function pruneRefinementReceptors(job) {
+    if (!job.refinementReceptors) return;
+    const used = new Set(job.top.entries.map((entry) => entry.refinementInput?.receptorKey).filter(Boolean));
+    for (const key of Object.keys(job.refinementReceptors)) if (!used.has(key)) delete job.refinementReceptors[key];
+  }
+  function checkpoint(job, force = false) {
+    if (!store || (!force && Date.now() - (job.lastCheckpointMs || 0) < checkpointMs)) { pruneRefinementReceptors(job); return; }
+    let removed;
+    try { removed = store.save(durable(job)); } catch (error) {
+      throw Object.assign(new Error('The scientific service could not save the search history.'), { status: 503, code: 'LINK_FRAGMENTS_HISTORY_FAILED', cause: error });
+    }
+    // Prune only after a successful save: refinement rollback may still need
+    // the previous receptor if the new checkpoint cannot be written.
+    pruneRefinementReceptors(job);
+    job.lastCheckpointMs = Date.now();
+    for (const id of removed) jobs.delete(id);
+  }
+  store?.prune({ ttlMs, retainPerOwner, retainTotal });
+  // An interrupted worker cannot certify the unexamined remainder. Recover the
+  // saved partial results, never continue the old scan or relabel it complete.
+  for (const saved of store?.load() || []) {
+    if (saved.version !== 1) throw new Error('Unsupported linker history schema.');
+    const top = new TopProducts(saved.limit);
+    top.entries = saved.entries;
+    top.bySmiles = new Map(top.entries.map((entry) => [entry.smiles, entry]));
+    const job = {
+      ...saved, top, matchCounts: null, inFlight: 0,
+      cancel: new Int32Array(new SharedArrayBuffer(4)),
+      threshold: new Int32Array(new SharedArrayBuffer(4)),
+    };
+    delete job.entries;
+    if (!job.finishedAt) {
+      job.state = 'failed'; job.finishedMs = Date.now(); job.finishedAt = new Date(job.finishedMs).toISOString();
+      job.error = { code: 'LINK_FRAGMENTS_INTERRUPTED', message: 'The scientific service restarted before this scan finished; saved results are partial. Start a new search to scan the full collection.' };
+    }
+    jobs.set(job.id, job);
+  }
+  // Populate the map before checkpointing so disk-budget evictions cannot be
+  // accidentally resurrected from an earlier startup snapshot.
+  for (const job of [...jobs.values()]) if (job.error?.code === 'LINK_FRAGMENTS_INTERRUPTED') checkpoint(job, true);
+  sweep();
 
   function spawn(slot) {
     if (closed) return;
@@ -164,11 +236,13 @@ export function createJobManager({
     for (const job of finished) {
       const ownerCount = (perOwner.get(job.owner) || 0) + 1;
       perOwner.set(job.owner, ownerCount);
-      if (now - job.finishedMs > ttlMs || ownerCount > retainPerOwner || ++kept > retainTotal) jobs.delete(job.id);
+      if (now - job.finishedMs > ttlMs || ownerCount > retainPerOwner || ++kept > retainTotal) { jobs.delete(job.id); store?.remove(job.id); }
     }
   }
   function publishThreshold(job) {
-    const value = job.top.size >= job.top.limit ? encodeThreshold(job.top.worst().rmsd) : NO_THRESHOLD;
+    // Receptor ranking can admit a worse-RMSD pose with fewer clashes. An RMSD
+    // threshold would exclude that pose and silently corrupt the retained set.
+    const value = !job.receptor && job.top.size >= job.top.limit ? encodeThreshold(job.top.worst().rmsd) : NO_THRESHOLD;
     Atomics.store(job.threshold, 0, value);
   }
   function snapshotCounts(job) {
@@ -185,7 +259,14 @@ export function createJobManager({
     snapshotCounts(job);
     job.distinctProducts = job.matchCounts.size;
     job.matchCounts = null;
-    job.input.sdf = null;
+    // The parsed spatial index can be much larger than the raw PDB. Terminal
+    // history needs the input and measured scores, not a dormant search index.
+    job.receptor = null;
+    // Retain the uploaded query and receptor for owner-scoped history restoration.
+    try { checkpoint(job, true); } catch {
+      job.state = 'failed';
+      job.error = { code: 'LINK_FRAGMENTS_HISTORY_FAILED', message: 'Saving this search failed; the scan is partial and its history may be unavailable after restart.' };
+    }
     if (running === job) running = null;
     const index = queue.indexOf(job);
     if (index >= 0) queue.splice(index, 1);
@@ -206,6 +287,7 @@ export function createJobManager({
     job.lastRowid = stats.last ?? 0;
     job.timer = setTimeout(() => stop(job, 'failed', { code: 'LINK_FRAGMENTS_TIME_LIMIT', message: 'The scan exceeded its wall-time limit; results are partial.' }), maxJobMs);
     job.timer.unref?.();
+    checkpoint(job, true);
     running = job;
   }
   function nextChunk(job) {
@@ -238,7 +320,7 @@ export function createJobManager({
         job.inFlight++;
         record.worker.postMessage({
           type: 'chunk', jobId: job.id, chunkId: record.task.id, ...chunk, lo: job.window.lo, hi: job.window.hi,
-          sdf: job.input.sdf, attachments: job.input.attachments, maxRmsd: job.input.maxRmsd,
+          receptor: job.receptor, sdf: job.input.sdf, attachments: job.input.attachments, maxRmsd: job.input.maxRmsd,
           cancel: job.cancel.buffer, threshold: job.threshold.buffer,
         });
       }
@@ -258,6 +340,7 @@ export function createJobManager({
     // from matchCounts: conformerMatches and distinctProducts become lower bounds.
     if (message.deferredPlacements) job.matchCountsExact = false;
     if (mergeProducts(job, message.products, matchCountLimit)) publishThreshold(job);
+    checkpoint(job);
   }
   function onMessage(record, message) {
     if (message?.type !== 'flush') return;
@@ -277,7 +360,7 @@ export function createJobManager({
     return {
       id: job.id, state: job.state, complete, partial: !complete,
       createdAt: job.createdAt, startedAt: job.startedAt, finishedAt: job.finishedAt,
-      query: { attachments: job.input.attachments, maxRmsd: job.input.maxRmsd, limit: job.input.limit, distance: job.distance },
+      query: { attachments: job.input.attachments, maxRmsd: job.input.maxRmsd, limit: job.input.limit, distance: job.distance, receptorReport: job.input.receptorReport || null },
       progress: {
         totalPairs: job.totalPairs, examinedPairs: job.examinedPairs,
         fraction: job.totalPairs ? job.examinedPairs / job.totalPairs : complete ? 1 : 0,
@@ -299,14 +382,15 @@ export function createJobManager({
     linkerAtoms: entry.detail.linkerAtoms, rmsd: entry.rmsd, minimumNonbondedRadiusRatio: entry.ratio,
     smiles: entry.smiles, heavyAtoms: entry.detail.heavyAtoms,
     conformerMatches: conformerMatchesOf(job.matchCounts, entry),
-    refined: Boolean(entry.refinement),
+    refined: Boolean(entry.refinement), receptor: entry.receptor || null,
   });
   const owned = (owner, id) => { sweep(); const job = jobs.get(id); return job && job.owner === owner ? job : null; };
 
   return {
     /** Throws {status, code, message[, jobId]} for queue refusals: LINK_FRAGMENTS_OWNER_BUSY
      * (with the owner's active job id) or LINK_FRAGMENTS_QUEUE_FULL (global queue). prepared is a successful prepareQuery result. */
-    submit(owner, { sdf, attachments, maxRmsd, limit }, prepared) {
+    submit(owner, input, prepared) {
+      const { sdf, attachments, maxRmsd, limit } = input;
       if (closed) throw Object.assign(new Error('Service is closing.'), { status: 503, code: 'LINK_FRAGMENTS_UNAVAILABLE' });
       sweep();
       const active = [...jobs.values()].find((job) => job.owner === owner && !job.finishedAt);
@@ -317,12 +401,13 @@ export function createJobManager({
       const window = distanceWindow(prepared, maxRmsd);
       const job = {
         id: randomUUID(), owner, state: 'queued', createdAt: new Date().toISOString(), startedAt: null, finishedAt: null, finishedMs: 0,
-        input: { sdf, attachments, maxRmsd, limit }, distance: prepared.distance, window: { lo: window.lo, hi: window.hi },
+        input: { ...input, sdf, attachments, maxRmsd, limit }, receptor: prepared.receptor || null, distance: prepared.distance, window: { lo: window.lo, hi: window.hi },
         totalPairs: null, examinedPairs: 0, conformersExamined: 0, validPlacements: 0, error: null,
         top: new TopProducts(limit), matchCounts: new Map(), matchCountsExact: true, inFlight: 0,
         cancel: new Int32Array(new SharedArrayBuffer(4)), threshold: new Int32Array(new SharedArrayBuffer(4)),
       };
       Atomics.store(job.threshold, 0, NO_THRESHOLD);
+      checkpoint(job, true);
       jobs.set(job.id, job);
       queue.push(job);
       pump();
@@ -332,9 +417,9 @@ export function createJobManager({
       sweep();
       return [...jobs.values()].filter((job) => job.owner === owner).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(summary);
     },
-    get(owner, id) {
+    get(owner, id, { includeInput = true } = {}) {
       const job = owned(owner, id);
-      return job && { ...summary(job), results: job.top.entries.map((entry, index) => resultSummary(job, entry, index)) };
+      return job && { ...summary(job), ...(includeInput ? { input: job.input } : {}), results: job.top.entries.map((entry, index) => resultSummary(job, entry, index)) };
     },
     cancel(owner, id) {
       const job = owned(owner, id);
@@ -348,17 +433,41 @@ export function createJobManager({
       const index = job ? job.top.entries.findIndex((entry) => entry.id === resultIdValue) : -1;
       return index < 0 ? null : { job, entry: job.top.entries[index], index };
     },
+    /** Persist only successful refinements, keeping owner checks inside the manager. */
+    recordRefinement(owner, id, resultIdValue, refinement, input = null) {
+      const job = owned(owner, id);
+      const entry = job?.top.entries.find((value) => value.id === resultIdValue);
+      if (!entry || !refinement?.ok) return false;
+      const previous = entry.refinement, previousInput = entry.refinementInput;
+      entry.refinement = refinement;
+      entry.refinementInput = input;
+      if (input?.receptorPdb) {
+        if (input.receptorPdb === job.input.receptorPdb) entry.refinementInput = { ...input, receptorPdb: null, receptorFromJob: true };
+        else {
+          const receptorKey = createHash('sha256').update(input.receptorPdb).digest('hex');
+          job.refinementReceptors ||= {}; job.refinementReceptors[receptorKey] = input.receptorPdb;
+          entry.refinementInput = { ...input, receptorPdb: null, receptorKey };
+        }
+      }
+      try { checkpoint(job, true); } catch (error) { entry.refinement = previous; entry.refinementInput = previousInput; pruneRefinementReceptors(job); throw error; }
+      return true;
+    },
     resultDetail(job, entry, index) {
       const { sdf, sourceAtomMappings, removedHydrogens, attachments, fixedAtoms, fragmentAtomCount, method } = entry.detail;
-      return { ...resultSummary(job, entry, index), sdf, sourceAtomMappings, removedHydrogens, attachments, fixedAtoms, fragmentAtomCount, method, refinement: entry.refinement };
+      return { ...resultSummary(job, entry, index), sdf, sourceAtomMappings, removedHydrogens, attachments, fixedAtoms, fragmentAtomCount, method, refinement: entry.refinement, refinementInput: entry.refinementInput ? { ...entry.refinementInput, receptorPdb: entry.refinementInput.receptorFromJob ? job.input.receptorPdb : entry.refinementInput.receptorKey ? job.refinementReceptors[entry.refinementInput.receptorKey] : entry.refinementInput.receptorPdb } : null };
     },
     stats() {
       return { running: running ? 1 : 0, queued: queue.length, workers: pool.filter((record) => record?.alive).length };
     },
     async close() {
+      if (closed) return;
       closed = true;
-      for (const job of jobs.values()) clearTimeout(job.timer);
+      for (const job of jobs.values()) {
+        clearTimeout(job.timer);
+        if (!job.finishedAt) stop(job, 'failed', { code: 'LINK_FRAGMENTS_INTERRUPTED', message: 'The scientific service stopped before this scan finished; saved results are partial.' });
+      }
       await Promise.all(pool.map((record) => { if (!record) return null; record.alive = false; return record.worker.terminate().catch(() => {}); }));
+      store?.close();
     },
   };
 }

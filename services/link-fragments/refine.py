@@ -169,7 +169,7 @@ def parse_pdb(text):
         if residue.upper() in WATERS:
             waters += 1
             continue
-        if element in ('H', 'D'):
+        if element in ('H', 'D', 'T'):
             hydrogens += 1
             continue
         if record == 'HETATM':

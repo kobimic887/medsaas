@@ -4,7 +4,9 @@ import { parseSdf } from '../../services/link-fragments/sdf.mjs';
 
 const MAX_SDF_BYTES = 800000;
 const MAX_RECEPTOR_BYTES = 5 * 1024 * 1024;
-const MAX_UPSTREAM_BYTES = 4000000;
+// A saved job may include its <=5 MB receptor and <=800 KB query, in addition
+// to bounded result summaries. Keep the relay bounded without dropping history.
+const MAX_UPSTREAM_BYTES = 8 * 1024 * 1024;
 // refine must exceed the service's Python child limit (90 s) and stay below the
 // browser's REFINE_REQUEST_TIMEOUT_MS (150 s) so a timeout arrives as a coded answer.
 export const LINK_FRAGMENTS_TIMEOUTS = Object.freeze({ status: 5000, inspect: 20000, jobs: 20000, refine: 140000 });
@@ -61,6 +63,10 @@ const queryFragments = sdf => {
   return fragments;
 };
 const isHydrogen = atom => ['H', 'D', 'T'].includes(atom?.element);
+const receptorInput = value => {
+  if (typeof value !== 'string' || !value.trim() || Buffer.byteLength(value, 'utf8') > MAX_RECEPTOR_BYTES) throw new InputError('The receptor must be a non-empty PDB text of at most 5 MB.');
+  return value;
+};
 const bondedHydrogens = (fragment, index) => fragment.bonds.flatMap(b => b.a === index ? [b.b] : b.b === index ? [b.a] : []).filter(j => isHydrogen(fragment.atoms[j])).map(j => j + 1).sort((a, b) => a - b);
 
 // Selections keep original atom numbering: an integer (implicit H preferred,
@@ -175,16 +181,22 @@ export function createLinkFragmentsRouter({ baseUrl = '', fetchImpl = fetch } = 
     }));
     return { status: 200, body: { fragments: merged, eligibility: checked ? 'checked' : 'unavailable', ...(checked ? {} : { eligibilityError }) } };
   }));
+  router.post('/receptor/inspect', requireOwner, handle((req, res) => {
+    const sdf = req.body?.sdf;
+    queryFragments(sdf);
+    const receptorPdb = receptorInput(req.body?.receptorPdb);
+    return call(req, res, '/receptor/inspect', { body: { sdf, receptorPdb }, timeout: TIMEOUTS.inspect });
+  }));
   router.post('/jobs', requireOwner, handle((req, res) => {
-    const { sdf, maxRmsd = 0.75, limit = 20 } = req.body || {};
+    const { sdf, maxRmsd = 0.75, limit = 20, receptorPdb } = req.body || {};
     const fragments = queryFragments(sdf);
     const attachments = attachmentSelections(req.body?.attachments, fragments);
     if (typeof maxRmsd !== 'number' || !Number.isFinite(maxRmsd) || maxRmsd < 0.1 || maxRmsd > 1) throw new InputError('Maximum attachment fit RMSD must be between 0.1 and 1 Å.');
     if (!Number.isInteger(limit) || limit < 1 || limit > 50) throw new InputError('Keep between 1 and 50 products.');
-    return call(req, res, '/jobs', { body: { sdf, attachments, maxRmsd, limit } });
+    return call(req, res, '/jobs', { body: { sdf, attachments, maxRmsd, limit, ...(receptorPdb != null ? { receptorPdb: receptorInput(receptorPdb) } : {}) } });
   }));
   router.get('/jobs', requireOwner, handle((req, res) => call(req, res, '/jobs')));
-  router.get('/jobs/:id', requireOwner, handle((req, res) => call(req, res, jobPath(req))));
+  router.get('/jobs/:id', requireOwner, handle((req, res) => call(req, res, jobPath(req) + (req.query.input === '0' ? '?input=0' : ''))));
   router.post('/jobs/:id/cancel', requireOwner, handle((req, res) => call(req, res, `${jobPath(req)}/cancel`, { method: 'POST', body: {} })));
   router.get('/jobs/:id/results/:resultId', requireOwner, handle((req, res) => call(req, res, resultPath(req))));
   router.post('/jobs/:id/results/:resultId/refine', requireOwner, handle((req, res) => {

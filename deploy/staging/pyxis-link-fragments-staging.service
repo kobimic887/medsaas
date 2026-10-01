@@ -8,6 +8,8 @@ User=ubuntu
 WorkingDirectory=/home/ubuntu/projects/medsaas
 Environment=PORT=8374
 Environment=LINKER_INDEX_PATH=/home/ubuntu/.local/share/pyxis/link-fragments-20260929/linkers.sqlite
+# Private history stays outside versioned source releases and the immutable index.
+Environment=LINK_FRAGMENTS_JOBS_PATH=/home/ubuntu/.local/share/pyxis/link-fragments-20260929/jobs.sqlite
 Environment=LINK_FRAGMENTS_WORKERS=2
 Environment=LINK_FRAGMENTS_MAX_JOB_SECONDS=21600
 Environment=LINK_FRAGMENTS_PYTHON=/usr/bin/python3

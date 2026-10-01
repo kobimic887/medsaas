@@ -8,7 +8,7 @@ import { parentPort, workerData } from 'node:worker_threads';
 import { inflateSync } from 'node:zlib';
 import { Database } from 'bun:sqlite';
 import { prepareQuery, linkerDescriptor, fitAndJoin } from './engine.mjs';
-import { deferAboveOf } from './jobs.mjs';
+import { deferAboveOf, comparePlacements } from './jobs.mjs';
 import * as sdfModule from './sdf.mjs';
 
 const db = new Database(workerData.indexPath, { readonly: true });
@@ -26,7 +26,7 @@ function detailFor(fit, linkerId, conformerId, pair) {
   return {
     sdf, linkerAtoms: fit.selectedLabels, indexPair: pair, heavyAtoms: fit.descriptors?.NumHeavyAtoms ?? null,
     sourceAtomMappings: fit.sourceAtomMappings ?? null, removedHydrogens: fit.removedHydrogens ?? [], attachments: fit.attachments ?? null,
-    fixedAtoms: fit.fixedAtoms ?? null, fragmentAtomCount: fit.fragmentAtomCount ?? null, method: fit.method,
+    receptor: fit.receptor ?? null, fixedAtoms: fit.fixedAtoms ?? null, fragmentAtomCount: fit.fragmentAtomCount ?? null, method: fit.method,
   };
 }
 
@@ -34,6 +34,7 @@ async function runChunk(task) {
   if (current?.jobId !== task.jobId) {
     const prepared = await prepareQuery(task.sdf, task.attachments);
     if (!prepared.ok) throw new Error(prepared.errors?.[0]?.message || 'Query could not be prepared.');
+    if (task.receptor) prepared.receptor = task.receptor;
     current = { jobId: task.jobId, prepared };
   }
   const cancel = new Int32Array(task.cancel);
@@ -62,19 +63,19 @@ async function runChunk(task) {
       const pair = [rows[i].a, rows[i].b];
       // An invalid descriptor still counts as examined: its pairs cannot be accepted.
       // Read per pair: the threshold only decreases, so a stale value defers less.
-      const deferAbove = deferAboveOf(Atomics.load(threshold, 0));
+      const deferAbove = task.receptor ? Infinity : deferAboveOf(Atomics.load(threshold, 0));
       const fit = descriptor.ok ? await fitAndJoin(current.prepared, descriptor, { pair, maxRmsd: task.maxRmsd, deferAbove }) : null;
       examinedPairs++;
       if (!fit?.ok) continue;
       validPlacements++;
       // Valid, but cannot enter the top-K: no SMILES, so conformerMatches is a lower bound.
       if (fit.deferred) { deferredPlacements++; continue; }
-      const placement = { smiles: fit.smiles, rmsd: fit.rmsd, ratio: fit.minimumNonbondedRadiusRatio, conformerId, linkerId: record.linker_id, pair };
+      const placement = { smiles: fit.smiles, rmsd: fit.rmsd, ratio: fit.minimumNonbondedRadiusRatio, receptor: fit.receptor, conformerId, linkerId: record.linker_id, pair };
       const known = products.get(fit.smiles);
       if (!seen.has(fit.smiles)) { seen.add(fit.smiles); if (known) known.conformers++; }
-      if (known && !(placement.rmsd < known.rmsd || (placement.rmsd === known.rmsd && (placement.ratio ?? Infinity) > (known.ratio ?? Infinity)))) continue;
+      if (known && comparePlacements(placement, known) >= 0) continue;
       // Threshold only decreases; a stale read is looser, never unsafe.
-      const eligible = Math.floor(fit.rmsd * 1e9) <= Atomics.load(threshold, 0);
+      const eligible = task.receptor || Math.floor(fit.rmsd * 1e9) <= Atomics.load(threshold, 0);
       products.set(fit.smiles, { ...placement, conformers: known ? known.conformers : 1, detail: eligible ? detailFor(fit, record.linker_id, conformerId, pair) : null });
     }
     conformersExamined++;

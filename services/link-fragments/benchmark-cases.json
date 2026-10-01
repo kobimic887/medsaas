@@ -1,0 +1,14 @@
+{
+  "description": "Anna's supplied September 29 two-fragment reference. A graph regression, not evidence of MOE protocol parity.",
+  "moeProtocol": null,
+  "cases": [
+    {
+      "id": "anna-7WH5-atom1-atom1",
+      "query": "fixtures/query.sdf",
+      "linker": "fixtures/linker.sdf",
+      "expectedProduct": "fixtures/result.sdf",
+      "attachments": [1, 1],
+      "maxRmsd": 0.75
+    }
+  ]
+}
