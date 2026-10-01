@@ -70,6 +70,18 @@ New or failed searches clear old results and disable stale pagination. The
 separate Deep Similarity page can scope searches through its dataset picker;
 it is not a replacement for Simulation's stock workflow.
 
+## Static structure images
+
+[`render-structure-images.py`](../scripts/render-structure-images.py) pre-renders
+RDKit SVGs (300×150) for CDN hosting. Each file is named by the SHA-256 of the
+exact `canonical_smiles` string the search engine returns —
+`<sha[0:2]>/<sha[2:4]>/<sha>.svg` — not the source file's `mol` column and not a
+stock code. A missing image must fall back to browser RDKit rendering; never file
+a picture under a different SMILES spelling. Export the engine strings with
+`\copy (select id, metadata->>'MAIN_BAS', canonical_smiles from molecules where
+dataset_id = <stock id>) to stdout` and keep the generated images outside Git.
+Hosting and client lookup are not wired up yet.
+
 ## Import and verification
 
 [`import-stock-compounds.mjs`](../scripts/import-stock-compounds.mjs) accepts the
