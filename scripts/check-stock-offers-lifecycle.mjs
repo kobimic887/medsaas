@@ -17,7 +17,7 @@ check('source picker and default contain no supplier catalog', simulation.includ
 check('stock rows use their server-owned offer', stockTable.includes('<CompoundShopPacks offer={mol.shopOffer}'));
 check('macrocycle rows use their server-owned offer', macroTable.includes('<CompoundShopPacks offer={mol.shopOffer}'));
 check('page never requests stock offers', !simulation.includes('/stock-offers'));
-check('shop discloses approved tier and review step', simulation.includes('Workbook 1–3 selected tier') && simulation.includes('Review your order and shipping terms'));
+check('shop discloses approved tier and review step', simulation.includes('Workbook 1–3 tier') && simulation.includes('review shipping and terms in the cart'));
 // Independently transcribed from Sheet1, approved 1–3 tier only.
 for (const [source, code, category, column, euros, firstUsd] of [
   ['stock', 'BAS 123', 'Other codes', 'C', [170, 194, 218, 242, 302, 350, 434, 584], '$193.24'],

@@ -23,7 +23,7 @@ import { CompoundDescriptorCells } from '@/components/CompoundDescriptorCells';
 import { MoleculePreviewTooltip, useStructurePreview } from '@/components/MoleculePreview';
 import { convertPriceToEuro, formatPrice } from '@/utils/algo/algo';
 import { withAppBase } from "@/utils/appEnv";
-import { addShopPack, readShopCart, shopMoney, writeShopCart } from '@/utils/compoundShop';
+import { addShopPack, cartLineKey, isOwnedCartItem, readShopCart, shopMoney, writeShopCart } from '@/utils/compoundShop';
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 import { copyToClipboard } from '@/utils/copyToClipboard';
 import { appendUniqueMacrocycleRows, macrocycleResultsFromPayload } from '@/utils/macrocycleResults';
@@ -36,6 +36,16 @@ const MACROCYCLE_SOURCES = Object.freeze({
   both: { label: 'Macrocycles', count: 2368630 },
   real: { label: 'Real macrocycles', count: 18190 },
   virtual: { label: 'Virtual macrocycles', count: 2350440 },
+});
+
+// One short line per collection so the header never describes a source the
+// researcher is not searching (the macrocycle line used to show for stock).
+const SOURCE_BLURBS = Object.freeze({
+  stock: 'Search owned screening stock by structure.',
+  both: 'Search real and virtual macrocycles together, or filter that collection below.',
+  real: 'Search the real macrocycle stock.',
+  virtual: 'Search the virtual macrocycle designs.',
+  open: 'Discover related structures in the open ChEMBL collection.',
 });
 
 // Local mirror of the server allowlist labels (docs/DATA-STOCK-COMPOUNDS.md).
@@ -88,8 +98,17 @@ function CompoundQueryField({ value, onChange, catalog }) {
 function CompoundShopPacks({ offer, onAdded }) {
   const [amountMg, setAmountMg] = useState('');
   const [error, setError] = useState('');
+  const [addCount, setAddCount] = useState(0);
+  const [justAdded, setJustAdded] = useState(false);
   const packs = offer?.packs || [];
   const selected = packs.find((pack) => String(pack.mg) === amountMg) || packs[0];
+  // Flash the button after each successful add; re-adding restarts the flash.
+  useEffect(() => {
+    if (!addCount) return undefined;
+    setJustAdded(true);
+    const timer = setTimeout(() => setJustAdded(false), 2200);
+    return () => clearTimeout(timer);
+  }, [addCount]);
   if (!offer?.token || !selected) return <span className="text-xs text-blue-gray-500">No purchase offer available</span>;
   return (
     <div className="min-w-[13rem] space-y-2 text-xs tabular-nums">
@@ -101,12 +120,16 @@ function CompoundShopPacks({ offer, onAdded }) {
       <div>€{selected.eur} EUR · <strong>{shopMoney(selected.unitAmountCents)} USD</strong></div>
       <button type="button" className="rounded-lg bg-teal-700 px-3 py-2 font-semibold text-white hover:bg-teal-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-500" onClick={() => {
         try {
-          writeShopCart(localStorage, addShopPack(readShopCart(localStorage), offer, selected.mg));
+          const nextItems = addShopPack(readShopCart(localStorage), offer, selected.mg);
+          writeShopCart(localStorage, nextItems);
           window.dispatchEvent(new Event('cartUpdated'));
           setError('');
-          onAdded(`Added ${selected.mg} mg of ${offer.code} to cart`);
+          setAddCount((count) => count + 1);
+          const line = nextItems.find((item) => isOwnedCartItem(item) && cartLineKey(item) === `${offer.source}:${offer.rowId}:${selected.mg}`);
+          const quantity = line?.quantity || 1;
+          onAdded(quantity > 1 ? `Added another ${selected.mg} mg pack of ${offer.code} — ${quantity} in cart` : `Added ${selected.mg} mg of ${offer.code} to cart`);
         } catch (error) { setError(error.message); }
-      }}>Add to cart</button>
+      }}>{justAdded ? '✓ Added to cart' : 'Add to cart'}</button>
       {error && <p role="alert" className="max-w-xs text-red-700 dark:text-red-300">{error}</p>}
     </div>
   );
@@ -2070,7 +2093,7 @@ export function Simulation() {
             <p className="text-xs font-semibold uppercase tracking-widest text-brand-600 dark:text-brand-300">Compound search</p>
             <h1 className="text-xl font-semibold text-blue-gray-900 dark:text-slate-50">Pyxis compound catalog</h1>
           </div>
-          <p className="text-xs text-blue-gray-500 dark:text-slate-400">Search real and virtual macrocycles together, or filter that collection below.</p>
+          <p className="text-xs text-blue-gray-500 dark:text-slate-400">{SOURCE_BLURBS[searchSource] || SOURCE_BLURBS.stock}</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-3">
           {[
@@ -2819,7 +2842,7 @@ export function Simulation() {
         </div>
         {['stock', 'both', 'real', 'virtual'].includes(searchSource) && topMolecules.length > 0 && (
           <p className="mb-3 text-xs text-blue-gray-600 dark:text-slate-300">
-            Workbook 1–3 selected tier: choose packs for up to 3 distinct compounds per order. Original EUR and checkout USD prices are shown together. Review your order and shipping terms in the cart before payment.
+            Workbook 1–3 tier: up to 3 distinct compounds per order. Original EUR prices shown beside the fixed USD checkout price; review shipping and terms in the cart.
           </p>
         )}
         <div id="results" className="w-full bg-slate-100 dark:bg-slate-900">
@@ -2840,7 +2863,7 @@ export function Simulation() {
             <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
                 <div className="border-b border-teal-100 bg-teal-50/60 px-4 py-3 text-xs text-blue-gray-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
-                  {MACROCYCLE_SOURCES[searchSource].label} · globally ranked by {macrocycleResultMethodLabel} over Morgan (ECFP4). RPX and VPX rows retain their source; amount and lead time are dated export fields. Formula and MW are calculated locally from the exact SMILES with RDKit. Choose a pack to purchase, or select structures for docking handoff.
+                  {MACROCYCLE_SOURCES[searchSource].label} · globally ranked by {macrocycleResultMethodLabel} over Morgan (ECFP4) · RPX/VPX rows keep their source · export amounts and lead times are dated. Select rows for docking handoff.
                 </div>
                 <table className="w-full min-w-[1080px] table-fixed text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-white dark:bg-slate-900">
@@ -2892,9 +2915,9 @@ export function Simulation() {
             <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
                 <div className="border-b border-blue-gray-100 bg-blue-gray-50/60 px-4 py-2 text-xs text-blue-gray-600 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-400">
-                  Source: stock compounds, ranked by {snapFpLabel} {snapMetricLabel} similarity. µmol / mg and lead time are dated snapshot fields. Formula and MW are calculated locally from the exact SMILES with RDKit. Choose a pack to purchase; row selection is for docking handoff.
+                  Stock compounds · ranked by {snapFpLabel} {snapMetricLabel} similarity · quantities and lead times are dated snapshots. Select rows for docking handoff.
                 </div>
-                <table className="w-full min-w-[1080px] text-left text-sm">
+                <table className="w-full min-w-[960px] text-left text-sm lg:min-w-[1080px]">
                   <thead className="sticky top-0 z-10 bg-white">
                     <tr>
                       <th className="p-2 font-bold bg-white">
@@ -2919,8 +2942,8 @@ export function Simulation() {
                       <th className="p-2 font-bold bg-white">Pack size · price <span className="block text-xs font-normal">EUR / USD</span></th>
                       <th className="p-2 font-bold bg-white">Similarity</th>
                       <th className="p-2 font-bold bg-white">SMILES</th>
-                      <th className="p-2 font-bold bg-white" title="Dated snapshot quantity from the supplier export — not live availability">µmol</th>
-                      <th className="p-2 font-bold bg-white" title="Dated snapshot quantity from the supplier export — not live availability">mg</th>
+                      <th className="hidden p-2 font-bold bg-white lg:table-cell" title="Dated snapshot quantity from the supplier export — not live availability">µmol</th>
+                      <th className="hidden p-2 font-bold bg-white lg:table-cell" title="Dated snapshot quantity from the supplier export — not live availability">mg</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2982,10 +3005,10 @@ export function Simulation() {
                               {(stockSmiles || "N/A").toString().slice(0, moleculeLimit)}{(stockSmiles || "N/A").toString().length > moleculeLimit ? "..." : ""}
                             </button>
                           </td>
-                          <td className="p-2" title={mol.STOCK_UM !== null && mol.STOCK_UM !== undefined ? String(mol.STOCK_UM) : "not in snapshot"}>
+                          <td className="hidden p-2 lg:table-cell" title={mol.STOCK_UM !== null && mol.STOCK_UM !== undefined ? String(mol.STOCK_UM) : "not in snapshot"}>
                             {mol.STOCK_UM !== null && mol.STOCK_UM !== undefined ? formatNumericValue(mol.STOCK_UM) : "—"}
                           </td>
-                          <td className="p-2" title={mol.STOCK_MG !== null && mol.STOCK_MG !== undefined ? String(mol.STOCK_MG) : "not in snapshot"}>
+                          <td className="hidden p-2 lg:table-cell" title={mol.STOCK_MG !== null && mol.STOCK_MG !== undefined ? String(mol.STOCK_MG) : "not in snapshot"}>
                             {mol.STOCK_MG !== null && mol.STOCK_MG !== undefined ? formatNumericValue(mol.STOCK_MG) : "—"}
                           </td>
                         </tr>
@@ -3000,7 +3023,7 @@ export function Simulation() {
               <CardBody className="p-0">
                 <div className="border-b border-indigo-100 bg-indigo-50/60 px-4 py-2 text-xs text-blue-gray-600 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <span>
-                    Source: ChEMBL open compounds. Scores are local RDKit Morgan (r=2, 2048-bit, chirality off) Tanimoto. Not stocked or priced — selection is for docking handoff only. Attribution: ChEMBL / EMBL-EBI.
+                    ChEMBL open compounds · local RDKit Morgan (r=2, 2048-bit, chirality off) Tanimoto · not stocked or priced. Select rows for docking handoff. Attribution: ChEMBL / EMBL-EBI.
                   </span>
                   <div className="flex gap-2 shrink-0">
                     <button
@@ -3329,7 +3352,7 @@ export function Simulation() {
                 {searchSource === "stock"
                   ? isSearchActive
                     ? `No stock compounds matched this structure at the current ${stockMetricLabel} threshold (${similarityThreshold.toFixed(1)}) with ${stockFpLabel}. Lower the similarity threshold or try another molecule.`
-                    : "Search the stock list: choose fingerprint and metric, enter a SMILES or draw a molecule, then select Search."
+                    : "Search stock compounds: enter a SMILES or draw a molecule, then select Search."
                   : MACROCYCLE_SOURCES[searchSource]
                     ? isSearchActive
                       ? `No ${MACROCYCLE_SOURCES[searchSource].label.toLowerCase()} matched at this threshold. Lower it or try another structure.`

@@ -279,7 +279,7 @@ checks.push(
   ['open threshold floor is 0.4', simulation.includes('searchSource === "open" ? "0.4"') && simulation.includes('Math.max(0.4, value)')],
   ['open export uses authenticated export route', simulation.includes("/open-compounds/export")],
   ['open empty/error states are distinct', simulation.includes('No open compounds matched this structure')],
-  ['open rows never claim purchase/stock', simulation.includes('Not stocked or priced')],
+  ['open rows never claim purchase/stock', simulation.includes('not stocked or priced. Select rows for docking handoff.')],
   ['explicit Search without AI control exists', simulation.includes('Search without AI')],
   ['AI failure does not pretend deterministic search ran', simulation.includes('did not silently run that path')],
 );
@@ -295,8 +295,10 @@ checks.push(
   ['macrocycle status clamps the metric to what the dataset can score', simulation.includes('countMetricsAvailable') && simulation.includes("macrocycleSimilarityMetricRef.current = 'tanimoto'")],
   ['macrocycle result banner reports the method that produced the rows', simulation.includes('macrocycleResultMethodLabel') && simulation.includes('macrocycleMetricLabel')],
   ['macrocycle count copy never claims MOE equivalence', simulation.includes('a Pyxis method, not MOE ctanimoto')],
-  ['macrocycle rows retain source identity and docking handoff alongside owned offers', simulation.includes('select structures for docking handoff.') && simulation.includes('CompoundShopPacks offer={mol.shopOffer}') && simulation.includes('Real RPX') && simulation.includes('Virtual VPX')],
-  ['owned rows show server offers and the approved workbook tier', simulation.includes('CompoundShopPacks offer={mol.shopOffer}') && simulation.includes('Workbook 1–3 selected tier') && simulation.includes('Review your order and shipping terms')],
+  ['macrocycle rows retain source identity and docking handoff alongside owned offers', simulation.includes('Select rows for docking handoff.') && simulation.includes('CompoundShopPacks offer={mol.shopOffer}') && simulation.includes('Real RPX') && simulation.includes('Virtual VPX')],
+  ['owned rows show server offers and the approved workbook tier', simulation.includes('CompoundShopPacks offer={mol.shopOffer}') && simulation.includes('Workbook 1–3 tier') && simulation.includes('review shipping and terms in the cart')],
+  ['header blurb follows the selected collection', simulation.includes('SOURCE_BLURBS[searchSource]') && simulation.includes('Search owned screening stock by structure.')],
+  ['stock pack add confirms locally and counts repeats', simulation.includes("{justAdded ? '✓ Added to cart' : 'Add to cart'}") && simulation.includes('Added another ${selected.mg} mg pack of ${offer.code}')],
   ['query and results are adjacent columns with a wider query panel', simulation.includes('lg:grid-cols-[minmax(25rem,29rem)_minmax(0,1fr)]') && simulation.includes('aria-labelledby="results-heading"')],
   ['results offer explicit pagination in the two-column layout', simulation.includes('Load more results')],
 );
