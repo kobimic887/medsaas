@@ -169,7 +169,7 @@ assert(page.includes('file.size > MAX_SDF_BYTES') && page.includes('file.size > 
 assert(page.includes('not equivalent to MOE refinement') && page.includes('does not estimate binding affinity or synthesis feasibility'), 'refinement disclaimer is visible');
 assert(page.includes('all uploaded fragment atoms (heavy atoms and uploaded explicit hydrogens) held fixed') && !page.includes('uploaded fragment heavy atoms held fixed'), 'refinement text names every fixed uploaded atom');
 assert(page.includes('A search covers replacement of the selected hydrogen only.'), 'attachment scope is stated near the selectors');
-assert(!page.includes('upload the SDF again') && page.includes('Saved searches') && page.includes('/dashboard/controlpanel#linker-history'), 'saved searches have a persistent Home destination');
+assert(!page.includes('upload the SDF again') && page.includes('Saved searches') && page.includes('/dashboard/controlpanel#linker-history'), 'saved searches have a persistent History destination');
 const receptorInput = page.indexOf('accept=".pdb,chemical/x-pdb"');
 assert(receptorInput > 0 && receptorInput < page.indexOf('id="fragment-results-heading"') && page.split('accept=".pdb,chemical/x-pdb"').length === 2, 'one receptor control, outside the product detail block');
 assert(page.includes('>Remove receptor</button>') && /clearReceptor\(\); \/\/ a receptor belongs to the previous query/.test(page), 'receptor can be removed and a new SDF clears it');

@@ -39,6 +39,10 @@ when a path or trap moves.
   scientific + MCP; `deploy/` host and box.
 - Routes primarily in `server/index.js`; scientific proxies also in
   `server/routes/scientificServices.js`.
+- Home (formerly Simulation) is the login destination at `/dashboard/simulation`.
+  History (formerly Home) stays at `/dashboard/controlpanel`; Scaffolding Hop
+  (formerly Link Fragments) stays at `/dashboard/link-fragments`. Keep these
+  existing URLs for saved links. Use the current labels in user-facing navigation.
 - Simulation sources (catalog, stock, macrocycles, open compounds), pricing and
   checkout: read [the search/checkout contract](.agents/skills/pyxis-feature-slice/references/search-and-checkout.md)
   before changing these flows. Stock/RPX/VPX purchase through signed Pyxis offers
@@ -46,7 +50,7 @@ when a path or trap moves.
   back to another source. Supplier catalog aliases and legacy molecule
   checkout refuse locally with `503 CATALOG_RETIRED`; company overrides cannot
   restore Asinex dependence. Credit-plan checkout remains available. Known
-  Asinex compute URLs are refused without charging; use configured Pyxis services. Stock search belongs in Simulation.
+  Asinex compute URLs are refused without charging; use configured Pyxis services. Stock search belongs in Home (Simulation).
   Structure previews depict exact SMILES with browser RDKit; workbook price displays
   preserve original EUR alongside fixed USD prices (1–3 tier only, at most three
   distinct compounds per order). Shipping is included; Stripe charges immediately.
@@ -71,7 +75,7 @@ when a path or trap moves.
   a separate bounded SQLite database on the scientific host; interrupted scans
   restore as failed/partial, never complete. MMFF94/UFF refinement keeps uploaded atoms
   fixed and is not MOE refinement, affinity or synthesis scoring. Assembled
-  products are discovery-only. Home owns saved Linker searches; query deep links
+  products are discovery-only. History owns saved Linker searches; query deep links
   reopen that exact job. Active scans allow provisional previews; exports and
   refinement require a retained result and a server-confirmed terminal state,
   never a local polling failure. Ship `services/link-fragments/sdf.mjs` with the

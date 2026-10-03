@@ -112,7 +112,7 @@ export function SignIn() {
         if (!loginResult.success) {
           throw new Error(loginResult.error || "Login failed");
         }
-        navigate("/dashboard/controlpanel");
+        navigate("/dashboard/simulation");
       } else {
         setError("Invalid credentials");
       }
@@ -146,7 +146,7 @@ export function SignIn() {
       if (!res.ok) throw new Error(data.error || "The demo is unavailable right now");
       const loginResult = login(data.user, data.token);
       if (!loginResult.success) throw new Error(loginResult.error || "Login failed");
-      navigate("/dashboard/controlpanel");
+      navigate("/dashboard/simulation");
     } catch (err) {
       if (err.name === 'AbortError') {
         if (requestTimedOutRef.current) setError("Request timed out. Please try again.");

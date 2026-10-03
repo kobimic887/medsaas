@@ -1,4 +1,4 @@
-# Link Fragments
+# Scaffolding Hop (Link Fragments)
 
 Link Fragments searches the owned 3D macrocyclic linker library supplied for the
 website. Linkers are molecular skeletons, not catalog products. A result does not
@@ -6,7 +6,7 @@ create a stock offer, enter a cart or establish synthesis availability.
 
 ## Input and use
 
-1. Open **Link Fragments** in the dashboard.
+1. Open **Scaffolding Hop** in the dashboard (`/dashboard/link-fragments`).
 2. Upload a V2000 SDF containing exactly two connected molecular records, both
    marked `3D`, in the same coordinate frame. Maximum 800,000 bytes and 200 atoms
    per fragment. Atom numbers are the one-based positions in each uploaded record,
@@ -34,7 +34,7 @@ create a stock offer, enter a cart or establish synthesis availability.
    after the service finishes or stops the scan; a stopped scan remains partial.
    Completion freezes the search ranking and does not automatically refine any
    product. Refinement is a separate operation on the selected candidate.
-9. Open **Home → Linker searches** to restore original inputs, attachment selections,
+9. Open **History → Linker searches** to restore original inputs, attachment selections,
    receptor, results and successful refinements. Links use
    `/dashboard/link-fragments?job=<id>` and never substitute another job if it is
    unavailable. A fresh query page resumes an active scan but does not automatically

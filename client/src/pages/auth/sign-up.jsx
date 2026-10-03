@@ -76,7 +76,7 @@ export function SignUp() {
         if (!loginResult.success) {
           throw new Error(loginResult.error || "Your account was created, but sign-in failed");
         }
-        navigate("/dashboard/controlpanel");
+        navigate("/dashboard/simulation");
         return;
       }
 

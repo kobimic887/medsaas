@@ -134,7 +134,7 @@ export function MainNavbar() {
               </MenuHandler>
               <MenuList className="bg-white dark:border dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100">
                 <MenuItem className="dark:hover:bg-slate-800">
-                  <Link to="/dashboard/controlpanel" className="w-full">
+                  <Link to="/dashboard/simulation" className="w-full">
                     Dashboard
                   </Link>
                 </MenuItem>
@@ -216,7 +216,7 @@ export function MainNavbar() {
           {isLoggedIn() ? (
             <>
               <Link
-                to="/dashboard/controlpanel"
+                to="/dashboard/simulation"
                 onClick={() => setMobileOpen(false)}
                 className={`block rounded-lg px-3 py-2 text-sm font-semibold no-underline ${
                   isLandingPage ? "text-brand-300" : "text-brand-700 dark:text-brand-300"

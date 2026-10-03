@@ -1,5 +1,6 @@
 import {
   HomeIcon,
+  ClockIcon,
   InformationCircleIcon,
   ServerStackIcon,
   BeakerIcon,
@@ -50,8 +51,6 @@ const Blog = lazy(() => import("@/pages/main/blog"));
 const SignIn = lazy(() => import("@/pages/auth/sign-in"));
 const SignUp = lazy(() => import("@/pages/auth/sign-up"));
 const PaidPlans = lazy(() => import("@/pages/dashboard/paidplans"));
-
-import { EyeIcon } from "@heroicons/react/24/outline";
 
 const icon = {
   className: "w-5 h-5 text-inherit",
@@ -118,20 +117,20 @@ export const routes = [
     pages: [      {
         icon: <HomeIcon {...icon} />,
         name: "home",
+        path: "/simulation",
+        element: <Simulation />,
+      },
+      {
+        icon: <ClockIcon {...icon} />,
+        name: "history",
         path: "/controlpanel",
         element: <ControlPanel />,
       },
       {
         icon: <Square2StackIcon {...icon} />,
-        name: "Link Fragments",
+        name: "Scaffolding Hop",
         path: "/link-fragments",
         element: <LinkFragments />,
-      },
-      {
-        icon: <EyeIcon {...icon} />,
-        name: "simulation",
-        path: "/simulation",
-        element: <Simulation />,
       },
             {
         icon: <CubeTransparentIcon {...icon} />,

@@ -379,7 +379,7 @@ export function ControlPanel() {
                     <tr>
                       <td colSpan="8" className="py-8 text-center">
                         <Typography variant="small" color="gray" className="text-sm">
-                          No simulation runs yet — run one from Simulation to see its history here.
+                          No simulation runs yet — run one from Home to see its history here.
                         </Typography>
                       </td>
                     </tr>

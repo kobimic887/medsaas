@@ -258,7 +258,7 @@ export function CompanyAdmin() {
   }
 
   if (!canManageCompany) {
-    return <Navigate to="/dashboard/controlpanel" replace />;
+    return <Navigate to="/dashboard/simulation" replace />;
   }
 
   const replacePendingLogoPreview = (file) => {

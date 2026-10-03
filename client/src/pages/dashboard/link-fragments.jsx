@@ -137,7 +137,7 @@ export function LinkFragments() {
     try { const data = await request('status', controller); if (statusRequest.current === controller && !controller.signal.aborted) setStatus(data); }
     catch (failure) { if (statusRequest.current === controller && failure.name !== 'AbortError') { setStatus(null); setStatusError(failure.message); } }
   }
-  // Fresh visits resume only active work. Finished searches open from Home.
+  // Fresh visits resume only active work. Finished searches open from History.
   // preferredId names the scan the service reported as already running.
   async function resumeLatestJob(preferredId) {
     const currentRevision = revision.current;
@@ -398,7 +398,7 @@ export function LinkFragments() {
   return (
     <div className="mx-auto max-w-7xl space-y-6 pb-12">
       <header className="flex flex-wrap items-start justify-between gap-3">
-        <div><h1 className="text-2xl font-bold text-slate-900 dark:text-white">Link Fragments</h1><p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Connect two 3D fragments with a macrocyclic linker.</p></div>
+        <div><h1 className="text-2xl font-bold text-slate-900 dark:text-white">Scaffolding Hop</h1><p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Connect two 3D fragments with a macrocyclic linker.</p></div>
         <div className="flex items-center gap-4"><button type="button" onClick={newQuery} disabled={locked || !!busy} className="text-sm font-semibold text-brand-700 underline disabled:cursor-not-allowed disabled:opacity-50 dark:text-brand-200">New query</button><Link to="/dashboard/controlpanel#linker-history" className="text-sm font-semibold text-brand-700 underline dark:text-brand-200">Saved searches</Link></div>
       </header>
       {(statusError || status?.available === false) && <div role="alert" className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm ${TONES.warning}`}><span>{statusError || 'Linker search is unavailable. You can still inspect your fragments.'}</span><button type="button" className="font-semibold underline" onClick={refreshStatus}>Check again</button></div>}

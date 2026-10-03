@@ -36,7 +36,7 @@ export function Notifications() {
   
   // Informational messages array
   const infoMessages = [
-    "Run docking from the Simulation tab, then inspect every ranked pose in Simulation Results.",
+    "Run docking from the Home tab, then inspect every ranked pose in Simulation Results.",
     "Use Deep Similarity to search the molecular corpus by exact match, similarity, or substructure.",
     "Literature Search queries PubMed without using simulation credits.",
     "Plans & Credits shows available execution-credit options."

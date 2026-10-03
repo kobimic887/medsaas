@@ -36,7 +36,7 @@ function App() {
         />
         <Route
           path="/auth/*"
-          element={isAuthenticated ? <Navigate to="/dashboard/controlpanel" replace /> : <Auth />}
+          element={isAuthenticated ? <Navigate to="/dashboard/simulation" replace /> : <Auth />}
         />
         <Route path="/main/*" element={<MainPage />} />
         {/* Marketing landing lives in this repo (`/main/*`). Public is pyxis-web on

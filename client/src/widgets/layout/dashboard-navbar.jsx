@@ -37,9 +37,10 @@ const NAVBAR_VALIDATE_TIMEOUT_MS = 15_000;
 const CART_FETCH_TIMEOUT_MS = 15_000;
 
 const PAGE_DESTINATIONS = [
+  { label: "Home", path: "/dashboard/simulation" },
+  { label: "History", path: "/dashboard/controlpanel" },
+  { label: "Scaffolding Hop", path: "/dashboard/link-fragments" },
   { label: "Dashboard", path: "/dashboard/dashboardHome" },
-  { label: "Home", path: "/dashboard/controlpanel" },
-  { label: "Simulation", path: "/dashboard/simulation" },
   { label: "Simulation Results", path: "/dashboard/molstar3d" },
   { label: "Molecule Viewer", path: "/dashboard/moleculeviewer" },
   { label: "Generate Molecules", path: "/dashboard/generate-molecules" },
@@ -71,14 +72,15 @@ export function DashboardNavbar() {
   const { pathname } = useLocation();
   const routeSegments = pathname.split("/").filter(Boolean);
   const page = routeSegments.length === 0 || (routeSegments.length === 1 && routeSegments[0] === "dashboard")
-    ? "dashboardHome"
+    ? "simulation"
     : routeSegments[routeSegments.length - 1];
   const pageLabels = {
-    dashboardHome: "Home",
-    controlpanel: "Home",
+    dashboardHome: "Dashboard",
+    controlpanel: "History",
+    "link-fragments": "Scaffolding Hop",
     companyadmin: "Company Admin",
     "company-admin": "Company Admin",
-    simulation: "Simulation",
+    simulation: "Home",
     moleculeviewer: "Molecule Viewer",
     molstar3d: "Molstar 3D",
     literature: "Literature",

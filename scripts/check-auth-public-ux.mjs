@@ -13,6 +13,8 @@ const signIn = read("client/src/pages/auth/sign-in.jsx");
 const signUp = read("client/src/pages/auth/sign-up.jsx");
 const authShell = read("client/src/components/AuthShell.jsx");
 const authLayout = read("client/src/layouts/auth.jsx");
+const app = read("client/src/App.jsx");
+const dashboardLayout = read("client/src/layouts/dashboard.jsx");
 const mainLayout = read("client/src/layouts/mainpage.jsx");
 const clientIndex = read("client/index.html");
 const branding = read("client/src/config/branding.js");
@@ -50,7 +52,10 @@ const checks = [
   ["auth forms expose their busy state", signIn.includes("aria-busy={loading}") && signUp.includes("aria-busy={loading}")],
   ["public navigation exposes maintained sections", ["Services", "About", "Insights", "Plans", "Contact"].every((label) => navbar.includes(`label: "${label}"`))],
   ["mobile navigation identifies its expanded state", navbar.includes("aria-expanded={mobileOpen}") && navbar.includes('aria-controls="main-mobile-navigation"')],
-  ["signed-in mobile users can reach the dashboard", navbar.includes('to="/dashboard/controlpanel"') && navbar.includes("Sign Out")],
+  ["signed-in mobile users can reach Home", navbar.includes('to="/dashboard/simulation"') && navbar.includes("Sign Out")],
+  ["sign-in and demo login both land on Home", (signIn.match(/navigate\("\/dashboard\/simulation"\)/g) || []).length === 2 && !signIn.includes('/dashboard/controlpanel')],
+  ["signup and existing sessions land on Home", signUp.includes('navigate("/dashboard/simulation")') && app.includes('<Navigate to="/dashboard/simulation" replace />')],
+  ["dashboard default and unknown routes land on Home", (dashboardLayout.match(/<Navigate to="simulation" replace \/>/g) || []).length === 2],
   ["legacy blog bookmarks route to maintained Insights", blog.includes('<Navigate to="/main/insights" replace />')],
   ["blog context no longer fabricates published posts", !blogContext.includes("samplePosts") && !blogContext.includes("Welcome to Our Blog")],
   ["public pages do not eagerly initialize RDKit", !clientIndex.includes("window.loadRDKit().then")],

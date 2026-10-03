@@ -14,6 +14,11 @@ Change only the layers needed for the requested outcome; UI-only work can stay
 UI-only when the server contract already supports it. For Simulation sources,
 pricing, basket or checkout, read [search-and-checkout.md](references/search-and-checkout.md).
 
+Navigation names: Home is the former Simulation (`/dashboard/simulation`) and
+the login/default dashboard destination. History is the former Home
+(`/dashboard/controlpanel`). Scaffolding Hop is the former Link Fragments
+(`/dashboard/link-fragments`). Preserve these URLs for saved links.
+
 ## Slice checklist
 
 1. **Outcome** — one user-visible path (e.g. “researcher runs X and sees Y”).
@@ -87,7 +92,7 @@ torsion and result ranking across the full scan (no RMSD-only pruning), and sepa
 search/refinement receptor provenance. Reopen a saved search after service restart;
 completed jobs keep results while interrupted jobs remain partial. History and raw
 uploads stay on the scientific host in a bounded private database, never on 84.
-Linker history appears on Home, independently of the application activity fetch;
+Linker history appears on History, independently of the application activity fetch;
 verify an exact job deep link and an unavailable link without fallback. Downloads
 and refinement unlock only for retained candidates after a server-confirmed stop;
 provisional previews remain available during scans. A fatal polling failure must

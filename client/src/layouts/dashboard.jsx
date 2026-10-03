@@ -109,7 +109,7 @@ function DashboardShell() {
         {/* Main Content */}
         <main id="main-content" className="min-w-0 flex-1 p-4">
           <Routes>
-            <Route index element={<Navigate to="dashboardHome" replace />} />
+            <Route index element={<Navigate to="simulation" replace />} />
             {routes.flatMap(({ layout, pages }) =>
               layout === "dashboard"
                 ? pages.map(({ path, element }) => (
@@ -131,7 +131,7 @@ function DashboardShell() {
                   ))
                 : []
             )}
-            <Route path="*" element={<Navigate to="dashboardHome" replace />} />
+            <Route path="*" element={<Navigate to="simulation" replace />} />
           </Routes>
         </main>
 
