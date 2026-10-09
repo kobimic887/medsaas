@@ -119,6 +119,9 @@ apps' endpoints before release: staging-only approval cannot restart shared scie
 ---
 
 Simulation search regression: execute rejected-query handlers in `test:simulation-search`; prove old rows clear and catalog browsing cannot run in stock/open mode or during a pending search. Open compounds: `bun run test:open-compounds`.
+Result selection must preserve query text. Verify single/all selection and deselection,
+selected-row docking payloads, explicit DiffDock ligand precedence and submitted
+ligand handoff; a new search must remain enabled with several selected results.
 
 Owned stock/RPX/VPX checkout uses signed offers, the shared workbook price book and
 `/api/compound-shop`. Use `test:compound-shop` for pricing, idempotency, verified

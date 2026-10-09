@@ -27,6 +27,11 @@ packs atomically, respect the combined basket's three-compound limit, and open
 Home retains its workspace after the first visit until the authenticated layout
 unmounts. Hidden Home cannot paginate on another page's scroll or navigate to a
 completed docking result; Draw retains its visited iframe and reserves loading space.
+Result checkboxes never replace or clear the editable search query. Docking derives
+its input from selected row identities, falling back to query text only when nothing
+is selected; an explicit DiffDock ligand remains the first choice. DiffDock viewer
+handoff uses the submitted ligand snapshot even if selection/query changes in flight.
+Multiple selections do not disable a new search. Select-all covers loaded rows only.
 
 - **Stock:** authenticated `GET /api/stock-search/status|similarity` uses the
   configured tonomitosql dataset (`STOCK_SEARCH_BASE`, `STOCK_SEARCH_DATASET_ID`

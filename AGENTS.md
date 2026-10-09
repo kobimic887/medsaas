@@ -51,6 +51,8 @@ when a path or trap moves.
   checkout refuse locally with `503 CATALOG_RETIRED`; company overrides cannot
   restore Asinex dependence. Credit-plan checkout remains available. Known
   Asinex compute URLs are refused without charging; use configured Pyxis services. Stock search belongs in Home (Simulation).
+  Result selection never overwrites query text; docking uses selected rows, with
+  query fallback only when none are selected and explicit DiffDock ligand precedence.
   Structure previews depict exact SMILES with browser RDKit; workbook price displays
   preserve original EUR alongside fixed USD prices (1–3 tier only, at most three
   distinct compounds per order). Shipping is included; Stripe charges immediately.

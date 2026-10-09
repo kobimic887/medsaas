@@ -479,6 +479,62 @@ checks.push(['catalog handler refuses stock/open source and pending searches bef
   checks.push(['stock selection preserves distinct index rows with duplicate display codes', identity({ isStockRow: true, stockRowId: 10, ASINEX_ID: 'BAS 001' }, 0) !== identity({ isStockRow: true, stockRowId: 11, ASINEX_ID: 'BAS 001' }, 1)]);
 }
 
+// Execute selection and submission handlers: selecting products must preserve
+// the editable query while docking still submits those products, never the query.
+{
+  const identityBody = simulation.split('const moleculeSelectionId = (molecule, index) => ')[1].split(';')[0];
+  const moleculeSelectionId = new Function('molecule', 'index', `return ${identityBody}`);
+  const topMolecules = [
+    { isStockRow: true, stockRowId: 1, ASINEX_ID: 'same-code', SMILES_STRING: 'CCO' },
+    { isStockRow: true, stockRowId: 2, ASINEX_ID: 'same-code', SMILES: 'CCN' },
+    { isMacrocycleRow: true, macrocycleSource: 'real', macrocycleRowId: 1, smiles: 'C1CCCCC1' },
+  ];
+  let selectedMolecules = new Set();
+  const searchCode = 'O=C1NC2C(NCCC2)CC1';
+  const setSelectedMolecules = value => { selectedMolecules = typeof value === 'function' ? value(selectedMolecules) : value; };
+  const setSearchCode = () => { throw new Error('Result selection overwrote the search query'); };
+  const singleBody = simulation.split('const handleCheckboxChange = (molecule, index, isChecked) => {')[1].split('\n  };')[0];
+  const allBody = simulation.split('const handleSelectAll = (isChecked) => {')[1].split('\n  };')[0];
+  const select = new Function('moleculeSelectionId', 'topMolecules', 'setSelectedMolecules', 'setSearchCode', 'molecule', 'index', 'isChecked', singleBody);
+  const selectAll = new Function('moleculeSelectionId', 'topMolecules', 'setSelectedMolecules', 'setSearchCode', 'isChecked', allBody);
+  const inputBody = simulation.split('const dockingInput = ')[1].split(';')[0];
+  const input = () => new Function('selectedMolecules', 'topMolecules', 'moleculeSelectionId', 'searchCode', `return ${inputBody}`)(selectedMolecules, topMolecules, moleculeSelectionId, searchCode);
+  checks.push(['without selection docking falls back to the preserved query', input() === searchCode]);
+  select(moleculeSelectionId, topMolecules, setSelectedMolecules, setSearchCode, topMolecules[1], 1, true);
+  checks.push(['selecting a row preserves the query and uses that exact row for docking', selectedMolecules.has('stock-2') && input() === 'CCN']);
+  select(moleculeSelectionId, topMolecules, setSelectedMolecules, setSearchCode, topMolecules[1], 1, false);
+  checks.push(['unticking the last result restores query fallback without clearing it', selectedMolecules.size === 0 && input() === searchCode]);
+  selectAll(moleculeSelectionId, topMolecules, setSelectedMolecules, setSearchCode, true);
+  checks.push(['select-all preserves query and distinct stock/macrocycle identities', selectedMolecules.size === 3 && input() === 'CCO,CCN,C1CCCCC1']);
+  selectAll(moleculeSelectionId, topMolecules, setSelectedMolecules, setSearchCode, false);
+  checks.push(['deselect-all preserves the original query', selectedMolecules.size === 0 && input() === searchCode]);
+  checks.push(['search remains available while multiple results are selected', !simulation.includes('selectedMolecules.size > 1 || sourceSearchDisabled')]);
+
+  const submissions = [];
+  const ctx = {
+    searchCode, dockingInput: 'CCN', simPdbId: '7WH5', diffDockPdbId: '7WH5', diffDockLigandId: '',
+    AbortController, simulationControllerRef: { current: null }, diffDockControllerRef: { current: null }, diffDockSubmittedLigandRef: { current: '' },
+    window: { setTimeout: () => 1, clearTimeout() {} },
+    API_CONFIG: { buildApiUrl: value => value }, getAuthToken: () => null,
+    clearViewerStorage() {}, clearDiffDockStorage() {},
+    fetch: async (url, options) => {
+      submissions.push({ url, body: JSON.parse(options.body) });
+      return { ok: false, status: 400, json: async () => ({ error: 'Local submission fixture: no compute' }) };
+    },
+  };
+  for (const name of ['setSimError', 'setSimLoading', 'setSimResult', 'setDiffDockError', 'setDiffDockLoading', 'setDiffDockResult']) ctx[name] = () => {};
+  const submitDocking = new AsyncFunction(...Object.keys(ctx), simulation.split('const handleSimulation = async () => {')[1].split('\n  };')[0]);
+  const submitDiffDock = new AsyncFunction(...Object.keys(ctx), simulation.split('const handleDiffDock = async () => {')[1].split('\n  };')[0]);
+  await submitDocking(...Object.values(ctx));
+  checks.push(['one-click docking sends the selected structure instead of the query', submissions[0]?.body.smiles === encodeURIComponent('CCN') && submissions[0]?.body.pdbid === '7WH5']);
+  await submitDiffDock(...Object.values(ctx));
+  checks.push(['DiffDock sends and snapshots the selected structure', submissions[1]?.body.ligand === 'CCN' && ctx.diffDockSubmittedLigandRef.current === 'CCN']);
+  ctx.diffDockLigandId = ' explicit-ligand ';
+  await submitDiffDock(...Object.values(ctx));
+  checks.push(['an explicit DiffDock ligand still overrides selection', submissions[2]?.body.ligand === 'explicit-ligand' && ctx.diffDockSubmittedLigandRef.current === 'explicit-ligand']);
+  checks.push(['DiffDock preview handoff uses the submitted snapshot after edits', simulation.includes("localStorage.setItem('diffdock_ligand_input', diffDockSubmittedLigandRef.current)") && simulation.includes("localStorage.setItem('diffdock_ligand_id', diffDockSubmittedLigandRef.current)")]);
+}
+
 // Execute the real effects' early exits: hidden or already handed-off results
 // must not touch viewer storage or navigate another dashboard page.
 const simulationHandoffBody = simulation.split('// Redirect to Molstar3D when simulation results are available')[1].split('useEffect(() => {')[1].split('}, [active, simResult, navigate]);')[0];

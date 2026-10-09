@@ -343,6 +343,7 @@ export function Simulation({ active = true }) {
   const editorReadyTimerRef = useRef(null);
   const simulationControllerRef = useRef(null);
   const diffDockControllerRef = useRef(null);
+  const diffDockSubmittedLigandRef = useRef('');
   const simHandoffRef = useRef(null);
   const diffDockHandoffRef = useRef(null);
   const isSearchActiveRef = useRef(false);
@@ -1488,7 +1489,7 @@ export function Simulation({ active = true }) {
 
   const handleSimulation = async () => {
     // Check all required inputs before discarding the previous result.
-    if (!searchCode) {
+    if (!dockingInput) {
       setSimError("Please search for a molecule first to get the SMILES code for docking");
       return;
     }
@@ -1496,7 +1497,7 @@ export function Simulation({ active = true }) {
       setSimError("Please provide a PDB ID before starting docking");
       return;
     }
-    const _searchSmiles = searchCode.replace(',', ';').trim();
+    const _searchSmiles = dockingInput.replace(',', ';').trim();
     clearViewerStorage();
     setSimLoading(true);
     setSimError("");
@@ -1560,8 +1561,8 @@ export function Simulation({ active = true }) {
       return;
     }
     
-    // Prefer the explicit ligand field; drawing/search text remains a useful fallback.
-    const ligandId = diffDockLigandId.trim() || searchCode.trim();
+    // An explicit ligand overrides selected results; otherwise use selection or query.
+    const ligandId = diffDockLigandId.trim() || dockingInput;
 
     if (!ligandId) {
       setDiffDockError("Please provide a Ligand ID for DiffDock or search for a molecule");
@@ -1573,6 +1574,7 @@ export function Simulation({ active = true }) {
     setDiffDockLoading(true);
     setDiffDockError("");
     setDiffDockResult(null);
+    diffDockSubmittedLigandRef.current = ligandId;
     const controller = new AbortController();
     diffDockControllerRef.current = controller;
     const timeout = window.setTimeout(() => controller.abort(), 11 * 60 * 1000);
@@ -1719,7 +1721,7 @@ export function Simulation({ active = true }) {
       // Store DiffDock result data in localStorage for the molecule viewer
       localStorage.setItem('diffdock_result', JSON.stringify(diffDockResult));
       localStorage.setItem('diffdock_pdb_id', diffDockPdbId);
-      localStorage.setItem('diffdock_ligand_id', diffDockLigandId.trim() || searchCode.trim());
+      localStorage.setItem('diffdock_ligand_id', diffDockSubmittedLigandRef.current);
       localStorage.setItem('diffdock_timestamp', new Date().toISOString());
       
       // Extract and store protein and ligand data for Molstar3D
@@ -1731,7 +1733,7 @@ export function Simulation({ active = true }) {
       }
       // Keep the submitted ligand as a preview fallback because DiffDock pose SDFs
       // generally contain coordinates but no SMILES property.
-      localStorage.setItem('diffdock_ligand_input', diffDockLigandId.trim() || searchCode.trim());
+      localStorage.setItem('diffdock_ligand_input', diffDockSubmittedLigandRef.current);
       const firstPose = Array.isArray(diffDockResult.ligand_positions)
         ? diffDockResult.ligand_positions.find((pose) => typeof pose === 'string' && pose.trim())
         : null;
@@ -1913,6 +1915,13 @@ export function Simulation({ active = true }) {
       ? `stock-${molecule.stockRowId}`
       : molecule.ASINEX_ID || molecule.id || `molecule-${index}`;
 
+  // Result selection belongs to docking/orders, never to the editable search query.
+  const dockingInput = selectedMolecules.size
+    ? topMolecules.filter((molecule, index) => selectedMolecules.has(moleculeSelectionId(molecule, index)))
+      .map((molecule) => molecule.SMILES_STRING || molecule.SMILES || molecule.smiles || '')
+      .filter(Boolean).join(',')
+    : searchCode.trim();
+
   const orderSelectedCompounds = () => {
     try {
       const selections = topMolecules.filter((molecule, index) => selectedMolecules.has(moleculeSelectionId(molecule, index))).map((molecule) => {
@@ -1940,17 +1949,6 @@ export function Simulation({ active = true }) {
         newSelected.delete(moleculeId);
       }
       
-      // Update search box with concatenated SMILES for all selected molecules
-      const selectedSmiles = [];
-      topMolecules.forEach((mol, molIndex) => {
-        const id = moleculeSelectionId(mol, molIndex);
-        const molSmiles = mol.SMILES_STRING || mol.SMILES || mol.smiles || '';
-        if (newSelected.has(id) && molSmiles) {
-          selectedSmiles.push(molSmiles);
-        }
-      });
-      
-      setSearchCode(selectedSmiles.join(','));
       return newSelected;
     });
   };
@@ -1960,23 +1958,16 @@ export function Simulation({ active = true }) {
     if (isChecked) {
       // Select all molecules on current page
       const newSelected = new Set();
-      const selectedSmiles = [];
       
       topMolecules.forEach((mol, index) => {
         const moleculeId = moleculeSelectionId(mol, index);
-        const molSmiles = mol.SMILES_STRING || mol.SMILES || mol.smiles || '';
         newSelected.add(moleculeId);
-        if (molSmiles) {
-          selectedSmiles.push(molSmiles);
-        }
       });
       
       setSelectedMolecules(newSelected);
-      setSearchCode(selectedSmiles.join(','));
     } else {
       // Unselect all molecules
       setSelectedMolecules(new Set());
-      setSearchCode('');
     }
   };
 
@@ -2635,7 +2626,7 @@ export function Simulation({ active = true }) {
             <Button
               size="lg"
               onClick={handleSearch}
-              disabled={searchLoading || !searchCode.trim() || selectedMolecules.size > 1 || sourceSearchDisabled}
+              disabled={searchLoading || !searchCode.trim() || sourceSearchDisabled}
               className="flex items-center gap-3 px-6 py-3 text-lg font-semibold whitespace-nowrap bg-brand-500 text-white focus:opacity-[0.85] active:opacity-[0.85]"
             >
               {searchLoading ? <Spinner className="h-5 w-5" /> : <CloudIcon className="h-5 w-5" />}
@@ -2676,7 +2667,7 @@ export function Simulation({ active = true }) {
                   size="md"
                   color="blue"
                   onClick={handleSimulation}
-                  disabled={simLoading || !simPdbId || !searchCode}
+                  disabled={simLoading || !simPdbId || !dockingInput}
                   className="items-center gap-2"
                 >
                   {simLoading ? 'Simulating…' : 'Simulate'}
@@ -2701,7 +2692,7 @@ export function Simulation({ active = true }) {
                   size="md"
                   color="purple"
                   onClick={handleDiffDock}
-                  disabled={diffDockLoading || !diffDockPdbId || (!diffDockLigandId && !searchCode)}
+                  disabled={diffDockLoading || !diffDockPdbId || (!diffDockLigandId.trim() && !dockingInput)}
                   className="items-center gap-2 w-full"
                 >
                   {diffDockLoading ? 'Running DiffDock...' : 'Run'}
@@ -2809,7 +2800,7 @@ export function Simulation({ active = true }) {
               <Button
                 size="lg"
                 onClick={handleSearch}
-                disabled={searchLoading || !searchCode || selectedMolecules.size > 1 || sourceSearchDisabled}
+                disabled={searchLoading || !searchCode.trim() || sourceSearchDisabled}
                 className="flex items-center justify-center gap-3 w-full bg-brand-500 text-white focus:opacity-[0.85] active:opacity-[0.85]"
               >
                 {searchLoading ? <Spinner className="h-5 w-5" /> : <CloudIcon className="h-5 w-5" />}
@@ -2849,7 +2840,7 @@ export function Simulation({ active = true }) {
                     size="md"
                     color="blue"
                     onClick={handleSimulation}
-                    disabled={simLoading || !simPdbId || !searchCode}
+                    disabled={simLoading || !simPdbId || !dockingInput}
                     className="flex items-center justify-center gap-2 w-full"
                   >
                     {simLoading ? 'Simulating…' : 'Simulate'}
@@ -2874,7 +2865,7 @@ export function Simulation({ active = true }) {
                     size="md"
                     color="purple"
                     onClick={handleDiffDock}
-                    disabled={diffDockLoading || !diffDockPdbId || (!diffDockLigandId && !searchCode)}
+                    disabled={diffDockLoading || !diffDockPdbId || (!diffDockLigandId.trim() && !dockingInput)}
                     className="flex items-center justify-center gap-2 w-full"
                   >
                     {diffDockLoading ? 'Running DiffDock...' : 'Run'}
