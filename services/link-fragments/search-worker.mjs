@@ -4,11 +4,13 @@
 // top-K carry SDF detail; the rest are counted. Each fit receives the current
 // retention threshold as deferAbove: a valid placement strictly worse than the
 // retained K-th product is counted without SDF or stereo SMILES (deferred).
+// Receptor jobs pass the K-th placement's full ranking prefix (retained) instead;
+// every torsion is still scored before the engine may defer.
 import { parentPort, workerData } from 'node:worker_threads';
 import { inflateSync } from 'node:zlib';
 import { Database } from 'bun:sqlite';
 import { prepareQuery, linkerDescriptor, fitAndJoin } from './engine.mjs';
-import { deferAboveOf, comparePlacements } from './jobs.mjs';
+import { deferAboveOf, comparePlacements, readRetention } from './jobs.mjs';
 import * as sdfModule from './sdf.mjs';
 
 const db = new Database(workerData.indexPath, { readonly: true });
@@ -64,7 +66,8 @@ async function runChunk(task) {
       // An invalid descriptor still counts as examined: its pairs cannot be accepted.
       // Read per pair: the threshold only decreases, so a stale value defers less.
       const deferAbove = task.receptor ? Infinity : deferAboveOf(Atomics.load(threshold, 0));
-      const fit = descriptor.ok ? await fitAndJoin(current.prepared, descriptor, { pair, maxRmsd: task.maxRmsd, deferAbove }) : null;
+      const retained = task.receptor && task.retention ? readRetention(task.retention) : null;
+      const fit = descriptor.ok ? await fitAndJoin(current.prepared, descriptor, { pair, maxRmsd: task.maxRmsd, deferAbove, retained }) : null;
       examinedPairs++;
       if (!fit?.ok) continue;
       validPlacements++;

@@ -126,6 +126,63 @@ test('HTTP receptor preflight and full worker scan apply receptor ranking before
   } finally { await stop(server); await rm(temporary, { recursive: true, force: true }); }
 });
 
+test('receptor jobs defer only placements behind the shared K-th key; results equal an exhaustive offline ranking', { timeout: 300_000 }, async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), 'pyxis-linker-receptor-defer-'));
+  let server;
+  try {
+    let seed = 11;
+    const random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 2 ** 32; };
+    const text = await readFile(linkerPath, 'utf8'), base = sdfModule.parseSdf(text)[0];
+    const variant = (change) => { const m = structuredClone(base); change(m); return sdfModule.writeSdf(m); };
+    const jitter = (m, amount) => { for (const a of m.atoms) a.xyz = a.xyz.map((v) => Number((v + (random() - 0.5) * amount).toFixed(4))); };
+    const centroid = [0, 1, 2].map((k) => base.atoms.reduce((sum, a) => sum + a.xyz[k], 0) / base.atoms.length);
+    // Same and distinct products (13C), jittered and scaled poses, an RDKit-invalid graph and a non-matching linker.
+    const records = [
+      ...Array.from({ length: 10 }, () => variant((m) => jitter(m, 0.3))),
+      ...[0.99, 1.01, 0.98].map((f) => variant((m) => { for (const a of m.atoms) a.xyz = a.xyz.map((v, k) => centroid[k] + (v - centroid[k]) * f); })),
+      ...Array.from({ length: 4 }, () => variant((m) => { m.atoms.find((a) => a.element === 'C').isotope = 13; jitter(m, 0.3); })),
+      variant((m) => { m.atoms[8].charge = 0; }),
+      await readFile(fileURLToPath(new URL('fixtures/multi-port.sdf', import.meta.url)), 'utf8'),
+    ].sort(() => random() - 0.5);
+    const source = path.join(temporary, 'receptor-library.sdf');
+    await writeFile(source, records.join(''));
+    const { indexPath } = buildIndex(temporary, 1, source, records.length);
+    const prepared = await prepareQuery(query, [1, 1]);
+    const original = await fitAndJoinReference(prepared, linkerDescriptor(text));
+    const placed = sdfModule.parseSdf(original.sdf)[0].atoms;
+    const pdb = (points) => points.map((xyz, i) => `ATOM  ${String(i + 1).padStart(5)}  CA  ALA A   1    ${xyz.map(v => v.toFixed(3).padStart(8)).join('')}  1.00 20.00           C  `).join('\n') + '\nEND\n';
+    const receptorPdb = pdb([placed[original.fragmentAtomCount + 2].xyz, placed[original.fragmentAtomCount + 7].xyz]);
+    const withReceptor = { ...prepared, receptor: inspectReceptor(receptorPdb, prepared.fragments).context };
+    // Exhaustive oracle: every record and label pair, product built per torsion.
+    const offline = [];
+    for (const [r, record] of records.entries()) {
+      const descriptor = linkerDescriptor(record);
+      if (!descriptor.ok) continue;
+      for (const pair of descriptor.pairs) {
+        const fit = await fitAndJoinReference(withReceptor, descriptor, { maxRmsd: reference.maxRmsd, pair: [pair.a, pair.b] });
+        if (fit.ok) offline.push({ smiles: fit.smiles, rmsd: fit.rmsd, ratio: fit.minimumNonbondedRadiusRatio, receptor: fit.receptor, conformerId: r + 1, pair: [pair.a, pair.b], conformers: 1, detail: {} });
+      }
+    }
+    assert(new Set(offline.map((p) => p.smiles)).size >= 2 && new Set(offline.map((p) => JSON.stringify(p.receptor))).size >= 3, 'library must vary products and receptor scores');
+    const expected = (limit) => { const top = new TopProducts(limit); for (const p of offline) top.offer(p); return top.entries.map((e) => ({ id: `${e.conformerId}-${e.pair[0]}-${e.pair[1]}`, smiles: e.smiles, rmsd: e.rmsd, receptor: e.receptor })); };
+    let call, poll;
+    for (const [limit, workers] of [[1, 1], [2, 2], [50, 2]]) {
+      ({ server, call, poll } = await start(indexPath, { workers, chunkRows: 1 }));
+      const created = await call('/jobs', { method: 'POST', body: { ...reference, limit, receptorPdb } });
+      assert.equal(created.status, 202, JSON.stringify(created.body));
+      const job = await poll(created.body.job.id, (value) => value.finishedAt);
+      assert.equal(job.state, 'completed', JSON.stringify(job));
+      assert.equal(job.progress.validPlacements, offline.length, 'deferred placements still count as valid');
+      assert.deepEqual(job.results.map((e) => ({ id: e.id, smiles: e.smiles, rmsd: e.rmsd, receptor: e.receptor })), expected(limit));
+      // A full top-K defers worse placements (match counts become lower bounds); limit 50 never fills.
+      assert.equal(job.progress.conformerMatchesExact, limit === 50, `limit ${limit}`);
+      const detail = await call(`/jobs/${job.id}/results/${job.results[0].id}`);
+      assert.match(detail.body.result.sdf, /PYXIS_SEARCH_RECEPTOR_SHA256/);
+      await stop(server); server = null;
+    }
+  } finally { await stop(server); await rm(temporary, { recursive: true, force: true }); }
+});
+
 test('full-scan job: duplicate candidates, results, exact coordinates, owner isolation and status', { timeout: 120_000 }, async () => {
   const temporary = await mkdtemp(path.join(os.tmpdir(), 'pyxis-linker-jobs-'));
   let server;

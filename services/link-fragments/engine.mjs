@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { scoreReceptor, compareReceptorScores } from './receptor.mjs';
+import { scoreReceptor, compareReceptorScores, receptorPlacementWorse } from './receptor.mjs';
 import initRDKit from '../../server/node_modules/@rdkit/rdkit/dist/RDKit_minimal.js';
 import {
   LinkFragmentsError,
@@ -1514,6 +1514,13 @@ const RMSD_SEPARATION = 2e-8;
  * winner is the lowest-RMSD candidate with any passing torsion, so the scan
  * stops at that torsion. Results at or below the threshold (ties included) are
  * materialized exactly as fitAndJoinReference would return them.
+ *
+ * With a receptor, deferAbove is ignored: a worse RMSD can rank first. Instead
+ * options.retained ({severeClashes, overlapSquared, clashes, rmsd} of the
+ * caller's K-th retained placement) defers a winner only AFTER every candidate
+ * and torsion was scored, and only when receptorPlacementWorse proves it
+ * strictly behind that key. The scan and winner are unchanged; a deferred
+ * receptor fit also returns its receptor score. Ties materialize.
  */
 export async function fitAndJoin(prepared, linker, options = {}) {
   try {
@@ -1530,6 +1537,9 @@ export async function fitAndJoin(prepared, linker, options = {}) {
     const deferAbove = receptorContext ? Infinity : (options.deferAbove ?? Infinity);
     if (typeof deferAbove !== 'number' || Number.isNaN(deferAbove))
       error('INVALID_SETTINGS', 'Invalid deferAbove.');
+    const retained = receptorContext ? options.retained ?? null : null;
+    if (retained && !['severeClashes', 'overlapSquared', 'clashes', 'rmsd'].every((k) => typeof retained[k] === 'number' && !Number.isNaN(retained[k])))
+      error('INVALID_SETTINGS', 'Invalid retained receptor placement.');
     const failures = new Map();
     const molecule = descriptor.molecule;
     const fail = (checked) => {
@@ -1781,8 +1791,10 @@ export async function fitAndJoin(prepared, linker, options = {}) {
     else topologyCounters.misses++;
     if (known && !known.ok) return { ok: false, errors: [{ ...known.error }] };
     const record = (outcome) => topologyValidation.set(key, outcome);
-    if (!(best.rmsd > deferAbove))
-      return await finish(prepared, descriptor, best, failures, record);
+    const defer = receptorContext
+      ? receptorPlacementWorse(best.receptor, best.rmsd, retained)
+      : best.rmsd > deferAbove;
+    if (!defer) return await finish(prepared, descriptor, best, failures, record);
     if (!known) {
       // Any passing torsion gives the same graph; coordinates are irrelevant here.
       const transform = twoAnchorTransform(
@@ -1803,6 +1815,7 @@ export async function fitAndJoin(prepared, linker, options = {}) {
       rmsd: best.rmsd,
       anchorRmsd: best.rmsd,
       selectedLabels: best.pair,
+      ...(receptorContext ? { receptor: best.receptor } : {}),
     };
   } catch (e) {
     return { ok: false, errors: [structured(e)] };

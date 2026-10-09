@@ -88,7 +88,9 @@ products do not become purchasable catalog rows. Verify downloaded refined SDFs
 retain the linker/conformer ID, source atom mapping and fit score as well as the
 refinement report; RDKit molblock serialization does not preserve SD properties.
 When changing receptor searches, prove early frame/overlap refusal, receptor-aware
-torsion and result ranking across the full scan (no RMSD-only pruning), and separate
+torsion and result ranking across the full scan (no RMSD-only pruning; receptor
+deferral only strictly behind the full K-th receptor key, equal to `fitAndJoinReference`
+in `receptor-test.mjs`), and separate
 search/refinement receptor provenance. Reopen a saved search after service restart;
 completed jobs keep results while interrupted jobs remain partial. History and raw
 uploads stay on the scientific host in a bounded private database, never on 84.

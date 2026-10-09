@@ -77,7 +77,8 @@ when a path or trap moves.
   background jobs over every pair in a provably safe distance window; only a
   finished full scan is "complete". Optional receptors are validated before search
   and rank every accepted pose by rigid excluded-volume overlaps before RMSD;
-  receptor jobs must never use RMSD-only retention pruning. Private job history is
+  receptor jobs must never use RMSD-only retention pruning; they may skip building
+  only placements strictly behind the full K-th receptor key, after every torsion is scored. Private job history is
   a separate bounded SQLite database on the scientific host; interrupted scans
   restore as failed/partial, never complete. MMFF94/UFF refinement keeps uploaded atoms
   fixed and is not MOE refinement, affinity or synthesis scoring. Assembled

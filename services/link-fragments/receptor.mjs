@@ -98,3 +98,14 @@ export function compareReceptorScores(a, b) {
   if (!a || !b) return 0;
   return a.severeClashes - b.severeClashes || a.overlapSquared - b.overlapSquared || a.clashes - b.clashes;
 }
+/**
+ * True only when a finished placement (receptor score, anchor rmsd) is STRICTLY
+ * behind `retained` — the K-th retained placement — on the jobs.mjs ranking
+ * prefix (severe, overlap², contacts, then rmsd). Exact comparisons, no epsilon:
+ * a tie at every field returns false, so ties are always materialized.
+ */
+export function receptorPlacementWorse(score, rmsd, retained) {
+  if (!score || !retained) return false;
+  const order = compareReceptorScores(score, retained);
+  return order > 0 || (order === 0 && rmsd > retained.rmsd);
+}

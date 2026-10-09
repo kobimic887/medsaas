@@ -30,6 +30,39 @@ export const encodeThreshold = (rmsd) => Math.min(NO_THRESHOLD, Math.ceil(rmsd *
  * admitted by TopProducts, now or later. Ties with w are always materialized.
  */
 export const deferAboveOf = (raw) => (raw >= NO_THRESHOLD ? Infinity : (raw + 1) / 1e9);
+/**
+ * Receptor jobs share the K-th retained placement's exact ranking prefix
+ * (severe, overlap², contacts, rmsd) instead of an rmsd. Four floats cannot be
+ * stored atomically, so a sequence lock guards them: the single writer (the
+ * coordinator) makes the sequence odd, writes, then makes it even; a reader
+ * retries until it sees the same even sequence before and after its copy, so
+ * a torn mix of two keys is never returned. The key only improves, so a stale
+ * snapshot is looser and defers fewer placements. null = top-K not full.
+ */
+export const createRetention = () => new SharedArrayBuffer(40);
+// Every shared access is atomic (float bits travel as BigInt64), so the lock
+// does not rely on plain racing reads.
+const bitsView = new Float64Array(1), bitsInt = new BigInt64Array(bitsView.buffer);
+const toBits = (value) => { bitsView[0] = value; return bitsInt[0]; };
+const fromBits = (bits) => { bitsInt[0] = bits; return bitsView[0]; };
+export function writeRetention(buffer, entry) {
+  const sequence = new Int32Array(buffer, 0, 1), values = new BigInt64Array(buffer, 8, 4);
+  const next = entry ? [entry.receptor.severeClashes, entry.receptor.overlapSquared, entry.receptor.clashes, entry.rmsd] : [NaN, NaN, NaN, NaN];
+  Atomics.add(sequence, 0, 1);
+  for (const [i, value] of next.entries()) Atomics.store(values, i, toBits(value));
+  Atomics.add(sequence, 0, 1);
+}
+export function readRetention(buffer) {
+  const sequence = new Int32Array(buffer, 0, 1), values = new BigInt64Array(buffer, 8, 4);
+  for (;;) {
+    const before = Atomics.load(sequence, 0);
+    if (before & 1) continue;
+    const [severeClashes, overlapSquared, clashes, rmsd] = [0, 1, 2, 3].map((i) => fromBits(Atomics.load(values, i)));
+    if (Atomics.load(sequence, 0) !== before) continue;
+    // A zero-filled buffer (never written) is NaN-free; treat it as empty too.
+    return before === 0 || Number.isNaN(severeClashes) ? null : { severeClashes, overlapSquared, clashes, rmsd };
+  }
+}
 const envInt = (name, fallback, min, max) => {
   const value = Number(process.env[name]);
   return Number.isInteger(value) && value >= min && value <= max ? value : fallback;
@@ -189,7 +222,7 @@ export function createJobManager({
     const job = {
       ...saved, top, matchCounts: null, inFlight: 0,
       cancel: new Int32Array(new SharedArrayBuffer(4)),
-      threshold: new Int32Array(new SharedArrayBuffer(4)),
+      threshold: new Int32Array(new SharedArrayBuffer(4)), retention: createRetention(),
     };
     delete job.entries;
     if (!job.finishedAt) {
@@ -242,9 +275,12 @@ export function createJobManager({
   }
   function publishThreshold(job) {
     // Receptor ranking can admit a worse-RMSD pose with fewer clashes. An RMSD
-    // threshold would exclude that pose and silently corrupt the retained set.
-    const value = !job.receptor && job.top.size >= job.top.limit ? encodeThreshold(job.top.worst().rmsd) : NO_THRESHOLD;
+    // threshold would exclude that pose and silently corrupt the retained set;
+    // receptor jobs publish the full ranking prefix (retention) instead.
+    const full = job.top.size >= job.top.limit;
+    const value = !job.receptor && full ? encodeThreshold(job.top.worst().rmsd) : NO_THRESHOLD;
     Atomics.store(job.threshold, 0, value);
+    if (job.receptor) writeRetention(job.retention, full ? job.top.worst() : null);
   }
   function snapshotCounts(job) {
     for (const entry of job.top.entries) entry.seenConformers = conformerMatchesOf(job.matchCounts, entry);
@@ -322,7 +358,7 @@ export function createJobManager({
         record.worker.postMessage({
           type: 'chunk', jobId: job.id, chunkId: record.task.id, ...chunk, lo: job.window.lo, hi: job.window.hi,
           receptor: job.receptor, sdf: job.input.sdf, attachments: job.input.attachments, maxRmsd: job.input.maxRmsd,
-          cancel: job.cancel.buffer, threshold: job.threshold.buffer,
+          cancel: job.cancel.buffer, threshold: job.threshold.buffer, retention: job.retention,
         });
       }
       if (job.cursor > job.lastRowid && job.inFlight === 0) {
@@ -405,7 +441,7 @@ export function createJobManager({
         input: { ...input, sdf, attachments, maxRmsd, limit }, receptor: prepared.receptor || null, distance: prepared.distance, window: { lo: window.lo, hi: window.hi },
         totalPairs: null, examinedPairs: 0, conformersExamined: 0, validPlacements: 0, error: null,
         top: new TopProducts(limit), matchCounts: new Map(), matchCountsExact: true, inFlight: 0,
-        cancel: new Int32Array(new SharedArrayBuffer(4)), threshold: new Int32Array(new SharedArrayBuffer(4)),
+        cancel: new Int32Array(new SharedArrayBuffer(4)), threshold: new Int32Array(new SharedArrayBuffer(4)), retention: createRetention(),
       };
       Atomics.store(job.threshold, 0, NO_THRESHOLD);
       checkpoint(job, true);

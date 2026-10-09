@@ -134,8 +134,9 @@ scan is not proof that no linker exists. Results retain the best `limit` distinc
 products (deduplicated by RDKit stereo SMILES), ranked by RMSD, then larger minimum
 non-bonded radius ratio, then conformer. `validPlacements` counts every accepted
 placement. `conformerMatches` (per product) and `distinctProducts` count only
-placements whose stereo SMILES was computed: a placement whose RMSD is strictly worse
-than the retained K-th product is counted as valid without a SMILES, and at most
+placements whose stereo SMILES was computed: a placement whose ranking key is strictly
+worse than the retained K-th product's (RMSD alone without a receptor; the receptor
+key below, then RMSD, with one) is counted as valid without a SMILES, and at most
 200,000 distinct SMILES are tracked. When either happens the job reports
 `conformerMatchesExact: false` and both numbers are lower bounds; otherwise they are
 exact.
@@ -146,7 +147,12 @@ heavy-atom pairs (overlap ≥ 0.6 Å), then clash count, and finally the geometr
 above. These are rigid excluded-volume measurements, not energies or affinity scores.
 Candidates with clashes remain visible; the best retained candidate may still clash.
 All distance-compatible pairs are scanned; RMSD-only retention pruning is disabled
-because a worse-RMSD placement can fit the receptor better. The unchanged fragments'
+because a worse-RMSD placement can fit the receptor better. Every candidate and
+torsion is still receptor-scored. Only then may a placement strictly behind the retained
+K-th product's exact (severe, overlap², clashes, RMSD) key skip SDF and stereo SMILES
+construction; its RDKit validity is still checked and it counts as valid. Ties are
+built. Workers read that key through a sequence lock, so a stale key is only looser.
+The unchanged fragments'
 clashes are included and reported separately at inspection. No receptor electrostatics,
 solvation, flexibility or chemical-stability scoring is performed.
 
