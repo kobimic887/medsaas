@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import {
-  createJobPoller, isActiveJob, isCompleteJob, jobStatusLabel, markJobUnfollowable, pickRecentJob, pickResumableJob, pollFailureMessage, progressOf,
+  canExportResults, createJobPoller, isActiveJob, isCompleteJob, jobStatusLabel, markJobUnfollowable, pickRecentJob, pickResumableJob, pollFailureMessage, progressOf,
   UNAVAILABLE_JOB_MESSAGE,
 } from '../client/src/utils/linkFragmentsJobs.js';
 import { linkFragmentsRequest } from '../client/src/utils/linkFragmentsRequest.js';
@@ -53,6 +53,13 @@ assert.match(goneLabel.title, /No longer followed · partial/); assert.match(gon
 assert.doesNotMatch(`${goneLabel.title} ${goneLabel.detail}`, /complete search/i);
 assert.match(pollFailureMessage({ status: 503, message: 'Link Fragments is temporarily unavailable.' }), /^Stopped following this search \(Link Fragments is temporarily unavailable\.\); results shown are partial\.$/);
 const finished = job('completed', 10, 10);
+const exportable = { ...finished, results: [{ id: '1-2-3' }] };
+assert.equal(canExportResults(exportable), true);
+assert.equal(canExportResults({ ...exportable, state: 'canceled', partial: true }), true);
+assert.equal(canExportResults({ ...exportable, state: 'running' }), false);
+assert.equal(canExportResults({ ...exportable, local: true }), false);
+assert.equal(canExportResults(exportable, { fatal: true }), false);
+assert.equal(canExportResults(finished), false);
 assert.equal(markJobUnfollowable(finished), finished, 'a terminal job is never rewritten');
 assert.equal(markJobUnfollowable(null), null);
 const page = readFileSync(new URL('../client/src/pages/dashboard/link-fragments.jsx', import.meta.url), 'utf8');

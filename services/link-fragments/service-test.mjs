@@ -17,6 +17,7 @@ const OWNER_C = 'c'.repeat(64);
 const linkerPath = fileURLToPath(new URL('fixtures/linker.sdf', import.meta.url));
 const query = await readFile(new URL('fixtures/query.sdf', import.meta.url), 'utf8');
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sdfTag = (molecule, name) => molecule.properties[molecule.properties.findIndex(line => line.includes(`<${name}>`)) + 1];
 
 // The fixture linker has two He labels: every copy contributes one indexed pair.
 // `source` optionally replaces the fixture with another SDF of `records` records.
@@ -54,6 +55,36 @@ async function stop(server) {
   await new Promise((resolve) => server.close(resolve));
 }
 const reference = { sdf: query, attachments: [1, 1], maxRmsd: 0.75, limit: 10 };
+
+test('bulk export includes every retained original in ranking order, preserving isotope and source tags', { timeout: 30_000 }, async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), 'pyxis-linker-export-'));
+  let server;
+  try {
+    const original = await readFile(linkerPath, 'utf8');
+    const isotope = sdfModule.parseSdf(original)[0];
+    isotope.atoms.find(atom => atom.element === 'C').isotope = 13;
+    const library = path.join(temporary, 'two-products.sdf');
+    await writeFile(library, original + sdfModule.writeSdf(isotope));
+    const { indexPath } = buildIndex(temporary, 1, library, 2);
+    const runtime = await start(indexPath, { workers: 1 }); server = runtime.server;
+    const id = (await runtime.call('/jobs', { method: 'POST', body: reference })).body.job.id;
+    const job = await runtime.poll(id, value => value.finishedAt);
+    assert.equal(job.results.length, 2, 'the labeled and unlabeled products are chemically distinct');
+    const exported = (await runtime.call(`/jobs/${id}/export`)).body.export;
+    assert.equal(exported.count, 2);
+    assert.deepEqual(exported.resultIds, job.results.map(result => result.id));
+    const records = sdfModule.parseSdf(exported.sdf);
+    assert.equal(records.length, 2);
+    for (let i = 0; i < records.length; i++) {
+      const detail = (await runtime.call(`/jobs/${id}/results/${job.results[i].id}`)).body.result;
+      assert.deepEqual(records[i].atoms, sdfModule.parseSdf(detail.sdf)[0].atoms);
+      assert.equal(sdfTag(records[i], 'PYXIS_RESULT_ID'), job.results[i].id);
+      assert.equal(sdfTag(records[i], 'PYXIS_RESULT_RANK'), String(i + 1));
+      assert.equal(sdfTag(records[i], 'PYXIS_CONFORMER_ID'), String(job.results[i].conformerId));
+    }
+    assert.equal(records.flatMap(record => record.atoms).filter(atom => atom.isotope === 13).length, 1);
+  } finally { await stop(server); await rm(temporary, { recursive: true, force: true }); }
+});
 
 test('HTTP receptor preflight and full worker scan apply receptor ranking before retaining hits', { timeout: 120_000 }, async () => {
   const temporary = await mkdtemp(path.join(os.tmpdir(), 'pyxis-linker-receptor-job-'));
@@ -163,11 +194,25 @@ test('full-scan job: duplicate candidates, results, exact coordinates, owner iso
     original.forEach((atom, index) => { assert.deepEqual(product[0].atoms[index].xyz, atom.xyz); });
     if (typeof sdfModule.withSdfData === 'function') assert.match(detail.body.result.sdf, /<PYXIS_CONFORMER_ID>\s*\n1\n/);
     assert.equal(detail.body.result.refinement, null);
+    const exported = await call(`/jobs/${id}/export`);
+    assert.equal(exported.status, 200);
+    assert.equal(exported.body.export.complete, true);
+    assert.equal(exported.body.export.partial, false);
+    assert.equal(exported.body.export.count, job.results.length);
+    assert.deepEqual(exported.body.export.resultIds, job.results.map(result => result.id));
+    const exportedProduct = sdfModule.parseSdf(exported.body.export.sdf);
+    assert.deepEqual(exportedProduct[0].atoms, product[0].atoms, 'bulk export preserves original product coordinates and atom numbering');
+    for (const tag of ['PYXIS_SOURCE_ATOM_MAP', 'PYXIS_LINKER_ID', 'PYXIS_CONFORMER_ID', 'PYXIS_FIXED_ATOMS'])
+      assert.equal(sdfTag(exportedProduct[0], tag), sdfTag(product[0], tag), `${tag} survives bulk export`);
+    assert.equal(sdfTag(exportedProduct[0], 'PYXIS_RESULT_ID'), summary.id);
+    assert.equal(sdfTag(exportedProduct[0], 'PYXIS_RESULT_RANK'), '1');
+    assert.equal(sdfTag(exportedProduct[0], 'PYXIS_SEARCH_COMPLETE'), 'true');
     assert.equal((await call(`/jobs/${id}/results/9-9-9`)).body.code, 'RESULT_NOT_FOUND');
     assert.equal((await call(`/jobs/${id}/results/${summary.id}/refine`, { method: 'POST', body: { forceField: 'GAFF' } })).status, 400);
 
     // Other owners cannot see, read, cancel or refine this job.
     assert.equal((await call(`/jobs/${id}`, { owner: OWNER_B })).status, 404);
+    assert.equal((await call(`/jobs/${id}/export`, { owner: OWNER_B })).status, 404);
     assert.equal((await call(`/jobs/${id}/cancel`, { owner: OWNER_B, method: 'POST' })).status, 404);
     assert.equal((await call(`/jobs/${id}/results/${summary.id}`, { owner: OWNER_B })).body.code, 'JOB_NOT_FOUND');
     assert.equal((await call(`/jobs/${id}/results/${summary.id}/refine`, { owner: OWNER_B, method: 'POST', body: {} })).status, 404);
@@ -211,6 +256,8 @@ test('cancel, per-owner and global queue limits, worker failure and wall-time li
     const queued = await slow.call('/jobs', { owner: OWNER_B, method: 'POST', body: reference });
     assert.equal(queued.status, 202);
     assert.equal(queued.body.job.state, 'queued');
+    assert.equal((await slow.call(`/jobs/${first.id}/export`)).body.code, 'LINK_FRAGMENTS_SEARCH_ACTIVE');
+    assert.equal((await slow.call(`/jobs/${queued.body.job.id}/export`, { owner: OWNER_B })).status, 409);
     const full = await slow.call('/jobs', { owner: OWNER_C, method: 'POST', body: reference });
     assert.equal(full.status, 429);
     assert.equal(full.body.code, 'LINK_FRAGMENTS_QUEUE_FULL');
@@ -228,6 +275,11 @@ test('cancel, per-owner and global queue limits, worker failure and wall-time li
     assert.equal(canceled.body.job.complete, false);
     assert.equal(canceled.body.job.partial, true);
     assert(canceled.body.job.progress.examinedPairs < 40);
+    const partialExport = await slow.call(`/jobs/${first.id}/export`);
+    assert.equal(partialExport.status, 200);
+    assert.equal(partialExport.body.export.complete, false);
+    assert.equal(partialExport.body.export.partial, true);
+    assert.equal(sdfTag(sdfModule.parseSdf(partialExport.body.export.sdf)[0], 'PYXIS_SEARCH_COMPLETE'), 'false');
     assert.equal((await slow.call(`/jobs/${first.id}/cancel`, { method: 'POST' })).body.job.state, 'canceled');
     // The queued job now runs; canceling it again leaves it partial.
     const next = await slow.poll(queued.body.job.id, (value) => value.state === 'running', OWNER_B);

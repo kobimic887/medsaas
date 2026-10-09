@@ -31,7 +31,7 @@ const checks = [
   ['Scaffolding Hop retains the linker route and mobile destination', /name: "Scaffolding Hop",\s*path: "\/link-fragments"/.test(routes) && navbar.includes('"link-fragments": "Scaffolding Hop"') && navbar.includes('{ label: "Scaffolding Hop", path: "/dashboard/link-fragments" }')],
   ['home page does not show compute-admin URLs', !controlpanel.includes('Compute services') && !controlpanel.includes('fetchComputeEndpoints')],
   ['notifications activity fetch has a hard timeout', notifications.includes('NOTIFICATIONS_FETCH_TIMEOUT_MS') && notifications.includes('controller.abort()')],
-  ['cart enquiry and checkout have a hard timeout', navbar.includes('CART_FETCH_TIMEOUT_MS') && navbar.includes('Enquiry timed out') && navbar.includes('Checkout timed out')],
+  ['cart enquiry and review-page checkout have a hard timeout', navbar.includes('CART_FETCH_TIMEOUT_MS') && navbar.includes('Enquiry timed out') && read('client/src/pages/dashboard/review-order.jsx').includes('window.setTimeout(() => controller.abort(), 15000)') && read('client/src/pages/dashboard/review-order.jsx').includes('The request timed out')],
   ['dashboard home uses company wording, not workspace', dashboardhome.includes('company members') && dashboardhome.includes('in this company') && !dashboardhome.includes('workspace members')],
   ['protein folding stays readable in dark mode', folding.includes('dark:bg-slate-900') && folding.includes('dark:text-slate-100')],
   ['gromacs page stays readable in dark mode', gromacs.includes('dark:bg-slate-900') && gromacs.includes('dark:text-slate-100')],
@@ -58,6 +58,28 @@ const checks = [
   ['company feedback timer clears on route exit', companyAdmin.includes('window.clearTimeout(messageTimerRef.current)')],
   ['company admin fetches abort on route exit', companyAdmin.includes('refreshAll(controller.signal)') && companyAdmin.includes('return () => controller.abort()')],
 ];
+
+// Exercise the visited latch across routes without loading a page or retaining
+// any account state outside the authenticated DashboardShell instance.
+const shellPrelude = dashboard.split('function DashboardShell() {')[1].split('\n  return (')[0];
+const evaluateShell = new Function('useLocation', 'useState', 'routes', 'useMaterialTailwindController', 'useBranding', `${shellPrelude}\nreturn { homeActive, retained: homeVisited || homeActive };`);
+const accountSession = {};
+const visit = (pathname, session = accountSession) => evaluateShell(
+  () => ({ pathname }),
+  initial => {
+    if (!Object.hasOwn(session, 'visited')) session.visited = initial;
+    return [session.visited, value => { session.visited = value; }];
+  },
+  [{ layout: 'dashboard', pages: [{ path: '/simulation', element: {} }] }],
+  () => [{ openSidenav: false }], () => ({ platformName: 'Pyxis', logo: null }),
+);
+checks.push(['Home does not load before its first visit', !visit('/dashboard/controlpanel').retained]);
+checks.push(['first Home visit creates the active retained workspace', visit('/dashboard/simulation').retained]);
+const away = visit('/dashboard/link-fragments');
+checks.push(['leaving Home preserves its visited instance and deactivates it', away.retained && !away.homeActive]);
+checks.push(['returning activates the retained Home workspace', visit('/dashboard/simulation/').homeActive]);
+checks.push(['a new authenticated layout starts with no previous Home instance', !visit('/dashboard/controlpanel', {}).retained]);
+checks.push(['Home uses a stable boundary outside the pathname-keyed routes', dashboard.includes('<div hidden={!homeActive} inert={homeActive ? undefined : \'\'}>') && dashboard.includes('React.cloneElement(homeRoute.element, { active: homeActive })') && dashboard.includes('pages.filter(({ path }) => path !== \'/simulation\')')]);
 
 const failures = checks.filter(([, passed]) => !passed).map(([label]) => label);
 if (failures.length) {

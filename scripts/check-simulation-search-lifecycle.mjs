@@ -44,7 +44,7 @@ const checks = [
   ['blank search queries stay disabled', simulation.includes('!searchCode.trim()')],
   ['pre-search and no-match states are distinct', simulation.includes('No molecules matched this search.') && simulation.includes('Enter a molecule identifier or structure above')],
   ['search errors do not also show an empty-state prompt', simulation.includes('!topError && !searchError && topMolecules.length === 0')],
-  ['simulation feedback is rendered instead of discarded', simulation.includes('{message && (') && simulation.includes('showMessage(`Added ') && simulation.includes('to cart`);')],
+  ['simulation feedback is rendered on the active page', simulation.includes('{active && message && (') && simulation.includes('showMessage(`Added ') && simulation.includes('to cart`);')],
   ['copy failures do not block the browser', !simulation.includes('alert(')],
   ['selection fallbacks stay stable across renders', simulation.includes('const moleculeId = moleculeSelectionId(mol, index)') && simulation.includes('handleCheckboxChange(mol, idx, e.target.checked)')],
   ['structure preview never mutates SMILES for fallback images', !simulation.includes("replace(/[^\\w")],
@@ -174,7 +174,7 @@ try {
   calculateCompoundDescriptors({ get_mol: () => ({ is_valid: () => false, delete: () => { deletedDescriptors++; } }) }, 'broken');
 } catch { invalidDescriptorsRejected = true; }
 checks.push(
-  ['owned result tables render the requested identifier, calculated formula/MW, lead-time and pack-price columns', simulation.includes('>IDNUMBER</th>') && simulation.includes('>Lead time</th>') && simulation.includes('>Pack size · price') && simulation.includes('<CompoundDescriptorCells smiles={mol.SMILES_STRING} />') && simulation.includes('<CompoundDescriptorCells smiles={stockSmiles} />')],
+  ['owned result tables show compact identifier, lead-time and pack-price columns with exact structure previews', simulation.includes('>IDNUMBER</th>') && simulation.includes('>Lead time</th>') && simulation.includes('>Pack size · price') && !simulation.includes('<CompoundDescriptorCells') && simulation.includes('structurePreviewTrigger(stockSmiles, mol.stockCode)')],
   ['missing export lead time renders an em dash without invention', simulation.includes("{mol.snapshotLeadTime || '—'}") && mappedRows.every(row => typeof row.snapshotLeadTime === 'string')],
   ['formula derives implicit hydrogens from RDKit atoms', ethanolDescriptors.formula === 'C2H6O' && ethanolDescriptors.mw === 46.069],
   ['charged formula includes charge and explicit hydrogen exactly once', formulaFromRdkitJson({ defaults: ethanolJson.defaults, molecules: [{ atoms: [{ z: 7, impHs: 3, chg: 1 }, { z: 1 }] }] }) === 'H4N+'],
@@ -296,7 +296,7 @@ checks.push(
   ['macrocycle result banner reports the method that produced the rows', simulation.includes('macrocycleResultMethodLabel') && simulation.includes('macrocycleMetricLabel')],
   ['macrocycle count copy never claims MOE equivalence', simulation.includes('a Pyxis method, not MOE ctanimoto')],
   ['macrocycle rows retain source identity and docking handoff alongside owned offers', simulation.includes('Select rows for docking handoff.') && simulation.includes('CompoundShopPacks offer={mol.shopOffer}') && simulation.includes('Real RPX') && simulation.includes('Virtual VPX')],
-  ['owned rows show server offers and the approved workbook tier', simulation.includes('CompoundShopPacks offer={mol.shopOffer}') && simulation.includes('Workbook 1–3 tier') && simulation.includes('review shipping and terms in the cart')],
+  ['owned rows show server offers and the approved workbook tier', simulation.includes('CompoundShopPacks offer={mol.shopOffer}') && simulation.includes('Workbook 1–3 tier') && simulation.includes('review shipping and terms before checkout')],
   ['header blurb follows the selected collection', simulation.includes('SOURCE_BLURBS[searchSource]') && simulation.includes('Search owned screening stock by structure.')],
   ['stock pack add confirms locally and counts repeats', simulation.includes("{justAdded ? '✓ Added to cart' : 'Add to cart'}") && simulation.includes('Added another ${selected.mg} mg pack of ${offer.code}')],
   ['query and results are adjacent columns with a wider query panel', simulation.includes('lg:grid-cols-[minmax(25rem,29rem)_minmax(0,1fr)]') && simulation.includes('aria-labelledby="results-heading"')],
@@ -456,6 +456,72 @@ await new AsyncFunction('searchSourceRef', 'searchControllerRef', browseBody)({ 
 await new AsyncFunction('searchSourceRef', 'searchControllerRef', browseBody)({ current: 'open' }, { current: null });
 await new AsyncFunction('searchSourceRef', 'searchControllerRef', browseBody)({ current: 'asinex' }, { current: {} });
 checks.push(['catalog handler refuses stock/open source and pending searches before fetching', true]);
+
+// Selected purchases are atomic and retain source/row identity and chosen packs.
+{
+  const { addSelectedShopPacks, offerSelectionKey } = await import(pathToFileURL(path.join(root, 'client/src/utils/compoundSelection.js')).href);
+  const offer = (rowId, source = 'real') => ({ source, rowId, code: `RPX ${rowId}`, smiles: 'CCO', token: `signed-${source}-${rowId}`, packs: [{ mg: 1, unitAmountCents: 36033, eur: 317 }, { mg: 5, unitAmountCents: 47741, eur: 420 }] });
+  const selections = [{ offer: offer(1), amountMg: 5 }, { offer: offer(1, 'virtual'), amountMg: 1 }];
+  const initial = [];
+  const ordered = addSelectedShopPacks(initial, selections);
+  checks.push(['selected ordering preserves packs and separates equal real/virtual row IDs', initial.length === 0 && ordered.length === 2 && ordered[0].amountMg === 5 && ordered[1].catalogSource === 'virtual' && offerSelectionKey(selections[0].offer) !== offerSelectionKey(selections[1].offer)]);
+  let rejected = false;
+  try { addSelectedShopPacks(ordered, [{ offer: offer(2), amountMg: 1 }, { offer: offer(3), amountMg: 1 }]); } catch { rejected = true; }
+  checks.push(['over-limit bulk selection leaves the existing basket unchanged', rejected && ordered.length === 2 && ordered.every(item => item.quantity === 1)]);
+  rejected = false;
+  try { addSelectedShopPacks(ordered, [{ offer: offer(2), amountMg: 1 }, { offer: null, amountMg: 1 }]); } catch { rejected = true; }
+  checks.push(['missing selected offer refuses the whole batch', rejected && ordered.length === 2]);
+  rejected = false;
+  try { addSelectedShopPacks([], []); } catch { rejected = true; }
+  checks.push(['empty selected batch is refused', rejected]);
+  const identityBody = simulation.split('const moleculeSelectionId = (molecule, index) => ')[1].split(';')[0];
+  const identity = new Function('molecule', 'index', `return ${identityBody}`);
+  checks.push(['stock selection preserves distinct index rows with duplicate display codes', identity({ isStockRow: true, stockRowId: 10, ASINEX_ID: 'BAS 001' }, 0) !== identity({ isStockRow: true, stockRowId: 11, ASINEX_ID: 'BAS 001' }, 1)]);
+}
+
+// Execute the real effects' early exits: hidden or already handed-off results
+// must not touch viewer storage or navigate another dashboard page.
+const simulationHandoffBody = simulation.split('// Redirect to Molstar3D when simulation results are available')[1].split('useEffect(() => {')[1].split('}, [active, simResult, navigate]);')[0];
+const result = { simulationKey: 'completed' };
+const evaluateSimulationHandoff = new Function('active', 'simResult', 'simHandoffRef', simulationHandoffBody);
+evaluateSimulationHandoff(false, result, { current: null });
+evaluateSimulationHandoff(true, result, { current: result });
+const diffDockHandoffBody = simulation.split('// Redirect to RDKit Molecule Viewer when DiffDock results are available')[1].split('useEffect(() => {')[1].split('}, [active, diffDockResult, diffDockPdbId, diffDockLigandId, navigate]);')[0];
+const evaluateDiffDockHandoff = new Function('active', 'diffDockResult', 'diffDockHandoffRef', diffDockHandoffBody);
+evaluateDiffDockHandoff(false, result, { current: null });
+evaluateDiffDockHandoff(true, result, { current: result });
+checks.push(['hidden and already-opened docking results do not write storage or navigate', true]);
+
+const scrollBody = simulation.split('// Separate useEffect for scroll handling')[1].split('useEffect(() => {')[1].split('}, [active]);')[0];
+const listeners = new Map();
+let pageCalls = 0;
+const scrollWindow = {
+  innerHeight: 900,
+  addEventListener: (name, listener) => listeners.set(name, listener),
+  removeEventListener: name => listeners.delete(name),
+};
+const evaluateScroll = new Function('active', 'window', 'document', 'setTimeout', 'clearTimeout', 'hasMoreRef', 'topLoadingRef', 'initialLoadingRef', 'isLoadingPageRef', 'isSearchActiveRef', 'loadMoreSearchResults', scrollBody);
+const scrollArgs = [scrollWindow, { documentElement: { scrollTop: 0, offsetHeight: 900 } }, fn => { fn(); return 1; }, () => {}, { current: true }, { current: false }, { current: false }, { current: false }, { current: true }, () => { pageCalls++; }];
+evaluateScroll(false, ...scrollArgs);
+checks.push(['inactive Home installs no window paging listener', listeners.size === 0]);
+const stopPaging = evaluateScroll(true, ...scrollArgs);
+listeners.get('scroll')();
+stopPaging();
+checks.push(['active Home pages and removes its listener when hidden', pageCalls === 1 && listeners.size === 0]);
+
+const editorBody = simulation.split('const handleEditorLoad = () => {')[1].split('\n  };')[0];
+const editorStates = [];
+const editorWindow = { clearTimeout() {}, setTimeout: fn => { editorWindow.tick = fn; return 1; } };
+const editorRef = { current: { contentWindow: {} } };
+new Function('window', 'editorReadyTimerRef', 'ketcherIframeRef', 'setEditorState', editorBody)(editorWindow, { current: null }, editorRef, state => editorStates.push(state));
+checks.push(['iframe load waits for Ketcher API readiness', editorStates.length === 0 && typeof editorWindow.tick === 'function']);
+let startupFocusReleased = false;
+editorRef.current.contentDocument = { activeElement: { blur: () => { startupFocusReleased = true; } } };
+editorRef.current.contentWindow.ketcher = { getSmiles() {} };
+editorWindow.tick();
+checks.push(['editor unlocks only after its API is usable', editorStates.length === 1 && editorStates[0] === 'ready']);
+checks.push(['editor releases startup focus before revealing its fixed-height frame', startupFocusReleased && simulation.includes("style={editorState === 'ready' ? undefined : { display: 'none' }}")]);
+checks.push(['Draw preserves the iframe after switching to text', simulation.includes('{editorVisited && (') && simulation.includes('hidden={queryType === "text"}')]);
 
 const failures = checks.filter(([, passed]) => !passed).map(([label]) => label);
 if (failures.length) {

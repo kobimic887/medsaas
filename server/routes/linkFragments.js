@@ -197,6 +197,7 @@ export function createLinkFragmentsRouter({ baseUrl = '', fetchImpl = fetch } = 
   }));
   router.get('/jobs', requireOwner, handle((req, res) => call(req, res, '/jobs')));
   router.get('/jobs/:id', requireOwner, handle((req, res) => call(req, res, jobPath(req) + (req.query.input === '0' ? '?input=0' : ''))));
+  router.get('/jobs/:id/export', requireOwner, handle((req, res) => call(req, res, `${jobPath(req)}/export`)));
   router.post('/jobs/:id/cancel', requireOwner, handle((req, res) => call(req, res, `${jobPath(req)}/cancel`, { method: 'POST', body: {} })));
   router.get('/jobs/:id/results/:resultId', requireOwner, handle((req, res) => call(req, res, resultPath(req))));
   router.post('/jobs/:id/results/:resultId/refine', requireOwner, handle((req, res) => {

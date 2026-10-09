@@ -3,14 +3,22 @@
 ## Buying compounds
 
 1. Open Simulation and search **Pyxis stock** or **Macrocycles** (All/Real/Virtual).
-2. Choose an available pack and **Add to cart**. RPX and VPX offer 1, 2 and 5 mg
+2. Choose an available pack and **Add to cart**, or check rows and **Order selected**
+   to add their displayed packs together and open review. Bulk additions are atomic:
+   an unavailable pack or a fourth distinct compound leaves the basket unchanged.
+   RPX and VPX offer 1, 2 and 5 mg
    where applicable; stock has the workbook's additional sizes, bounded by the
    source row's available mg. Virtual compounds are labelled made to order.
-3. Open the cart, adjust quantities, and **Review order**. The server rechecks
-   every signed item and displays the authoritative total.
+3. Open the cart and **Review order** to visit `/dashboard/review-order`. Adjust
+   quantities there and check exact structure drawings, packs and the authoritative
+   server quote. Basket changes invalidate the previous quote. **Download quote CSV**
+   exports ID, SMILES, source, pack size, quantity and EUR/USD prices for approval
+   before payment; signed offer tokens are excluded. Spreadsheet-sensitive values
+   receive a leading apostrophe; raw chemical-file consumers must remove that guard.
 4. Continue to Stripe, enter billing and delivery information, and pay by card.
    **The card is charged immediately. Shipping is included in listed USD prices.**
-5. Return to **Compound orders** for payment status and the saved line items.
+5. Return to **Compound orders** for payment status, structure drawings and a CSV
+   of the saved line items.
    Only verified payment clears the purchased basket entries. A failed or canceled
    checkout preserves the cart. Open compounds/ChEMBL is discovery-only.
 

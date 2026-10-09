@@ -9,6 +9,7 @@ import * as engine from './engine.mjs';
 import { dirname, join, resolve } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
 import { createJobStore } from './job-store.mjs';
+import { withSdfData } from './sdf.mjs';
 
 const HOUR = 3600_000;
 const INDEX_BOND = 1.5; // build.py indexes nominal 1.5 A anchors
@@ -426,6 +427,21 @@ export function createJobManager({
       if (!job) return null;
       if (!job.finishedAt) stop(job, 'canceled');
       return summary(job);
+    },
+    /** Export the frozen retained originals, never every accepted database placement. */
+    exportResults(owner, id) {
+      const job = owned(owner, id);
+      if (!job) return null;
+      if (!job.finishedAt || !['completed', 'canceled', 'failed'].includes(job.state))
+        throw Object.assign(new Error('Wait for the search to finish, or cancel it, before downloading retained products.'), { status: 409, code: 'LINK_FRAGMENTS_SEARCH_ACTIVE' });
+      const state = summary(job);
+      const resultIds = job.top.entries.map(entry => entry.id);
+      const sdf = job.top.entries.map((entry, index) => withSdfData(entry.detail.sdf, {
+        PYXIS_SEARCH_JOB_ID: job.id, PYXIS_RESULT_ID: entry.id, PYXIS_RESULT_RANK: String(index + 1),
+        PYXIS_SEARCH_STATE: job.state, PYXIS_SEARCH_COMPLETE: String(state.complete),
+        PYXIS_EXPORT_SCOPE: 'All retained original products; not all accepted database placements.',
+      })).join('');
+      return { jobId: job.id, complete: state.complete, partial: state.partial, count: resultIds.length, retentionLimit: job.top.limit, resultIds, sdf };
     },
     /** Returns {job, entry, index} for the owner's retained result, else null. */
     findResult(owner, id, resultIdValue) {

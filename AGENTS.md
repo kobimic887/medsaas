@@ -54,6 +54,12 @@ when a path or trap moves.
   Structure previews depict exact SMILES with browser RDKit; workbook price displays
   preserve original EUR alongside fixed USD prices (1–3 tier only, at most three
   distinct compounds per order). Shipping is included; Stripe charges immediately.
+  Owned results omit Formula/MW/SMILES columns but retain exact identifier previews.
+  Selected pack additions are atomic and open `/dashboard/review-order`, with
+  server-quoted structures, quantities and approval CSV. Home retains its visited
+  workspace until the authenticated layout unmounts; hidden Home must not paginate
+  or navigate on another page. Draw loads once and blocks startup autofocus while
+  reserving its height.
   Verified compound payments save `compound_orders`, never grant credits. Include
   `shared/compoundPriceBook.js` in server releases. See `docs/COMPOUND-SHOP.md`.
 - Scientific SQL inspection: `services/catalog-sql/README.md`. The additive
@@ -78,7 +84,9 @@ when a path or trap moves.
   products are discovery-only. History owns saved Linker searches; query deep links
   reopen that exact job. Active scans allow provisional previews; exports and
   refinement require a retained result and a server-confirmed terminal state,
-  never a local polling failure. Ship `services/link-fragments/sdf.mjs` with the
+  never a local polling failure. Bulk SDF export is owner-scoped and includes retained original
+  products only (maximum 50), with rank/job/result and complete/partial provenance.
+  Ship `services/link-fragments/sdf.mjs` with the
   application server for input parsing. Refined SDF downloads retain linker IDs,
   source atom mapping and original placement scores; new hydrogens are appended,
   so source atom numbers remain valid. RDKit molblock output alone drops SD tags.

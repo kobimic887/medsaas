@@ -180,6 +180,15 @@ export async function createLinkerServer({ indexPath, jobOptions = {}, refineMod
         const job = jobs.cancel(owner, parts[1]);
         return job ? send(200, { job }) : notFound();
       }
+      if (parts.length === 3 && parts[2] === 'export' && req.method === 'GET') {
+        try {
+          const exported = jobs.exportResults(owner, parts[1]);
+          return exported ? send(200, { export: exported }) : notFound();
+        } catch (error) {
+          if (error.status) return send(error.status, { error: error.message, code: error.code });
+          throw error;
+        }
+      }
       if (parts.length >= 4 && parts[2] === 'results') {
         if (!RESULT_ID.test(parts[3])) return send(404, { error: 'Result not found.', code: 'RESULT_NOT_FOUND' });
         const lookup = () => {

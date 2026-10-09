@@ -57,6 +57,7 @@ test('real Express relay: owner scoping, validation, inspection merge, jobs, ref
     if (req.url === '/jobs' && req.method === 'POST') return send(202, { job: { id: JOB, state: 'queued', complete: false, partial: true } });
     if (req.url === '/jobs') return send(200, { jobs: [{ id: JOB, state: 'running' }] });
     if (req.url === `/jobs/${JOB}`) return send(200, { job: { id: JOB, state: 'running', complete: false, partial: true, results: [] } });
+    if (req.url === `/jobs/${JOB}/export`) return send(409, { code: 'LINK_FRAGMENTS_SEARCH_ACTIVE', error: 'Wait for the search to finish.' });
     if (req.url === `/jobs/${JOB}/cancel`) return send(200, { job: { id: JOB, state: 'canceled', complete: false, partial: true } });
     if (req.url === `/jobs/${JOB}/results/12-3-4`) return send(200, { result: { id: '12-3-4', sdf: 'product' } });
     if (req.url === `/jobs/${JOB}/results/12-3-4/refine`) return send(200, { refinement: { ok: true, forceField: 'MMFF94' } });
@@ -120,11 +121,16 @@ test('real Express relay: owner scoping, validation, inspection merge, jobs, ref
     await call('/ready/jobs', { user: { username: 'solo' } });
     assert.equal(requests.at(-1).owner, ownerKey('', 'solo'));
     assert.match(requests.at(-1).owner, /^[0-9a-f]{64}$/);
+    const exportResponse = await json(await call(`/ready/jobs/${JOB}/export`, { headers: { 'X-Pyxis-Owner': forged } }));
+    assert.equal(exportResponse.status, 409);
+    assert.equal(exportResponse.body.code, 'LINK_FRAGMENTS_SEARCH_ACTIVE');
+    assert.equal(requests.at(-1).owner, ownerKey('company-a', 'anna'), 'bulk export derives owner from the authenticated user');
 
     // Authorization failures are 403 (never 401) and never reach upstream.
     const before = requests.length;
     for (const user of [null, { companyId: 'company-a' }, { username: '' }]) {
       assert.equal((await call('/ready/jobs', { user })).status, 403);
+      assert.equal((await call(`/ready/jobs/${JOB}/export`, { user })).status, 403);
       assert.equal((await call('/ready/inspect', { user, body: { sdf } })).status, 403);
     }
     // Validation failures stay local.

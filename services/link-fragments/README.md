@@ -43,6 +43,7 @@ signed-in user and company); other owners' jobs return 404.
 | `POST /jobs` | Start a complete scan: `sdf`, two `attachments` (atom number or `{atom, hydrogenAtom}`), `maxRmsd` 0.1–1, `limit` 1–50, optional `receptorPdb`; receptor is validated again server-side |
 | `GET /jobs`, `GET /jobs/:id` | Owner's compact history; one job includes original input, progress and ranked result summaries. `?input=0` omits uploaded files during polling |
 | `POST /jobs/:id/cancel` | Cancel; partial results stay available |
+| `GET /jobs/:id/export` | Owner's ranked retained original products as a multi-record SDF plus count/retention/complete/partial metadata; active scans return 409, missing or other-owner jobs 404 |
 | `GET /jobs/:id/results/:resultId` | Product SDF, atom mapping and any refinement |
 | `POST /jobs/:id/results/:resultId/refine` | MMFF94/UFF refinement, optional receptor PDB (≤ 5 MB) |
 

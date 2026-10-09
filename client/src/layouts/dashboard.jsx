@@ -1,4 +1,4 @@
-import React, { Suspense } from "react";
+import React, { Suspense, useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { RouteFallback } from "@/widgets/layout/route-fallback";
 import {
@@ -69,6 +69,14 @@ export function Dashboard() {
 }
 
 function DashboardShell() {
+  const { pathname } = useLocation();
+  const homeActive = /\/dashboard\/simulation\/?$/.test(pathname);
+  // Keep the visited Home workspace inside the authenticated layout. A logout
+  // destroys this instance, while dashboard navigation retains inputs and jobs.
+  const [homeVisited, setHomeVisited] = useState(homeActive);
+  if (homeActive && !homeVisited) setHomeVisited(true);
+  const homeRoute = routes.flatMap(({ layout, pages }) => layout === 'dashboard' ? pages : [])
+    .find(({ path }) => path === '/simulation');
   const [controller] = useMaterialTailwindController();
   const { openSidenav } = controller;
   // The sidebar header names the product, not the tenant. This used to render
@@ -108,11 +116,21 @@ function DashboardShell() {
 
         {/* Main Content */}
         <main id="main-content" className="min-w-0 flex-1 p-4">
+          {(homeVisited || homeActive) && (
+            <div hidden={!homeActive} inert={homeActive ? undefined : ''}>
+              <DashboardErrorBoundary>
+                <Suspense fallback={<RouteFallback />}>
+                  {React.cloneElement(homeRoute.element, { active: homeActive })}
+                </Suspense>
+              </DashboardErrorBoundary>
+            </div>
+          )}
           <Routes>
             <Route index element={<Navigate to="simulation" replace />} />
+            <Route path="simulation" element={null} />
             {routes.flatMap(({ layout, pages }) =>
               layout === "dashboard"
-                ? pages.map(({ path, element }) => (
+                ? pages.filter(({ path }) => path !== '/simulation').map(({ path, element }) => (
                     <Route
                       key={path}
                       path={path.replace(/^\/+/, "")}

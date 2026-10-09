@@ -29,6 +29,7 @@ const Notifications = lazy(() => import("@/pages/dashboard/notifications"));
 const ControlPanel = lazy(() => import("@/pages/dashboard/controlpanel"));
 const CompanyAdmin = lazy(() => import("@/pages/dashboard/company-admin"));
 const LinkFragments = lazy(() => import("@/pages/dashboard/link-fragments"));
+const ReviewOrder = lazy(() => import("@/pages/dashboard/review-order"));
 const CompoundOrders = lazy(() => import("@/pages/dashboard/compound-orders"));
 const Simulation = lazy(() => import("@/pages/dashboard/simulation"));
 const MoleculeViewer = lazy(() => import("@/pages/dashboard/moleculeviewer"));
@@ -201,6 +202,13 @@ export const routes = [
         name: "literature",
         path: "/literature",
         element: <Literature />,
+      },
+      {
+        icon: <CreditCardIcon {...icon} />,
+        name: "Review order",
+        path: "/review-order",
+        element: <ReviewOrder />,
+        hideFromMenu: true,
       },
       {
         icon: <CreditCardIcon {...icon} />,

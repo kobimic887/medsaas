@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Fragment3DViewer } from '@/components/Fragment3DViewer';
 import { API_CONFIG, getAuthToken } from '@/utils/constants';
 import {
-  attachmentMappingLines, canUseResult, createJobPoller, defaultHydrogenChoice, formatCount, formatQuerySelection, hydrogenClickHint, hydrogenOptions, isActiveJob,
+  attachmentMappingLines, canExportResults, canUseResult, createJobPoller, defaultHydrogenChoice, formatCount, formatQuerySelection, hydrogenClickHint, hydrogenOptions, isActiveJob,
   isHydrogenElement, isTerminalJob, jobStatusLabel, markJobUnfollowable, pickResumableJob, pollFailureMessage, progressOf, receptorForView, receptorPocket, receptorValidationReady,
   refinementRows, restoreJobInput, resultFileName, resultReport, sdfCoordinates, selectionForAtom, selectionLabel, selectionPayload, selectionReady, unavailableReasons,
 } from '@/utils/linkFragmentsJobs';
@@ -72,6 +72,9 @@ export function LinkFragments() {
   const [refining, setRefining] = useState(false);
   const [refineError, setRefineError] = useState('');
   const [view, setView] = useState('original');
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const exportRequest = useRef(null);
   const activeRequest = useRef(null);
   const statusRequest = useRef(null);
   const detailRequest = useRef(null);
@@ -105,7 +108,7 @@ export function LinkFragments() {
     return () => {
       revision.current++;
       poller.current.stop();
-      for (const ref of [activeRequest, statusRequest, detailRequest, refineRequest, cancelRequest, receptorRequest]) ref.current?.abort();
+      for (const ref of [activeRequest, statusRequest, detailRequest, refineRequest, cancelRequest, receptorRequest, exportRequest]) ref.current?.abort();
     };
   }, [requestedJobId]);
 
@@ -181,6 +184,8 @@ export function LinkFragments() {
   // Any query change stops following the old job and clears its products so a
   // stale result is never shown against a different query.
   function resetResults() {
+    exportRequest.current?.abort(); exportRequest.current = null;
+    setExporting(false); setExportError('');
     revision.current++;
     poller.current.stop();
     for (const ref of [activeRequest, detailRequest, refineRequest, cancelRequest]) { ref.current?.abort(); ref.current = null; }
@@ -393,6 +398,24 @@ export function LinkFragments() {
     else if (kind === 'refined' && refinement) saveSdf(refinement.sdf, resultFileName(summary, refinement));
     else if (kind === 'original') saveSdf(detail.sdf, resultFileName(summary));
   }
+  async function downloadAllResults() {
+    if (exporting || !canExportResults(job, jobNotice)) return;
+    const id = job.id;
+    const controller = new AbortController();
+    exportRequest.current = controller;
+    setExporting(true); setExportError('');
+    try {
+      const data = await request(`jobs/${encodeURIComponent(id)}/export`, controller, undefined, 25000);
+      if (exportRequest.current !== controller || controller.signal.aborted || jobRef.current?.id !== id) return;
+      const exported = data?.export;
+      if (exported?.jobId !== id || typeof exported.sdf !== 'string' || exported.count < 1) throw new Error('No retained products are available to download.');
+      saveSdf(exported.sdf, `pyxis-linker-${id}-all-retained${exported.partial ? '-partial' : ''}.sdf`);
+    } catch (failure) {
+      if (exportRequest.current === controller && failure.name !== 'AbortError') setExportError(errorText(failure));
+    } finally {
+      if (exportRequest.current === controller) { exportRequest.current = null; setExporting(false); }
+    }
+  }
   const refineStatus = status?.refinement;
   const limitations = status?.limitations;
   return (
@@ -479,6 +502,11 @@ export function LinkFragments() {
           </div>}
           {job && results.length === 0 && (jobActive || resultsKnown) && <p role="status" className="text-sm dark:text-slate-200">{jobActive ? 'No valid products yet.' : 'No valid linker products matched these attachment sites and fit limit in the pairs examined.'}</p>}
           {job && !jobActive && !resultsKnown && !jobNotice?.fatal && <p role="status" className="text-sm dark:text-slate-200">Loading products…</p>}
+          {results.length > 0 && <div className="space-y-2">
+            <button type="button" onClick={downloadAllResults} disabled={exporting || refining || !canExportResults(job, jobNotice)} className="rounded-lg border border-brand-500 px-4 py-2 text-sm font-semibold text-brand-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-brand-200">{exporting ? 'Preparing download…' : `Download all ${results.length} retained originals`}</button>
+            <p className={muted}>One SDF with all retained original products (up to {job?.query?.limit || 50}); selected refinements download separately.{job?.partial ? ' This search is partial; the export includes only results retained from the pairs examined.' : ''}</p>
+            {exportError && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{exportError}</p>}
+          </div>}
           {results.length > 0 && <ol className="max-h-72 space-y-1 overflow-y-auto" aria-label={receptor ? "Products ranked by receptor clash severity, then fit RMSD" : "Products ranked by fit RMSD"}>{results.map(item => <li key={item.id}><button type="button" aria-pressed={item.id === selectedId} onClick={() => selectResult(job.id, item.id)} disabled={refining} className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${item.id === selectedId ? 'border-brand-500 bg-brand-50 dark:bg-slate-800' : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'} dark:text-slate-100`}>
             <span className="block truncate font-semibold">{item.rank}. {item.linkerId}{item.refined ? ' · refined' : ''}</span><span className="mt-1 block text-xs text-slate-500 dark:text-slate-300">Fit {Number(item.rmsd).toFixed(3)} Å{item.receptor ? ` · ${formatCount(item.receptor.clashes)} clashes (${formatCount(item.receptor.severeClashes)} severe)` : ''}</span>
           </button></li>)}</ol>}

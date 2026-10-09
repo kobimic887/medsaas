@@ -34,6 +34,12 @@ create a stock offer, enter a cart or establish synthesis availability.
    after the service finishes or stops the scan; a stopped scan remains partial.
    Completion freezes the search ranking and does not automatically refine any
    product. Refinement is a separate operation on the selected candidate.
+   **Download all retained originals** exports the ranked original products in one
+   SDF after the server confirms a terminal state. It contains up to the chosen
+   retention limit (maximum 50), not every accepted placement. Each record preserves
+   its scientific tags and adds job/result ID, rank and complete/partial provenance.
+   Canceled and failed scans export partial results; selected refined downloads stay
+   separate.
 9. Open **History → Linker searches** to restore original inputs, attachment selections,
    receptor, results and successful refinements. Links use
    `/dashboard/link-fragments?job=<id>` and never substitute another job if it is

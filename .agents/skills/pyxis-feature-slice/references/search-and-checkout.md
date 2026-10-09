@@ -17,9 +17,16 @@ Identifier and SMILES cells open the preview on hover or keyboard focus. Stock a
 macrocycle codes, and the open-compound eye button, also pin it on click/tap/Enter
 for touch users; Escape, pressing elsewhere or scrolling dismisses it. Previews are
 cached per exact SMILES and size as image data URLs (`client/src/utils/moleculePreview.js`).
-Stock and macrocycle tables show IDNUMBER, Formula, MW, Lead time, Pack size/price
-and Similarity. Formula and MW are calculated from exact SMILES with browser RDKit
-and explicitly labeled calculated; absent lead time stays unavailable.
+Stock and macrocycle tables show IDNUMBER, Lead time, Pack size/price and Similarity.
+Formula, MW and SMILES stay out of the main results table; exact structure previews
+remain on identifier buttons. Absent lead time stays unavailable. Stock selection
+uses index row ID, macrocycle selection uses source plus index row ID, so duplicate
+display codes cannot collapse distinct compounds. Selected orders add the displayed
+packs atomically, respect the combined basket's three-compound limit, and open
+`/dashboard/review-order`; a rejected selection never partially fills the basket.
+Home retains its workspace after the first visit until the authenticated layout
+unmounts. Hidden Home cannot paginate on another page's scroll or navigate to a
+completed docking result; Draw retains its visited iframe and reserves loading space.
 
 - **Stock:** authenticated `GET /api/stock-search/status|similarity` uses the
   configured tonomitosql dataset (`STOCK_SEARCH_BASE`, `STOCK_SEARCH_DATASET_ID`
@@ -87,6 +94,12 @@ returns `503 CATALOG_RETIRED` locally; `/api/stock-offers` remains disabled. The
 independent known-plan branch uses `buildPlanCheckoutSessionParams` for one-time
 credit purchases, fulfilled only through its existing verified Stripe webhook.
 Never restore supplier repricing. Ship the shared price module with the server.
+
+Order review lives at `/dashboard/review-order`, with canonical `/quote` structures
+and prices. Quote CSV exports identifiers, exact SMILES, packs, quantities and prices
+for approval, never offer tokens; spreadsheet-sensitive fields are guarded with a
+leading apostrophe. Basket changes invalidate quote/download/payment state. Saved
+compound orders also show exact structures and export their recorded line items.
 
 Run `test:compound-shop` for offers, real HTTP checkout, verified webhooks and cart
 state; `test:catalog-pricing` for retired paths/zero supplier calls and unchanged

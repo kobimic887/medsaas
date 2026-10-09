@@ -19,11 +19,11 @@ import {
   useState,
 } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CompoundDescriptorCells } from '@/components/CompoundDescriptorCells';
 import { MoleculePreviewTooltip, useStructurePreview } from '@/components/MoleculePreview';
 import { convertPriceToEuro, formatPrice } from '@/utils/algo/algo';
 import { withAppBase } from "@/utils/appEnv";
 import { addShopPack, cartLineKey, isOwnedCartItem, readShopCart, shopMoney, writeShopCart } from '@/utils/compoundShop';
+import { addSelectedShopPacks, offerSelectionKey } from '@/utils/compoundSelection';
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 import { copyToClipboard } from '@/utils/copyToClipboard';
 import { appendUniqueMacrocycleRows, macrocycleResultsFromPayload } from '@/utils/macrocycleResults';
@@ -95,13 +95,12 @@ function CompoundQueryField({ value, onChange, catalog }) {
   );
 }
 
-function CompoundShopPacks({ offer, onAdded }) {
-  const [amountMg, setAmountMg] = useState('');
+function CompoundShopPacks({ offer, onAdded, amountMg, onPackChange }) {
   const [error, setError] = useState('');
   const [addCount, setAddCount] = useState(0);
   const [justAdded, setJustAdded] = useState(false);
   const packs = offer?.packs || [];
-  const selected = packs.find((pack) => String(pack.mg) === amountMg) || packs[0];
+  const selected = packs.find((pack) => pack.mg === amountMg) || packs[0];
   // Flash the button after each successful add; re-adding restarts the flash.
   useEffect(() => {
     if (!addCount) return undefined;
@@ -113,7 +112,7 @@ function CompoundShopPacks({ offer, onAdded }) {
   return (
     <div className="min-w-[13rem] space-y-2 text-xs tabular-nums">
       <label className="flex flex-col gap-1">Pack size for {offer.code}
-        <select aria-label={`Pack size for ${offer.code}`} value={selected.mg} onChange={(event) => { setAmountMg(event.target.value); setError(''); }} className="rounded border border-slate-400 bg-white p-2 text-slate-900 dark:bg-slate-900 dark:text-white">
+        <select aria-label={`Pack size for ${offer.code}`} value={selected.mg} onChange={(event) => { onPackChange(Number(event.target.value)); setError(''); }} className="rounded border border-slate-400 bg-white p-2 text-slate-900 dark:bg-slate-900 dark:text-white">
           {packs.map((pack) => <option key={pack.mg} value={pack.mg}>{pack.mg} mg · {shopMoney(pack.unitAmountCents)} USD</option>)}
         </select>
       </label>
@@ -206,7 +205,7 @@ async function fetchWithGatewayRetry(url, init = {}, { maxAttempts = 3, baseDela
   return lastResponse;
 }
 
-export function Simulation() {
+export function Simulation({ active = true }) {
   // Popup state for clipboard copy
   const [showClipboardPopup, setShowClipboardPopup] = useState(false);
   // State for toggling simulation inputs
@@ -263,6 +262,8 @@ export function Simulation() {
   const openRankedCacheRef = useRef(null);
   const [queryType, setQueryType] = useState("text"); // Compact entry keeps results visible on first load
   const [editorExpanded, setEditorExpanded] = useState(false);
+  const [editorVisited, setEditorVisited] = useState(false);
+  const [editorState, setEditorState] = useState('loading');
   const moleculeLimit = 30;
   const [similarityThreshold, setSimilarityThreshold] = useState(0.7); // Similarity threshold (0-1)
   // Stock fingerprint + metric (binary RDKit only). Defaults match the server
@@ -291,24 +292,41 @@ export function Simulation() {
     tooltipId: structurePreviewId,
     show: handleMouseEnter,
     hide: handleMouseLeave,
+    close: closeStructurePreview,
     triggerProps: structurePreviewTrigger,
   } = useStructurePreview();
+
+  useEffect(() => {
+    if (!active) {
+      closeStructurePreview();
+      setShowClipboardPopup(false);
+      setMessage('');
+    }
+  }, [active, closeStructurePreview]);
   
   // Checkbox selection state
   const [selectedMolecules, setSelectedMolecules] = useState(new Set());
+  const simStartedAtRef = useRef(0);
+  const [selectedPacks, setSelectedPacks] = useState({});
+
+  useEffect(() => {
+    if (!topMolecules.length) setSelectedPacks({});
+  }, [topMolecules]);
 
   useEffect(() => {
     if (!simLoading) {
+      simStartedAtRef.current = 0;
       setSimElapsedSeconds(0);
       return undefined;
     }
-
-    const startedAt = Date.now();
+    if (!simStartedAtRef.current) simStartedAtRef.current = Date.now();
+    if (!active) return undefined;
+    const startedAt = simStartedAtRef.current;
     const updateElapsed = () => setSimElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
     updateElapsed();
     const timer = window.setInterval(updateElapsed, 1000);
     return () => window.clearInterval(timer);
-  }, [simLoading]);
+  }, [active, simLoading]);
   
   // Currency conversion state
   const [currency, setCurrency] = useState('USD');
@@ -322,6 +340,11 @@ export function Simulation() {
   const initialLoadingRef = useRef(true);
   const isLoadingPageRef = useRef(false); // Prevent multiple simultaneous requests
   const ketcherIframeRef = useRef(null);
+  const editorReadyTimerRef = useRef(null);
+  const simulationControllerRef = useRef(null);
+  const diffDockControllerRef = useRef(null);
+  const simHandoffRef = useRef(null);
+  const diffDockHandoffRef = useRef(null);
   const isSearchActiveRef = useRef(false);
   const lastSearchQueryRef = useRef("");
   const lastFromIdRef = useRef(0);
@@ -449,6 +472,9 @@ export function Simulation() {
     browseControllerRef.current?.abort();
     searchControllerRef.current?.abort();
     resultDownloadControllerRef.current?.abort();
+    simulationControllerRef.current?.abort();
+    diffDockControllerRef.current?.abort();
+    window.clearTimeout(editorReadyTimerRef.current);
     // Invalidate an in-flight stock/open availability check when leaving the page.
     stockStatusRequestRef.current += 1;
     openStatusRequestRef.current += 1;
@@ -1476,6 +1502,7 @@ export function Simulation() {
     setSimError("");
     setSimResult(null);
     const controller = new AbortController();
+    simulationControllerRef.current = controller;
     const timeout = window.setTimeout(() => controller.abort(), 11 * 60 * 1000);
     try {
       const token = getAuthToken();
@@ -1507,7 +1534,6 @@ export function Simulation() {
         throw new Error(result?.error || `Simulation failed (HTTP ${res.status})`);
       }
 
-      clearDiffDockStorage();
       setSimResult(result);
 
     } catch (err) {
@@ -1548,6 +1574,7 @@ export function Simulation() {
     setDiffDockError("");
     setDiffDockResult(null);
     const controller = new AbortController();
+    diffDockControllerRef.current = controller;
     const timeout = window.setTimeout(() => controller.abort(), 11 * 60 * 1000);
     try {
       const token = getAuthToken();
@@ -1590,7 +1617,9 @@ export function Simulation() {
 
   // Redirect to Molstar3D when simulation results are available
   useEffect(() => {
+    if (!active || !simResult || simHandoffRef.current === simResult) return;
     if (simResult && simResult.simulationKey) {
+      simHandoffRef.current = simResult;
       const pdbLabel = normalizePdbId(simPdbId);
       // Show the public RCSB entry (waters, crystal ligands, default assembly)
       // in Molstar. Docking still used the stripped receptor; Download Sanitized
@@ -1610,6 +1639,7 @@ export function Simulation() {
       // potentially forever. The IP is diagnostic metadata; it is not worth one second of
       // the user's time, let alone an unbounded number.
       const storeSimulationData = () => {
+        clearDiffDockStorage();
         // Store URLs in localStorage and navigate to Molstar3D
         localStorage.setItem('molstar_pdb_url', pdbUrl);
         localStorage.setItem('molstar_pdb_name', pdbName);
@@ -1679,11 +1709,13 @@ export function Simulation() {
       
       storeSimulationData();
     }
-  }, [simResult, navigate]);
+  }, [active, simResult, navigate]);
 
   // Redirect to RDKit Molecule Viewer when DiffDock results are available
   useEffect(() => {
+    if (!active || !diffDockResult || diffDockHandoffRef.current === diffDockResult) return;
     if (diffDockResult) {
+      diffDockHandoffRef.current = diffDockResult;
       // Store DiffDock result data in localStorage for the molecule viewer
       localStorage.setItem('diffdock_result', JSON.stringify(diffDockResult));
       localStorage.setItem('diffdock_pdb_id', diffDockPdbId);
@@ -1737,7 +1769,7 @@ export function Simulation() {
       markViewerHandoff();
       navigate('/dashboard/molstar3d?diffdock=1');
     }
-  }, [diffDockResult, diffDockPdbId, diffDockLigandId, navigate]);
+  }, [active, diffDockResult, diffDockPdbId, diffDockLigandId, navigate]);
 
   // Fetch currency info on mount
   useEffect(() => {
@@ -1765,6 +1797,7 @@ export function Simulation() {
 
   // Separate useEffect for scroll handling
   useEffect(() => {
+    if (!active) return undefined;
     let scrollTimeout;
     
     const handleScroll = () => {
@@ -1793,7 +1826,7 @@ export function Simulation() {
       }, 250); // 250ms debounce
     };
 
-    window.addEventListener('scroll', handleScroll);
+    window.addEventListener('scroll', handleScroll, { passive: true });
     
     return () => {
       window.removeEventListener('scroll', handleScroll);
@@ -1801,7 +1834,7 @@ export function Simulation() {
         clearTimeout(scrollTimeout);
       }
     };
-  }, []); // Empty dependency array - only set up once
+  }, [active]); // Hidden Home must not page when another dashboard page scrolls.
 
 
   const saveCartToStorage = (cartData) => {
@@ -1876,7 +1909,24 @@ export function Simulation() {
 
   const moleculeSelectionId = (molecule, index) => molecule.isMacrocycleRow && molecule.macrocycleRowId !== null && molecule.macrocycleRowId !== undefined
     ? `macrocycle-${molecule.macrocycleSource}-${molecule.macrocycleRowId}`
-    : molecule.ASINEX_ID || molecule.id || `molecule-${index}`;
+    : molecule.isStockRow && molecule.stockRowId !== null && molecule.stockRowId !== undefined
+      ? `stock-${molecule.stockRowId}`
+      : molecule.ASINEX_ID || molecule.id || `molecule-${index}`;
+
+  const orderSelectedCompounds = () => {
+    try {
+      const selections = topMolecules.filter((molecule, index) => selectedMolecules.has(moleculeSelectionId(molecule, index))).map((molecule) => {
+        const offer = molecule.shopOffer;
+        const requested = offer && selectedPacks[offerSelectionKey(offer)];
+        const pack = offer?.packs?.find((entry) => entry.mg === requested) || offer?.packs?.[0];
+        return { offer, amountMg: pack?.mg };
+      });
+      const next = addSelectedShopPacks(readShopCart(localStorage), selections);
+      writeShopCart(localStorage, next);
+      window.dispatchEvent(new Event('cartUpdated'));
+      navigate('/dashboard/review-order');
+    } catch (error) { showMessage(error.message, 'error'); }
+  };
 
   // Handle checkbox selection
   const handleCheckboxChange = (molecule, index, isChecked) => {
@@ -2071,9 +2121,28 @@ export function Simulation() {
     }
   };
 
+  const handleEditorLoad = () => {
+    window.clearTimeout(editorReadyTimerRef.current);
+    const startedAt = Date.now();
+    const checkReady = () => {
+      if (typeof ketcherIframeRef.current?.contentWindow?.ketcher?.getSmiles === 'function') {
+        // Ketcher's startup textarea autofocus can scroll the whole dashboard.
+        // Boot it with display:none, then release its startup focus before
+        // revealing it. User focus after readiness belongs to the user.
+        ketcherIframeRef.current.contentDocument?.activeElement?.blur();
+        setEditorState('ready');
+      } else if (Date.now() - startedAt > 60000) {
+        setEditorState('error');
+      } else {
+        editorReadyTimerRef.current = window.setTimeout(checkReady, 100);
+      }
+    };
+    checkReady();
+  };
+
   return (
     <div className="min-h-screen flex flex-col pt-4 pb-4 bg-gray-50 w-full px-2 sm:px-4">
-      {message && (
+      {active && message && (
         <div className="fixed right-4 top-20 z-[70] w-[min(28rem,calc(100vw-2rem))]" role="status" aria-live="polite">
           <Alert
             color={messageType === "error" ? "red" : "green"}
@@ -2084,7 +2153,7 @@ export function Simulation() {
           </Alert>
         </div>
       )}
-      <MoleculePreviewTooltip preview={structurePreview} id={structurePreviewId} />
+      {active && <MoleculePreviewTooltip preview={structurePreview} id={structurePreviewId} />}
 
       <fieldset className="mb-4 min-w-0 rounded-2xl border border-blue-gray-100 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950 sm:p-4">
         <legend className="sr-only">Compound collection</legend>
@@ -2282,7 +2351,7 @@ export function Simulation() {
               name="queryType"
               value="draw"
               checked={queryType === "draw"}
-              onChange={() => setQueryType("draw")}
+              onChange={() => { setEditorVisited(true); setQueryType("draw"); }}
             />
             <span>Draw molecule</span>
           </label>
@@ -2684,8 +2753,8 @@ export function Simulation() {
         </Card>
       )}
 
-      {queryType !== "text" && (
-        <div id="editor" className="flex w-full min-w-0 flex-col gap-3">
+      {editorVisited && (
+        <div id="editor" hidden={queryType === "text"} className={`${queryType === 'text' ? 'hidden' : 'flex'} w-full min-w-0 flex-col gap-3`}>
           {/* Ketcher Editor - responsive primary pane */}
           <div className="min-w-0 flex-1 rounded-2xl border-2 border-blue-gray-200 bg-blue-gray-50 p-1.5 transition-colors focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-950 dark:focus-within:border-brand-500">
             <div className="flex items-center justify-between px-2 py-1 text-sm font-semibold text-blue-gray-700 dark:text-slate-200">
@@ -2694,12 +2763,22 @@ export function Simulation() {
                 {editorExpanded ? 'Compact editor' : 'Expand editor'}
               </button>
             </div>
-            <div className="overflow-hidden rounded-xl border border-blue-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+            <div className={`${editorExpanded ? 'h-[min(75vh,42rem)]' : 'h-[min(48vh,26rem)]'} relative overflow-hidden rounded-xl border border-blue-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900`}>
+              {editorState !== 'ready' && (
+                <div role="status" aria-live="polite" className="absolute inset-0 flex items-center justify-center gap-3 p-4 text-sm text-blue-gray-600 dark:text-slate-300">
+                  {editorState === 'loading' ? <><Spinner className="h-5 w-5" />Loading molecule editor…</> : 'The molecule editor could not start. Reload the page to try again.'}
+                </div>
+              )}
               <iframe
                 ref={ketcherIframeRef}
                 src={withAppBase("/ketcher/index.html")}
                 title="Ketcher 2D Chemical Editor"
-                className={`${editorExpanded ? 'h-[min(75vh,42rem)]' : 'h-[min(48vh,26rem)]'} w-full border-0 bg-white dark:bg-slate-900`}
+                onLoad={handleEditorLoad}
+                onError={() => setEditorState('error')}
+                hidden={editorState !== 'ready'}
+                style={editorState === 'ready' ? undefined : { display: 'none' }}
+                tabIndex={editorState === 'ready' ? 0 : -1}
+                className="h-full w-full border-0 bg-white dark:bg-slate-900"
                 allowFullScreen
               />
             </div>
@@ -2710,6 +2789,7 @@ export function Simulation() {
             {/* Copy SMILES Button */}
             <Button 
               onClick={handleCopySmiles}
+              disabled={editorState !== 'ready'}
               color="orange"
               size="lg"
               className="w-full"
@@ -2842,8 +2922,14 @@ export function Simulation() {
         </div>
         {['stock', 'both', 'real', 'virtual'].includes(searchSource) && topMolecules.length > 0 && (
           <p className="mb-3 text-xs text-blue-gray-600 dark:text-slate-300">
-            Workbook 1–3 tier: up to 3 distinct compounds per order. Original EUR prices shown beside the fixed USD checkout price; review shipping and terms in the cart.
+            Workbook 1–3 tier: up to 3 distinct compounds per order. Original EUR prices shown beside the fixed USD checkout price; review shipping and terms before checkout.
           </p>
+        )}
+        {['stock', 'both', 'real', 'virtual'].includes(searchSource) && topMolecules.length > 0 && (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <span className="text-sm text-blue-gray-700 dark:text-slate-300">{selectedMolecules.size} selected</span>
+            <button type="button" disabled={!selectedMolecules.size || searchLoading || topLoading} onClick={orderSelectedCompounds} className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Order selected</button>
+          </div>
         )}
         <div id="results" className="w-full bg-slate-100 dark:bg-slate-900">
           {/* Header as a block element, not wrapping Card or div */}
@@ -2863,20 +2949,17 @@ export function Simulation() {
             <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
                 <div className="border-b border-teal-100 bg-teal-50/60 px-4 py-3 text-xs text-blue-gray-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
-                  {MACROCYCLE_SOURCES[searchSource].label} · globally ranked by {macrocycleResultMethodLabel} over Morgan (ECFP4) · RPX/VPX rows keep their source · export amounts and lead times are dated. Select rows for docking handoff.
+                  {MACROCYCLE_SOURCES[searchSource].label} · globally ranked by {macrocycleResultMethodLabel} over Morgan (ECFP4) · RPX/VPX rows keep their source · export amounts and lead times are dated. Select rows for docking or ordering.
                 </div>
-                <table className="w-full min-w-[1080px] table-fixed text-left text-sm">
+                <table className="w-full min-w-[680px] table-fixed text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-white dark:bg-slate-900">
                     <tr>
                       <th className="w-10 p-2"><input type="checkbox" aria-label="Select all macrocycles" checked={getSelectAllState().checked} ref={(el) => { if (el) el.indeterminate = getSelectAllState().indeterminate; }} onChange={(e) => handleSelectAll(e.target.checked)} /></th>
                       <th className="w-10 p-2">#</th>
                       <th className="w-44 p-2">IDNUMBER</th>
-                      <th className="w-32 p-2" title="Calculated locally from exact SMILES with RDKit">Formula <span className="block text-xs font-normal">calculated</span></th>
-                      <th className="w-20 p-2" title="Average molecular weight calculated with RDKit">MW <span className="block text-xs font-normal">g/mol · calculated</span></th>
                       <th className="w-28 p-2">Lead time</th>
                       <th className="w-48 p-2">Pack size · price <span className="block text-xs font-normal">EUR / USD</span></th>
                       <th className="w-20 p-2">Similarity</th>
-                      <th className="p-2">SMILES</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2895,15 +2978,9 @@ export function Simulation() {
                             <div className="mt-1 font-semibold text-teal-700 dark:text-teal-300">{mol.macrocycleSource === 'real' ? 'Real RPX' : 'Virtual VPX'}</div>
                             <div className="mt-1 text-blue-gray-500" title="Dated supplier export; amount and lead time are unverified now">{exportDetails || 'No export amount'} · {mol.macrocycleSource === 'real' ? 'stock unverified' : 'virtual'}</div>
                           </td>
-                          <CompoundDescriptorCells smiles={mol.SMILES_STRING} />
                           <td className="p-2 text-xs" title="Dated supplier export; amount and lead time are unverified now">{mol.snapshotLeadTime || '—'}</td>
-                          <td className="p-2"><CompoundShopPacks offer={mol.shopOffer} onAdded={showMessage} /></td>
+                          <td className="p-2"><CompoundShopPacks offer={mol.shopOffer} onAdded={showMessage} amountMg={mol.shopOffer ? selectedPacks[offerSelectionKey(mol.shopOffer)] : undefined} onPackChange={(mg) => setSelectedPacks((previous) => ({ ...previous, [offerSelectionKey(mol.shopOffer)]: mg }))} /></td>
                           <td className="p-2 font-semibold">{mol.SIMILARITY === null ? '—' : mol.SIMILARITY.toFixed(3)}</td>
-                          <td className="min-w-0 p-2 font-mono text-xs">
-                            <button type="button" className="block w-full truncate text-left underline decoration-dotted" title={`Copy ${mol.SMILES_STRING}`} onMouseEnter={(e) => handleMouseEnter(mol.SMILES_STRING, e, "SMILES")} onMouseLeave={handleMouseLeave} onFocus={(e) => handleMouseEnter(mol.SMILES_STRING, e, "SMILES")} onBlur={handleMouseLeave} onClick={async () => { setSearchCode(mol.SMILES_STRING); try { await copyToClipboard(mol.SMILES_STRING); showClipboardConfirmation(); } catch { showMessage('SMILES could not be copied.', 'error'); } }}>
-                              {mol.SMILES_STRING}
-                            </button>
-                          </td>
                         </tr>
                       );
                     })}
@@ -2915,15 +2992,16 @@ export function Simulation() {
             <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
                 <div className="border-b border-blue-gray-100 bg-blue-gray-50/60 px-4 py-2 text-xs text-blue-gray-600 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-400">
-                  Stock compounds · ranked by {snapFpLabel} {snapMetricLabel} similarity · quantities and lead times are dated snapshots. Select rows for docking handoff.
+                  Stock compounds · ranked by {snapFpLabel} {snapMetricLabel} similarity · quantities and lead times are dated snapshots. Select rows for docking or ordering.
                 </div>
-                <table className="w-full min-w-[960px] text-left text-sm lg:min-w-[1080px]">
+                <table className="w-full min-w-[680px] text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-white">
                     <tr>
                       <th className="p-2 font-bold bg-white">
                         <div className="flex items-center gap-2">
                           <input
                             type="checkbox"
+                            aria-label="Select all stock compounds"
                             checked={getSelectAllState().checked}
                             ref={(el) => {
                               if (el) el.indeterminate = getSelectAllState().indeterminate;
@@ -2936,14 +3014,9 @@ export function Simulation() {
                       </th>
                       <th className="p-2 font-bold bg-white">#</th>
                       <th className="p-2 font-bold bg-white">IDNUMBER</th>
-                      <th className="p-2 font-bold bg-white" title="Calculated locally from exact SMILES with RDKit">Formula <span className="block text-xs font-normal">calculated</span></th>
-                      <th className="p-2 font-bold bg-white" title="Average molecular weight calculated with RDKit">MW <span className="block text-xs font-normal">g/mol · calculated</span></th>
                       <th className="p-2 font-bold bg-white">Lead time</th>
                       <th className="p-2 font-bold bg-white">Pack size · price <span className="block text-xs font-normal">EUR / USD</span></th>
                       <th className="p-2 font-bold bg-white">Similarity</th>
-                      <th className="p-2 font-bold bg-white">SMILES</th>
-                      <th className="hidden p-2 font-bold bg-white lg:table-cell" title="Dated snapshot quantity from the supplier export — not live availability">µmol</th>
-                      <th className="hidden p-2 font-bold bg-white lg:table-cell" title="Dated snapshot quantity from the supplier export — not live availability">mg</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2958,6 +3031,7 @@ export function Simulation() {
                           <td className="p-2">
                             <input
                               type="checkbox"
+                              aria-label={`Select ${mol.stockCode}`}
                               checked={isChecked}
                               onChange={(e) => handleCheckboxChange(mol, idx, e.target.checked)}
                               className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
@@ -2974,42 +3048,12 @@ export function Simulation() {
                             >
                               {mol.stockCode}
                             </button>
+                            <div className="px-2 pb-2 text-xs text-blue-gray-500" title="Dated snapshot quantity from the supplier export — not live availability">{mol.STOCK_MG === null ? '—' : `${formatNumericValue(mol.STOCK_MG)} mg`} · snapshot</div>
                           </td>
-                          <CompoundDescriptorCells smiles={stockSmiles} />
                           <td className="p-2 text-xs" title="Dated supplier export lead time; unverified now">{mol.snapshotLeadTime || '—'}</td>
-                          <td className="p-2"><CompoundShopPacks offer={mol.shopOffer} onAdded={showMessage} /></td>
+                          <td className="p-2"><CompoundShopPacks offer={mol.shopOffer} onAdded={showMessage} amountMg={mol.shopOffer ? selectedPacks[offerSelectionKey(mol.shopOffer)] : undefined} onPackChange={(mg) => setSelectedPacks((previous) => ({ ...previous, [offerSelectionKey(mol.shopOffer)]: mg }))} /></td>
                           <td className="p-2 font-bold text-blue-600" title={mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? `Similarity: ${mol.SIMILARITY}` : "N/A"}>
                             {mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? parseFloat(mol.SIMILARITY).toFixed(3) : "N/A"}
-                          </td>
-                          <td className="p-0 font-mono text-xs">
-                            <button
-                              type="button"
-                              className="w-full p-2 text-left hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 dark:hover:bg-slate-800"
-                              title={stockSmiles || "N/A"}
-                              onClick={async () => {
-                                setSearchCode(stockSmiles);
-                                if (!stockSmiles) return;
-                                try {
-                                  await copyToClipboard(stockSmiles);
-                                  showClipboardConfirmation();
-                                } catch (err) {
-                                  console.error("Failed to copy SMILES:", err);
-                                  showMessage("SMILES could not be copied.", "error");
-                                }
-                              }}
-                              onMouseEnter={(e) => handleMouseEnter(stockSmiles, e, "SMILES")}
-                              onMouseLeave={handleMouseLeave}
-                              onFocus={(e) => handleMouseEnter(stockSmiles, e, "SMILES")}
-                              onBlur={handleMouseLeave}
-                            >
-                              {(stockSmiles || "N/A").toString().slice(0, moleculeLimit)}{(stockSmiles || "N/A").toString().length > moleculeLimit ? "..." : ""}
-                            </button>
-                          </td>
-                          <td className="hidden p-2 lg:table-cell" title={mol.STOCK_UM !== null && mol.STOCK_UM !== undefined ? String(mol.STOCK_UM) : "not in snapshot"}>
-                            {mol.STOCK_UM !== null && mol.STOCK_UM !== undefined ? formatNumericValue(mol.STOCK_UM) : "—"}
-                          </td>
-                          <td className="hidden p-2 lg:table-cell" title={mol.STOCK_MG !== null && mol.STOCK_MG !== undefined ? String(mol.STOCK_MG) : "not in snapshot"}>
-                            {mol.STOCK_MG !== null && mol.STOCK_MG !== undefined ? formatNumericValue(mol.STOCK_MG) : "—"}
                           </td>
                         </tr>
                       );
@@ -3372,7 +3416,7 @@ export function Simulation() {
         </div>
       </section>
       </div>
-      {showClipboardPopup && (
+      {active && showClipboardPopup && (
         <Alert color="green" className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-fit px-6 py-3 text-center">
           Ctrl+V into Draw molecule
         </Alert>

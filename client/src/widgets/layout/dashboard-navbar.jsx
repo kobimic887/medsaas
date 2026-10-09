@@ -31,7 +31,7 @@ import { useThemeMode } from "@/context/theme";
 import { useState, useEffect, useRef } from "react";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 import { withAppBase, IS_STAGING_BUILD } from "@/utils/appEnv";
-import { readShopCart, writeShopCart, shopCartTotal, shopMoney, isOwnedCartItem, shopRequestItems, basketSignature, checkoutAttempt } from "@/utils/compoundShop";
+import { readShopCart, writeShopCart, shopCartTotal, shopMoney, isOwnedCartItem } from "@/utils/compoundShop";
 
 const NAVBAR_VALIDATE_TIMEOUT_MS = 15_000;
 const CART_FETCH_TIMEOUT_MS = 15_000;
@@ -105,8 +105,6 @@ export function DashboardNavbar() {
   const [cartTotal, setCartTotal] = useState(0);
   const [cartAction, setCartAction] = useState(null);
   const [shopConfig, setShopConfig] = useState(null);
-  const [reviewedQuote, setReviewedQuote] = useState(null);
-  const reviewedQuoteRef = useRef(null);
   const [actionMessage, setActionMessage] = useState("");
   const [actionMessageType, setActionMessageType] = useState("success");
   const actionMessageTimerRef = useRef(null);
@@ -217,8 +215,6 @@ export function DashboardNavbar() {
     const items = readShopCart(localStorage);
     setCartItems(items);
     setCartTotal(shopCartTotal(items) / 100);
-    reviewedQuoteRef.current = null;
-    setReviewedQuote(null);
   };
 
   const updateCart = (items) => {
@@ -343,70 +339,6 @@ Please contact the customer at ${userEmail} to process this order.
         cartRequestControllerRef.current = null;
         setCartAction(null);
       }
-    }
-  };
-
-  const handleCheckout = async () => {
-    let controller;
-    try {
-      const current = readShopCart(localStorage);
-      const items = shopRequestItems(current);
-      const signature = basketSignature(current);
-      const reviewed = reviewedQuoteRef.current;
-      const continuing = reviewed?.signature === signature;
-      controller = new AbortController();
-      cartRequestControllerRef.current?.abort();
-      cartRequestControllerRef.current = controller;
-      cartTimeoutRef.current = window.setTimeout(() => controller.abort(), CART_FETCH_TIMEOUT_MS);
-      setCartAction('checkout');
-      const response = await fetch(API_CONFIG.buildApiUrl(continuing ? '/compound-shop/checkout' : '/compound-shop/quote'), {
-        method: 'POST', signal: controller.signal,
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAuthToken()}` },
-        body: JSON.stringify(continuing ? {
-          items, expectedTotalCents: reviewed.quote.totalCents, priceBookVersion: reviewed.quote.priceBookVersion,
-          idempotencyKey: checkoutAttempt(localStorage, signature, () => crypto.randomUUID()),
-        } : { items }),
-      });
-      const result = await response.json();
-      // Edits in another tab invalidate an in-flight quote/payment redirect.
-      if (basketSignature(readShopCart(localStorage)) !== signature) throw new Error('Your cart changed. Review the updated order before continuing.');
-      if (response.status === 409 && result.code === 'SHOP_PRICES_CHANGED' && result.quote) {
-        reviewedQuoteRef.current = { signature, quote: result.quote };
-        setReviewedQuote(result.quote);
-        showActionMessage('Prices changed. Review the new total, then select Continue to Stripe to accept it.', 'warning', 0);
-        return;
-      }
-      if (response.status === 409 && result.code === 'SHOP_CHECKOUT_EXPIRED') {
-        // Only a verified expired session permits a new payment attempt. Timeouts
-        // and unknown failures retain their key to avoid a duplicate charge.
-        localStorage.removeItem('compoundCheckoutAttempt');
-        reviewedQuoteRef.current = null;
-        setReviewedQuote(null);
-        showActionMessage('The payment session expired. Your cart is saved. Review the order again before starting a new checkout.', 'warning', 0);
-        return;
-      }
-      if (response.status === 409 && ['SHOP_ORDER_ALREADY_PAID', 'SHOP_PAYMENT_PENDING'].includes(result.code) && /^pc_[a-f0-9]{64}$/.test(result.orderId || '')) {
-        localStorage.setItem(`compoundOrderCart:${result.orderId}`, JSON.stringify(current));
-        navigate(`/dashboard/compound-orders?order_id=${encodeURIComponent(result.orderId)}`);
-        return;
-      }
-      if (!response.ok) throw new Error(result.error || 'Checkout is unavailable. Your cart is saved.');
-      if (!continuing) {
-        reviewedQuoteRef.current = { signature, quote: result };
-        setReviewedQuote(result);
-        showActionMessage('Review your order total and shipping terms in the cart, then continue to Stripe.', 'success', 0);
-        return;
-      }
-      const url = new URL(result.url);
-      if (url.protocol !== 'https:' || url.hostname !== 'checkout.stripe.com') throw new Error('Invalid payment redirect. Your cart is saved.');
-      localStorage.setItem(`compoundOrderCart:${result.orderId}`, JSON.stringify(current));
-      window.location.href = url.href;
-    } catch (error) {
-      showActionMessage(error.name === 'AbortError' ? 'Checkout timed out. Your cart is saved; please try again.' : error.message, 'error', 0);
-    } finally {
-      window.clearTimeout(cartTimeoutRef.current);
-      if (cartRequestControllerRef.current === controller) cartRequestControllerRef.current = null;
-      setCartAction(null);
     }
   };
 
@@ -610,21 +542,16 @@ Please contact the customer at ${userEmail} to process this order.
                 <div className="space-y-2 border-t border-blue-gray-100 p-3 dark:border-slate-800">
                   <div className="space-y-1 text-xs">
                     <p>Up to 3 distinct compounds per order.</p>
-                    <p>{reviewedQuote?.shippingNote || shopConfig?.shippingNote || 'Shipping terms will be shown when you review your order.'}</p>
-                    {reviewedQuote && <div role="status" className="rounded bg-teal-50 p-2 text-slate-900">
-                      {reviewedQuote.items?.map((item, index) => <p key={index}>{item.code}: {item.amountMg} mg × {item.quantity} · {shopMoney(item.lineTotalCents ?? item.totalCents ?? item.unitAmountCents * item.quantity)}</p>)}
-                      <strong>Order total: {shopMoney(reviewedQuote.totalCents)} USD</strong>
-                      <p>{reviewedQuote.paymentMode === 'manual' ? 'Your card is authorized first; fulfillment is confirmed separately.' : 'Your card will be charged when you pay in Stripe. Fulfillment is confirmed separately.'}</p>
-                    </div>}
+                    <p>{shopConfig?.shippingNote || 'Shipping terms will be shown when you review your order.'}</p>
                   </div>
                   <Button 
                     fullWidth 
                     color="blue" 
                     size="sm"
-                    onClick={handleCheckout}
+                    onClick={() => navigate('/dashboard/review-order')}
                     disabled={cartAction !== null || shopConfig?.enabled === false || cartItems.some((item) => !isOwnedCartItem(item))}
                   >
-                    {cartAction === "checkout" ? "Checking order…" : reviewedQuote ? "Continue to Stripe" : "Review order"}
+                    Review order
                   </Button>
                   <Button
                     fullWidth

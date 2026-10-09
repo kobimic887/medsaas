@@ -98,6 +98,11 @@ and refinement unlock only for retained candidates after a server-confirmed stop
 provisional previews remain available during scans. A fatal polling failure must
 not imply the remote scan stopped or unlock those actions. Keep essential errors
 visible and put method/chemistry detail behind disclosures.
+Bulk SDF export uses the owner-scoped `GET /jobs/:id/export` after a server-confirmed
+terminal state. It exports retained originals only (maximum 50), preserves existing
+SD tags and adds rank/job/result and partial-state provenance. Do not call it every
+accepted placement or silently substitute refinements. Check active and other-owner
+refusal as well as record order and tags.
 
 ## Anti-patterns
 

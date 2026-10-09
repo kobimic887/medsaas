@@ -13,6 +13,9 @@ export const isActiveJob = job => job?.state === 'queued' || job?.state === 'run
 export const canUseResult = (job, resultId, notice) => Boolean(
   isTerminalJob(job) && !job.local && !notice?.fatal && resultId && job.results?.some(result => result.id === resultId),
 );
+export const canExportResults = (job, notice) => Boolean(
+  isTerminalJob(job) && !job.local && !notice?.fatal && job.results?.length > 0,
+);
 const count = value => Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0;
 export const formatCount = value => count(value).toLocaleString('en-US');
 

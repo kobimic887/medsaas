@@ -15,8 +15,8 @@
 //
 // The Simulation page needs: a recognizable stock code, the structure, and the
 // similarity score for ranking and the docking/DiffDock handoff. Stock rows
-// must NOT invent supplier IUPAC/InChI/formula/MW. The result table calculates
-// formula/MW from exact SMILES with browser RDKit and labels them calculated.
+// must NOT invent supplier IUPAC/InChI/formula/MW. Structure previews use the exact SMILES with browser RDKit; the main
+// results table omits descriptors and SMILES to keep packs and IDs visible.
 // Purchasable packs come from signed shopOffer payloads. Snapshot µmol/mg and
 // lead time remain dated export fields, never live availability.
 // Database row id (molecule_id), stock code (MAIN_BAS/compound_id) and the
@@ -55,8 +55,8 @@ export function stockResultFromItem(item) {
 
   return {
     // Shared table identity: a recognizable stock code ("BAS 30908960").
-    // The page uses ASINEX_ID for row keys/selection, so a stock hit fills it
-    // with its OWN stock code — never with an Asinex row identifier.
+    // ASINEX_ID is a legacy display field. Selection and purchases use the
+    // owned stockRowId, so duplicate stock codes remain separate rows.
     ASINEX_ID: stockCode || 'N/A',
     // True stock provenance flags — used to render the honest stock columns
     // and to keep stock rows out of Asinex cart flows.

@@ -9,6 +9,7 @@ import { Database } from 'bun:sqlite';
 import { createJobManager } from './jobs.mjs';
 import { createJobStore } from './job-store.mjs';
 import { prepareQuery } from './engine.mjs';
+import { withSdfData } from './sdf.mjs';
 
 const query = await readFile(new URL('fixtures/query.sdf', import.meta.url), 'utf8');
 const input = { sdf: query, attachments: [1, 1], maxRmsd: 0.75, limit: 10 };
@@ -51,7 +52,7 @@ test('durable full search retains input, owner isolation, result provenance and 
     assert.equal(completed.complete, true);
     const resultId = completed.results[0].id;
     const source = manager.findResult('owner-A', id, resultId).entry.detail.sdf;
-    const refinement = { ok: true, sdf: source, report: { forceField: 'MMFF94', converged: true, energyUnits: 'kcal/mol' } };
+    const refinement = { ok: true, sdf: withSdfData(source, { TEST_REFINEMENT_ONLY: 'yes' }), report: { forceField: 'MMFF94', converged: true, energyUnits: 'kcal/mol' } };
     assert.equal(manager.recordRefinement('owner-B', id, resultId, refinement), false);
     assert.equal(manager.recordRefinement('owner-A', id, resultId, { ok: false }), false);
     assert.equal(manager.recordRefinement('owner-A', id, resultId, refinement, { forceField: 'auto', receptorPdb: 'saved receptor' }), true);
@@ -78,6 +79,12 @@ test('durable full search retains input, owner isolation, result provenance and 
     const detail = manager.resultDetail(found.job, found.entry, found.index);
     assert.equal(detail.sdf, source);
     assert.deepEqual(detail.refinement, refinement);
+    const exported = manager.exportResults('owner-A', id);
+    assert.equal(exported.count, 1);
+    assert.deepEqual(exported.resultIds, [resultId]);
+    assert.equal(exported.complete, true, 'saved terminal jobs export after restart');
+    assert.equal(exported.sdf.includes('TEST_REFINEMENT_ONLY'), false, 'bulk originals never substitute a saved refinement');
+    assert.equal(manager.exportResults('owner-B', id), null);
     assert.equal(detail.refinementInput.receptorPdb, 'saved receptor');
     assert.equal(manager.get('owner-B', id), null);
     assert.equal(manager.findResult('owner-B', id, resultId), null);

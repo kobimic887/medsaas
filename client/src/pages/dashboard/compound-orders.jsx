@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { API_CONFIG, getAuthToken } from '@/utils/constants';
 import { cartAfterConfirmedOrder, readShopCart, writeShopCart, shopMoney } from '@/utils/compoundShop';
+import CompoundStructure from '@/components/CompoundStructure';
+import { downloadCompoundCsv } from '@/utils/compoundExport';
 
 const STATUS_LABELS = { awaiting_payment: 'Awaiting payment', pending: 'Awaiting payment', checkout_pending: 'Awaiting payment', paid: 'Paid', payment_authorized: 'Payment authorized', canceled: 'Canceled', expired: 'Checkout expired', payment_failed: 'Payment failed', refunded: 'Refunded' };
 export default function CompoundOrders() {
@@ -62,11 +64,13 @@ export default function CompoundOrders() {
     {!loading && !error && !orders.length && <p className="rounded-xl border border-slate-300 p-6 dark:border-slate-700">No compound orders yet. Choose a pack in the catalog and review your cart to get started.</p>}
     {orders.map((order) => <article key={order.orderId || order.id || order._id} className="space-y-4 rounded-xl border border-slate-300 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
       <header className="flex flex-wrap justify-between gap-3"><div className="min-w-0"><h2 className="break-all font-semibold">Order {order.orderId || order.id || order._id}</h2><p className="text-sm text-slate-500 dark:text-slate-400">{order.createdAt ? new Date(order.createdAt).toLocaleString() : ''}</p></div><strong>{STATUS_LABELS[order.status] || String(order.status || 'Awaiting payment').replaceAll('_', ' ')}</strong></header>
-      <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b border-slate-200 dark:border-slate-700"><th className="py-2">Compound</th><th>Pack</th><th>Quantity</th><th className="text-right">Total USD</th></tr></thead><tbody>
-        {(order.items || []).map((item, index) => <tr key={index} className="border-b border-slate-100 dark:border-slate-800"><td className="py-3">{item.code}</td><td>{item.amountMg} mg</td><td>{item.quantity}</td><td className="text-right">{shopMoney(item.lineTotalCents ?? item.totalCents ?? item.unitAmountCents * item.quantity)}</td></tr>)}
+      <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b border-slate-200 dark:border-slate-700"><th className="py-2">Structure</th><th className="py-2">Compound</th><th>Pack</th><th>Quantity</th><th className="text-right">Total USD</th></tr></thead><tbody>
+        {(order.items || []).map((item, index) => <tr key={index} className="border-b border-slate-100 dark:border-slate-800"><td className="py-3 pr-3"><CompoundStructure smiles={item.smiles} code={item.code} /></td><td className="py-3">{item.code}<p className="text-xs">{item.source || item.catalogSource}</p></td><td>{item.amountMg} mg</td><td>{item.quantity}</td><td className="text-right">{shopMoney(item.lineTotalCents ?? item.totalCents ?? item.unitAmountCents * item.quantity)}</td></tr>)}
       </tbody></table></div>
       <div className="flex flex-wrap justify-between gap-3"><p>Fulfillment: {String(order.fulfillmentStatus || 'pending').replaceAll('_', ' ')}</p><strong>{shopMoney(order.totalCents)} USD</strong></div>
       <p className="text-sm text-slate-600 dark:text-slate-300">{order.shippingNote}</p>
+      <button type="button" className="rounded-lg border border-teal-600 px-4 py-2 text-sm" onClick={() => downloadCompoundCsv(order, 'pyxis-compound-order.csv')}>Download order CSV</button>
+      <p className="text-xs text-slate-600 dark:text-slate-300">CSV includes ID, SMILES, source, pack, quantity and prices. Spreadsheet-sensitive fields receive a leading apostrophe; remove that guard when reading raw SMILES.</p>
       {order.status === 'payment_authorized' && <p className="text-sm">Your card has been authorized. Payment has not yet been captured.</p>}
       {order.status === 'paid' && <p className="text-sm">Payment received. Fulfillment and delivery confirmation follow separately.</p>}
     </article>)}
