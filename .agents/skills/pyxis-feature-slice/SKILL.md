@@ -103,6 +103,10 @@ terminal state. It exports retained originals only (maximum 50), preserves exist
 SD tags and adds rank/job/result and partial-state provenance. Do not call it every
 accepted placement or silently substitute refinements. Check active and other-owner
 refusal as well as record order and tags.
+For older shared science, the app may aggregate terminal job/result APIs only when
+the native export route is missing. Preserve owner scoping, 50-result/time/byte
+bounds, provenance and atomic failure on changed or expired history. Measure both
+apps' endpoints before release: staging-only approval cannot restart shared science.
 
 ## Anti-patterns
 

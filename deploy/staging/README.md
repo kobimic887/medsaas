@@ -65,6 +65,11 @@ The linker service persists bounded, owner-scoped search history on the scientif
 host. A restart preserves saved inputs and results; interrupted scans remain partial
 and are marked failed. It needs Python RDKit for refinement. Review `docs/LINK-FRAGMENTS.md` for supported
 inputs, job semantics and score limits.
+The consumer app can use the same linker service/tunnel as staging. A unit named
+staging is therefore not proof of isolation: measure both application endpoints
+before a scientific restart. The app's bulk export can aggregate older owner-scoped
+terminal job/detail APIs without a scientific release. Staging-only approval does
+not authorize interrupting that shared service.
 
 Use the snapshot recorded for the specific release. Restore only the affected staging
 source/bundle, service configuration and, when necessary, matching search artifacts.

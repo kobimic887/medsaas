@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import http from 'node:http';
 import test from 'node:test';
 import express from 'express';
-import { parseSdf, writeSdf } from '../../services/link-fragments/sdf.mjs';
+import { parseSdf, writeSdf, withSdfData } from '../../services/link-fragments/sdf.mjs';
 import { REFINE_REQUEST_TIMEOUT_MS } from '../../client/src/utils/linkFragmentsRequest.js';
 import { createLinkFragmentsRouter, LINK_FRAGMENTS_TIMEOUTS, relayStatus } from '../routes/linkFragments.js';
 
@@ -226,6 +226,83 @@ test('real Express relay: owner scoping, validation, inspection merge, jobs, ref
     assert.equal((await call('/bad-auth/status')).status, 502);
     assert.equal((await call(`/bad-auth/jobs/${JOB}`)).status, 502);
     assert.equal((await json(await call('/bad-auth/inspect', { body: { sdf } }))).body.eligibility, 'unavailable');
+  } finally {
+    server.closeAllConnections(); upstream.closeAllConnections();
+    await Promise.all([new Promise(resolve => server.close(resolve)), new Promise(resolve => upstream.close(resolve))]);
+  }
+});
+
+test('bulk export works with older shared science without restarting it, atomically and owner-scoped', async () => {
+  const fixtures = parseSdf(await readFile(new URL('../../services/link-fragments/fixtures/query.sdf', import.meta.url), 'utf8'));
+  const originals = fixtures.map((fragment, i) => withSdfData(writeSdf(fragment), { ORIGINAL_TAG: `product-${i}` }));
+  const anna = { username: 'anna', companyId: 'company-a' };
+  const resultIds = ['12-3-4', '12-3-5'];
+  let state = 'completed';
+  let mode = 'normal';
+  let snapshots = 0;
+  const requests = [];
+  const upstream = http.createServer((req, res) => {
+    requests.push({ path: req.url, owner: req.headers['x-pyxis-owner'] });
+    const send = (status, body) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
+    if (req.url.endsWith('/export')) return send(404, mode === 'native-job-missing' ? { code: 'JOB_NOT_FOUND', error: 'Search job not found.' } : { error: 'Route not found' });
+    if (req.headers['x-pyxis-owner'] !== ownerKey('company-a', 'anna')) return send(404, { code: 'JOB_NOT_FOUND', error: 'Search job not found.' });
+    if (req.url === `/jobs/${JOB}?input=0`) {
+      snapshots++;
+      if (mode === 'expired' && snapshots > 1) return send(404, { code: 'JOB_NOT_FOUND', error: 'Search job expired.' });
+      const ids = mode === 'too-many' ? Array.from({ length: 51 }, (_, i) => `${i + 1}-1-1`) : mode === 'changed' && snapshots > 1 ? [...resultIds].reverse() : resultIds;
+      return send(200, { job: { id: JOB, state, finishedAt: state === 'running' ? null : '2026-10-09T00:00:00Z', complete: state === 'completed', query: { limit: 20 }, results: ids.map((id, i) => ({ id, rank: i + 1 })) } });
+    }
+    const id = req.url.split('/').at(-1);
+    const index = resultIds.indexOf(id);
+    if (index >= 0) {
+      if (mode === 'missing-result' && index === 1) return send(404, { code: 'RESULT_NOT_FOUND', error: 'Result no longer available.' });
+      return send(200, { result: { id, sdf: originals[index], refinement: { sdf: 'must never export refinement' } } });
+    }
+    return send(404, { error: 'Route not found' });
+  });
+  await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
+  const app = express();
+  app.use((req, _res, next) => { req.user = JSON.parse(req.headers['x-test-user'] || 'null'); next(); });
+  app.use(createLinkFragmentsRouter({ baseUrl: `http://127.0.0.1:${upstream.address().port}` }));
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  const request = async (user = anna) => {
+    snapshots = 0;
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/jobs/${JOB}/export`, { headers: { 'X-Test-User': JSON.stringify(user), 'X-Pyxis-Owner': 'f'.repeat(64) } });
+    return { status: response.status, body: await response.json() };
+  };
+  try {
+    const exported = await request();
+    assert.equal(exported.status, 200);
+    assert.deepEqual(exported.body.export.resultIds, resultIds);
+    assert.equal(exported.body.export.count, 2);
+    assert.equal(exported.body.export.complete, true);
+    assert.equal(exported.body.export.retentionLimit, 20);
+    const records = parseSdf(exported.body.export.sdf);
+    assert.equal(records.length, 2);
+    assert.deepEqual(records.map(record => record.atoms.map(atom => atom.xyz)), fixtures.map(fragment => fragment.atoms.map(atom => atom.xyz)));
+    assert.match(exported.body.export.sdf, />.*<ORIGINAL_TAG>\nproduct-0/);
+    assert.match(exported.body.export.sdf, />.*<PYXIS_RESULT_RANK>\n2/);
+    assert(!exported.body.export.sdf.includes('must never export refinement'));
+    assert(requests.every(record => record.owner === ownerKey('company-a', 'anna')), 'forged browser ownership never reaches any fallback lookup');
+    state = 'canceled';
+    const partial = await request();
+    assert.equal(partial.body.export.partial, true);
+    assert.match(partial.body.export.sdf, />.*<PYXIS_SEARCH_COMPLETE>\nfalse/);
+    state = 'running';
+    const active = await request();
+    assert.equal(active.status, 409); assert.equal(active.body.code, 'LINK_FRAGMENTS_SEARCH_ACTIVE');
+    state = 'completed';
+    assert.equal((await request({ ...anna, companyId: 'other-company' })).status, 404);
+    for (const [value, expected] of [['missing-result', 404], ['expired', 404], ['changed', 409], ['too-many', 502]]) {
+      mode = value;
+      const refused = await request();
+      assert.equal(refused.status, expected, mode); assert.equal(refused.body.export, undefined, 'no accidental incomplete export');
+    }
+    mode = 'native-job-missing';
+    const before = requests.length;
+    assert.equal((await request()).status, 404);
+    assert.equal(requests.length, before + 1, 'native JOB_NOT_FOUND does not trigger compatibility lookup');
   } finally {
     server.closeAllConnections(); upstream.closeAllConnections();
     await Promise.all([new Promise(resolve => server.close(resolve)), new Promise(resolve => upstream.close(resolve))]);

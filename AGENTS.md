@@ -86,6 +86,9 @@ when a path or trap moves.
   refinement require a retained result and a server-confirmed terminal state,
   never a local polling failure. Bulk SDF export is owner-scoped and includes retained original
   products only (maximum 50), with rank/job/result and complete/partial provenance.
+  Staging and consumer apps may share the scientific service. An app-only release
+  can aggregate older owner-scoped terminal result APIs for bulk export; never
+  restart shared science on staging-only authorization.
   Ship `services/link-fragments/sdf.mjs` with the
   application server for input parsing. Refined SDF downloads retain linker IDs,
   source atom mapping and original placement scores; new hydrogens are appended,

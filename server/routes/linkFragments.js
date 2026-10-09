@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import express from 'express';
-import { parseSdf } from '../../services/link-fragments/sdf.mjs';
+import { parseSdf, withSdfData } from '../../services/link-fragments/sdf.mjs';
 
 const MAX_SDF_BYTES = 800000;
 const MAX_RECEPTOR_BYTES = 5 * 1024 * 1024;
@@ -197,7 +197,59 @@ export function createLinkFragmentsRouter({ baseUrl = '', fetchImpl = fetch } = 
   }));
   router.get('/jobs', requireOwner, handle((req, res) => call(req, res, '/jobs')));
   router.get('/jobs/:id', requireOwner, handle((req, res) => call(req, res, jobPath(req) + (req.query.input === '0' ? '?input=0' : ''))));
-  router.get('/jobs/:id/export', requireOwner, handle((req, res) => call(req, res, `${jobPath(req)}/export`)));
+  router.get('/jobs/:id/export', requireOwner, handle(async (req, res) => {
+    const path = jobPath(req);
+    const deadline = Date.now() + TIMEOUTS.jobs;
+    const budget = () => {
+      if (res.destroyed || Date.now() >= deadline) throw new RelayError(504, unavailable('Link Fragments did not answer in time. Please try again.'));
+      return deadline - Date.now();
+    };
+    const direct = await call(req, res, `${path}/export`, { timeout: Math.min(TIMEOUTS.status, budget()) });
+    // Staging and production can share an older scientific service. Assemble
+    // existing saved originals through its owner-scoped API instead of forcing
+    // a shared-service restart just to add this read-only download endpoint.
+    // A missing JOB, result, or any other upstream failure must not fall back.
+    if (direct.status !== 404 || !['Route not found', 'Route not found.'].includes(direct.body.error)) return direct;
+    const saved = await call(req, res, `${path}?input=0`, { timeout: budget() });
+    if (saved.status !== 200) return saved;
+    const job = saved.body.job;
+    if (job?.id !== req.params.id.toLowerCase()) throw new RelayError(502, unavailable('Link Fragments returned an invalid search.'));
+    if (!job.finishedAt || !['completed', 'canceled', 'failed'].includes(job.state))
+      return { status: 409, body: { error: 'Wait for the search to finish, or cancel it, before downloading retained products.', code: 'LINK_FRAGMENTS_SEARCH_ACTIVE' } };
+    const results = job.results;
+    if (!Array.isArray(results) || results.length > 50 || results.some(result => !RESULT_ID.test(result?.id || '')) || new Set(results.map(result => result.id)).size !== results.length)
+      throw new RelayError(502, unavailable('Link Fragments returned invalid retained results.'));
+    const complete = job.state === 'completed' && job.complete === true;
+    const records = [];
+    let bytes = 0;
+    for (let offset = 0; offset < results.length; offset += 4) {
+      const batch = await Promise.all(results.slice(offset, offset + 4).map(result => call(req, res, `${path}/results/${encodeURIComponent(result.id)}`, { timeout: budget() })));
+      for (let index = 0; index < batch.length; index++) {
+        const response = batch[index];
+        if (response.status !== 200) return response;
+        const result = response.body.result;
+        if (result?.id !== results[offset + index].id || typeof result.sdf !== 'string') throw new RelayError(502, unavailable('Link Fragments returned an invalid product.'));
+        const record = withSdfData(result.sdf, {
+          PYXIS_SEARCH_JOB_ID: job.id, PYXIS_RESULT_ID: result.id, PYXIS_RESULT_RANK: String(offset + index + 1),
+          PYXIS_SEARCH_STATE: job.state, PYXIS_SEARCH_COMPLETE: String(complete),
+          PYXIS_EXPORT_SCOPE: 'All retained original products; not all accepted database placements.',
+        });
+        bytes += Buffer.byteLength(record, 'utf8');
+        if (bytes > MAX_UPSTREAM_BYTES) throw new RelayError(502, unavailable('Link Fragments returned an oversized export.'));
+        records.push(record);
+      }
+    }
+    // History expiry may remove the job during aggregation. Never publish a
+    // partial accidental bundle or label a changed ranking as a frozen export.
+    const checked = await call(req, res, `${path}?input=0`, { timeout: budget() });
+    if (checked.status !== 200) return checked;
+    const final = checked.body.job;
+    if (final?.id !== job.id || final.state !== job.state || final.finishedAt !== job.finishedAt || JSON.stringify(final.results?.map(result => result.id)) !== JSON.stringify(results.map(result => result.id)))
+      throw new RelayError(409, { error: 'The saved results changed. Reload this search before exporting.', code: 'LINK_FRAGMENTS_RESULTS_CHANGED' });
+    const body = { export: { jobId: job.id, complete, partial: !complete, count: results.length, retentionLimit: job.query?.limit || 50, resultIds: results.map(result => result.id), sdf: records.join('') } };
+    if (Buffer.byteLength(JSON.stringify(body), 'utf8') > MAX_UPSTREAM_BYTES) throw new RelayError(502, unavailable('Link Fragments returned an oversized export.'));
+    return { status: 200, body };
+  }));
   router.post('/jobs/:id/cancel', requireOwner, handle((req, res) => call(req, res, `${jobPath(req)}/cancel`, { method: 'POST', body: {} })));
   router.get('/jobs/:id/results/:resultId', requireOwner, handle((req, res) => call(req, res, resultPath(req))));
   router.post('/jobs/:id/results/:resultId/refine', requireOwner, handle((req, res) => {

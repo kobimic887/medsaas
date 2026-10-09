@@ -40,6 +40,11 @@ create a stock offer, enter a cart or establish synthesis availability.
    its scientific tags and adds job/result ID, rank and complete/partial provenance.
    Canceled and failed scans export partial results; selected refined downloads stay
    separate.
+   The application can assemble this export from an older service's existing
+   owner-scoped job/detail APIs when its bulk route is absent. It enforces terminal
+   state, a 50-result cap, bounded time/bytes and stable result IDs, refusing the whole
+   export if history expires or results change during assembly. This compatibility
+   path allows an application release without restarting shared scientific compute.
 9. Open **History → Linker searches** to restore original inputs, attachment selections,
    receptor, results and successful refinements. Links use
    `/dashboard/link-fragments?job=<id>` and never substitute another job if it is

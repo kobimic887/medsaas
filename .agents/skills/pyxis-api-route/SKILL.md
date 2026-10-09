@@ -68,6 +68,10 @@ that a route uses it.
 - Remap upstream **401 → 502** (`relayUpstreamStatus` / scientific router).
 - Encode path params; do not concatenate untrusted path segments.
 - Prefer existing ligand/SSRF helpers over raw user-supplied URLs.
+- Linker bulk export supports older shared services through bounded, owner-scoped
+  terminal job/detail aggregation only for a missing native route. Preserve native
+  job/result refusals, partial provenance and atomic failure on changed history;
+  staging deployment must not require a shared scientific-service restart.
 
 ## Client callers
 
