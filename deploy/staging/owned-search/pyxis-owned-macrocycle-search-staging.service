@@ -1,0 +1,21 @@
+[Unit]
+Description=Pyxis staging bounded batch similarity index (scientific host only)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/projects/medsaas
+Environment=BIND_HOST=127.0.0.1
+Environment=PORT=8280
+Environment=MACROCYCLE_INDEX_DIR=/home/ubuntu/.local/share/pyxis/macrocycle-index-staging
+ExecStart=/home/ubuntu/.bun/bin/bun services/macrocycle-index/serve.mjs
+Restart=on-failure
+RestartSec=5
+Nice=10
+CPUQuota=80%
+MemoryMax=1500M
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

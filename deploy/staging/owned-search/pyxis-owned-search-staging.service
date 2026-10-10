@@ -1,0 +1,24 @@
+[Unit]
+Description=Pyxis staging owned graph and identifier search (scientific host only)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/projects/medsaas
+Environment=BIND_HOST=127.0.0.1
+Environment=PORT=8276
+Environment=MACROCYCLE_INDEX_DIR=/home/ubuntu/.local/share/pyxis/macrocycle-index-staging
+Environment=OWNED_GRAPH_DIR=/home/ubuntu/.local/share/pyxis/owned-search-graph-staging
+ExecStartPre=/usr/bin/docker cp services/owned-search/stock_sql.py tonomitosql-api-1:/tmp/pyxis-owned-stock.py
+ExecStart=/usr/bin/python3 services/owned-search/serve.py
+Restart=on-failure
+RestartSec=5
+Nice=10
+CPUQuota=80%
+MemoryMax=1G
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

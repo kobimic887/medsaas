@@ -364,12 +364,43 @@ checks.push(['stock backend inherits the resolved Tanimoto default', readFileSyn
 checks.push(['open compounds routes are registered', readFileSync(path.join(root, 'server/index.js'), 'utf8').includes("/api/open-compounds/similarity")]);
 checks.push(['open compounds AI route is registered', readFileSync(path.join(root, 'server/index.js'), 'utf8').includes("/api/open-compounds/ai-search")]);
 
+const { parseSearchQueries, searchModesFromStatus, ownedRowsFromPayload, appendUniqueOwnedRows } = await import(
+  pathToFileURL(path.join(root, 'client/src/utils/ownedSearch.js')).href
+);
+{
+  const eq = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+  checks.push(
+    ['batch parser preserves leading-zero identifiers and internal spaces', eq(parseSearchQueries('ASN 001, RPX 004\nVPX 003', 'id'), ['ASN 001', 'RPX 004', 'VPX 003'])],
+    ['batch parser preserves disconnected chemical fragments', eq(parseSearchQueries('CCO.[Na+]\nCCN'), ['CCO.[Na+]', 'CCN'])],
+    ['batch parser preserves SMARTS atom-list commas', eq(parseSearchQueries('[C,N]CC, [O,S]C', 'substructure'), ['[C,N]CC', '[O,S]C'])],
+    ['batch parser preserves CXSMILES metadata commas', eq(parseSearchQueries('CCO |$a,b,c$|,CCN'), ['CCO |$a,b,c$|', 'CCN'])],
+    ['batch parser preserves duplicate input provenance', eq(parseSearchQueries('CCO,CCO'), ['CCO', 'CCO'])],
+    ['batch parser ignores blank lines without changing nonblank entries', eq(parseSearchQueries('\nCCO\n\nCCN\n'), ['CCO', 'CCN'])],
+    ['search capabilities require an available source', searchModesFromStatus({ available: false, modes: ['id', 'exact'] }, 'stock').length === 0],
+    ['search capabilities cannot invent methods', eq(searchModesFromStatus({ available: true, modes: ['id', 'exact', 'made_up'] }, 'stock'), ['id', 'exact'])],
+  );
+  for (const [input, mode, expected] of [['CCO,,CCN', 'exact', 'empty'], ['CCO,', 'similarity', 'empty'], [Array(21).fill('CCO').join('\n'), 'exact', 'at most 20']]) {
+    let error = ''; try { parseSearchQueries(input, mode); } catch (caught) { error = caught.message; }
+    checks.push([`batch parser refuses ${expected} entries (${mode})`, error.includes(expected)]);
+  }
+  const offer = { source: 'stock', rowId: 9, token: 'signedfixture' };
+  const rows = ownedRowsFromPayload({ results: [{ molecule_id: 9, canonical_smiles: 'CCO', metadata: { MAIN_BAS: 'ASN 001' }, shopOffer: offer, matchedQueryIndices: [0, 2] }] }, 'stock');
+  checks.push(
+    ['owned search mapping preserves signed offer, row identity and matching inputs', rows[0].shopOffer === offer && rows[0].stockRowId === 9 && eq(rows[0].matchedQueryIndices, [0, 2])],
+    ['owned search append preserves unique source rows', appendUniqueOwnedRows(rows, [rows[0], { ...rows[0], stockRowId: 10 }], 'stock').length === 1],
+    ['owned methods remain backed by capability discovery', simulation.includes('/owned-search/status') && simulation.includes('disabled={!ownedModes.includes(option.value)}')],
+    ['new owned requests preserve explicit source and chemistry mode', simulation.includes("API_CONFIG.buildApiUrl('/owned-search')") && simulation.includes('payload?.source !== request.source || payload?.mode !== request.mode')],
+    ['query outcome and truncation are visible', simulation.includes('Results for each query') && simulation.includes('Counts are lower bounds') && simulation.includes('matchedQueryIndices.map')],
+  );
+}
+
 // Execute the actual request handlers with a rejected engine query. This catches
 // the failure-to-catalog transition, rather than only checking source strings.
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const searchBody = simulation.split('const handleSearch = async () => {')[1].split('\n  // Function to load more search results')[0].replace(/};\s*$/, '');
 const rejectedCalls = [];
 const rejectedContext = {
+  parseSearchQueries, searchModesFromStatus,
   AbortController, searchCode: '[N](C)(C)(C)C',
   MACROCYCLE_SOURCES: { real: true, virtual: true },
   getAuthToken: () => 'fixture',
@@ -391,6 +422,7 @@ checks.push(
 
 const rejectedOpenCalls = [];
 const rejectedOpenContext = {
+  parseSearchQueries, searchModesFromStatus,
   AbortController, searchCode: '[N](C)(C)(C)C',
   MACROCYCLE_SOURCES: { real: true, virtual: true },
   getAuthToken: () => 'fixture',
@@ -414,6 +446,7 @@ checks.push(
 
 const rejectedMacroCalls = [];
 const rejectedMacroContext = {
+  parseSearchQueries, searchModesFromStatus,
   AbortController, searchCode: '[N](C)(C)(C)C',
   MACROCYCLE_SOURCES: { real: true, virtual: true },
   getAuthToken: () => 'fixture',
@@ -430,6 +463,62 @@ checks.push(
   ['rejected macrocycle query clears results without fallback', rejectedMacroCalls.some(([name, value]) => name === 'setTopMolecules' && value.length === 0) && !rejectedMacroCalls.some(([name, value]) => name === 'setHasMore' && value === true)],
   ['rejected macrocycle query shows its error', rejectedMacroCalls.some(([name, value]) => name === 'setSearchError' && value.includes('Macrocycle query rejected'))],
 );
+
+// Exercise the new owned batch branch of the actual handler: no legacy fallback,
+// old rows clear before a request, and source/query snapshots drive later paging.
+{
+  const requestCalls = [];
+  const updates = [];
+  const context = {
+    AbortController, searchCode: 'ASN 001, ASN 002', parseSearchQueries, searchModesFromStatus,
+    MACROCYCLE_SOURCES: { both: true, real: true, virtual: true }, getAuthToken: () => 'fixture',
+    runOwnedSearch: async (offset, append, options) => { requestCalls.push({ offset, append, ...options.request }); return true; },
+    runStockSearch: async () => { throw new Error('legacy fallback must not run'); },
+  };
+  for (const name of new Set(searchBody.match(/\b\w+Ref\b/g))) context[name] = { current: null };
+  Object.assign(context, {
+    searchSourceRef: { current: 'stock' }, searchTypeRef: { current: 'id' },
+    ownedSearchStatusRef: { current: { stock: { available: true, modes: ['id', 'similarity'], maxQueries: 20 } } },
+    similarityThresholdRef: { current: 0.7 }, stockFingerprintTypeRef: { current: 'morgan' }, stockSimilarityMetricRef: { current: 'tanimoto' },
+    browseRequestIdRef: { current: 0 }, searchRequestIdRef: { current: 0 }, hasMoreRef: { current: true },
+  });
+  for (const name of new Set(searchBody.match(/\bset[A-Z]\w*/g))) context[name] = value => updates.push([name, value]);
+  await new AsyncFunction(...Object.keys(context), searchBody)(...Object.values(context));
+  checks.push(
+    ['batch ID request carries only selected source and exact input entries', requestCalls.length === 1 && requestCalls[0].source === 'stock' && requestCalls[0].mode === 'id' && requestCalls[0].queries.join('|') === 'ASN 001|ASN 002'],
+    ['new batch search clears old rows and selections first', updates.some(([name, value]) => name === 'setTopMolecules' && value.length === 0) && updates.some(([name, value]) => name === 'setSelectedMolecules' && value.size === 0)],
+    ['batch pagination retains the original request snapshot', context.ownedSearchRequestRef.current.mode === 'id' && context.ownedSearchRequestRef.current.queries[0] === 'ASN 001' && context.isSearchActiveRef.current === true],
+    ['batch success preserves original query text', updates.some(([name, value]) => name === 'setLastSearchQuery' && value === 'ASN 001, ASN 002') && !updates.some(([name]) => name === 'setSearchCode')],
+  );
+  requestCalls.length = 0; updates.length = 0;
+  context.ownedSearchStatusRef.current.stock = { available: true, modes: ['similarity'] };
+  await new AsyncFunction(...Object.keys(context), searchBody)(...Object.values(context));
+  checks.push(['unsupported mode refuses locally without searching another collection', !requestCalls.length && updates.some(([name, value]) => name === 'setSearchError' && value.includes('No other collection was searched')) && context.hasMoreRef.current === false]);
+}
+{
+  const body = simulation.split('const runOwnedSearch = async (offset, append, { token, controller, requestId, request }) => {')[1].split('\n  };')[0];
+  const controller = new AbortController();
+  const changes = [];
+  const request = { source: 'stock', mode: 'exact', queries: ['CCO'] };
+  let payload = { source: 'stock', mode: 'exact', results: [{ molecule_id: 9, canonical_smiles: 'CCO', metadata: { MAIN_BAS: 'ASN 001' }, matchedQueryIndices: [0] }], hasMore: false, queries: [{ index: 0, input: 'CCO', status: 'matched', matchCount: 1 }], total: 1 };
+  const context = { API_CONFIG: { buildApiUrl: route => route }, ownedRowsFromPayload, appendUniqueOwnedRows,
+    pageSizeRef: { current: 10 }, searchControllerRef: { current: controller }, searchRequestIdRef: { current: 5 }, stockOffsetRef: { current: 0 }, hasMoreRef: { current: true },
+    fetchWithGatewayRetry: async (url, options) => { changes.push(['request', url, options]); return { ok: true, json: async () => payload }; },
+  };
+  for (const name of new Set(body.match(/\bset[A-Z]\w*/g))) context[name] = value => changes.push([name, typeof value === 'function' ? value([]) : value]);
+  const run = new AsyncFunction(...Object.keys(context), 'offset', 'append', '{ token, controller, requestId, request }', body);
+  await run(...Object.values(context), 0, false, { token: 'fixture', controller, requestId: 5, request });
+  checks.push(
+    ['owned request is authenticated, cancelable and carries explicit mode', changes[0][2].headers.Authorization === 'Bearer fixture' && changes[0][2].signal === controller.signal && JSON.parse(changes[0][2].body).mode === 'exact'],
+    ['owned response preserves provenance and stops pagination explicitly', changes.some(([name, value]) => name === 'setTopMolecules' && value[0].matchedQueryIndices[0] === 0) && context.hasMoreRef.current === false],
+  );
+  changes.length = 0; context.searchRequestIdRef.current = 6;
+  const superseded = await run(...Object.values(context), 0, false, { token: 'fixture', controller, requestId: 5, request });
+  checks.push(['superseded owned response cannot repopulate the table', superseded === false && !changes.some(([name]) => name.startsWith('set'))]);
+  context.searchRequestIdRef.current = 5; payload = { ...payload, source: 'open' };
+  let refused = false; try { await run(...Object.values(context), 0, false, { token: 'fixture', controller, requestId: 5, request }); } catch { refused = true; }
+  checks.push(['owned response from wrong source is rejected atomically', refused]);
+}
 
 const { openResultsFromPayload } = await import(
   pathToFileURL(path.join(root, 'client/src/utils/openResults.js')).href

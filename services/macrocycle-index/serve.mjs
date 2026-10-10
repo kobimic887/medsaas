@@ -307,7 +307,7 @@ function parseSearch(url) {
     || !smiles.trim() || smiles.length > 4096
     || !Number.isFinite(threshold) || threshold < 0.1 || threshold > 1
     || !Number.isInteger(offset) || offset < 0 || offset > MAX_OFFSET
-    || !Number.isInteger(limit) || limit < 1 || limit > 100
+    || !Number.isInteger(limit) || limit < 1 || limit > 1000
     || !FINGERPRINT_TYPES.includes(fingerprintType)
     || !SIMILARITY_METRICS.includes(similarityMetric)) {
     throw Object.assign(new Error('Invalid macrocycle similarity query'), { status: 400 });

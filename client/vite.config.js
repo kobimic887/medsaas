@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from 'path';
+import { precompressPublicAssets } from '../scripts/precompress-assets.mjs';
 
 // Vite's JSX transform and React's package entry both key off NODE_ENV. Bun does
 // not set NODE_ENV=production for `bun run build` the way npm does, so an unset
@@ -29,6 +30,14 @@ export default defineConfig(({ command, mode }) => {
   envDir: '..',
   base,
   plugins: [
+    (() => {
+      let outputDirectory;
+      return {
+        name: 'precompress-public-assets',
+        configResolved(config) { outputDirectory = path.resolve(config.root, config.build.outDir); },
+        async closeBundle() { if (command === 'build') await precompressPublicAssets(outputDirectory); },
+      };
+    })(),
     {
       name: 'exclude-git-directory',
       enforce: 'pre',

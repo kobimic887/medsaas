@@ -28,6 +28,7 @@ import { API_CONFIG, getAuthToken } from "@/utils/constants";
 import { copyToClipboard } from '@/utils/copyToClipboard';
 import { appendUniqueMacrocycleRows, macrocycleResultsFromPayload } from '@/utils/macrocycleResults';
 import { openResultsFromPayload } from '@/utils/openResults';
+import { OWNED_SEARCH_MODES, appendUniqueOwnedRows, ownedRowsFromPayload, parseSearchQueries, searchModesFromStatus } from '@/utils/ownedSearch';
 import { cartItemFromCatalogPrice } from '@/utils/stockOffers';
 import { appendUniqueStockRows, stockResultsFromPayload } from '@/utils/stockResults';
 import { clearViewerStorage, markViewerHandoff, normalizePdbId, rcsbPdbDownloadUrl } from '@/utils/viewerStorage';
@@ -78,17 +79,17 @@ function stockChoiceLabel(options, value, fallback) {
   return (match && match.label) || fallback;
 }
 
-function CompoundQueryField({ value, onChange, catalog }) {
+function CompoundQueryField({ value, onChange, catalog, mode = 'similarity' }) {
   return (
     <label className="flex w-full flex-col gap-2 text-lg font-semibold text-blue-gray-900 dark:text-white">
-      {catalog ? 'ID, SMILES, or name' : 'Query SMILES'}
+      {catalog ? 'ID, SMILES, or name' : mode === 'id' ? 'Compound IDs' : mode === 'substructure' ? 'Query SMILES or SMARTS' : 'Query SMILES'}
       <textarea
         value={value}
         onChange={onChange}
         rows={3}
         spellCheck={false}
         autoCapitalize="none"
-        placeholder={catalog ? 'Paste an identifier or structure here…' : 'Paste a SMILES structure here…'}
+        placeholder={catalog ? 'Paste an identifier or structure here…' : mode === 'id' ? 'One compound ID per line, or separated by commas…' : 'One structure per line, or separated by commas…'}
         className="min-h-[112px] w-full resize-y rounded-xl border-2 border-teal-600 bg-white p-3 font-mono text-base font-normal leading-relaxed text-slate-900 placeholder:text-slate-500 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/40 dark:border-teal-400 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-400"
       />
     </label>
@@ -233,6 +234,10 @@ export function Simulation({ active = true }) {
   const [topError, setTopError] = useState("");
 
   const [searchType, setSearchType] = useState("similarity"); // Add searchType state
+  const [ownedSearchStatus, setOwnedSearchStatus] = useState({});
+  const [ownedSearchSummary, setOwnedSearchSummary] = useState(null);
+  const ownedSearchStatusRef = useRef({});
+  const ownedSearchRequestRef = useRef(null);
   // Pyxis-owned snapshots and explicit ChEMBL discovery are the supported
   // sources in every build. An unavailable source never switches to a supplier.
   const [searchSource, setSearchSource] = useState("stock");
@@ -447,6 +452,37 @@ export function Simulation({ active = true }) {
   useEffect(() => {
     macrocycleStatusRef.current = macrocycleStatus;
   }, [macrocycleStatus]);
+
+  useEffect(() => {
+    ownedSearchStatusRef.current = ownedSearchStatus;
+  }, [ownedSearchStatus]);
+
+  useEffect(() => {
+    // These controls define the result set, so a prior batch cursor/outcome
+    // must not survive a method or threshold change.
+    ownedSearchRequestRef.current = null;
+    setOwnedSearchSummary(null);
+  }, [searchSource, searchType, similarityThreshold, stockFingerprintType, stockSimilarityMetric, macrocycleSimilarityMetric]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const token = getAuthToken();
+    const source = searchSource;
+    setOwnedSearchStatus((previous) => ({ ...previous, [source]: { state: 'loading' } }));
+    fetch(`${API_CONFIG.buildApiUrl('/owned-search/status')}?${new URLSearchParams({ source })}`, {
+      signal: controller.signal,
+      headers: { accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    }).then(async (response) => {
+      const payload = await response.json().catch(() => null);
+      if (controller.signal.aborted) return;
+      setOwnedSearchStatus((previous) => ({ ...previous, [source]: response.ok && payload?.available === true
+        ? { ...payload, state: 'available' }
+        : { state: 'unavailable', available: false, reason: payload?.reason || payload?.error || 'Additional search methods are unavailable for this collection.' } }));
+    }).catch((error) => {
+      if (error.name !== 'AbortError') setOwnedSearchStatus((previous) => ({ ...previous, [source]: { state: 'unavailable', available: false, reason: error.message } }));
+    });
+    return () => controller.abort();
+  }, [searchSource]);
 
   useEffect(() => {
     openMaxResultsRef.current = openMaxResults;
@@ -794,6 +830,8 @@ export function Simulation({ active = true }) {
     if (!['stock', 'open', 'both', 'real', 'virtual'].includes(nextSource)) return;
     if (nextSource === searchSourceRef.current) return;
     searchSourceRef.current = nextSource;
+    ownedSearchRequestRef.current = null;
+    setOwnedSearchSummary(null);
     browseControllerRef.current?.abort();
     searchControllerRef.current?.abort();
     searchControllerRef.current = null;
@@ -844,6 +882,40 @@ export function Simulation({ active = true }) {
       setSimilarityThreshold(value => Math.max(0.1, value));
       if (macrocycleStatusRef.current?.[nextSource]?.state !== 'available') fetchMacrocycleStatus(nextSource);
     }
+  };
+
+  const handleSearchModeChange = (mode) => {
+    if (!OWNED_SEARCH_MODES.some((option) => option.value === mode)) return;
+    if (mode !== 'similarity' && !searchModesFromStatus(ownedSearchStatusRef.current[searchSourceRef.current], searchSourceRef.current).includes(mode)) return;
+    handleThresholdChange(similarityThresholdRef.current);
+    searchTypeRef.current = mode;
+    setSearchType(mode);
+    ownedSearchRequestRef.current = null;
+    setOwnedSearchSummary(null);
+    if (mode === 'id') setQueryType('text');
+  };
+
+  const runOwnedSearch = async (offset, append, { token, controller, requestId, request }) => {
+    const response = await fetchWithGatewayRetry(API_CONFIG.buildApiUrl('/owned-search'), {
+      method: 'POST', signal: controller.signal,
+      headers: { 'Content-Type': 'application/json', accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ ...request, offset, limit: pageSizeRef.current }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(payload?.error || payload?.reason || `Search failed (HTTP ${response.status}).`);
+    if (searchControllerRef.current !== controller || requestId !== searchRequestIdRef.current) return false;
+    if (payload?.source !== request.source || payload?.mode !== request.mode) throw new Error('The search response did not match the requested collection and method.');
+    const rows = ownedRowsFromPayload(payload, request.source);
+    setTopMolecules((previous) => append ? [...previous, ...appendUniqueOwnedRows(previous, rows, request.source)] : rows);
+    setOwnedSearchSummary({ ...payload, results: undefined });
+    const count = payload.results.length;
+    const nextOffset = offset + count;
+    stockOffsetRef.current = nextOffset;
+    setStockOffset(nextOffset);
+    const more = payload.hasMore === true && count > 0;
+    hasMoreRef.current = more;
+    setHasMore(more);
+    return true;
   };
 
   const runMacrocycleSearch = async (offsetStart, append, { token, rawQuery, controller, requestId }) => {
@@ -1183,6 +1255,8 @@ export function Simulation({ active = true }) {
     setSearchLoading(true);
     setSearchError("");
     setSearchResult(null);
+    ownedSearchRequestRef.current = null;
+    setOwnedSearchSummary(null);
     
     // Reset pagination when searching
     setCurrentPage(0);
@@ -1202,6 +1276,26 @@ export function Simulation({ active = true }) {
     try {
       const token = getAuthToken();
       const rawQuery = (searchCode || '').trim();
+      const mode = searchTypeRef.current || 'similarity';
+      const source = searchSourceRef.current;
+      const status = ownedSearchStatusRef.current?.[source];
+      const queries = source === 'asinex' ? [rawQuery] : parseSearchQueries(rawQuery, mode, status?.maxQueries || 20);
+      if (source !== 'asinex' && (mode !== 'similarity' || queries.length > 1)) {
+        if (!searchModesFromStatus(status, source).includes(mode)) throw new Error(status?.reason || 'This collection does not currently support the selected search method or batch search. No other collection was searched.');
+        const request = {
+          source, mode, queries,
+          threshold: similarityThresholdRef.current,
+          fingerprint_type: source === 'stock' ? stockFingerprintTypeRef.current : 'morgan',
+          similarity_metric: source === 'stock' ? stockSimilarityMetricRef.current : MACROCYCLE_SOURCES[source] ? macrocycleSimilarityMetricRef.current : 'tanimoto',
+        };
+        ownedSearchRequestRef.current = request;
+        const progressed = await runOwnedSearch(0, false, { token, controller, requestId, request });
+        if (progressed === false) return;
+        isSearchActiveRef.current = true;
+        setIsSearchActive(true);
+        setLastSearchQuery(rawQuery);
+        return;
+      }
 
       if (searchSourceRef.current === 'stock') {
         // Stock mode = similarity only, over /api/stock-search/similarity. The
@@ -1362,6 +1456,11 @@ export function Simulation({ active = true }) {
       const activeMolWeightMin = molWeightMinRef.current;
       const activeMolWeightMax = molWeightMaxRef.current;
 
+      if (ownedSearchRequestRef.current) {
+        await runOwnedSearch(stockOffsetRef.current, true, { token, controller, requestId, request: ownedSearchRequestRef.current });
+        return;
+      }
+
       if (searchSourceRef.current === 'stock') {
         // Stock pages advance by offset over the engine's stable ranking; the
         // shared caller resets the offset on every fresh search, so an append can
@@ -1478,6 +1577,7 @@ export function Simulation({ active = true }) {
       if (err.name === 'AbortError') return;
       if (searchControllerRef.current !== controller || requestId !== searchRequestIdRef.current) return;
       console.error('Failed to load more search results:', err);
+      setSearchError(`Could not load more results: ${err.message}`);
       setHasMore(false);
     } finally {
       if (searchControllerRef.current === controller && requestId === searchRequestIdRef.current) {
@@ -2087,7 +2187,14 @@ export function Simulation({ active = true }) {
     || (openUseAi && openStatus?.ai?.enabled !== true)
   );
   const macrocycleSearchDisabled = Boolean(MACROCYCLE_SOURCES[searchSource]) && macrocycleStatus[searchSource]?.state !== 'available';
-  const sourceSearchDisabled = stockSearchDisabled || openSearchDisabled || macrocycleSearchDisabled;
+  const activeOwnedStatus = ownedSearchStatus[searchSource];
+  const ownedModes = searchModesFromStatus(activeOwnedStatus, searchSource);
+  let queryCount = 1;
+  try { queryCount = parseSearchQueries(searchCode, searchType, activeOwnedStatus?.maxQueries || 20).length; } catch { /* Search displays input errors without discarding the query. */ }
+  const usesOwnedSearch = searchType !== 'similarity' || queryCount > 1;
+  const sourceSearchDisabled = usesOwnedSearch
+    ? !ownedModes.includes(searchType)
+    : stockSearchDisabled || openSearchDisabled || macrocycleSearchDisabled;
 
   const handleCopySmiles = async () => {
     if (ketcherIframeRef.current) {
@@ -2210,7 +2317,7 @@ export function Simulation({ active = true }) {
             </Typography>
           </div>
         )}
-        {searchSource === "stock" && stockStatus && stockStatus.state === "unavailable" && (
+        {searchSource === "stock" && !usesOwnedSearch && stockStatus && stockStatus.state === "unavailable" && (
           <Alert color="amber" className="mb-2">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               <Typography variant="small">
@@ -2238,7 +2345,7 @@ export function Simulation({ active = true }) {
               {MACROCYCLE_SOURCES[searchSource].label} · {(macrocycleStatus[searchSource].dataset?.rowCount || MACROCYCLE_SOURCES[searchSource].count).toLocaleString()} searchable {searchSource === 'both' ? '· real RPX + virtual VPX' : searchSource === 'real' ? '· current stock unverified' : '· virtual designs'}
           </div>
         )}
-        {MACROCYCLE_SOURCES[searchSource] && macrocycleStatus[searchSource]?.state === 'unavailable' && (
+        {MACROCYCLE_SOURCES[searchSource] && !usesOwnedSearch && macrocycleStatus[searchSource]?.state === 'unavailable' && (
           <Alert color="amber" className="mb-2">
             <div className="flex items-center justify-between gap-2">
               <span>{MACROCYCLE_SOURCES[searchSource].label} search is unavailable: {macrocycleStatus[searchSource].reason}</span>
@@ -2253,7 +2360,7 @@ export function Simulation({ active = true }) {
             <Typography variant="small" color="blue-gray">Checking open-compounds search availability…</Typography>
           </div>
         )}
-        {searchSource === "open" && openStatus && openStatus.state === "available" && (
+        {searchSource === "open" && !usesOwnedSearch && openStatus && openStatus.state === "available" && (
           <div className="mb-2 rounded-lg border border-indigo-100 bg-indigo-50/70 px-4 py-3 space-y-2">
             <Typography variant="small" color="blue-gray">
               Open compounds sends your query to external providers
@@ -2316,7 +2423,7 @@ export function Simulation({ active = true }) {
             )}
           </div>
         )}
-        {searchSource === "open" && openStatus && openStatus.state === "unavailable" && (
+        {searchSource === "open" && !usesOwnedSearch && openStatus && openStatus.state === "unavailable" && (
           <Alert color="amber" className="mb-2">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               <Typography variant="small">
@@ -2341,7 +2448,10 @@ export function Simulation({ active = true }) {
               type="radio"
               name="queryType"
               value="draw"
+              disabled={searchType === 'id'}
               checked={queryType === "draw"}
+              onFocus={() => setEditorVisited(true)}
+              onPointerEnter={() => setEditorVisited(true)}
               onChange={() => { setEditorVisited(true); setQueryType("draw"); }}
             />
             <span>Draw molecule</span>
@@ -2354,12 +2464,10 @@ export function Simulation({ active = true }) {
               checked={queryType === "text"}
               onChange={() => setQueryType("text")}
             />
-            <span>{searchSource === 'asinex' ? 'Paste identifier or SMILES' : 'Paste SMILES'}</span>
+            <span>{searchType === 'id' ? 'Paste identifiers' : searchSource === 'asinex' ? 'Paste identifier or SMILES' : 'Paste structures'}</span>
           </label>
         </div>
-        {/* Search type radio buttons. Stock mode is similarity-only (ranked); the
-            catalog modes (substructure/structure/BAS/molecular weight) stay
-            available under the Asinex source exactly as before. */}
+        {/* New methods are enabled only by the selected source's live capability response. */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2 w-full">
           <Typography variant="small" color="blue-gray" className="mr-2">Search type:</Typography>
           <label className="flex items-center gap-1 w-auto">
@@ -2368,10 +2476,17 @@ export function Simulation({ active = true }) {
               name="searchType"
               value="similarity"
               checked={searchType === "similarity"}
-              onChange={() => setSearchType("similarity")}
+              onChange={() => handleSearchModeChange("similarity")}
             />
             <span>Similarity</span>
           </label>
+          {searchSource !== 'asinex' && OWNED_SEARCH_MODES.filter((option) => option.value !== 'similarity').map((option) => (
+            <label key={option.value} className="flex items-center gap-1 w-auto">
+              <input type="radio" name="searchType" value={option.value} checked={searchType === option.value}
+                disabled={!ownedModes.includes(option.value)} onChange={() => handleSearchModeChange(option.value)} />
+              <span className={!ownedModes.includes(option.value) ? 'text-blue-gray-400' : undefined}>{option.label}</span>
+            </label>
+          ))}
           {searchSource === "asinex" && (
             <>
               <label className="flex items-center gap-1 w-auto">
@@ -2417,7 +2532,14 @@ export function Simulation({ active = true }) {
             </>
           )}
         </div>
-        {searchSource === "stock" && (
+        {searchSource !== 'asinex' && (
+          <div className="mb-3 text-xs text-blue-gray-600 dark:text-slate-300" aria-live="polite">
+            {activeOwnedStatus?.state === 'loading' ? 'Checking additional search methods…' : null}
+            {activeOwnedStatus?.state === 'unavailable' ? activeOwnedStatus.reason : null}
+            {activeOwnedStatus?.state === 'available' ? `Up to ${activeOwnedStatus.maxQueries || 20} queries: one per line or comma-separated. Matches are combined by compound, with each matching query recorded. ${searchType === 'id' ? 'IDs are looked up only in the selected collection.' : searchType === 'exact' ? 'Exact structure compares canonical chemistry, including stereochemistry.' : searchType === 'substructure' ? 'Use a SMILES fragment or SMARTS pattern. Chirality is respected where specified.' : queryCount > 1 ? 'Batch similarity uses the deterministic search, without AI.' : ''}${searchSource === 'open' ? ' Queries are sent to ChEMBL; open compounds are discovery-only.' : ''}` : null}
+          </div>
+        )}
+        {searchSource === "stock" && searchType === 'similarity' && (
           <div className="mb-2 w-full space-y-3 rounded-lg border border-teal-100 bg-teal-50/40 p-4">
             <div className="flex flex-col gap-3">
               <label className="block min-w-0 flex-1">
@@ -2449,11 +2571,11 @@ export function Simulation({ active = true }) {
             </div>
             <details className="text-xs text-blue-gray-600 dark:text-slate-300">
               <summary className="cursor-pointer">How stock scores work</summary>
-              <p className="mt-2">RDKit {stockFpLabel} and {stockMetricLabel} compare the query with each stock structure. These are binary fingerprints. Code, substructure and molecular-weight lookup are not available in this Pyxis index.</p>
+              <p className="mt-2">RDKit {stockFpLabel} and {stockMetricLabel} compare the query with each stock structure. These are binary fingerprints. A score of 1 is not proof of exact chemical identity. Choose Exact structure for that comparison.</p>
             </details>
           </div>
         )}
-        {MACROCYCLE_SOURCES[searchSource] && activeMacrocycleStatus?.state === 'available' && (
+        {MACROCYCLE_SOURCES[searchSource] && searchType === 'similarity' && activeMacrocycleStatus?.state === 'available' && (
           <div className="mb-2 w-full space-y-3 rounded-lg border border-teal-100 bg-teal-50/40 p-4">
             <label className="block min-w-0 max-w-sm">
               <span className="mb-1 block text-xs font-semibold text-blue-gray-700">Similarity method</span>
@@ -2474,7 +2596,7 @@ export function Simulation({ active = true }) {
             </details>
           </div>
         )}
-        {searchSource === "open" && (
+        {searchSource === "open" && !usesOwnedSearch && (
           <p className="mb-2 text-sm text-blue-gray-500">
             Open compounds uses an AI tool loop when enabled (model requests the chemical-search tool; RDKit scores). Use “Search without AI” for the deterministic ChEMBL path. Open compounds are not stocked or priced here — selection is for docking handoff only.
           </p>
@@ -2619,6 +2741,7 @@ export function Simulation({ active = true }) {
           <div id="molecule-search" className="flex flex-col items-stretch gap-2 w-full">
             <CompoundQueryField
               catalog={searchSource === "asinex"}
+              mode={searchType}
               value={searchCode}
               onChange={e => setSearchCode(e.target.value)}
             />
@@ -2793,6 +2916,7 @@ export function Simulation({ active = true }) {
               <Typography variant="h6" color="blue-gray">Search Molecules</Typography>
               <CompoundQueryField
                 catalog={searchSource === "asinex"}
+                mode={searchType}
                 value={searchCode}
                 onChange={e => setSearchCode(e.target.value)}
               />
@@ -2923,6 +3047,20 @@ export function Simulation({ active = true }) {
           </div>
         )}
         <div id="results" className="w-full bg-slate-100 dark:bg-slate-900">
+          {ownedSearchSummary && (
+            <div className="mb-3 rounded-lg border border-teal-100 bg-white p-3 text-sm dark:border-slate-800 dark:bg-slate-950" role="status">
+              <p className="font-semibold">{OWNED_SEARCH_MODES.find((option) => option.value === ownedSearchSummary.mode)?.label} · {ownedSearchSummary.queries?.length || queryCount} queries · {ownedSearchSummary.totalExact === false ? 'at least ' : ''}{ownedSearchSummary.total ?? topMolecules.length} matching compounds</p>
+              {ownedSearchSummary.truncated && <p className="mt-1 text-amber-800 dark:text-amber-300">Results reached the search limit. Counts are lower bounds; narrow the query to retrieve more complete matches.</p>}
+              <details className="mt-2"><summary className="cursor-pointer">Results for each query</summary>
+                <ol className="mt-2 list-decimal space-y-1 pl-6">
+                  {(ownedSearchSummary.queries || []).map((entry, index) => <li key={entry.index ?? index} className="break-all">
+                    <span className="font-mono">{entry.input || entry.query}</span>{' — '}
+                    {entry.status === 'error' || entry.error ? `Invalid: ${entry.error || entry.reason || 'Query could not be searched.'}` : entry.status === 'unmatched' ? 'No matches' : `${entry.truncated ? 'at least ' : ''}${entry.matchCount ?? 0} matches`}
+                  </li>)}
+                </ol>
+              </details>
+            </div>
+          )}
           {/* Header as a block element, not wrapping Card or div */}
           {/* <div className="mb-4">
             <Typography as="h5" variant="h5" color="blue-gray">Top {topMolecules.length} Molecules</Typography>
@@ -2940,7 +3078,7 @@ export function Simulation({ active = true }) {
             <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
                 <div className="border-b border-teal-100 bg-teal-50/60 px-4 py-3 text-xs text-blue-gray-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
-                  {MACROCYCLE_SOURCES[searchSource].label} · globally ranked by {macrocycleResultMethodLabel} over Morgan (ECFP4) · RPX/VPX rows keep their source · export amounts and lead times are dated. Select rows for docking or ordering.
+                  {MACROCYCLE_SOURCES[searchSource].label} · {ownedSearchSummary ? OWNED_SEARCH_MODES.find((option) => option.value === ownedSearchSummary.mode)?.label : `globally ranked by ${macrocycleResultMethodLabel} over Morgan (ECFP4)`} · RPX/VPX rows keep their source · export amounts and lead times are dated. Select rows for docking or ordering.
                 </div>
                 <table className="w-full min-w-[680px] table-fixed text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-white dark:bg-slate-900">
@@ -2950,7 +3088,7 @@ export function Simulation({ active = true }) {
                       <th className="w-44 p-2">IDNUMBER</th>
                       <th className="w-28 p-2">Lead time</th>
                       <th className="w-48 p-2">Pack size · price <span className="block text-xs font-normal">EUR / USD</span></th>
-                      <th className="w-20 p-2">Similarity</th>
+                      <th className="w-20 p-2">{searchType === 'similarity' ? 'Similarity' : 'Match'}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2966,12 +3104,13 @@ export function Simulation({ active = true }) {
                           <td className="p-2">{idx + 1}</td>
                           <td className="p-2 text-xs">
                             <button type="button" className="font-mono font-semibold break-all underline decoration-dotted" aria-label={`Preview ${mol.macrocycleCode}`} {...structurePreviewTrigger(mol.SMILES_STRING, mol.macrocycleCode)}>{mol.macrocycleCode}</button>
+                            {mol.matchedQueryIndices?.length > 0 && <div className="mt-1 text-xs text-teal-700 dark:text-teal-300">Queries {mol.matchedQueryIndices.map((index) => index + 1).join(', ')}</div>}
                             <div className="mt-1 font-semibold text-teal-700 dark:text-teal-300">{mol.macrocycleSource === 'real' ? 'Real RPX' : 'Virtual VPX'}</div>
                             <div className="mt-1 text-blue-gray-500" title="Dated supplier export; amount and lead time are unverified now">{exportDetails || 'No export amount'} · {mol.macrocycleSource === 'real' ? 'stock unverified' : 'virtual'}</div>
                           </td>
                           <td className="p-2 text-xs" title="Dated supplier export; amount and lead time are unverified now">{mol.snapshotLeadTime || '—'}</td>
                           <td className="p-2"><CompoundShopPacks offer={mol.shopOffer} onAdded={showMessage} amountMg={mol.shopOffer ? selectedPacks[offerSelectionKey(mol.shopOffer)] : undefined} onPackChange={(mg) => setSelectedPacks((previous) => ({ ...previous, [offerSelectionKey(mol.shopOffer)]: mg }))} /></td>
-                          <td className="p-2 font-semibold">{mol.SIMILARITY === null ? '—' : mol.SIMILARITY.toFixed(3)}</td>
+                          <td className="p-2 font-semibold">{searchType !== 'similarity' ? '✓' : mol.SIMILARITY === null ? '—' : mol.SIMILARITY.toFixed(3)}</td>
                         </tr>
                       );
                     })}
@@ -2983,7 +3122,7 @@ export function Simulation({ active = true }) {
             <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
                 <div className="border-b border-blue-gray-100 bg-blue-gray-50/60 px-4 py-2 text-xs text-blue-gray-600 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-400">
-                  Stock compounds · ranked by {snapFpLabel} {snapMetricLabel} similarity · quantities and lead times are dated snapshots. Select rows for docking or ordering.
+                  Stock compounds · {ownedSearchSummary ? OWNED_SEARCH_MODES.find((option) => option.value === ownedSearchSummary.mode)?.label : `ranked by ${snapFpLabel} ${snapMetricLabel} similarity`} · quantities and lead times are dated snapshots. Select rows for docking or ordering.
                 </div>
                 <table className="w-full min-w-[680px] text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-white">
@@ -3007,7 +3146,7 @@ export function Simulation({ active = true }) {
                       <th className="p-2 font-bold bg-white">IDNUMBER</th>
                       <th className="p-2 font-bold bg-white">Lead time</th>
                       <th className="p-2 font-bold bg-white">Pack size · price <span className="block text-xs font-normal">EUR / USD</span></th>
-                      <th className="p-2 font-bold bg-white">Similarity</th>
+                      <th className="p-2 font-bold bg-white">{searchType === 'similarity' ? 'Similarity' : 'Match'}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3039,12 +3178,13 @@ export function Simulation({ active = true }) {
                             >
                               {mol.stockCode}
                             </button>
+                            {mol.matchedQueryIndices?.length > 0 && <div className="mt-1 text-xs text-teal-700 dark:text-teal-300">Queries {mol.matchedQueryIndices.map((index) => index + 1).join(', ')}</div>}
                             <div className="px-2 pb-2 text-xs text-blue-gray-500" title="Dated snapshot quantity from the supplier export — not live availability">{mol.STOCK_MG === null ? '—' : `${formatNumericValue(mol.STOCK_MG)} mg`} · snapshot</div>
                           </td>
                           <td className="p-2 text-xs" title="Dated supplier export lead time; unverified now">{mol.snapshotLeadTime || '—'}</td>
                           <td className="p-2"><CompoundShopPacks offer={mol.shopOffer} onAdded={showMessage} amountMg={mol.shopOffer ? selectedPacks[offerSelectionKey(mol.shopOffer)] : undefined} onPackChange={(mg) => setSelectedPacks((previous) => ({ ...previous, [offerSelectionKey(mol.shopOffer)]: mg }))} /></td>
                           <td className="p-2 font-bold text-blue-600" title={mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? `Similarity: ${mol.SIMILARITY}` : "N/A"}>
-                            {mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? parseFloat(mol.SIMILARITY).toFixed(3) : "N/A"}
+                            {searchType !== 'similarity' ? '✓' : mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? parseFloat(mol.SIMILARITY).toFixed(3) : 'N/A'}
                           </td>
                         </tr>
                       );
@@ -3058,9 +3198,9 @@ export function Simulation({ active = true }) {
               <CardBody className="p-0">
                 <div className="border-b border-indigo-100 bg-indigo-50/60 px-4 py-2 text-xs text-blue-gray-600 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <span>
-                    ChEMBL open compounds · local RDKit Morgan (r=2, 2048-bit, chirality off) Tanimoto · not stocked or priced. Select rows for docking handoff. Attribution: ChEMBL / EMBL-EBI.
+                    ChEMBL open compounds · {ownedSearchSummary ? OWNED_SEARCH_MODES.find((option) => option.value === ownedSearchSummary.mode)?.label : 'local RDKit Morgan (r=2, 2048-bit, chirality off) Tanimoto'} · not stocked or priced. Select rows for docking handoff. Attribution: ChEMBL / EMBL-EBI.
                   </span>
-                  <div className="flex gap-2 shrink-0">
+                  {!ownedSearchSummary && <div className="flex gap-2 shrink-0">
                     <button
                       type="button"
                       className="text-sm font-semibold underline disabled:opacity-50"
@@ -3077,7 +3217,7 @@ export function Simulation({ active = true }) {
                     >
                       {openExportKind === 'sdf' ? 'Exporting SDF…' : 'Download SDF'}
                     </button>
-                  </div>
+                  </div>}
                 </div>
                 <table className="w-full text-left">
                   <thead className="sticky top-0 z-10 bg-white">
@@ -3097,7 +3237,7 @@ export function Simulation({ active = true }) {
                         </div>
                       </th>
                       <th className="p-2 font-bold bg-white">#</th>
-                      <th className="p-2 font-bold bg-white">Similarity</th>
+                      <th className="p-2 font-bold bg-white">{searchType === 'similarity' ? 'Similarity' : 'Match'}</th>
                       <th className="p-2 font-bold bg-white">ChEMBL ID</th>
                       <th className="p-2 font-bold bg-white">SMILES</th>
                       <th className="p-2 font-bold bg-white">Source</th>
@@ -3120,7 +3260,7 @@ export function Simulation({ active = true }) {
                           </td>
                           <td className="p-2">{mol.rank || (idx + 1)}</td>
                           <td className="p-2 font-bold text-indigo-700" title={mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? `Morgan Tanimoto: ${mol.SIMILARITY}` : "N/A"}>
-                            {mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? parseFloat(mol.SIMILARITY).toFixed(3) : "N/A"}
+                            {searchType !== 'similarity' ? '✓' : mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? parseFloat(mol.SIMILARITY).toFixed(3) : 'N/A'}
                           </td>
                           <td
                             className="p-2 font-mono text-xs whitespace-nowrap"
@@ -3146,6 +3286,7 @@ export function Simulation({ active = true }) {
                             >
                               <EyeIcon className="h-4 w-4" aria-hidden="true" />
                             </button>
+                            {mol.matchedQueryIndices?.length > 0 && <div className="mt-1 text-xs text-teal-700 dark:text-teal-300">Queries {mol.matchedQueryIndices.map((index) => index + 1).join(', ')}</div>}
                           </td>
                           <td className="p-0 font-mono text-xs">
                             <button
@@ -3200,7 +3341,7 @@ export function Simulation({ active = true }) {
                         </div>
                       </th>
                       <th className="p-2 font-bold bg-white">#</th>
-                      {searchType === "similarity" && <th className="p-2 font-bold bg-white">Similarity</th>}
+                      {searchType === "similarity" && <th className="p-2 font-bold bg-white">{searchType === 'similarity' ? 'Similarity' : 'Match'}</th>}
                       <th className="p-2 font-bold bg-white">ID</th>
                       <th className="p-2 font-bold bg-white">IUPAC Name</th>
                       <th className="p-2 font-bold bg-white">SMILES</th>
@@ -3233,7 +3374,7 @@ export function Simulation({ active = true }) {
                           <td className="p-2">{idx + 1}</td>
                           {searchType === "similarity" && (
                             <td className="p-2 font-bold text-blue-600" title={mol.SIMILARITY ? `Similarity: ${mol.SIMILARITY}` : "N/A"}>
-                              {mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? parseFloat(mol.SIMILARITY).toFixed(3) : "N/A"}
+                              {searchType !== 'similarity' ? '✓' : mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? parseFloat(mol.SIMILARITY).toFixed(3) : 'N/A'}
                             </td>
                           )}
                         <td className="p-0">

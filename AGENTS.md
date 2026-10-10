@@ -71,6 +71,15 @@ when a path or trap moves.
   RPX/VPX data and derived search artifacts stay on the scientific data host;
   the staging app reaches its loopback index through the private SSH tunnel.
   Do not leave dataset or dataset-backup copies on the application host.
+- Home ID/exact/substructure/batch search: `services/owned-search/README.md`.
+  `/api/owned-search` is source-scoped (stock/RPX/VPX/open), capability-gated by
+  `/api/owned-search/status`, and never reaches retired supplier routes. Exact is
+  canonical isomeric graph equality, not similarity 1.0. Graph screens stay on the
+  scientific host; ship `server/utils/ownedSearch.js` with server releases.
+  Generic substructure patterns can exceed the 35 s VPX scan budget and must fail
+  explicitly, never return a partial scan as complete.
+- Client builds write `.br`/`.gz` siblings for `assets/` and `ketcher/static/`;
+  `server/utils/precompressedAssets.js` serves them. Ship them with `client/dist`.
 - Link Fragments: `docs/LINK-FRAGMENTS.md`, `services/link-fragments/README.md`.
   Owned 3D linker archive/index, matching workers and Python RDKit refinement stay
   on the scientific data host. Two connected V2000 fragments, explicit one-based
@@ -96,6 +105,10 @@ when a path or trap moves.
   application server for input parsing. Refined SDF downloads retain linker IDs,
   source atom mapping and original placement scores; new hydrogens are appended,
   so source atom numbers remain valid. RDKit molblock output alone drops SD tags.
+  Optional Duplicate Window (`duplicateWindow` 0.05–5 Å) keeps distinct poses of the
+  same stereo product via symmetry-aware unaligned heavy-atom RMSD; it disables
+  top-K deferral and is shown only when the service advertises
+  `capabilities.duplicateWindow`. It never merges different chemistry.
 - Client routes: `client/src/routes.jsx`. Use `API_CONFIG.buildApiUrl()` for `/api/*`
   and `API_CONFIG.buildUrl()` for top-level routes.
 - Auth state: `client/src/context/auth.jsx`. Session logout interceptor:
@@ -157,6 +170,7 @@ bun run test:link-fragments  # matching, explicit-H, jobs, refinement (RDKit hos
 bun run test:catalog-pricing # supplier retirement, molecule refusal, credit plans + UI
 bun run test:macrocycle-index # macrocycle index contract: RDKit parity, format-1/2, count stream
 bun run test:count-morgan    # count-Morgan support parity vs RDKit + count Tanimoto/Dice math
+bun --cwd=server run test:owned-search # owned ID/exact/substructure/batch merge + precompressed assets
 ```
 
 Staging build (never for the live tree): `bun --cwd=client run build:staging`

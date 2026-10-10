@@ -34,6 +34,8 @@ import {
 // "De-SaaS" branding does not remove plans, checkout, roles, or credits.
 import { buildPlanCheckoutSessionParams, getPlan, PLAN_CATALOG } from './utils/planCheckout.js';
 import { createRetiredCatalogRouter, refuseRetiredCatalog, isRetiredSupplierUrl, refuseRetiredScientificProvider } from './utils/catalogAccessPolicy.js';
+import { createOwnedSearch } from './utils/ownedSearch.js';
+import { precompressedAssets } from './utils/precompressedAssets.js';
 import {
   buildStockSimilarityUrl,
   createStockDatasetResolver,
@@ -4535,6 +4537,22 @@ app.get('/api/stock-search/similarity', ensureMongoConnected, authenticateToken,
   }
 });
 
+// Owned source-scoped ID/graph/batch search never reaches retired supplier routes.
+const ownedSearch = createOwnedSearch({
+  graphBase: process.env.OWNED_SEARCH_BASE || '', fetchImpl: fetchWithTimeout,
+  stockConfig: STOCK_SEARCH_CONFIG, stockResolver: stockSearchResolver,
+  macroConfig: MACROCYCLE_SEARCH_CONFIG, macroResolver: macrocycleSearchResolver,
+  openConfig: OPEN_COMPOUNDS_CONFIG, secret: JWT_SECRET,
+});
+app.get('/api/owned-search/status', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+  try { return res.json(await ownedSearch.status(req.query.source)); }
+  catch (error) { return res.status(error.status || 502).json({ error: error.message }); }
+});
+app.post('/api/owned-search', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
+  try { return res.json(await ownedSearch.run(req.body)); }
+  catch (error) { return res.status(error.status || 502).json({ error: error.message, code: error.code || 'OWNED_SEARCH_UNAVAILABLE' }); }
+});
+
 // September 23 macrocycle exports are independent datasets. The combined view
 // ranks both without erasing their real/virtual identities. A missing import
 // returns an explicit unavailable state; the older stock dataset is never a
@@ -6664,6 +6682,7 @@ function logToFile(logStr) {
 }
 
 // Serve built frontend files before the SPA route fallback.
+app.use(precompressedAssets(FRONTEND_DIST_PATH));
 app.use(express.static(FRONTEND_DIST_PATH, { index: false }));
 
 // SPA fallback for non-API routes when frontend build is present
