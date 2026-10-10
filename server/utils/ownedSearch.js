@@ -91,7 +91,7 @@ export function createOwnedSearch({ graphBase, fetchImpl, stockConfig, stockReso
   async function jsonRequest(url, options = {}) {
     const { deadline, ...request } = options;
     let response;
-    try { response = await boundedFetch(url, { ...request, headers: { Accept: 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...options.headers } }, deadline); } catch { throw new OwnedSearchError('Search service is unreachable', 502); }
+    try { response = await boundedFetch(url, { ...request, headers: { Accept: 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...options.headers } }, deadline); } catch (error) { if (error instanceof OwnedSearchError) throw error; throw new OwnedSearchError(error?.name === 'TimeoutError' ? 'Search service timed out' : 'Search service is unreachable', 502); }
     let payload; try { payload = await response.json(); } catch { throw new OwnedSearchError('Search returned an invalid response', 502); }
     if (!response.ok) throw new OwnedSearchError(payload.error || payload.detail || payload.error_message || 'Search is unavailable', relayStockUpstreamStatus(response.status));
     return payload;

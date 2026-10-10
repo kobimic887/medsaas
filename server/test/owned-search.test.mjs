@@ -69,6 +69,8 @@ try{
  const invalid=await owned.run({...query,queries:['INVALID','DUP']});check('per-query bad input preserves valid query results',()=>{assert.equal(invalid.queries[0].status,'error');assert.equal(invalid.results.length,2);});
  upstreamStatus=401;await assert.rejects(owned.run(query),error=>error.status===502);checks++;console.log('PASS upstream auth is 502, never a dead browser session');upstreamStatus=200;
  await owned.run({...query,mode:'similarity',queries:['CCO'],offset:150,limit:50});check('batch pagination fetches required per-query candidate prefix',()=>assert.equal(similarityLimit,201));
+ let tick=0;const slow=createOwnedSearch({graphBase:base,fetchImpl:fetch,stockConfig:{baseUrl:base},stockResolver:{resolve:async()=>({id:4,name:'Stock'})},macroConfig:{baseUrl:base},macroResolver:{resolve:async source=>datasets[source]},openConfig:{enabled:false},secret,now:()=>(tick++)*100000});
+ await assert.rejects(slow.run(query),error=>error.status===503&&/reduce the number of queries/.test(error.message));checks++;console.log('PASS exhausted batch budget keeps its 503 and actionable message');
  const open=createOwnedSearch({graphBase:base,fetchImpl:fetch,openConfig:{enabled:true,baseUrl:base},secret});
  const openExact=await open.run({source:'open',mode:'exact',queries:['OCC'],limit:10});
  check('open exact canonicalizes chemistry and never mints offers',()=>{assert.equal(openExact.results.length,1);assert.equal(openExact.results[0].chemblId,'CHEMBL545');assert.equal(openExact.results[0].shopOffer,undefined);assert.equal(openExact.sendsQueryExternally,true);});

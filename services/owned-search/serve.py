@@ -71,6 +71,9 @@ class GraphStore:
                         if len(results)>=cap:return {'results':results,'truncated':True}
         return {'results':results,'truncated':False}
 
+# Bounded wait so a concurrent slow query delays, not fails, other users.
+GATE_WAIT_SECONDS=15
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self,*args):pass # Private query text must not enter access logs.
     def reply(self,status,payload):
@@ -87,7 +90,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.path=='/verify':
                 query=body.get('query');smiles=body.get('smiles')
                 if not isinstance(query,str) or len(query)>2000 or not isinstance(smiles,list) or len(smiles)>1001 or any(not isinstance(s,str) or len(s)>10000 for s in smiles):raise ValueError('Invalid verification request')
-                if not self.server.gate.acquire(blocking=False):return self.reply(503,{'error':'Owned graph search is busy; retry shortly'})
+                if not self.server.gate.acquire(timeout=GATE_WAIT_SECONDS):return self.reply(503,{'error':'Owned graph search is busy; retry shortly'})
                 try:
                     molecule=Chem.MolFromSmiles(query)
                     if molecule is None:raise ValueError('Open substructure requires valid SMILES')
@@ -99,7 +102,7 @@ class Handler(BaseHTTPRequestHandler):
                 finally:self.server.gate.release()
             source=body['source'];mode=body['mode'];query=body['query'];cap=body['cap']
             if source not in ('stock','both','real','virtual') or mode not in ('id','exact','substructure') or not isinstance(query,str) or not query or len(query)>2000 or not isinstance(cap,int) or not 1<=cap<=1001:raise ValueError('Invalid owned search query')
-            if not self.server.gate.acquire(blocking=False):return self.reply(503,{'error':'Owned graph search is busy; retry shortly'})
+            if not self.server.gate.acquire(timeout=GATE_WAIT_SECONDS):return self.reply(503,{'error':'Owned graph search is busy; retry shortly'})
             try:
                 if source=='stock':
                     # Fixed helper argv and JSON stdin. Existing container owns
@@ -110,7 +113,7 @@ class Handler(BaseHTTPRequestHandler):
                 else:self.reply(200,self.server.store.search(source,mode,query,cap,time.monotonic()+35))
             finally:self.server.gate.release()
         except ValueError as error:self.reply(400,{'error':str(error)})
-        except TimeoutError:self.reply(503,{'error':'Search time budget exceeded; narrow the pattern or reduce the batch'})
+        except (TimeoutError,subprocess.TimeoutExpired):self.reply(503,{'error':'Search time budget exceeded; narrow the pattern or reduce the batch'})
         except Exception:self.reply(503,{'error':'Owned graph search is unavailable'})
 
 if __name__=='__main__':
