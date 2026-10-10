@@ -56,8 +56,9 @@ runtime would change results. The unit `deploy/staging/owned-search/pyxis-search
 runs the combined service on 8276. `deploy/staging/owned-search/50-combined-search.conf`
 points the staging app at it: `MACROCYCLE_SEARCH_BASE=<base>` and
 `OWNED_SEARCH_BASE=<base>/graph`, through the existing 18276 tunnel. It replaces the two
-staging units and the 18280 tunnel. Production keeps the shared 18274 macrocycle
-service until approved. Test with `bun --cwd=server run test:owned-search`.
+staging units and the 18280 tunnel. Production uses the same service through the
+same tunnel (its own `40-combined-search.conf` drop-in on `pyxis-web`); the older
+shared 18274 macrocycle service is kept only as a rollback target. Test with `bun --cwd=server run test:owned-search`.
 
 The unit runs from `search-releases/current`, a link to an immutable `git archive`
 of `services/macrocycle-index`, `services/owned-search` and `server/utils` whose

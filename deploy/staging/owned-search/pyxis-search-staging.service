@@ -1,8 +1,9 @@
-# Combined staging macrocycle search: similarity (/v1/*) and ID/exact/substructure
-# + stock graph (/graph/*) in ONE unit on the existing owned-search port, so the
-# existing pyxis-owned-search-tunnel (oracleNew 18276) carries both. Replaces
+# Combined macrocycle search: similarity (/v1/*) and ID/exact/substructure + stock
+# graph (/graph/*) in ONE unit on the existing owned-search port, so the existing
+# pyxis-owned-search-tunnel (oracleNew 18276) carries both. Replaced
 # pyxis-owned-search-staging + pyxis-owned-macrocycle-search-staging (+ its 18280
-# tunnel) for STAGING ONLY. The consumer app keeps the shared 18274 service.
+# tunnel). SHARED: staging AND production use it (despite the unit name), so a
+# restart needs production approval. The old shared :8274 service is rollback only.
 # `current` links to an immutable git-archive release (see the staging README).
 [Unit]
 Description=Pyxis staging combined macrocycle search (scientific host only)

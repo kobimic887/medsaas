@@ -72,9 +72,10 @@ when a path or trap moves.
   the staging app reaches its loopback index through the private SSH tunnel.
   Do not leave dataset or dataset-backup copies on the application host.
 - Home ID/exact/substructure/batch search: `services/owned-search/README.md`.
-  Staging serves similarity and graph search from one combined service
-  (`services/owned-search/combined.mjs`); production keeps the shared macrocycle
-  service until approved.
+  Staging and production both use one combined similarity + graph service
+  (`services/owned-search/combined.mjs`, scientific host :8276, tunnel 18276;
+  app drop-ins set `MACROCYCLE_SEARCH_BASE=<base>`, `OWNED_SEARCH_BASE=<base>/graph`).
+  The older shared :8274 macrocycle service is a rollback target only.
   `/api/owned-search` is source-scoped (stock/RPX/VPX/open), capability-gated by
   `/api/owned-search/status`, and never reaches retired supplier routes. Exact is
   canonical isomeric graph equality, not similarity 1.0. Graph screens stay on the
