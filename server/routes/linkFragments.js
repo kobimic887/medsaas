@@ -188,12 +188,13 @@ export function createLinkFragmentsRouter({ baseUrl = '', fetchImpl = fetch } = 
     return call(req, res, '/receptor/inspect', { body: { sdf, receptorPdb }, timeout: TIMEOUTS.inspect });
   }));
   router.post('/jobs', requireOwner, handle((req, res) => {
-    const { sdf, maxRmsd = 0.75, limit = 20, receptorPdb } = req.body || {};
+    const { sdf, maxRmsd = 0.75, limit = 20, receptorPdb, duplicateWindow } = req.body || {};
     const fragments = queryFragments(sdf);
     const attachments = attachmentSelections(req.body?.attachments, fragments);
     if (typeof maxRmsd !== 'number' || !Number.isFinite(maxRmsd) || maxRmsd < 0.1 || maxRmsd > 1) throw new InputError('Maximum attachment fit RMSD must be between 0.1 and 1 Å.');
     if (!Number.isInteger(limit) || limit < 1 || limit > 50) throw new InputError('Keep between 1 and 50 products.');
-    return call(req, res, '/jobs', { body: { sdf, attachments, maxRmsd, limit, ...(receptorPdb != null ? { receptorPdb: receptorInput(receptorPdb) } : {}) } });
+    if (duplicateWindow != null && (typeof duplicateWindow !== 'number' || !Number.isFinite(duplicateWindow) || duplicateWindow < 0.05 || duplicateWindow > 5)) throw new InputError('Duplicate Window must be between 0.05 and 5 Å.');
+    return call(req, res, '/jobs', { body: { sdf, attachments, maxRmsd, limit, ...(duplicateWindow != null ? { duplicateWindow } : {}), ...(receptorPdb != null ? { receptorPdb: receptorInput(receptorPdb) } : {}) } });
   }));
   router.get('/jobs', requireOwner, handle((req, res) => call(req, res, '/jobs')));
   router.get('/jobs/:id', requireOwner, handle((req, res) => call(req, res, jobPath(req) + (req.query.input === '0' ? '?input=0' : ''))));

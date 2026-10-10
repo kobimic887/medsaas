@@ -142,6 +142,7 @@ test('real Express relay: owner scoping, validation, inspection merge, jobs, ref
       ...[[0, 1], [1, 201], [1.5, 1], [1], ['1', 1], [1, 12 + 7], [1, 7], [1, { atom: 6, hydrogenAtom: 5 }], [1, { atom: 6, hydrogenAtom: 6 }], [1, { atom: '6' }], [1, [6]], [1, null]].map(attachments => ({ sdf, attachments })),
       { sdf, attachments: [1, 1], maxRmsd: 0.05 }, { sdf, attachments: [1, 1], maxRmsd: '0.5' }, { sdf, attachments: [1, 1], maxRmsd: 1.5 },
       { sdf, attachments: [1, 1], limit: 0 }, { sdf, attachments: [1, 1], limit: 51 }, { sdf, attachments: [1, 1], limit: 1.5 },
+      { sdf, attachments: [1, 1], duplicateWindow: 0.01 }, { sdf, attachments: [1, 1], duplicateWindow: 6 }, { sdf, attachments: [1, 1], duplicateWindow: '1' },
     ];
     for (const body of badJobs) {
       const response = await json(await call('/ready/jobs', { body }));
@@ -164,6 +165,9 @@ test('real Express relay: owner scoping, validation, inspection merge, jobs, ref
     await call('/ready/jobs', { body: { sdf, attachments: [{ atom: 1 }, 6], maxRmsd: 0.4, limit: 50 } });
     assert.deepEqual(requests.at(-1).body.attachments, [{ atom: 1 }, 6]);
     assert.equal(requests.at(-1).body.limit, 50);
+    assert.equal('duplicateWindow' in requests.at(-1).body, false, 'omitted Duplicate Window is not forwarded');
+    await call('/ready/jobs', { body: { sdf, attachments: [1, 1], duplicateWindow: 0.5 } });
+    assert.equal(requests.at(-1).body.duplicateWindow, 0.5);
     const polled = await json(await call(`/ready/jobs/${JOB.toUpperCase()}`));
     assert.equal(polled.status, 200); assert.equal(polled.body.job.state, 'running');
     assert.equal(requests.at(-1).url, `/jobs/${JOB}`);

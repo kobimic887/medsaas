@@ -322,7 +322,10 @@ export function createJobManager({
   function start(job) {
     job.state = 'running';
     job.startedAt = new Date().toISOString();
-    if (job.input.duplicateWindow) job.poseSpool = createPoseSpool(poseSpoolOptions);
+    if (job.input.duplicateWindow) {
+      // A full or unwritable temp directory is not an index failure; say so.
+      try { job.poseSpool = createPoseSpool(poseSpoolOptions); } catch (cause) { throw Object.assign(new Error('Candidate storage unavailable.', { cause }), { storageUnavailable: true }); }
+    }
     const stats = windowStats.get(job.window.lo, job.window.hi);
     job.totalPairs = stats.n;
     job.cursor = stats.first ?? 1;
@@ -348,8 +351,10 @@ export function createJobManager({
       if (!running) {
         const job = queue.shift();
         if (!job) return;
-        try { start(job); } catch {
-          stop(job, 'failed', { code: 'LINK_FRAGMENTS_INDEX_ERROR', message: 'The linker index could not be read.' });
+        try { start(job); } catch (error) {
+          stop(job, 'failed', error?.storageUnavailable
+            ? { code: 'DUPLICATE_WINDOW_STORAGE_UNAVAILABLE', message: 'Could not create private candidate storage for Duplicate Window.' }
+            : { code: 'LINK_FRAGMENTS_INDEX_ERROR', message: 'The linker index could not be read.' });
           continue;
         }
       }
