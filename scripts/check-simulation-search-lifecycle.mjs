@@ -587,8 +587,9 @@ checks.push(['catalog handler refuses stock/open source and pending searches bef
   const select = new Function('moleculeSelectionId', 'topMolecules', 'setSelectedMolecules', 'setSearchCode', 'molecule', 'index', 'isChecked', singleBody);
   const selectAll = new Function('moleculeSelectionId', 'topMolecules', 'setSelectedMolecules', 'setSearchCode', 'isChecked', allBody);
   const inputBody = simulation.split('const dockingInput = ')[1].split(';')[0];
-  const input = () => new Function('selectedMolecules', 'topMolecules', 'moleculeSelectionId', 'searchCode', `return ${inputBody}`)(selectedMolecules, topMolecules, moleculeSelectionId, searchCode);
+  const input = (searchType = 'similarity', queryCount = 1) => new Function('selectedMolecules', 'topMolecules', 'moleculeSelectionId', 'searchCode', 'searchType', 'queryCount', `return ${inputBody}`)(selectedMolecules, topMolecules, moleculeSelectionId, searchCode, searchType, queryCount);
   checks.push(['without selection docking falls back to the preserved query', input() === searchCode]);
+  checks.push(['ID/SMARTS/batch query text never becomes the docking ligand', input('id') === '' && input('substructure') === '' && input('similarity', 3) === '']);
   select(moleculeSelectionId, topMolecules, setSelectedMolecules, setSearchCode, topMolecules[1], 1, true);
   checks.push(['selecting a row preserves the query and uses that exact row for docking', selectedMolecules.has('stock-2') && input() === 'CCN']);
   select(moleculeSelectionId, topMolecules, setSelectedMolecules, setSearchCode, topMolecules[1], 1, false);

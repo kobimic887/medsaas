@@ -269,6 +269,8 @@ export function Simulation({ active = true }) {
   const [editorExpanded, setEditorExpanded] = useState(false);
   const [editorVisited, setEditorVisited] = useState(false);
   const [editorState, setEditorState] = useState('loading');
+  const [editorReloadKey, setEditorReloadKey] = useState(0);
+  const [searchNotice, setSearchNotice] = useState('');
   const moleculeLimit = 30;
   const [similarityThreshold, setSimilarityThreshold] = useState(0.7); // Similarity threshold (0-1)
   // Stock fingerprint + metric (binary RDKit only). Defaults match the server
@@ -459,7 +461,12 @@ export function Simulation({ active = true }) {
 
   useEffect(() => {
     // These controls define the result set, so a prior batch cursor/outcome
-    // must not survive a method or threshold change.
+    // must not survive a method or threshold change. Without the cursor, Load more
+    // would re-run the batch/ID text as plain similarity, so stop paging instead.
+    if (ownedSearchRequestRef.current) {
+      hasMoreRef.current = false;
+      setHasMore(false);
+    }
     ownedSearchRequestRef.current = null;
     setOwnedSearchSummary(null);
   }, [searchSource, searchType, similarityThreshold, stockFingerprintType, stockSimilarityMetric, macrocycleSimilarityMetric]);
@@ -890,9 +897,16 @@ export function Simulation({ active = true }) {
     handleThresholdChange(similarityThresholdRef.current);
     searchTypeRef.current = mode;
     setSearchType(mode);
+    if (ownedSearchRequestRef.current) {
+      hasMoreRef.current = false;
+      setHasMore(false);
+    }
     ownedSearchRequestRef.current = null;
     setOwnedSearchSummary(null);
-    if (mode === 'id') setQueryType('text');
+    if (mode === 'id') {
+      setSearchNotice(queryType === 'draw' ? 'Identifier search uses pasted text, so the drawing editor is hidden.' : '');
+      setQueryType('text');
+    } else setSearchNotice('');
   };
 
   const runOwnedSearch = async (offset, append, { token, controller, requestId, request }) => {
@@ -2015,12 +2029,16 @@ export function Simulation({ active = true }) {
       ? `stock-${molecule.stockRowId}`
       : molecule.ASINEX_ID || molecule.id || `molecule-${index}`;
 
+  const activeOwnedStatus = ownedSearchStatus[searchSource];
+  let queryCount = 1;
+  try { queryCount = parseSearchQueries(searchCode, searchType, activeOwnedStatus?.maxQueries || 20).length; } catch { /* Search displays input errors without discarding the query. */ }
   // Result selection belongs to docking/orders, never to the editable search query.
+  // ID/SMARTS/batch text is not a ligand, so it never becomes the fallback.
   const dockingInput = selectedMolecules.size
     ? topMolecules.filter((molecule, index) => selectedMolecules.has(moleculeSelectionId(molecule, index)))
       .map((molecule) => molecule.SMILES_STRING || molecule.SMILES || molecule.smiles || '')
       .filter(Boolean).join(',')
-    : searchCode.trim();
+    : (searchType === 'similarity' && queryCount <= 1 ? searchCode.trim() : '');
 
   const orderSelectedCompounds = () => {
     try {
@@ -2187,10 +2205,7 @@ export function Simulation({ active = true }) {
     || (openUseAi && openStatus?.ai?.enabled !== true)
   );
   const macrocycleSearchDisabled = Boolean(MACROCYCLE_SOURCES[searchSource]) && macrocycleStatus[searchSource]?.state !== 'available';
-  const activeOwnedStatus = ownedSearchStatus[searchSource];
   const ownedModes = searchModesFromStatus(activeOwnedStatus, searchSource);
-  let queryCount = 1;
-  try { queryCount = parseSearchQueries(searchCode, searchType, activeOwnedStatus?.maxQueries || 20).length; } catch { /* Search displays input errors without discarding the query. */ }
   const usesOwnedSearch = searchType !== 'similarity' || queryCount > 1;
   const sourceSearchDisabled = usesOwnedSearch
     ? !ownedModes.includes(searchType)
@@ -2468,8 +2483,9 @@ export function Simulation({ active = true }) {
           </label>
         </div>
         {/* New methods are enabled only by the selected source's live capability response. */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2 w-full">
-          <Typography variant="small" color="blue-gray" className="mr-2">Search type:</Typography>
+        <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2 w-full min-w-0 border-0 p-0 m-0" aria-describedby={searchSource !== 'asinex' ? 'search-type-status' : undefined}>
+          <legend className="sr-only">Search type</legend>
+          <Typography variant="small" color="blue-gray" className="mr-2" aria-hidden="true">Search type:</Typography>
           <label className="flex items-center gap-1 w-auto">
             <input
               type="radio"
@@ -2484,7 +2500,7 @@ export function Simulation({ active = true }) {
             <label key={option.value} className="flex items-center gap-1 w-auto">
               <input type="radio" name="searchType" value={option.value} checked={searchType === option.value}
                 disabled={!ownedModes.includes(option.value)} onChange={() => handleSearchModeChange(option.value)} />
-              <span className={!ownedModes.includes(option.value) ? 'text-blue-gray-400' : undefined}>{option.label}</span>
+              <span title={!ownedModes.includes(option.value) ? 'Not available for this collection' : undefined} className={!ownedModes.includes(option.value) ? 'text-blue-gray-400' : undefined}>{option.label}</span>
             </label>
           ))}
           {searchSource === "asinex" && (
@@ -2531,9 +2547,10 @@ export function Simulation({ active = true }) {
               </label>
             </>
           )}
-        </div>
+        </fieldset>
         {searchSource !== 'asinex' && (
-          <div className="mb-3 text-xs text-blue-gray-600 dark:text-slate-300" aria-live="polite">
+          <div id="search-type-status" className="mb-3 text-xs text-blue-gray-600 dark:text-slate-300" aria-live="polite">
+            {searchNotice ? <span className="block mb-1">{searchNotice}</span> : null}
             {activeOwnedStatus?.state === 'loading' ? 'Checking additional search methods…' : null}
             {activeOwnedStatus?.state === 'unavailable' ? activeOwnedStatus.reason : null}
             {activeOwnedStatus?.state === 'available' ? `Up to ${activeOwnedStatus.maxQueries || 20} queries: one per line or comma-separated. Matches are combined by compound, with each matching query recorded. ${searchType === 'id' ? 'IDs are looked up only in the selected collection.' : searchType === 'exact' ? 'Exact structure compares canonical chemistry, including stereochemistry.' : searchType === 'substructure' ? 'Use a SMILES fragment or SMARTS pattern. Chirality is respected where specified.' : queryCount > 1 ? 'Batch similarity uses the deterministic search, without AI.' : ''}${searchSource === 'open' ? ' Queries are sent to ChEMBL; open compounds are discovery-only.' : ''}` : null}
@@ -2880,10 +2897,16 @@ export function Simulation({ active = true }) {
             <div className={`${editorExpanded ? 'h-[min(75vh,42rem)]' : 'h-[min(48vh,26rem)]'} relative overflow-hidden rounded-xl border border-blue-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900`}>
               {editorState !== 'ready' && (
                 <div role="status" aria-live="polite" className="absolute inset-0 flex items-center justify-center gap-3 p-4 text-sm text-blue-gray-600 dark:text-slate-300">
-                  {editorState === 'loading' ? <><Spinner className="h-5 w-5" />Loading molecule editor…</> : 'The molecule editor could not start. Reload the page to try again.'}
+                  {editorState === 'loading' ? <><Spinner className="h-5 w-5" />Loading molecule editor…</> : (
+                    <span className="flex flex-col items-center gap-2 text-center">
+                      The molecule editor could not start.
+                      <button type="button" className="text-brand-700 underline dark:text-brand-300" onClick={() => { setEditorState('loading'); setEditorReloadKey((key) => key + 1); }}>Retry</button>
+                    </span>
+                  )}
                 </div>
               )}
               <iframe
+                key={editorReloadKey}
                 ref={ketcherIframeRef}
                 src={withAppBase("/ketcher/index.html")}
                 title="Ketcher 2D Chemical Editor"
