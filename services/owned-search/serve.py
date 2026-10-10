@@ -83,6 +83,8 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(404,{'error':'Not found'})
     def do_POST(self):
         if self.path not in ('/search','/verify'):return self.reply(404,{'error':'Not found'})
+        # One budget from arrival: queue wait plus search stays under Node's 40 s fetch cap.
+        deadline=time.monotonic()+35
         length=int(self.headers.get('Content-Length','0'))
         if not 1<=length<=2000000:return self.reply(400,{'error':'Invalid request size'})
         try:
@@ -102,15 +104,15 @@ class Handler(BaseHTTPRequestHandler):
                 finally:self.server.gate.release()
             source=body['source'];mode=body['mode'];query=body['query'];cap=body['cap']
             if source not in ('stock','both','real','virtual') or mode not in ('id','exact','substructure') or not isinstance(query,str) or not query or len(query)>2000 or not isinstance(cap,int) or not 1<=cap<=1001:raise ValueError('Invalid owned search query')
-            if not self.server.gate.acquire(timeout=GATE_WAIT_SECONDS):return self.reply(503,{'error':'Owned graph search is busy; retry shortly'})
+            if not self.server.gate.acquire(timeout=min(GATE_WAIT_SECONDS,max(0,deadline-time.monotonic()-5))):return self.reply(503,{'error':'Owned graph search is busy; retry shortly'})
             try:
                 if source=='stock':
                     # Fixed helper argv and JSON stdin. Existing container owns
                     # DB settings; they never leave that scientific runtime.
-                    result=subprocess.run(['docker','exec','-i','-e','PYTHONPATH=/app','tonomitosql-api-1','python','/tmp/pyxis-owned-stock.py'],input=json.dumps(body),capture_output=True,text=True,timeout=30)
+                    result=subprocess.run(['docker','exec','-i','-e','PYTHONPATH=/app','tonomitosql-api-1','python','/tmp/pyxis-owned-stock.py'],input=json.dumps(body),capture_output=True,text=True,timeout=max(1,deadline-time.monotonic()))
                     payload=json.loads(result.stdout)
                     self.reply(payload.get('status',200),payload)
-                else:self.reply(200,self.server.store.search(source,mode,query,cap,time.monotonic()+35))
+                else:self.reply(200,self.server.store.search(source,mode,query,cap,deadline))
             finally:self.server.gate.release()
         except ValueError as error:self.reply(400,{'error':str(error)})
         except (TimeoutError,subprocess.TimeoutExpired):self.reply(503,{'error':'Search time budget exceeded; narrow the pattern or reduce the batch'})
