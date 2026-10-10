@@ -88,7 +88,7 @@ export default function ReviewOrder() {
     downloadCompoundCsv(quote, 'pyxis-order-quote.csv');
   };
 
-  return <main className="mx-auto max-w-6xl space-y-6 py-6 text-slate-900 dark:text-slate-100">
+  return <div className="mx-auto max-w-6xl space-y-6 py-6 text-slate-900 dark:text-slate-100">
     <header className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-3xl font-bold">Review order</h1><p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Check the structures, packs and server-verified prices before payment.</p></div><Link to="/dashboard/simulation" className="rounded-lg border border-teal-600 px-4 py-2">Find compounds</Link></header>
     {message && <p role="alert" className="rounded-lg border border-amber-400 p-4">{message}</p>}
     {busy && <p role="status">Checking your order…</p>}
@@ -108,5 +108,5 @@ export default function ReviewOrder() {
       <div className="flex flex-wrap gap-3"><button type="button" disabled={busy || cart.some((item) => !isOwnedCartItem(item))} onClick={() => loadQuoteOrCheckout(true)} className="rounded-lg border border-teal-600 px-4 py-2">Refresh quote</button><button type="button" disabled={busy || !quote} onClick={() => loadQuoteOrCheckout()} className="rounded-lg bg-teal-700 px-4 py-2 font-semibold text-white disabled:opacity-50">Continue to Stripe</button></div>
       <p className="text-sm">Up to 3 distinct compounds per order. Payment happens only after you continue to Stripe and complete checkout.</p>
     </>}
-  </main>;
+  </div>;
 }

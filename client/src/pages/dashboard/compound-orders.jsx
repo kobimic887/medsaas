@@ -12,6 +12,7 @@ export default function CompoundOrders() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [refresh, setRefresh] = useState(0);
+  const [slowConfirm, setSlowConfirm] = useState(false);
   const params = new URLSearchParams(search);
   const canceled = params.get('canceled') === 'true';
   useEffect(() => {
@@ -21,45 +22,52 @@ export default function CompoundOrders() {
     const query = new URLSearchParams(search);
     const orderId = query.get('order_id');
     const sessionId = query.get('session_id');
+    let lookupError = '';
     const load = async () => {
       try {
         let returnedOrder;
         if (orderId) {
-          const response = await fetch(API_CONFIG.buildApiUrl(`/compound-shop/orders/${encodeURIComponent(orderId)}${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''}`), { signal: controller.signal, headers: { Authorization: `Bearer ${getAuthToken()}` } });
-          const body = await response.json();
-          if (!response.ok) throw new Error(body.error || 'Unable to verify your order.');
-          returnedOrder = body.order || body;
-          const items = readShopCart(localStorage);
-          let snapshot = [];
-          try { snapshot = JSON.parse(localStorage.getItem(`compoundOrderCart:${orderId}`) || '[]'); } catch { /* keep cart */ }
-          const remaining = cartAfterConfirmedOrder(items, returnedOrder, Array.isArray(snapshot) ? snapshot : []);
-          if (remaining.length !== items.length) {
-            writeShopCart(localStorage, remaining);
-            window.dispatchEvent(new Event('cartUpdated'));
-          }
+          // A failed lookup must not hide the order list.
+          try {
+            const response = await fetch(API_CONFIG.buildApiUrl(`/compound-shop/orders/${encodeURIComponent(orderId)}${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''}`), { signal: controller.signal, headers: { Authorization: `Bearer ${getAuthToken()}` } });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(body.error || 'Unable to verify your order.');
+            returnedOrder = body.order || body;
+            const items = readShopCart(localStorage);
+            let snapshot = [];
+            try { snapshot = JSON.parse(localStorage.getItem(`compoundOrderCart:${orderId}`) || '[]'); } catch { /* keep cart */ }
+            const remaining = cartAfterConfirmedOrder(items, returnedOrder, Array.isArray(snapshot) ? snapshot : []);
+            if (remaining.length !== items.length) {
+              writeShopCart(localStorage, remaining);
+              window.dispatchEvent(new Event('cartUpdated'));
+            }
+          } catch (lookupFailure) { if (lookupFailure.name === 'AbortError') throw lookupFailure; returnedOrder = undefined; lookupError = lookupFailure.message; }
         }
         const response = await fetch(API_CONFIG.buildApiUrl('/compound-shop/orders'), { signal: controller.signal, headers: { Authorization: `Bearer ${getAuthToken()}` } });
-        const body = await response.json();
+        const body = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(body.error || 'Unable to load compound orders.');
         if (controller.signal.aborted) return;
         const loaded = Array.isArray(body.orders) ? body.orders : [];
         const returnedId = returnedOrder?.orderId || returnedOrder?.id || returnedOrder?._id;
         setOrders(returnedOrder ? [returnedOrder, ...loaded.filter((order) => (order.orderId || order.id || order._id) !== returnedId)] : loaded);
-        setError('');
-        if (sessionId && returnedOrder && !['paid', 'payment_authorized', 'canceled', 'expired', 'payment_failed', 'refunded'].includes(returnedOrder.status) && attempts++ < 10) timer = window.setTimeout(load, 3000);
+        setError(lookupError);
+        const pending = sessionId && returnedOrder && !['paid', 'payment_authorized', 'canceled', 'expired', 'payment_failed', 'refunded'].includes(returnedOrder.status);
+        setSlowConfirm(Boolean(pending) && attempts >= 10);
+        if (pending && attempts++ < 10) timer = window.setTimeout(load, 3000);
       } catch (error) { if (error.name !== 'AbortError') setError(error.message); }
       finally { if (!controller.signal.aborted) setLoading(false); }
     };
     load();
     return () => { controller.abort(); window.clearTimeout(timer); };
   }, [search, refresh]);
-  return <main className="mx-auto max-w-6xl space-y-6 py-6 text-slate-900 dark:text-slate-100">
+  return <div className="mx-auto max-w-6xl space-y-6 py-6 text-slate-900 dark:text-slate-100">
     <header className="flex flex-wrap items-center justify-between gap-3">
       <div><h1 className="text-3xl font-bold">Compound orders</h1><p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Payment and fulfillment for your Pyxis compound purchases.</p></div>
       <div className="flex gap-3"><Link to="/dashboard/simulation" className="rounded-lg border border-teal-600 px-4 py-2">Find compounds</Link><button type="button" onClick={() => { setLoading(true); setRefresh((value) => value + 1); }} className="rounded-lg bg-teal-700 px-4 py-2 text-white">Refresh orders</button></div>
     </header>
     {canceled && <p role="status" className="rounded-lg border border-amber-400 p-4">Checkout was canceled. Your cart is still saved.</p>}
     {error && <p role="alert" className="rounded-lg border border-red-400 p-4 text-red-700 dark:text-red-300">{error}</p>}
+    {slowConfirm && <p role="status" className="rounded-lg border border-amber-400 p-4">Payment confirmation is taking longer than usual. Use Refresh orders to check again.</p>}
     {loading && <p role="status">Loading orders…</p>}
     {!loading && !error && !orders.length && <p className="rounded-xl border border-slate-300 p-6 dark:border-slate-700">No compound orders yet. Choose a pack in the catalog and review your cart to get started.</p>}
     {orders.map((order) => <article key={order.orderId || order.id || order._id} className="space-y-4 rounded-xl border border-slate-300 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
@@ -74,5 +82,5 @@ export default function CompoundOrders() {
       {order.status === 'payment_authorized' && <p className="text-sm">Your card has been authorized. Payment has not yet been captured.</p>}
       {order.status === 'paid' && <p className="text-sm">Payment received. Fulfillment and delivery confirmation follow separately.</p>}
     </article>)}
-  </main>;
+  </div>;
 }
