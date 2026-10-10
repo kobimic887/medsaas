@@ -6,6 +6,10 @@ module.exports = withMT({
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
+      // withMT sets 2xl to 1320px, but the sidebar controller docks the menu at
+      // 1536px (context/index.jsx SIDENAV_DOCK_MIN_WIDTH). Mismatched, 1320–1535px
+      // screens showed the sidebar over Home with no margin and no menu button.
+      screens: { "2xl": "1536px" },
       colors: {
         // `slate` has to be declared here or it does not exist.
         //

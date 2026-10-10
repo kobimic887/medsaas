@@ -27,9 +27,13 @@ export function reducer(state, action) {
   }
 }
 
+// Must equal the Tailwind `2xl` screen in tailwind.config.cjs: the 2xl: classes
+// dock the sidebar and reserve its margin at exactly this width.
+export const SIDENAV_DOCK_MIN_WIDTH = 1536;
+
 export function MaterialTailwindControllerProvider({ children }) {
   const initialState = {
-    openSidenav: typeof window !== 'undefined' ? window.innerWidth >= 1536 : false, // Keep the workspace wide until the 2xl breakpoint.
+    openSidenav: typeof window !== 'undefined' ? window.innerWidth >= SIDENAV_DOCK_MIN_WIDTH : false, // Keep the workspace wide until the 2xl breakpoint.
     sidenavColor: "blue",
     sidenavType: "white",
     transparentNavbar: true,
@@ -41,7 +45,7 @@ export function MaterialTailwindControllerProvider({ children }) {
   // Handle window resize to auto-manage sidenav on desktop/mobile
   React.useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth >= 1536) {
+      if (window.innerWidth >= SIDENAV_DOCK_MIN_WIDTH) {
         // Desktop: keep sidenav open
         if (!controller.openSidenav) {
           dispatch({ type: "OPEN_SIDENAV", value: true });

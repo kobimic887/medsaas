@@ -82,6 +82,13 @@ checks.push(['a new authenticated layout starts with no previous Home instance',
 checks.push(['Home uses a stable boundary outside the pathname-keyed routes', dashboard.includes('<div hidden={!homeActive} inert={homeActive ? undefined : \'\'}>') && dashboard.includes('React.cloneElement(homeRoute.element, { active: homeActive })') && dashboard.includes('pages.filter(({ path }) => path !== \'/simulation\' && path !== \'/link-fragments\')')]);
 checks.push(['Scaffolding Hop keeps a single visited workspace across dashboard navigation', dashboard.includes('React.cloneElement(linkerRoute.element, { active: linkerActive })') && dashboard.includes('<div hidden={!linkerActive} inert={linkerActive ? undefined : \'\'}>') && dashboard.includes('<Route path="link-fragments" element={null} />')]);
 
+// The sidebar controller and the 2xl: dock classes must switch at one width;
+// withMT's 1320px 2xl left 1320–1535px screens with the sidebar over Home.
+const dockWidth = Number(read('client/src/context/index.jsx').match(/SIDENAV_DOCK_MIN_WIDTH = (\d+)/)?.[1]);
+const tailwind2xl = Number(read('client/tailwind.config.cjs').match(/screens: \{ "2xl": "(\d+)px" \}/)?.[1]);
+checks.push(['sidebar dock width equals the Tailwind 2xl screen', dockWidth > 0 && dockWidth === tailwind2xl]);
+checks.push(['sidenav closes on navigation using the shared dock width', read('client/src/widgets/layout/sidenav.jsx').includes('window.innerWidth < SIDENAV_DOCK_MIN_WIDTH')]);
+
 const failures = checks.filter(([, passed]) => !passed).map(([label]) => label);
 if (failures.length) {
   console.error('Dashboard shell UX regression check failed:');

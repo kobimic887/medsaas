@@ -7,7 +7,7 @@ import {
   IconButton,
   Typography,
 } from "@material-tailwind/react";
-import { useMaterialTailwindController, setOpenSidenav } from "@/context";
+import { useMaterialTailwindController, setOpenSidenav, SIDENAV_DOCK_MIN_WIDTH } from "@/context";
 import { useAuth } from "@/context/auth";
 
 export function Sidenav({ brandImg, brandName, routes }) {
@@ -105,7 +105,7 @@ export function Sidenav({ brandImg, brandName, routes }) {
                         fullWidth
                         onClick={() => {
                           // Close mobile menu when item is clicked
-                          if (window.innerWidth < 1536) {
+                          if (window.innerWidth < SIDENAV_DOCK_MIN_WIDTH) {
                             setOpenSidenav(dispatch, false);
                           }
                         }}
