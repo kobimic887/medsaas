@@ -41,6 +41,29 @@ request and each provider request bounded by the remaining aggregate budget.
   their reported retrieval cap is preserved. Open similarity keeps the existing
   local Morgan re-score among retrieved ChEMBL candidates.
 
+## Combined staging service
+
+`services/owned-search/combined.mjs` is one loopback Bun service for staging.
+`/health` and `/v1/*` (similarity) are served in process by
+`services/macrocycle-index/serve.mjs`. `/graph/*` (ID/exact/substructure and stock
+graph) is proxied to the `serve.py` child over a private Unix socket named by
+`OWNED_SEARCH_SOCKET`; the child is never reachable over TCP. If the child dies,
+the service exits and systemd restarts both, so it is never half up.
+
+Two chemistry engines remain on purpose. The similarity index is fingerprinted by
+RDKit WASM and the graph screens by Python RDKit, so moving either into the other
+runtime would change results. The unit `deploy/staging/owned-search/pyxis-search-staging.service`
+runs the combined service on 8276. `deploy/staging/owned-search/50-combined-search.conf`
+points the staging app at it: `MACROCYCLE_SEARCH_BASE=<base>` and
+`OWNED_SEARCH_BASE=<base>/graph`, through the existing 18276 tunnel. It replaces the two
+staging units and the 18280 tunnel. Production keeps the shared 18274 macrocycle
+service until approved. Test with `bun --cwd=server run test:owned-search`.
+
+The unit runs from `search-releases/current`, a link to an immutable `git archive`
+of `services/macrocycle-index`, `services/owned-search` and `server/utils` whose
+`server/node_modules` links to the checkout's (RDKit WASM). Unlike the old units it
+does not run from the mutable checkout, so a `git pull` never changes it.
+
 ## Scientific artifacts and staging isolation
 
 `build.py` creates `<source>.graph` (304 bytes per indexed row) and a completion
@@ -60,8 +83,8 @@ python3 services/owned-search/test.py
 bun server/test/owned-search.test.mjs
 ```
 
-The staging candidate uses two separate loopback processes: `serve.py` for graph
-and IDs and `services/macrocycle-index/serve.mjs` for bounded batch similarity.
+The previous staging candidate (replaced by the combined service above) used two
+separate loopback processes: `serve.py` for graph and IDs and `services/macrocycle-index/serve.mjs` for bounded batch similarity.
 Both reuse the existing scientific artifacts read-only. Never restart a shared
 consumer scientific process on staging-only approval. Configure the staging
 application's `OWNED_SEARCH_BASE` and `MACROCYCLE_SEARCH_BASE` through the private

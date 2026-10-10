@@ -321,10 +321,15 @@ function sendJson(res, status, payload) {
 }
 
 export function createIndexServer(store) {
+  return http.createServer(createIndexHandler(store));
+}
+
+/** Request handler, also mounted by services/owned-search/combined.mjs. */
+export function createIndexHandler(store) {
   // A single bounded scan at a time protects the shared staging host's CPU.
   let queue = Promise.resolve();
   let pending = 0;
-  return http.createServer((req, res) => {
+  return (req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     if (req.method !== 'GET') return sendJson(res, 405, { error: 'Method not allowed' });
     if (url.pathname === '/health') return sendJson(res, 200, { status: 'OK', datasets: store.datasets.size });
@@ -352,7 +357,7 @@ export function createIndexServer(store) {
       if (status === 500) console.error('Macrocycle index search failed:', error);
       sendJson(res, status, { error: status === 500 ? 'Macrocycle index search failed' : error.message });
     }).finally(() => { pending--; });
-  });
+  };
 }
 
 async function main() {

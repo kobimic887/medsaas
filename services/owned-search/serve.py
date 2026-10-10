@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Loopback-only additive graph/ID service. No source table or index is changed."""
-import csv, hashlib, json, mmap, os, pathlib, struct, subprocess, threading, time
+import csv, hashlib, json, mmap, os, pathlib, socket, socketserver, struct, subprocess, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import numpy as np
 from rdkit import Chem, DataStructs, rdBase
@@ -118,9 +118,24 @@ class Handler(BaseHTTPRequestHandler):
         except (TimeoutError,subprocess.TimeoutExpired):self.reply(503,{'error':'Search time budget exceeded; narrow the pattern or reduce the batch'})
         except Exception:self.reply(503,{'error':'Owned graph search is unavailable'})
 
+class UnixHTTPServer(ThreadingHTTPServer):
+    """Private socket for combined.mjs, which owns the only TCP listener."""
+    address_family=socket.AF_UNIX
+    def server_bind(self):
+        previous=os.umask(0o177) # owner-only from creation, not only after chmod
+        try:socketserver.TCPServer.server_bind(self)
+        finally:os.umask(previous)
+        self.server_name='localhost';self.server_port=0
+
 if __name__=='__main__':
-    host=os.environ.get('BIND_HOST','127.0.0.1');port=int(os.environ.get('PORT','8276'))
-    if host not in ('127.0.0.1','::1'):raise ValueError('Owned search must bind loopback')
-    server=ThreadingHTTPServer((host,port),Handler);server.gate=threading.Lock()
+    unix_path=os.environ.get('OWNED_SEARCH_SOCKET')
+    if unix_path:
+        if os.path.exists(unix_path):os.unlink(unix_path)
+        server=UnixHTTPServer(unix_path,Handler)
+    else:
+        host=os.environ.get('BIND_HOST','127.0.0.1');port=int(os.environ.get('PORT','8276'))
+        if host not in ('127.0.0.1','::1'):raise ValueError('Owned search must bind loopback')
+        server=ThreadingHTTPServer((host,port),Handler)
+    server.gate=threading.Lock()
     server.store=GraphStore(os.environ['MACROCYCLE_INDEX_DIR'],os.environ['OWNED_GRAPH_DIR'],skip_missing=True)
     server.serve_forever()

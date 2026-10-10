@@ -16,6 +16,7 @@ for host paths, deployed identities and release-specific rollback records.
 | `pyxis-macrocycle-search-staging.service`, `pyxis-macrocycle-search-tunnel.service`, `10-macrocycle-search.conf` | Index on the scientific data host, private SSH transport, staging application URL |
 | `pyxis-open-compounds-ai-proxy.service`, `pyxis-open-compounds-ai-tunnel.service` | Restricted AI bridge and its transport |
 | `pyxis-link-fragments-staging.service`, `pyxis-link-fragments-tunnel.service`, `20-link-fragments.conf` | Owned 3D linker index, private transport and staging application URL |
+| `owned-search/pyxis-search-staging.service`, `owned-search/50-combined-search.conf` | Staging-only combined similarity and graph search on 8276, behind the existing 18276 tunnel; replaces the two owned units and the 18280 tunnel. The old owned units stay in this directory for rollback |
 | `nginx-staging.conf` | `/staging/` proxy configuration |
 | `pyxis-web-staging.service`, `env.server.template` | Older isolated demo assets |
 
