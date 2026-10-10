@@ -79,6 +79,8 @@ function stockChoiceLabel(options, value, fallback) {
   return (match && match.label) || fallback;
 }
 
+const plural = (count, singular, pluralForm = `${singular}s`) => `${count} ${count === 1 ? singular : pluralForm}`;
+
 function CompoundQueryField({ value, onChange, catalog, mode = 'similarity' }) {
   return (
     <label className="flex w-full flex-col gap-2 text-lg font-semibold text-blue-gray-900 dark:text-white">
@@ -2012,6 +2014,12 @@ export function Simulation({ active = true }) {
     return parseFloat(numValue.toFixed(6)).toString();
   };
 
+  // Snapshot quantities arrive as float32 (92.099998); show them to 0.01 mg.
+  const formatSnapshotMg = (value) => {
+    const amount = parseFloat(value);
+    return Number.isFinite(amount) ? `${parseFloat(amount.toFixed(2))} mg` : 'N/A';
+  };
+
   // Helper function to convert and format price with currency
   const formatPriceWithCurrency = (priceUSD) => {
     if (!priceUSD || priceUSD === "N/A") return "N/A";
@@ -3072,13 +3080,13 @@ export function Simulation({ active = true }) {
         <div id="results" className="w-full bg-slate-100 dark:bg-slate-900">
           {ownedSearchSummary && (
             <div className="mb-3 rounded-lg border border-teal-100 bg-white p-3 text-sm dark:border-slate-800 dark:bg-slate-950" role="status">
-              <p className="font-semibold">{OWNED_SEARCH_MODES.find((option) => option.value === ownedSearchSummary.mode)?.label} · {ownedSearchSummary.queries?.length || queryCount} queries · {ownedSearchSummary.totalExact === false ? 'at least ' : ''}{ownedSearchSummary.total ?? topMolecules.length} matching compounds</p>
+              <p className="font-semibold">{OWNED_SEARCH_MODES.find((option) => option.value === ownedSearchSummary.mode)?.label} · {plural(ownedSearchSummary.queries?.length || queryCount, 'query', 'queries')} · {ownedSearchSummary.totalExact === false ? 'at least ' : ''}{plural(ownedSearchSummary.total ?? topMolecules.length, 'matching compound')}</p>
               {ownedSearchSummary.truncated && <p className="mt-1 text-amber-800 dark:text-amber-300">Results reached the search limit. Counts are lower bounds; narrow the query to retrieve more complete matches.</p>}
               <details className="mt-2"><summary className="cursor-pointer">Results for each query</summary>
                 <ol className="mt-2 list-decimal space-y-1 pl-6">
                   {(ownedSearchSummary.queries || []).map((entry, index) => <li key={entry.index ?? index} className="break-all">
                     <span className="font-mono">{entry.input || entry.query}</span>{' — '}
-                    {entry.status === 'error' || entry.error ? `Invalid: ${entry.error || entry.reason || 'Query could not be searched.'}` : entry.status === 'unmatched' ? 'No matches' : `${entry.truncated ? 'at least ' : ''}${entry.matchCount ?? 0} matches`}
+                    {entry.status === 'error' || entry.error ? `Invalid: ${entry.error || entry.reason || 'Query could not be searched.'}` : entry.status === 'unmatched' ? 'No matches' : `${entry.truncated ? 'at least ' : ''}${plural(entry.matchCount ?? 0, 'match', 'matches')}`}
                   </li>)}
                 </ol>
               </details>
@@ -3202,7 +3210,7 @@ export function Simulation({ active = true }) {
                               {mol.stockCode}
                             </button>
                             {mol.matchedQueryIndices?.length > 0 && <div className="mt-1 text-xs text-teal-700 dark:text-teal-300">Queries {mol.matchedQueryIndices.map((index) => index + 1).join(', ')}</div>}
-                            <div className="px-2 pb-2 text-xs text-blue-gray-500" title="Dated snapshot quantity from the supplier export — not live availability">{mol.STOCK_MG === null ? '—' : `${formatNumericValue(mol.STOCK_MG)} mg`} · snapshot</div>
+                            <div className="px-2 pb-2 text-xs text-blue-gray-500" title="Dated snapshot quantity from the supplier export — not live availability">{mol.STOCK_MG === null ? '—' : formatSnapshotMg(mol.STOCK_MG)} · snapshot</div>
                           </td>
                           <td className="p-2 text-xs" title="Dated supplier export lead time; unverified now">{mol.snapshotLeadTime || '—'}</td>
                           <td className="p-2"><CompoundShopPacks offer={mol.shopOffer} onAdded={showMessage} amountMg={mol.shopOffer ? selectedPacks[offerSelectionKey(mol.shopOffer)] : undefined} onPackChange={(mg) => setSelectedPacks((previous) => ({ ...previous, [offerSelectionKey(mol.shopOffer)]: mg }))} /></td>
