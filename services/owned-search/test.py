@@ -39,4 +39,21 @@ with tempfile.TemporaryDirectory() as temporary:
     metadata=graph/'real.graph.json';content=json.loads(metadata.read_text());content['complete']=False;metadata.write_text(json.dumps(content))
     try:GraphStore(index,graph);assert False
     except ValueError:pass
-print('owned graph search: 13 meaningful checks passed (canonical, stereo, true graph, SMARTS, duplicate identities, bounds, incomplete refusal)')
+# Stock identifier lookup: candidate screen only, exact hash buckets, sha-checked.
+import numpy as np
+from stock_ids import StockIdLookup, ENTRY, FORMAT_VERSION, key
+with tempfile.TemporaryDirectory() as temporary:
+    base=pathlib.Path(temporary)
+    pairs=sorted({(key(v),i) for i,values in ((11,['04188606','BAS 04188606']),(12,['DUP']),(13,['DUP'])) for v in values})
+    entries=np.array(pairs,dtype=ENTRY);np.save(base/'stock.ids.npy',entries)
+    manifest={'formatVersion':FORMAT_VERSION,'complete':True,'datasetName':'Stock','fingerprint':{'datasetId':4},'entries':len(entries),'sha256':hashlib.sha256((base/'stock.ids.npy').read_bytes()).hexdigest()}
+    (base/'stock.ids.json').write_text(json.dumps(manifest))
+    lookup=StockIdLookup(base)
+    assert lookup.candidates('04188606')==[11] and lookup.candidates('BAS 04188606')==[11]
+    assert lookup.candidates('DUP')==[12,13] and lookup.candidates('dup')==[] and lookup.candidates('04188606 ')==[]
+    assert lookup.matches({'datasetName':'Stock'}) and lookup.matches({'datasetName':'Stock','datasetId':4})
+    assert not lookup.matches({'datasetName':'Stock','datasetId':5}) and not lookup.matches({'datasetName':'Other'})
+    manifest['sha256']='0'*64;(base/'stock.ids.json').write_text(json.dumps(manifest))
+    try:StockIdLookup(base);assert False
+    except ValueError:pass
+print('owned graph search: 13 meaningful checks passed (canonical, stereo, true graph, SMARTS, duplicate identities, bounds, incomplete refusal) + stock identifier lookup')

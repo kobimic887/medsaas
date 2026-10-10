@@ -64,6 +64,26 @@ of `services/macrocycle-index`, `services/owned-search` and `server/utils` whose
 `server/node_modules` links to the checkout's (RDKit WASM). Unlike the old units it
 does not run from the mutable checkout, so a `git pull` never changes it.
 
+## Stock identifier lookup
+
+The shared stock table has no index on `ID`/`MAIN_BAS`/`compound_id`, so an
+identifier search scans about 5 GB (~3.5 s per ID). Indexing it would change the
+database production also uses, so `stock_ids.py` instead builds
+`stock.ids.npy`/`stock.ids.json` in `OWNED_GRAPH_DIR` from a read-only export.
+It is a candidate screen only: `stock_sql.py` re-applies the original text
+equality to the candidates (~0.5 s per ID), and returns `stale` when the dataset
+row count/min/max or the table's write counters changed since the build, after
+which `serve.py` uses the full scan until a rebuilt lookup appears (picked up
+without a restart). `/graph/health` reports `stockIdLookup`
+(`ready`/`stale`/`absent`/`invalid`). Rebuild after a stock import:
+
+```sh
+nice -n 10 python3 services/owned-search/stock_ids.py --out-dir <OWNED_GRAPH_DIR> --dataset-name '<stock dataset name>'
+```
+
+Write counters reach Postgres statistics about a second after a commit, so an
+identifier renamed in place can be missed briefly; stock imports add datasets.
+
 ## Scientific artifacts and staging isolation
 
 `build.py` creates `<source>.graph` (304 bytes per indexed row) and a completion

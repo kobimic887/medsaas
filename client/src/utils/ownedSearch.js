@@ -9,7 +9,15 @@ export const OWNED_SEARCH_MODES = Object.freeze([
   { value: 'substructure', label: 'Substructure' },
 ]);
 
-/** Commas in atom lists or CXSMILES metadata belong to the query, not the batch. */
+/** SMARTS bond primitives/operators; a structure never starts or ends with one. */
+const BOND_SYMBOLS = new Set(['-', '=', '#', ':', '~', '@', '/', '\\', '!', '&', ';']);
+const neighbour = (line, index, step) => { while (line[index] === ' ' || line[index] === '\t') index += step; return line[index]; };
+
+/**
+ * Commas in atom lists, CXSMILES metadata or SMARTS bond lists (`C-,=C`) belong
+ * to the query, not the batch. A bond-list comma always touches a bond symbol,
+ * which can never begin or end a whole structure.
+ */
 export function parseSearchQueries(input, mode = 'similarity', maxQueries = 20) {
   const queries = [];
   for (const line of String(input || '').split(/\r?\n/)) {
@@ -24,7 +32,9 @@ export function parseSearchQueries(input, mode = 'similarity', maxQueries = 20) 
         if (character === ']' && !cx) bracketDepth = Math.max(0, bracketDepth - 1);
         if (character === '|' && bracketDepth === 0) cx = !cx;
       }
-      if (i === line.length || (character === ',' && bracketDepth === 0 && !cx)) {
+      const bondList = mode !== 'id' && character === ','
+        && (BOND_SYMBOLS.has(neighbour(line, i - 1, -1)) || BOND_SYMBOLS.has(neighbour(line, i + 1, 1)));
+      if (i === line.length || (character === ',' && bracketDepth === 0 && !cx && !bondList)) {
         const query = line.slice(start, i).trim();
         if (!query) throw new Error('A comma-separated entry is empty. Remove the extra comma.');
         queries.push(query);

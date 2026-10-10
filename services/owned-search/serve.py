@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import numpy as np
 from rdkit import Chem, DataStructs, rdBase
 from build import STRIDE,digest
+from stock_ids import StockIdLookup
 rdBase.DisableLog("rdApp.*")
 FIELDS=['smiles','ID','MAIN_BAS','compound_id','source','source_file','web_mg','web_uM','CURRENT_TOT_NETTO_MG','CURRENT_TOT_AMOUNT_UM','Lead_TIME']
 
@@ -74,12 +75,34 @@ class GraphStore:
 # Bounded wait so a concurrent slow query delays, not fails, other users.
 GATE_WAIT_SECONDS=15
 
+def run_stock(body,deadline):
+    # Fixed helper argv and JSON stdin. Existing container owns DB settings;
+    # they never leave that scientific runtime.
+    result=subprocess.run(['docker','exec','-i','-e','PYTHONPATH=/app','tonomitosql-api-1','python','/tmp/pyxis-owned-stock.py'],input=json.dumps(body),capture_output=True,text=True,timeout=max(1,deadline-time.monotonic()))
+    return json.loads(result.stdout)
+
+def refresh_stock_ids(server):
+    """Pick up a rebuilt lookup (new manifest mtime) without a restart."""
+    try:mtime=os.stat(os.path.join(server.stock_ids_dir,'stock.ids.json')).st_mtime_ns
+    except FileNotFoundError:return
+    if mtime==server.stock_ids_mtime:return
+    server.stock_ids_mtime=mtime
+    lookup,state=load_stock_ids(server.stock_ids_dir)
+    if lookup:server.stock_ids,server.stock_ids_state=lookup,state
+    elif server.stock_ids_state!='stale':server.stock_ids_state=state # keep 'stale' visible in /health
+
+def load_stock_ids(directory):
+    try:return StockIdLookup(directory),'ready'
+    except FileNotFoundError:return None,'absent'
+    except Exception as error:
+        print(f'Stock identifier lookup unavailable: {error}',flush=True);return None,'invalid'
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self,*args):pass # Private query text must not enter access logs.
     def reply(self,status,payload):
         data=json.dumps(payload).encode();self.send_response(status);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
     def do_GET(self):
-        if self.path=='/health':return self.reply(200,{'available':True,'sources':['stock',*self.server.store.datasets],'rdkitVersion':rdBase.rdkitVersion})
+        if self.path=='/health':return self.reply(200,{'available':True,'sources':['stock',*self.server.store.datasets],'rdkitVersion':rdBase.rdkitVersion,'stockIdLookup':self.server.stock_ids_state})
         self.reply(404,{'error':'Not found'})
     def do_POST(self):
         if self.path not in ('/search','/verify'):return self.reply(404,{'error':'Not found'})
@@ -107,10 +130,18 @@ class Handler(BaseHTTPRequestHandler):
             if not self.server.gate.acquire(timeout=min(GATE_WAIT_SECONDS,max(0,deadline-time.monotonic()-5))):return self.reply(503,{'error':'Owned graph search is busy; retry shortly'})
             try:
                 if source=='stock':
-                    # Fixed helper argv and JSON stdin. Existing container owns
-                    # DB settings; they never leave that scientific runtime.
-                    result=subprocess.run(['docker','exec','-i','-e','PYTHONPATH=/app','tonomitosql-api-1','python','/tmp/pyxis-owned-stock.py'],input=json.dumps(body),capture_output=True,text=True,timeout=max(1,deadline-time.monotonic()))
-                    payload=json.loads(result.stdout)
+                    body.pop('lookup',None) # candidates come only from this host's lookup
+                    if mode=='id' and self.server.stock_ids is None:refresh_stock_ids(self.server)
+                    payload=None;lookup=self.server.stock_ids
+                    if mode=='id' and lookup and lookup.matches(body):
+                        ids=lookup.candidates(query)
+                        if ids is not None:
+                            payload=run_stock({**body,'lookup':{'ids':ids,'fingerprint':lookup.manifest['fingerprint']}},deadline)
+                            if payload.get('stale'):
+                                # Dataset changed since the build: full scan until a rebuilt lookup appears.
+                                print('Stock identifier lookup is stale; using the full scan until it is rebuilt',flush=True)
+                                self.server.stock_ids=None;self.server.stock_ids_state='stale';payload=None
+                    if payload is None:payload=run_stock(body,deadline)
                     self.reply(payload.get('status',200),payload)
                 else:self.reply(200,self.server.store.search(source,mode,query,cap,deadline))
             finally:self.server.gate.release()
@@ -138,4 +169,7 @@ if __name__=='__main__':
         server=ThreadingHTTPServer((host,port),Handler)
     server.gate=threading.Lock()
     server.store=GraphStore(os.environ['MACROCYCLE_INDEX_DIR'],os.environ['OWNED_GRAPH_DIR'],skip_missing=True)
+    server.stock_ids_dir=os.environ['OWNED_GRAPH_DIR'];server.stock_ids_mtime=None
+    server.stock_ids,server.stock_ids_state=None,'absent'
+    refresh_stock_ids(server)
     server.serve_forever()

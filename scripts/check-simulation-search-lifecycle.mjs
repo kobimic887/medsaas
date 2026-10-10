@@ -373,6 +373,8 @@ const { parseSearchQueries, searchModesFromStatus, ownedRowsFromPayload, appendU
     ['batch parser preserves leading-zero identifiers and internal spaces', eq(parseSearchQueries('ASN 001, RPX 004\nVPX 003', 'id'), ['ASN 001', 'RPX 004', 'VPX 003'])],
     ['batch parser preserves disconnected chemical fragments', eq(parseSearchQueries('CCO.[Na+]\nCCN'), ['CCO.[Na+]', 'CCN'])],
     ['batch parser preserves SMARTS atom-list commas', eq(parseSearchQueries('[C,N]CC, [O,S]C', 'substructure'), ['[C,N]CC', '[O,S]C'])],
+    ['batch parser preserves SMARTS bond-list commas', eq(parseSearchQueries('C-,=C, c1ccccc1\nC!-,:N\n[#6]~,@[#7],CC', 'substructure'), ['C-,=C', 'c1ccccc1', 'C!-,:N', '[#6]~,@[#7]', 'CC'])],
+    ['batch parser still splits plain comma batches after ring closures and branches', eq(parseSearchQueries('c1ccccc1,C(C)C, CN', 'substructure'), ['c1ccccc1', 'C(C)C', 'CN'])],
     ['batch parser preserves CXSMILES metadata commas', eq(parseSearchQueries('CCO |$a,b,c$|,CCN'), ['CCO |$a,b,c$|', 'CCN'])],
     ['batch parser preserves duplicate input provenance', eq(parseSearchQueries('CCO,CCO'), ['CCO', 'CCO'])],
     ['batch parser ignores blank lines without changing nonblank entries', eq(parseSearchQueries('\nCCO\n\nCCN\n'), ['CCO', 'CCN'])],
