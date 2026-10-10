@@ -317,7 +317,7 @@ export function restoreJobInput(job) {
     return Number.isInteger(atom) && atom > 0 ? { atom, hydrogen } : null;
   });
   if (selections.some(selection => !selection)) return null;
-  return { sdf: saved.sdf, selections, maxRmsd: saved.maxRmsd, limit: saved.limit, receptor: saved.receptorPdb ? { name: 'Saved search receptor', text: saved.receptorPdb } : null };
+  return { sdf: saved.sdf, selections, maxRmsd: saved.maxRmsd, limit: saved.limit, duplicateWindow: saved.duplicateWindow ?? null, receptor: saved.receptorPdb ? { name: 'Saved search receptor', text: saved.receptorPdb } : null };
 }
 
 // Reproducibility report uses an explicit allowlist: no credentials or server

@@ -3,11 +3,40 @@ import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import {
   canExportResults, createJobPoller, isActiveJob, isCompleteJob, jobStatusLabel, markJobUnfollowable, pickRecentJob, pickResumableJob, pollFailureMessage, progressOf,
-  UNAVAILABLE_JOB_MESSAGE,
+  UNAVAILABLE_JOB_MESSAGE, restoreJobInput,
 } from '../client/src/utils/linkFragmentsJobs.js';
 import { linkFragmentsRequest } from '../client/src/utils/linkFragmentsRequest.js';
 
 const job = (state, examined, total, extra = {}) => ({ id: 'j1', state, complete: state === 'completed' && examined === total, partial: !(state === 'completed' && examined === total), progress: { totalPairs: total, examinedPairs: examined, conformersExamined: examined, validPlacements: 2, distanceWindow: { lo: 4, hi: 6 } }, results: [], ...extra });
+
+const linkerSource = readFileSync(new URL('../client/src/pages/dashboard/link-fragments.jsx', import.meta.url), 'utf8');
+const workspaceBody = linkerSource.split('useEffect(() => {')[1].split('}, [active, requestedJobId]);')[0];
+const workspaceCalls = [];
+const workspaceCtx = {
+  active: false, requestedJobId: null, jobRef: { current: { id: 'saved', state: 'running' } },
+  workspaceInitializedRef: { current: true }, isActiveJob, clearQuery: () => { throw new Error('Navigation discarded linker inputs'); },
+  refreshStatus: () => workspaceCalls.push('status'), openSavedJob: value => workspaceCalls.push(['open', value.id]),
+  followJob: id => workspaceCalls.push(['follow', id]), resumeLatestJob: () => workspaceCalls.push('resume'),
+  poller: { current: { stop: () => workspaceCalls.push('stop') } }, statusRequest: { current: { abort: () => workspaceCalls.push('abort-status') } },
+};
+const visitWorkspace = new Function(...Object.keys(workspaceCtx), workspaceBody);
+assert.equal(visitWorkspace(...Object.values(workspaceCtx)), undefined);
+assert.deepEqual(workspaceCalls, [], 'hidden workspace performs no status/polling or input reset');
+workspaceCtx.active = true;
+const hideWorkspace = visitWorkspace(...Object.values(workspaceCtx));
+assert.deepEqual(workspaceCalls, ['status', ['follow', 'saved']], 'returning to the page follows the retained running job');
+hideWorkspace();
+assert.deepEqual(workspaceCalls.slice(-2), ['stop', 'abort-status'], 'leaving stops background polling without canceling the remote search');
+workspaceCalls.length = 0;
+workspaceCtx.jobRef.current = null;
+visitWorkspace(...Object.values(workspaceCtx));
+assert.deepEqual(workspaceCalls, ['status'], 'returning to an unfinished draft does not fetch or replace another job');
+workspaceCalls.length = 0;
+workspaceCtx.requestedJobId = 'exact-history-job';
+visitWorkspace(...Object.values(workspaceCtx));
+assert.deepEqual(workspaceCalls, ['status', ['open', 'exact-history-job']], 'an explicit history link opens that exact job');
+assert.equal(restoreJobInput({ input: { sdf: 'fixture', attachments: [1, 1], maxRmsd: 0.75, limit: 20, duplicateWindow: 0.5 } }).duplicateWindow, 0.5);
+assert.equal(restoreJobInput({ input: { sdf: 'fixture', attachments: [1, 1], maxRmsd: 0.75, limit: 20 } }).duplicateWindow, null);
 
 // 1. Labels: only a service-complete, fully examined scan is called complete.
 assert.equal(jobStatusLabel(job('completed', 4681, 4681)).detail, 'Complete search: all 4,681 distance-compatible pairs examined.');

@@ -38,9 +38,12 @@ function saveSdf(text, fileName, type = 'chemical/x-mdl-sdfile') {
 const errorText = error => [error.message, ...(error.details || []).map(item => item?.message).filter(message => message && message !== error.message)].join(' ');
 const atomTag = atom => `${atom.isotope ? atom.isotope : ''}${atom.element}${atom.charge ? (atom.charge > 0 ? `+${atom.charge > 1 ? atom.charge : ''}` : `−${atom.charge < -1 ? -atom.charge : ''}`) : ''}`;
 
-export function LinkFragments() {
+export function LinkFragments({ active = true }) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const requestedJobId = searchParams.get('job');
+  const requestedJobId = active ? searchParams.get('job') : null;
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  const workspaceInitializedRef = useRef(false);
   const [status, setStatus] = useState(null);
   const [statusError, setStatusError] = useState('');
   const [fileName, setFileName] = useState('');
@@ -52,6 +55,8 @@ export function LinkFragments() {
   const [atomHint, setAtomHint] = useState('');
   const [maxRmsd, setMaxRmsd] = useState('0.75');
   const [limit, setLimit] = useState('20');
+  const [distinctPlacements, setDistinctPlacements] = useState(false);
+  const [duplicateWindow, setDuplicateWindow] = useState('0.5');
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [job, setJob] = useState(null);
@@ -101,16 +106,29 @@ export function LinkFragments() {
     },
   });
   useEffect(() => {
-    clearQuery();
+    if (!active) return undefined;
     refreshStatus();
-    if (requestedJobId) openSavedJob({ id: requestedJobId });
-    else resumeLatestJob();
+    if (requestedJobId && requestedJobId !== jobRef.current?.id) openSavedJob({ id: requestedJobId });
+    else if (isActiveJob(jobRef.current)) followJob(jobRef.current.id);
+    else if (!workspaceInitializedRef.current) resumeLatestJob();
+    workspaceInitializedRef.current = true;
     return () => {
-      revision.current++;
       poller.current.stop();
-      for (const ref of [activeRequest, statusRequest, detailRequest, refineRequest, cancelRequest, receptorRequest, exportRequest]) ref.current?.abort();
+      statusRequest.current?.abort();
     };
-  }, [requestedJobId]);
+  }, [active, requestedJobId]);
+  useEffect(() => () => {
+    workspaceInitializedRef.current = false;
+    // A real layout unmount/logout disposes requests; ordinary navigation
+    // retains uploaded files, selections, the viewer and any ongoing action.
+    revision.current++;
+    poller.current.stop();
+    for (const ref of [activeRequest, statusRequest, detailRequest, refineRequest, cancelRequest, receptorRequest, exportRequest]) ref.current?.abort();
+  }, []);
+
+  function followJob(id) {
+    if (activeRef.current) poller.current.start(id);
+  }
 
   // Changing either file aborts its preflight. The identity check also discards
   // late responses from servers that completed after the request was aborted.
@@ -175,9 +193,11 @@ export function LinkFragments() {
       setFragments(inspection.fragments); setSelections(restored.selections);
       setEligibility({ state: inspection.eligibility === 'checked' ? 'checked' : 'unavailable', error: inspection.eligibilityError || '' });
       setMaxRmsd(String(restored.maxRmsd)); setLimit(String(restored.limit));
+      setDistinctPlacements(restored.duplicateWindow != null);
+      setDuplicateWindow(restored.duplicateWindow == null ? '0.5' : String(restored.duplicateWindow));
       receptorReadRevision.current++; setReceptor(restored.receptor); setReceptorError('');
       setReceptorInputKey(key => key + 1);
-      setJob(data.job); setResumed(isActiveJob(data.job) ? reason === 'busy' ? 'busy' : 'running' : 'finished'); poller.current.start(target.id);
+      setJob(data.job); setResumed(isActiveJob(data.job) ? reason === 'busy' ? 'busy' : 'running' : 'finished'); followJob(target.id);
     } catch (failure) { if (revision.current === currentRevision && failure.name !== 'AbortError') setError(errorText(failure)); }
     finally { if (activeRequest.current === controller) { activeRequest.current = null; setBusy(''); } }
   }
@@ -265,11 +285,11 @@ export function LinkFragments() {
     setBusy('start');
     let ownerBusy = null;
     try {
-      const data = await request('jobs', controller, { sdf, attachments: selections.map(selectionPayload), maxRmsd: Number(maxRmsd), limit: Number(limit), ...(receptor ? { receptorPdb: receptor.text } : {}) }, 25000);
+      const data = await request('jobs', controller, { sdf, attachments: selections.map(selectionPayload), maxRmsd: Number(maxRmsd), limit: Number(limit), ...(distinctPlacements ? { duplicateWindow: Number(duplicateWindow) } : {}), ...(receptor ? { receptorPdb: receptor.text } : {}) }, 25000);
       if (activeRequest.current !== controller || controller.signal.aborted) return;
       if (!data?.job?.id) throw new Error('The linker service did not return a search job.');
       setJob(data.job); setJobQuerySdf(sdf);
-      poller.current.start(data.job.id);
+      followJob(data.job.id);
     } catch (failure) {
       if (activeRequest.current !== controller || failure.name === 'AbortError') return;
       if (failure.status === 429 && failure.code === 'LINK_FRAGMENTS_OWNER_BUSY') {
@@ -292,7 +312,7 @@ export function LinkFragments() {
       if (cancelRequest.current !== controller) return;
       if (data?.job?.id === id) setJob(previous => previous?.id === id ? { ...data.job, results: data.job.results ?? previous.results } : previous);
       // One more poll collects the final partial results and terminal state.
-      poller.current.start(id);
+      followJob(id);
     } catch (failure) {
       if (cancelRequest.current !== controller || failure.name === 'AbortError') return;
       if (failure.status === 404) {
@@ -369,12 +389,14 @@ export function LinkFragments() {
   const firstResultId = results[0]?.id;
   const selectedRetained = results.some(item => item.id === selectedId);
   useEffect(() => {
-    if (job?.id && firstResultId && !selectedRetained && !refining) selectResult(job.id, firstResultId);
-  }, [job?.id, firstResultId, selectedRetained, refining]);
+    if (active && job?.id && firstResultId && !selectedRetained && !refining) selectResult(job.id, firstResultId);
+  }, [active, job?.id, firstResultId, selectedRetained, refining]);
   const resultActionsReady = canUseResult(job, detail?.id, jobNotice) && !detailState.busy && !refining;
   const validRmsd = Number.isFinite(Number(maxRmsd)) && Number(maxRmsd) >= 0.1 && Number(maxRmsd) <= 1;
   const validLimit = Number.isInteger(Number(limit)) && Number(limit) >= 1 && Number(limit) <= 50;
-  const canSearch = status?.available && sdf && selections.every(selectionReady) && validRmsd && validLimit && !locked && !busy && !receptorError && !['reading', 'checking'].includes(receptorValidation.state) && receptorValidationReady(receptor, sdf, receptorValidation);
+  const duplicateWindowAvailable = status?.capabilities?.duplicateWindow === true;
+  const validDuplicateWindow = !distinctPlacements || (duplicateWindowAvailable && Number.isFinite(Number(duplicateWindow)) && Number(duplicateWindow) >= 0.05 && Number(duplicateWindow) <= 5);
+  const canSearch = status?.available && sdf && selections.every(selectionReady) && validRmsd && validLimit && validDuplicateWindow && !locked && !busy && !receptorError && !['reading', 'checking'].includes(receptorValidation.state) && receptorValidationReady(receptor, sdf, receptorValidation);
   const label = jobStatusLabel(job);
   const progress = progressOf(job);
   const refinement = detail?.refinement?.ok ? detail.refinement : null;
@@ -482,8 +504,11 @@ export function LinkFragments() {
           <details className="rounded-lg border border-slate-200 p-3 dark:border-slate-700"><summary className="cursor-pointer text-sm font-medium dark:text-slate-200">Search settings <span className="font-normal">· RMSD ≤ {maxRmsd} Å · keep {limit}</span></summary><div className="mt-3 flex flex-wrap gap-4">
             <label className="block text-sm font-medium dark:text-slate-200">Maximum attachment fit RMSD (Å)<input type="number" min="0.1" max="1" step="0.05" value={maxRmsd} disabled={locked} className={`ml-3 w-24 ${input}`} onChange={event => { resetResults(); setMaxRmsd(event.target.value); }} /></label>
             <label className="block text-sm font-medium dark:text-slate-200">Products to keep<input type="number" min="1" max="50" step="1" value={limit} disabled={locked} className={`ml-3 w-20 ${input}`} onChange={event => { resetResults(); setLimit(event.target.value); }} /></label>
+            <label className="flex items-center gap-2 text-sm font-medium dark:text-slate-200"><input type="checkbox" checked={distinctPlacements} disabled={locked || !duplicateWindowAvailable} onChange={event => { resetResults(); setDistinctPlacements(event.target.checked); }} />Keep distinct placements (Duplicate Window)</label>
+            {distinctPlacements && <label className="block text-sm font-medium dark:text-slate-200">Duplicate Window (Å)<input type="number" min="0.05" max="5" step="0.05" value={duplicateWindow} disabled={locked} className={`ml-3 w-24 ${input}`} onChange={event => { resetResults(); setDuplicateWindow(event.target.value); }} /></label>}
           </div>
-          <p className={`mt-2 ${muted}`}>Lower RMSD means a closer attachment fit. Keep 1–50 distinct products.</p></details>
+          <p className={`mt-2 ${muted}`}>Lower attachment RMSD means a closer fit. {distinctPlacements ? 'Keep distinct placements of the same stereochemical product, suppressing heavy-atom RMSD duplicates in the uploaded coordinate frame. Larger windows remove more poses. This mode can take longer.' : 'Keep one best placement per distinct product.'} Keep 1–50 results.</p>
+          {!duplicateWindowAvailable && <p className={`mt-2 ${muted}`}>Duplicate Window is not available on this search service yet.</p>}</details>
           <button type="button" onClick={startSearch} disabled={!canSearch} className="w-full rounded-lg bg-brand-500 px-4 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{busy === 'start' ? 'Starting search…' : jobActive ? 'Search running…' : 'Start linker search'}</button>
           {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">{error}</p>}
         </section>
@@ -498,7 +523,7 @@ export function LinkFragments() {
             <p className="text-xs font-medium">{progress.percent.toFixed(1)}% · {formatCount(progress.examined)} / {formatCount(progress.total)} pairs checked · {results.length} retained</p>
             <details className="text-xs"><summary className="cursor-pointer">Search details</summary><div className="mt-2 space-y-1"><p>{formatCount(progress.conformers)} conformers checked · {formatCount(progress.placements)} valid placements</p><p>{(job.query?.attachments || []).map(formatQuerySelection).join(' · ')}{job.query?.maxRmsd ? ` · RMSD ≤ ${job.query.maxRmsd} Å` : ''}{progress.window ? ` · distance window ${Number(progress.window.lo).toFixed(2)}–${Number(progress.window.hi).toFixed(2)} Å` : ''}</p></div></details>
             {resumed && <p className="text-xs">{resumed === 'busy' ? 'Your existing search is shown here.' : resumed === 'finished' ? 'Saved search reopened.' : 'Your running search has been restored.'}</p>}
-            {jobNotice && (jobNotice.text || jobNotice.retry) && <div role={jobNotice.fatal ? 'alert' : 'status'} className="text-xs">{jobNotice.text}{jobNotice.retry && job?.id && <button type="button" className={`${jobNotice.text ? 'ml-2 ' : ''}font-semibold underline`} onClick={() => { setJobNotice(null); poller.current.start(job.id); }}>Check again</button>}</div>}
+            {jobNotice && (jobNotice.text || jobNotice.retry) && <div role={jobNotice.fatal ? 'alert' : 'status'} className="text-xs">{jobNotice.text}{jobNotice.retry && job?.id && <button type="button" className={`${jobNotice.text ? 'ml-2 ' : ''}font-semibold underline`} onClick={() => { setJobNotice(null); followJob(job.id); }}>Check again</button>}</div>}
           </div>}
           {job && results.length === 0 && (jobActive || resultsKnown) && <p role="status" className="text-sm dark:text-slate-200">{jobActive ? 'No valid products yet.' : 'No valid linker products matched these attachment sites and fit limit in the pairs examined.'}</p>}
           {job && !jobActive && !resultsKnown && !jobNotice?.fatal && <p role="status" className="text-sm dark:text-slate-200">Loading products…</p>}

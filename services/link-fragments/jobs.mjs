@@ -10,6 +10,8 @@ import { dirname, join, resolve } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
 import { createJobStore } from './job-store.mjs';
 import { withSdfData } from './sdf.mjs';
+import { createPoseSpool } from './pose-window.mjs';
+import { inflateSync } from 'node:zlib';
 
 const HOUR = 3600_000;
 const INDEX_BOND = 1.5; // build.py indexes nominal 1.5 A anchors
@@ -159,7 +161,7 @@ export function createJobManager({
   // wider windows, slower hosts and a contended box before a scan is cut short.
   maxJobMs = envInt('LINK_FRAGMENTS_MAX_JOB_SECONDS', 6 * 3600, 1, 48 * 3600) * 1000,
   chunkRows = 4096, flushMs = 1000, cancelGraceMs = 15_000, matchCountLimit = 200_000,
-  testHooks = null,
+  testHooks = null, poseSpoolOptions = {},
 } = {}) {
   workers = Math.min(4, Math.max(1, workers));
   if (storePath !== null) {
@@ -179,6 +181,7 @@ export function createJobManager({
   const conformerAt = db.query('SELECT conformer_id AS c FROM pairs WHERE rowid = ?');
   // At most C(8,2)=28 pairs per conformer, contiguous in rowid order.
   const conformerEnd = db.query('SELECT max(rowid) AS r FROM pairs WHERE rowid BETWEEN ? AND ? AND conformer_id = ?');
+  const sourceConformer = db.query('SELECT linker_id,sdf_zlib FROM conformers WHERE id=?');
 
   function durable(job) {
     snapshotCounts(job);
@@ -277,7 +280,7 @@ export function createJobManager({
     // Receptor ranking can admit a worse-RMSD pose with fewer clashes. An RMSD
     // threshold would exclude that pose and silently corrupt the retained set;
     // receptor jobs publish the full ranking prefix (retention) instead.
-    const full = job.top.size >= job.top.limit;
+    const full = !job.input.duplicateWindow && job.top.size >= job.top.limit;
     const value = !job.receptor && full ? encodeThreshold(job.top.worst().rmsd) : NO_THRESHOLD;
     Atomics.store(job.threshold, 0, value);
     if (job.receptor) writeRetention(job.retention, full ? job.top.worst() : null);
@@ -293,6 +296,7 @@ export function createJobManager({
     job.finishedAt = new Date(job.finishedMs).toISOString();
     Atomics.store(job.cancel, 0, 1);
     clearTimeout(job.timer);
+    job.poseSpool?.close(); job.poseSpool = null; job.prepared = null;
     snapshotCounts(job);
     job.distinctProducts = job.matchCounts.size;
     job.matchCounts = null;
@@ -318,6 +322,7 @@ export function createJobManager({
   function start(job) {
     job.state = 'running';
     job.startedAt = new Date().toISOString();
+    if (job.input.duplicateWindow) job.poseSpool = createPoseSpool(poseSpoolOptions);
     const stats = windowStats.get(job.window.lo, job.window.hi);
     job.totalPairs = stats.n;
     job.cursor = stats.first ?? 1;
@@ -349,6 +354,7 @@ export function createJobManager({
         }
       }
       const job = running;
+      if (job.finalizing) return;
       for (const record of pool) {
         if (job.cursor > job.lastRowid) break;
         if (!record?.alive || record.task) continue;
@@ -357,16 +363,41 @@ export function createJobManager({
         job.inFlight++;
         record.worker.postMessage({
           type: 'chunk', jobId: job.id, chunkId: record.task.id, ...chunk, lo: job.window.lo, hi: job.window.hi,
-          receptor: job.receptor, sdf: job.input.sdf, attachments: job.input.attachments, maxRmsd: job.input.maxRmsd,
+          receptor: job.receptor, sdf: job.input.sdf, attachments: job.input.attachments, maxRmsd: job.input.maxRmsd, duplicateWindow: job.input.duplicateWindow,
           cancel: job.cancel.buffer, threshold: job.threshold.buffer, retention: job.retention,
         });
       }
       if (job.cursor > job.lastRowid && job.inFlight === 0) {
+        if (job.examinedPairs === job.totalPairs && job.input.duplicateWindow) { job.finalizing = true; finalizePoses(job); return; }
         if (job.examinedPairs === job.totalPairs) stop(job, 'completed');
         else stop(job, 'failed', { code: 'LINK_FRAGMENTS_SCAN_INCOMPLETE', message: `Examined ${job.examinedPairs} of ${job.totalPairs} candidate pairs.` });
         continue;
       }
       return;
+    }
+  }
+  async function finalizePoses(job) {
+    try {
+      const selected = job.poseSpool.select(job.top.limit, job.input.duplicateWindow), entries = [];
+      for (const pose of selected) {
+        if (job.finishedAt) return;
+        const source = sourceConformer.get(pose.conformerId);
+        const fit = await engine.fitAndJoin(job.prepared, engine.linkerDescriptor(inflateSync(source.sdf_zlib).toString('utf8')), { pair: pose.pair, maxRmsd: job.input.maxRmsd });
+        if (!fit.ok || fit.smiles !== pose.smiles || fit.rmsd !== pose.rmsd || fit.minimumNonbondedRadiusRatio !== pose.ratio || JSON.stringify(fit.receptor) !== JSON.stringify(pose.receptor))
+          throw Object.assign(new Error('Retained pose reconstruction changed its scientific ranking; scan is partial.'), { code: 'DUPLICATE_WINDOW_RECONSTRUCTION' });
+        const data = { PYXIS_LINKER_ID: source.linker_id, PYXIS_CONFORMER_ID: pose.conformerId, PYXIS_LINKER_ATOMS: fit.selectedLabels.join(','), PYXIS_FIT_RMSD: fit.rmsd.toFixed(6), PYXIS_DUPLICATE_WINDOW_ANGSTROM: job.input.duplicateWindow, PYXIS_RESULT_RETENTION: 'distinct-poses' };
+        const detail = { sdf: withSdfData(fit.sdf, data), linkerAtoms: fit.selectedLabels, indexPair: pose.pair, heavyAtoms: fit.descriptors?.NumHeavyAtoms ?? null,
+          sourceAtomMappings: fit.sourceAtomMappings ?? null, removedHydrogens: fit.removedHydrogens ?? [], attachments: fit.attachments ?? null,
+          receptor: fit.receptor ?? null, fixedAtoms: fit.fixedAtoms ?? null, fragmentAtomCount: fit.fragmentAtomCount ?? null, method: fit.method };
+        const { coords: _coords, ...placement } = pose;
+        entries.push({ ...placement, id: resultId(pose), detail, refinement: null });
+      }
+      if (job.finishedAt) return;
+      job.top.entries = entries;
+      job.top.bySmiles = new Map(entries.map(entry => [entry.smiles, entry]));
+      stop(job, 'completed');
+    } catch (error) {
+      if (!job.finishedAt) stop(job, 'failed', { code: error.code || 'DUPLICATE_WINDOW_FAILED', message: error.message });
     }
   }
   function merge(job, message) {
@@ -376,7 +407,8 @@ export function createJobManager({
     // Deferred placements are valid but never got a SMILES, so they are missing
     // from matchCounts: conformerMatches and distinctProducts become lower bounds.
     if (message.deferredPlacements) job.matchCountsExact = false;
-    if (mergeProducts(job, message.products, matchCountLimit)) publishThreshold(job);
+    job.poseSpool?.add(message.products);
+    if (mergeProducts(job, message.products.map(({ pose: _pose, ...product }) => product), matchCountLimit)) publishThreshold(job);
     checkpoint(job);
   }
   function onMessage(record, message) {
@@ -384,9 +416,9 @@ export function createJobManager({
     const job = jobs.get(message.jobId);
     if (message.done && record.task?.id === message.chunkId) { record.task = null; record.finished++; if (job) job.inFlight--; }
     if (job && job === running && job.state === 'running') {
-      if (message.error) stop(job, 'failed', { code: 'LINK_FRAGMENTS_SCAN_FAILED', message: message.error });
+      if (message.error) stop(job, 'failed', { code: message.code || 'LINK_FRAGMENTS_SCAN_FAILED', message: message.error });
       else try { merge(job, message); } catch (error) {
-        stop(job, 'failed', { code: 'LINK_FRAGMENTS_SCAN_FAILED', message: error.message });
+        stop(job, 'failed', { code: error.code || 'LINK_FRAGMENTS_SCAN_FAILED', message: error.message });
       }
     }
     if (message.done) pump();
@@ -397,7 +429,7 @@ export function createJobManager({
     return {
       id: job.id, state: job.state, complete, partial: !complete,
       createdAt: job.createdAt, startedAt: job.startedAt, finishedAt: job.finishedAt,
-      query: { attachments: job.input.attachments, maxRmsd: job.input.maxRmsd, limit: job.input.limit, distance: job.distance, receptorReport: job.input.receptorReport || null },
+      query: { attachments: job.input.attachments, maxRmsd: job.input.maxRmsd, limit: job.input.limit, duplicateWindow: job.input.duplicateWindow ?? null, distance: job.distance, receptorReport: job.input.receptorReport || null },
       progress: {
         totalPairs: job.totalPairs, examinedPairs: job.examinedPairs,
         fraction: job.totalPairs ? job.examinedPairs / job.totalPairs : complete ? 1 : 0,
@@ -428,6 +460,8 @@ export function createJobManager({
      * (with the owner's active job id) or LINK_FRAGMENTS_QUEUE_FULL (global queue). prepared is a successful prepareQuery result. */
     submit(owner, input, prepared) {
       const { sdf, attachments, maxRmsd, limit } = input;
+      if (input.duplicateWindow != null && (typeof input.duplicateWindow !== 'number' || !Number.isFinite(input.duplicateWindow) || input.duplicateWindow < 0.05 || input.duplicateWindow > 5))
+        throw Object.assign(new Error('Duplicate Window must be 0.05–5 Å, or off.'), { status: 400, code: 'INVALID_DUPLICATE_WINDOW' });
       if (closed) throw Object.assign(new Error('Service is closing.'), { status: 503, code: 'LINK_FRAGMENTS_UNAVAILABLE' });
       sweep();
       const active = [...jobs.values()].find((job) => job.owner === owner && !job.finishedAt);
@@ -438,7 +472,7 @@ export function createJobManager({
       const window = distanceWindow(prepared, maxRmsd);
       const job = {
         id: randomUUID(), owner, state: 'queued', createdAt: new Date().toISOString(), startedAt: null, finishedAt: null, finishedMs: 0,
-        input: { ...input, sdf, attachments, maxRmsd, limit }, receptor: prepared.receptor || null, distance: prepared.distance, window: { lo: window.lo, hi: window.hi },
+        input: { ...input, sdf, attachments, maxRmsd, limit }, prepared: input.duplicateWindow ? prepared : null, receptor: prepared.receptor || null, distance: prepared.distance, window: { lo: window.lo, hi: window.hi },
         totalPairs: null, examinedPairs: 0, conformersExamined: 0, validPlacements: 0, error: null,
         top: new TopProducts(limit), matchCounts: new Map(), matchCountsExact: true, inFlight: 0,
         cancel: new Int32Array(new SharedArrayBuffer(4)), threshold: new Int32Array(new SharedArrayBuffer(4)), retention: createRetention(),
@@ -475,9 +509,11 @@ export function createJobManager({
       const sdf = job.top.entries.map((entry, index) => withSdfData(entry.detail.sdf, {
         PYXIS_SEARCH_JOB_ID: job.id, PYXIS_RESULT_ID: entry.id, PYXIS_RESULT_RANK: String(index + 1),
         PYXIS_SEARCH_STATE: job.state, PYXIS_SEARCH_COMPLETE: String(state.complete),
+        PYXIS_DUPLICATE_WINDOW_ANGSTROM: job.input.duplicateWindow ?? 'off', PYXIS_RESULT_RETENTION: job.input.duplicateWindow ? 'distinct-poses' : 'distinct-products',
+        PYXIS_POSE_CLUSTERING_COMPLETE: String(!job.input.duplicateWindow || state.complete),
         PYXIS_EXPORT_SCOPE: 'All retained original products; not all accepted database placements.',
       })).join('');
-      return { jobId: job.id, complete: state.complete, partial: state.partial, count: resultIds.length, retentionLimit: job.top.limit, resultIds, sdf };
+      return { jobId: job.id, complete: state.complete, partial: state.partial, count: resultIds.length, retentionLimit: job.top.limit, duplicateWindow: job.input.duplicateWindow ?? null, resultRetention: job.input.duplicateWindow ? 'distinct-poses' : 'distinct-products', resultIds, sdf };
     },
     /** Returns {job, entry, index} for the owner's retained result, else null. */
     findResult(owner, id, resultIdValue) {

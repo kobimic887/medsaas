@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, readFile, rm, stat, symlink, link } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, stat, symlink, link } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +10,42 @@ import { createJobManager } from './jobs.mjs';
 import { createJobStore } from './job-store.mjs';
 import { prepareQuery } from './engine.mjs';
 import { withSdfData } from './sdf.mjs';
+import { createPoseSpool, atomMapping, samePose } from './pose-window.mjs';
+
+test('pose correspondence preserves graph, isotope, charge and CIP stereo, and resolves atom symmetry without alignment', () => {
+  const graph = { atoms: [[6,0,0,0,'',2], [8,0,0,0,'',1], [8,0,0,0,'',1]], bonds: [{a:0,b:1,order:1,stereo:'unspecified'}, {a:0,b:2,order:1,stereo:'unspecified'}] };
+  const a = [[0,0,0],[1,0,0],[-1,0,0]], swapped = [[0,0,0],[-1,0,0],[1,0,0]];
+  assert(samePose(graph,a,swapped,0.05));
+  assert(!samePose(graph,a,a.map(v=>v.map(x=>x+1)),0.5), 'no coordinate superposition');
+  for (const [slot,value] of [[0,7],[1,1],[2,13],[4,'R']]) {
+    const other=structuredClone(graph); other.atoms[0][slot]=value;
+    assert.equal(atomMapping(graph,other),null);
+  }
+  const different=structuredClone(graph);different.bonds[0].order=2;
+  assert.equal(atomMapping(graph,different),null);
+  const alkene={atoms:[[9,0,0,0,'',0],[6,0,0,0,'',1],[6,0,0,0,'',1],[17,0,0,0,'',0]],bonds:[{a:0,b:1,order:1,stereo:'unspecified'},{a:1,b:2,order:2,stereo:'trans',stereoAtoms:[0,3]},{a:2,b:3,order:1,stereo:'unspecified'}]};
+  const cis=structuredClone(alkene);cis.bonds[1].stereo='cis';
+  assert.equal(atomMapping(alkene,cis),null,'E/Z stereoisomers must not be atom-mapped as duplicates');
+  assert.throws(()=>atomMapping(graph,graph,{nodeLimit:1}),e=>e.code==='DUPLICATE_WINDOW_MAPPING_LIMIT');
+});
+
+test('ranked whole-scan pose clustering is deterministic and keeps reopened slots, distinct poses and stereoisomers', () => {
+  const graph={atoms:[[6,0,0,0,'',4]],bonds:[]};
+  const product=(id,x,rank,smiles='C')=>({smiles,rmsd:rank,ratio:null,receptor:null,conformerId:id,linkerId:String(id),pair:[1,2],pose:{graph,coords:[[x,0,0]]}});
+  const products=[product(1,0,2),product(2,1.2,3),product(3,3,4),product(4,.6,1),product(5,.6,5),product(6,.6,6,'[C@H](F)(Cl)Br')];
+  let expected;
+  for(const order of [products,[...products].reverse(),[products[3],products[0],products[5],products[2],products[4],products[1]]]) {
+    const spool=createPoseSpool();
+    try {
+      spool.add(order);
+      const selected=spool.select(3,1).map(p=>p.conformerId);
+      assert.deepEqual(selected,[4,3,6], 'a later better representative suppresses two old hits; the distant pose must reappear');
+      if(expected)assert.deepEqual(selected,expected);expected=selected;
+    } finally {spool.close();}
+  }
+  const small=createPoseSpool({maxBytes:64});
+  try{assert.throws(()=>small.add(products),e=>e.code==='DUPLICATE_WINDOW_STORAGE_LIMIT');}finally{small.close();}
+});
 
 const query = await readFile(new URL('fixtures/query.sdf', import.meta.url), 'utf8');
 const input = { sdf: query, attachments: [1, 1], maxRmsd: 0.75, limit: 10 };
@@ -102,11 +138,13 @@ test('shutdown saves running and queued searches as failed partial history, neve
     const indexPath = fixture(directory, 12);
     db = new Database(indexPath, { readonly: true });
     const prepared = await prepareQuery(query, input.attachments);
-    manager = createJobManager({ indexPath, db, workers: 1, chunkRows: 1, flushMs: 5, checkpointMs: 1, testHooks: { conformerDelayMs: 80 } });
-    const running = manager.submit('owner-A', input, prepared).id;
-    const queued = manager.submit('owner-B', input, prepared).id;
+    manager = createJobManager({ indexPath, db, workers: 1, chunkRows: 1, flushMs: 5, checkpointMs: 1, poseSpoolOptions: { directory }, testHooks: { conformerDelayMs: 80 } });
+    const windowInput={...input,duplicateWindow:.5};
+    const running = manager.submit('owner-A', windowInput, prepared).id;
+    const queued = manager.submit('owner-B', windowInput, prepared).id;
     await until(manager, 'owner-A', running, (job) => job.progress.examinedPairs > 0 && job.results.length > 0);
     await manager.close();
+    assert.equal((await readdir(directory)).filter(name=>name.startsWith('pyxis-pose-window-')).length,0,'graceful shutdown removes private pose scratch');
     manager = createJobManager({ indexPath, db, workers: 1 });
     for (const [owner, id] of [['owner-A', running], ['owner-B', queued]]) {
       const restored = manager.get(owner, id);
@@ -115,6 +153,7 @@ test('shutdown saves running and queued searches as failed partial history, neve
       assert.equal(restored.partial, true);
       assert.equal(restored.complete, false);
       assert.equal(restored.input.sdf, query);
+      assert.equal(restored.query.duplicateWindow,.5);
     }
     assert(manager.get('owner-A', running).results.length > 0);
     assert(manager.get('owner-A', running).progress.examinedPairs < 12);

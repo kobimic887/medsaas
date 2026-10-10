@@ -9,7 +9,7 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { inflateSync } from 'node:zlib';
 import { Database } from 'bun:sqlite';
-import { prepareQuery, linkerDescriptor, fitAndJoin } from './engine.mjs';
+import { prepareQuery, linkerDescriptor, fitAndJoin, poseGeometry } from './engine.mjs';
 import { deferAboveOf, comparePlacements, readRetention } from './jobs.mjs';
 import * as sdfModule from './sdf.mjs';
 
@@ -22,7 +22,7 @@ const flushMs = workerData.flushMs || 1000;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let current = null;
 
-function detailFor(fit, linkerId, conformerId, pair) {
+export function detailFor(fit, linkerId, conformerId, pair) {
   const data = { PYXIS_LINKER_ID: linkerId, PYXIS_CONFORMER_ID: conformerId, PYXIS_LINKER_ATOMS: fit.selectedLabels.join(','), PYXIS_FIT_RMSD: fit.rmsd.toFixed(6) };
   const sdf = typeof sdfModule.withSdfData === 'function' ? sdfModule.withSdfData(fit.sdf, data) : fit.sdf;
   return {
@@ -65,8 +65,8 @@ async function runChunk(task) {
       const pair = [rows[i].a, rows[i].b];
       // An invalid descriptor still counts as examined: its pairs cannot be accepted.
       // Read per pair: the threshold only decreases, so a stale value defers less.
-      const deferAbove = task.receptor ? Infinity : deferAboveOf(Atomics.load(threshold, 0));
-      const retained = task.receptor && task.retention ? readRetention(task.retention) : null;
+      const deferAbove = task.receptor || task.duplicateWindow ? Infinity : deferAboveOf(Atomics.load(threshold, 0));
+      const retained = !task.duplicateWindow && task.receptor && task.retention ? readRetention(task.retention) : null;
       const fit = descriptor.ok ? await fitAndJoin(current.prepared, descriptor, { pair, maxRmsd: task.maxRmsd, deferAbove, retained }) : null;
       examinedPairs++;
       if (!fit?.ok) continue;
@@ -74,6 +74,12 @@ async function runChunk(task) {
       // Valid, but cannot enter the top-K: no SMILES, so conformerMatches is a lower bound.
       if (fit.deferred) { deferredPlacements++; continue; }
       const placement = { smiles: fit.smiles, rmsd: fit.rmsd, ratio: fit.minimumNonbondedRadiusRatio, receptor: fit.receptor, conformerId, linkerId: record.linker_id, pair };
+      if (task.duplicateWindow) {
+        const conformers = seen.has(fit.smiles) ? 0 : 1;
+        seen.add(fit.smiles);
+        products.set(`${conformerId}-${pair[0]}-${pair[1]}`, { ...placement, conformers, detail: detailFor(fit, record.linker_id, conformerId, pair), pose: await poseGeometry(fit.sdf, fit.smiles) });
+        continue;
+      }
       const known = products.get(fit.smiles);
       if (!seen.has(fit.smiles)) { seen.add(fit.smiles); if (known) known.conformers++; }
       if (known && comparePlacements(placement, known) >= 0) continue;
@@ -91,6 +97,6 @@ async function runChunk(task) {
 parentPort.on('message', async (task) => {
   if (task?.type !== 'chunk') return;
   try { await runChunk(task); } catch (error) {
-    parentPort.postMessage({ type: 'flush', jobId: task.jobId, chunkId: task.chunkId, done: true, examinedPairs: 0, conformersExamined: 0, validPlacements: 0, products: [], error: error?.message || 'Candidate fitting failed.' });
+    parentPort.postMessage({ type: 'flush', jobId: task.jobId, chunkId: task.chunkId, done: true, examinedPairs: 0, conformersExamined: 0, validPlacements: 0, products: [], code: error?.code, error: error?.message || 'Candidate fitting failed.' });
   }
 });

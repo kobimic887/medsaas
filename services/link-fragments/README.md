@@ -40,12 +40,28 @@ signed-in user and company); other owners' jobs return 404.
 | --- | --- |
 | `POST /inspect` | Attachment eligibility and reasons for every atom |
 | `POST /receptor/inspect` | Validate `sdf` and `receptorPdb` frame, overlap and excluded-volume support before search |
-| `POST /jobs` | Start a complete scan: `sdf`, two `attachments` (atom number or `{atom, hydrogenAtom}`), `maxRmsd` 0.1–1, `limit` 1–50, optional `receptorPdb`; receptor is validated again server-side |
+| `POST /jobs` | Start a complete scan: `sdf`, two `attachments` (atom number or `{atom, hydrogenAtom}`), `maxRmsd` 0.1–1, `limit` 1–50, optional `receptorPdb`, optional `duplicateWindow` 0.05–5 Å (`null`/absent = off); receptor is validated again server-side |
 | `GET /jobs`, `GET /jobs/:id` | Owner's compact history; one job includes original input, progress and ranked result summaries. `?input=0` omits uploaded files during polling |
 | `POST /jobs/:id/cancel` | Cancel; partial results stay available |
 | `GET /jobs/:id/export` | Owner's ranked retained original products as a multi-record SDF plus count/retention/complete/partial metadata; active scans return 409, missing or other-owner jobs 404 |
 | `GET /jobs/:id/results/:resultId` | Product SDF, atom mapping and any refinement |
 | `POST /jobs/:id/results/:resultId/refine` | MMFF94/UFF refinement, optional receptor PDB (≤ 5 MB) |
+
+`GET /status` advertises `capabilities.duplicateWindow` and its numerical range.
+Default searches keep one best placement per RDKit stereo SMILES. The optional
+window keeps multiple best conformer/pair poses per stereo product, removing
+lower-ranked poses within the window under symmetry-preserving heavy-atom RMSD,
+in the original frame without alignment. Different graphs and stereoisomers stay
+distinct. It does not enumerate every accepted torsion. Positive-window scans
+disable top-K deferral, spool every pair winner compactly in a private temporary
+SQLite database, then perform deterministic ranked clustering. A 512 MiB scratch
+budget or exhausted atom-symmetry search fails as partial, never as a truncated
+complete scan; cleanup deletes the spool on terminal state or graceful shutdown.
+An abrupt kill may leave private scratch files that require named operator cleanup. Provisional previews
+stay one-per-product until finalization. Saved input/query and export metadata
+retain `duplicateWindow`; SD tags include `PYXIS_DUPLICATE_WINDOW_ANGSTROM`,
+`PYXIS_RESULT_RETENTION` and `PYXIS_POSE_CLUSTERING_COMPLETE`. Full semantics are
+in [the dashboard contract](../../docs/LINK-FRAGMENTS.md#complete-search).
 
 Environment: `LINK_FRAGMENTS_WORKERS` (1–4, default 2),
 `LINK_FRAGMENTS_MAX_JOB_SECONDS` (default 21600), `LINK_FRAGMENTS_REFINE_TIMEOUT_MS`

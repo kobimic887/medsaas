@@ -120,7 +120,7 @@ export async function createLinkerServer({ indexPath, jobOptions = {}, refineMod
       const { pathname, searchParams } = new URL(req.url, 'http://loopback');
       const parts = pathname.split('/').filter(Boolean);
       if (pathname === '/status' && req.method === 'GET')
-        return send(200, { available: true, records: manifest.records, pairs: manifest.pairs, rejected: manifest.rejected, method: METHOD, limitations: LIMITATIONS, jobs: jobs.stats(), refinement: await refinementStatus() });
+        return send(200, { available: true, capabilities: { duplicateWindow: true, duplicateWindowMin: 0.05, duplicateWindowMax: 5 }, records: manifest.records, pairs: manifest.pairs, rejected: manifest.rejected, method: METHOD, limitations: LIMITATIONS, jobs: jobs.stats(), refinement: await refinementStatus() });
       if (parts[0] !== 'inspect' && parts[0] !== 'jobs' && parts[0] !== 'receptor') return send(404, { error: 'Route not found' });
       const owner = req.headers['x-pyxis-owner'];
       if (typeof owner !== 'string' || !OWNER.test(owner)) return send(400, { error: 'Owner key required.', code: 'OWNER_REQUIRED' });
@@ -149,6 +149,9 @@ export async function createLinkerServer({ indexPath, jobOptions = {}, refineMod
         const input = await readJson(req, MAX_REFINE_BODY);
         const maxRmsd = input.maxRmsd ?? 0.75;
         const limit = input.limit ?? 20;
+        const duplicateWindow = input.duplicateWindow ?? null;
+        if (duplicateWindow !== null && (typeof duplicateWindow !== 'number' || !Number.isFinite(duplicateWindow) || duplicateWindow < 0.05 || duplicateWindow > 5))
+          return send(400, { error: 'Duplicate Window must be 0.05–5 Å, or off.', code: 'INVALID_DUPLICATE_WINDOW' });
         if (typeof input.sdf !== 'string' || !input.sdf.trim() || !Array.isArray(input.attachments) || input.attachments.length !== 2 || !input.attachments.every(selectionValid))
           return send(400, { error: 'Supply the SDF and one attachment selection per fragment.', details: [{ code: 'ATTACHMENT_REQUIRED', message: 'Select one one-based atom number in each fragment.' }] });
         if (typeof maxRmsd !== 'number' || !Number.isFinite(maxRmsd) || maxRmsd < 0.1 || maxRmsd > 1 || !Number.isInteger(limit) || limit < 1 || limit > 50)
@@ -163,7 +166,7 @@ export async function createLinkerServer({ indexPath, jobOptions = {}, refineMod
           receptorReport = checked.report;
         }
         try {
-          return send(202, { job: jobs.submit(owner, { sdf: input.sdf, attachments: input.attachments, maxRmsd, limit, ...(receptorReport ? { receptorPdb: input.receptorPdb, receptorReport } : {}) }, prepared) });
+          return send(202, { job: jobs.submit(owner, { sdf: input.sdf, attachments: input.attachments, maxRmsd, limit, duplicateWindow, ...(receptorReport ? { receptorPdb: input.receptorPdb, receptorReport } : {}) }, prepared) });
         } catch (error) {
           if (error.status) return send(error.status, { error: error.message, code: error.code, ...(error.jobId ? { jobId: error.jobId } : {}) });
           return send(400, { error: 'The candidate window could not be bounded for this attachment.', details: [{ code: 'UNBOUNDED_WINDOW', message: error.message }] });
@@ -252,4 +255,14 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (!indexPath) throw new Error('LINKER_INDEX_PATH is required');
   const server = await createLinkerServer({ indexPath });
   server.listen(Number(process.env.PORT || 8374), '127.0.0.1', () => console.log('Link Fragments listening on loopback'));
+  let shuttingDown = false;
+  const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    await server.jobs.close(); // Save partial history and remove private pose spool before exit.
+    server.closeAllConnections();
+    server.close(() => process.exit(0));
+  };
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
 }

@@ -79,7 +79,8 @@ const away = visit('/dashboard/link-fragments');
 checks.push(['leaving Home preserves its visited instance and deactivates it', away.retained && !away.homeActive]);
 checks.push(['returning activates the retained Home workspace', visit('/dashboard/simulation/').homeActive]);
 checks.push(['a new authenticated layout starts with no previous Home instance', !visit('/dashboard/controlpanel', {}).retained]);
-checks.push(['Home uses a stable boundary outside the pathname-keyed routes', dashboard.includes('<div hidden={!homeActive} inert={homeActive ? undefined : \'\'}>') && dashboard.includes('React.cloneElement(homeRoute.element, { active: homeActive })') && dashboard.includes('pages.filter(({ path }) => path !== \'/simulation\')')]);
+checks.push(['Home uses a stable boundary outside the pathname-keyed routes', dashboard.includes('<div hidden={!homeActive} inert={homeActive ? undefined : \'\'}>') && dashboard.includes('React.cloneElement(homeRoute.element, { active: homeActive })') && dashboard.includes('pages.filter(({ path }) => path !== \'/simulation\' && path !== \'/link-fragments\')')]);
+checks.push(['Scaffolding Hop keeps a single visited workspace across dashboard navigation', dashboard.includes('React.cloneElement(linkerRoute.element, { active: linkerActive })') && dashboard.includes('<div hidden={!linkerActive} inert={linkerActive ? undefined : \'\'}>') && dashboard.includes('<Route path="link-fragments" element={null} />')]);
 
 const failures = checks.filter(([, passed]) => !passed).map(([label]) => label);
 if (failures.length) {

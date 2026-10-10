@@ -56,6 +56,81 @@ async function stop(server) {
 }
 const reference = { sdf: query, attachments: [1, 1], maxRmsd: 0.75, limit: 10 };
 
+test('optional Duplicate Window validates, scans all cloned conformers, preserves atom coordinates and reopens history/export provenance', { timeout: 30_000 }, async () => {
+  const temporary=await mkdtemp(path.join(os.tmpdir(),'pyxis-duplicate-window-'));let server;
+  try {
+    const {indexPath}=buildIndex(temporary,3);
+    let runtime=await start(indexPath,{workers:2,chunkRows:1});server=runtime.server;
+    assert.equal((await runtime.call('/status',{owner:null})).body.capabilities.duplicateWindow,true);
+    for(const duplicateWindow of [true,0,.049,5.001,'0.5']) {
+      const bad=await runtime.call('/jobs',{method:'POST',body:{...reference,duplicateWindow}});
+      assert.equal(bad.status,400);assert.equal(bad.body.code,'INVALID_DUPLICATE_WINDOW');
+    }
+    const created=await runtime.call('/jobs',{method:'POST',body:{...reference,duplicateWindow:.5}});
+    assert.equal(created.status,202,JSON.stringify(created.body));
+    const job=await runtime.poll(created.body.job.id,j=>j.finishedAt);
+    assert.equal(job.state,'completed',JSON.stringify(job));
+    assert.equal(job.complete,true);assert.equal(job.progress.examinedPairs,3);
+    assert.equal(job.progress.validPlacements,3);assert.equal(job.results.length,1,'cloned poses collapse');
+    assert.equal(job.query.duplicateWindow,.5);assert.equal(job.input.duplicateWindow,.5);
+    const original=(await runtime.call(`/jobs/${job.id}/results/${job.results[0].id}`)).body.result;
+    const native=(await runtime.call(`/jobs/${job.id}/export`)).body.export;
+    assert.equal(native.duplicateWindow,.5);assert.equal(native.resultRetention,'distinct-poses');
+    const exported=sdfModule.parseSdf(native.sdf)[0];
+    assert.equal(sdfTag(exported,'PYXIS_DUPLICATE_WINDOW_ANGSTROM'),'0.5');
+    assert.equal(sdfTag(exported,'PYXIS_RESULT_RETENTION'),'distinct-poses');
+    assert.deepEqual(exported.atoms,sdfModule.parseSdf(original.sdf)[0].atoms);
+    await stop(server);server=null;
+    runtime=await start(indexPath,{workers:1});server=runtime.server;
+    const restored=(await runtime.call(`/jobs/${job.id}`)).body.job;
+    assert.equal(restored.query.duplicateWindow,.5);assert.deepEqual(restored.results,job.results);
+    assert.equal((await runtime.call(`/jobs/${job.id}/export`)).body.export.sdf,native.sdf);
+    const receptorPdb=await readFile(new URL('fixtures/receptor-7WH5-pocket.pdb',import.meta.url),'utf8');
+    const receptorStart=await runtime.call('/jobs',{method:'POST',body:{...reference,duplicateWindow:.5,receptorPdb}});
+    assert.equal(receptorStart.status,202,JSON.stringify(receptorStart.body));
+    const receptorJob=await runtime.poll(receptorStart.body.job.id,j=>j.finishedAt);
+    assert.equal(receptorJob.state,'completed',JSON.stringify(receptorJob));
+    assert.equal(receptorJob.progress.examinedPairs,3);assert.equal(receptorJob.results.length,1);
+    assert(receptorJob.results[0].receptor,'receptor scores survive pose reconstruction');
+    await stop(server);server=null;
+    runtime=await start(indexPath,{workers:1,poseSpoolOptions:{maxBytes:16}});server=runtime.server;
+    const tiny=await runtime.call('/jobs',{method:'POST',body:{...reference,duplicateWindow:.5}});
+    const failed=await runtime.poll(tiny.body.job.id,j=>j.finishedAt);
+    assert.equal(failed.state,'failed');assert.equal(failed.complete,false);
+    assert.equal(failed.error.code,'DUPLICATE_WINDOW_STORAGE_LIMIT');
+  }finally{await stop(server);await rm(temporary,{recursive:true,force:true});}
+});
+
+test('real pair winners: small pose window keeps distinct conformers of one product; larger window suppresses clones, default stays one product', { timeout: 30_000 }, async () => {
+  const temporary=await mkdtemp(path.join(os.tmpdir(),'pyxis-distinct-real-poses-'));let server;
+  try {
+    const original=await readFile(linkerPath,'utf8');
+    const shifted=sdfModule.parseSdf(original)[0];shifted.atoms[21].xyz[2]+=.75;
+    const source=path.join(temporary,'pose-library.sdf');
+    await writeFile(source,original+sdfModule.writeSdf(shifted)+original);
+    const {indexPath}=buildIndex(temporary,1,source,3);
+    let expected;
+    for(const workers of [1,2]) {
+      const runtime=await start(indexPath,{workers,chunkRows:1});server=runtime.server;
+      const states=[];
+      for(const [duplicateWindow,count] of [[null,1],[.05,2],[.5,1]]) {
+        const created=await runtime.call('/jobs',{method:'POST',body:{...reference,duplicateWindow}});
+        const completed=await runtime.poll(created.body.job.id,j=>j.finishedAt);
+        assert.equal(completed.state,'completed',JSON.stringify(completed));
+        assert.equal(completed.progress.examinedPairs,3);assert.equal(completed.results.length,count);
+        assert.equal(new Set(completed.results.map(r=>r.smiles)).size,1,'same stereochemical graph');
+        assert.equal(new Set(completed.results.map(r=>r.id)).size,count,'pose identities are distinct');
+        const saved=(await runtime.call(`/jobs/${completed.id}/export`)).body.export;
+        assert.equal(sdfModule.parseSdf(saved.sdf).length,count);
+        states.push(completed.results.map(r=>r.id));
+      }
+      if(workers===1)expected=states;
+      else assert.deepEqual(states,expected,'worker scheduling must not change ranked clusters');
+      await stop(server);server=null;
+    }
+  }finally{await stop(server);await rm(temporary,{recursive:true,force:true});}
+});
+
 test('bulk export includes every retained original in ranking order, preserving isotope and source tags', { timeout: 30_000 }, async () => {
   const temporary = await mkdtemp(path.join(os.tmpdir(), 'pyxis-linker-export-'));
   let server;

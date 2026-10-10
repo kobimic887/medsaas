@@ -77,6 +77,11 @@ function DashboardShell() {
   if (homeActive && !homeVisited) setHomeVisited(true);
   const homeRoute = routes.flatMap(({ layout, pages }) => layout === 'dashboard' ? pages : [])
     .find(({ path }) => path === '/simulation');
+  const linkerActive = /\/dashboard\/link-fragments\/?$/.test(pathname);
+  const [linkerVisited, setLinkerVisited] = useState(linkerActive);
+  if (linkerActive && !linkerVisited) setLinkerVisited(true);
+  const linkerRoute = routes.flatMap(({ layout, pages }) => layout === 'dashboard' ? pages : [])
+    .find(({ path }) => path === '/link-fragments');
   const [controller] = useMaterialTailwindController();
   const { openSidenav } = controller;
   // The sidebar header names the product, not the tenant. This used to render
@@ -125,12 +130,22 @@ function DashboardShell() {
               </DashboardErrorBoundary>
             </div>
           )}
+          {(linkerVisited || linkerActive) && (
+            <div hidden={!linkerActive} inert={linkerActive ? undefined : ''}>
+              <DashboardErrorBoundary>
+                <Suspense fallback={<RouteFallback />}>
+                  {React.cloneElement(linkerRoute.element, { active: linkerActive })}
+                </Suspense>
+              </DashboardErrorBoundary>
+            </div>
+          )}
           <Routes>
             <Route index element={<Navigate to="simulation" replace />} />
             <Route path="simulation" element={null} />
+            <Route path="link-fragments" element={null} />
             {routes.flatMap(({ layout, pages }) =>
               layout === "dashboard"
-                ? pages.filter(({ path }) => path !== '/simulation').map(({ path, element }) => (
+                ? pages.filter(({ path }) => path !== '/simulation' && path !== '/link-fragments').map(({ path, element }) => (
                     <Route
                       key={path}
                       path={path.replace(/^\/+/, "")}

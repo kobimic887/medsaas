@@ -141,6 +141,35 @@ key below, then RMSD, with one) is counted as valid without a SMILES, and at mos
 `conformerMatchesExact: false` and both numbers are lower bounds; otherwise they are
 exact.
 
+**Distinct placements / Duplicate Window** is an optional advanced mode. Off
+(the default), the historical one-best-placement-per-stereo-product behavior and
+safe top-K deferral remain unchanged. On, `duplicateWindow` is 0.05–5 Å: keep
+multiple geometrically distinct best conformer/pair placements of the same
+stereochemical product, suppressing a lower-ranked pose when its minimum
+symmetry-aware heavy-atom RMSD to a retained higher-ranked pose is at most the
+window. Larger windows retain fewer redundant poses. Atom correspondence preserves
+elements, bonds, isotopes, charges and stereochemistry; different chemical graphs
+or stereoisomers are never merged. Coordinates are compared in the uploaded
+query/receptor frame, without rotation or translation. This is pose diversity,
+not a way to remove visually similar compounds with different chemistry, and not
+an enumeration of every passing torsion: each conformer/pair contributes its best
+passing torsion, as in the default engine.
+
+The mode can be slower: every accepted pair winner is materialized, compactly
+stored in a private temporary SQLite spool, then processed in deterministic
+scientific rank order before retaining up to `limit`. An online top-K cluster
+cannot safely discard candidates: replacing a representative can reopen a slot.
+Therefore no provisional top-K deferral is allowed in this mode. A 512 MiB scratch
+storage budget and a bounded exhaustive atom-mapping search fail explicitly as
+partial if exhausted; neither may truncate a scan and call it complete. Temporary
+pose storage is deleted on completion, cancellation, failure or graceful shutdown; an
+abrupt process kill may leave a private scratch folder for operator cleanup. Saved
+history retains only the selected originals and the input window. Live previews
+show provisional one-per-product representatives until final pose selection.
+Exports record the window, retention mode and whether full pose clustering
+completed. Old services do not advertise `capabilities.duplicateWindow`; the UI
+must withhold this control instead of sending an ignored parameter.
+
 With a receptor, every accepted torsion and placement is ranked by severe receptor
 overlaps (≥ 1.2 Å van der Waals overlap), then sum of squared overlaps for clashing
 heavy-atom pairs (overlap ≥ 0.6 Å), then clash count, and finally the geometric order

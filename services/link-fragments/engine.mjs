@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { scoreReceptor, compareReceptorScores, receptorPlacementWorse } from './receptor.mjs';
 import initRDKit from '../../server/node_modules/@rdkit/rdkit/dist/RDKit_minimal.js';
+import { heavyGraph, atomMapping } from './pose-window.mjs';
 import {
   LinkFragmentsError,
   parseSdf,
@@ -22,6 +23,27 @@ import {
 } from './geometry.mjs';
 let chemistry;
 const rdkit = () => (chemistry ||= initRDKit());
+const poseGraphs = new Map();
+/** Canonical chemical atom order, preserving stereochemistry and fixed-frame coordinates. */
+export async function poseGeometry(sdf, smiles) {
+  const toolkit = await rdkit();
+  let molecule, hydrogenRemoved, canonical;
+  try {
+    molecule = toolkit.get_mol(sdf, '{"removeHs":false}');
+    hydrogenRemoved = toolkit.get_mol(molecule.remove_hs('{"removeIsotopes":false,"removeDefiningBondStereo":true}'));
+    const fitted = heavyGraph(JSON.parse(hydrogenRemoved.get_json()));
+    let graph = poseGraphs.get(smiles);
+    if (!graph) {
+      canonical = toolkit.get_mol(smiles);
+      const { coords: _coords, ...chemical } = heavyGraph(JSON.parse(canonical.get_json()));
+      graph = chemical; poseGraphs.set(smiles, graph);
+      if (poseGraphs.size > 256) poseGraphs.delete(poseGraphs.keys().next().value);
+    }
+    const mapping = atomMapping(graph, fitted);
+    if (!mapping || !fitted.coords) throw Object.assign(new Error('Pose heavy atoms could not be matched to the stereochemical product.'), { code: 'DUPLICATE_WINDOW_ATOM_MAPPING' });
+    return { graph, coords: mapping.map(i => fitted.coords[i]) };
+  } finally { canonical?.delete(); hydrogenRemoved?.delete(); molecule?.delete(); }
+}
 const error = (code, message, detail) => {
   throw new LinkFragmentsError(code, message, detail);
 };
