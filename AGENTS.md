@@ -32,6 +32,8 @@ when a path or trap moves.
   when extending the shared Molstar message format to mmCIF.
 - Folding and molecule generation stay hosted NVIDIA services. DiffDock replacement is
   OSS DiffDock — do not re-propose NVIDIA NIM / AI Enterprise for DiffDock.
+- Compute cutovers retain a measured, supported service endpoint for rollback;
+  retired Asinex compute URLs must never be restored as rollback targets.
 
 ## Architecture
 

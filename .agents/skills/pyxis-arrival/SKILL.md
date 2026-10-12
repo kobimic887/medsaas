@@ -28,7 +28,10 @@ read `docs/OPERATIONS.md` to locate them and confirm operational facts read-only
 - Keep the application API and MongoDB Atlas off the compute box.
 - Bring up and validate one compute service at a time. Use real request/response contract evidence;
   replay fixtures alone are insufficient.
-- Repoint one production path at a time and retain the previous Asinex/host value as rollback.
+- Repoint one production path at a time and retain the measured, supported previous
+  service endpoint as rollback. Retired Asinex compute URLs are refused by the app;
+  never restore them as a fallback or rollback target. If no supported rollback
+  endpoint exists, establish a recovery plan before the cutover.
 - Verify credit consumption/refund behavior and the actual user path after each relevant cutover.
 - Change shared Atlas company configuration only within the approved cutover. Apply
   host-local environment changes on the measured application host.
