@@ -79,7 +79,7 @@
     "test:link-fragments": "bun test ./services/link-fragments/test.mjs ./services/link-fragments/service-test.mjs ./services/link-fragments/refine-test.mjs ./services/link-fragments/receptor-test.mjs ./services/link-fragments/jobs-test.mjs ./services/link-fragments/benchmark-test.mjs ./server/test/link-fragments-route.test.mjs && bun scripts/check-link-fragments-ui.mjs && bun scripts/check-link-fragments-jobs.mjs"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.0",
+    "@biomejs/biome": "^2.5.14",
     "concurrently": "^10.0.3"
   }
 }
