@@ -34,6 +34,14 @@ request and each provider request bounded by the remaining aggregate budget.
 - Macrocycle substructure uses RDKit PatternFingerprint as a necessary screen,
   followed by actual `HasSubstructMatch(..., useChirality=True)`. Morgan bits are
   never used as a graph screen. Stock and macrocycles accept SMILES/SMARTS.
+- A substructure query that parses as plain SMILES is matched as a sanitized
+  molecule (`substructure_query` in `serve.py`; stock uses `mol_from_smiles`), so
+  Kekulé input, including every Ketcher drawing, matches aromatic rings, and its
+  PatternFingerprint stays selective. Hydrogen counts are then not constraints.
+  Radicals (`[CH2]`, `[#6]`), dummies (`*`), query bonds (`~`) and anything SMILES
+  cannot parse keep their SMARTS meaning. Parsed as SMARTS, Kekulé `C1=CC=CC=C1`
+  matched no aromatic row, and the SMARTS screen of a selective scaffold passed
+  ~97% of VPX into per-row verification, which timed out.
 - Open compounds uses official ChEMBL ID/structure/substructure APIs, then
   verifies exact canonical chemistry or substructure/chirality locally. ChEMBL
   substructure requires SMILES; arbitrary SMARTS is refused for that source.

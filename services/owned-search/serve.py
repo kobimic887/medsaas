@@ -9,6 +9,20 @@ from stock_ids import StockIdLookup
 rdBase.DisableLog("rdApp.*")
 FIELDS=['smiles','ID','MAIN_BAS','compound_id','source','source_file','web_mg','web_uM','CURRENT_TOT_NETTO_MG','CURRENT_TOT_AMOUNT_UM','Lead_TIME']
 
+def substructure_query(query):
+    """Return (molecule, 'smiles'|'smarts'). Plain SMILES is matched as a sanitized
+    molecule so Kekule input, including every Ketcher drawing, finds aromatic rings
+    and its PatternFingerprint is selective (a SMARTS parse of Kekule C1=CC=CC=C1
+    matches no aromatic ring, and a SMARTS screen passes ~97% of VPX). Hydrogen
+    counts are then not constraints. Radicals ([CH2], [#6]), dummies (*) and query
+    bonds (~) mean the text was SMARTS, which keeps its SMARTS meaning."""
+    molecule=Chem.MolFromSmiles(query)
+    if molecule is not None and not any(a.GetNumRadicalElectrons() or not a.GetAtomicNum() or a.HasQuery() for a in molecule.GetAtoms()) and not any(b.HasQuery() for b in molecule.GetBonds()):
+        return molecule,'smiles'
+    molecule=Chem.MolFromSmarts(query)
+    if molecule is None: raise ValueError('Invalid SMILES/SMARTS pattern')
+    return molecule,'smarts'
+
 class GraphStore:
     def __init__(self,index_dir,graph_dir,sources=('real','virtual'),skip_missing=False):
         self.datasets={}
@@ -40,8 +54,7 @@ class GraphStore:
             canonical=Chem.MolToSmiles(molecule,isomericSmiles=True);key=np.frombuffer(digest(canonical),dtype=np.uint8)
         elif mode=='id':key=np.frombuffer(digest(query),dtype=np.uint8)
         elif mode=='substructure':
-            molecule=Chem.MolFromSmarts(query)
-            if molecule is None: raise ValueError('Invalid SMILES/SMARTS pattern')
+            molecule,_=substructure_query(query)
             pattern=np.frombuffer(DataStructs.BitVectToBinaryText(Chem.PatternFingerprint(molecule,fpSize=2048)),dtype=np.uint8)
             bits=np.flatnonzero(pattern)
         else:raise ValueError('Invalid graph search mode')
@@ -131,6 +144,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 if source=='stock':
                     body.pop('lookup',None) # candidates come only from this host's lookup
+                    if mode=='substructure':body['queryFormat']=substructure_query(query)[1] # same SMILES/SMARTS choice as macrocycles
                     if mode=='id' and self.server.stock_ids is None:refresh_stock_ids(self.server)
                     payload=None;lookup=self.server.stock_ids
                     if mode=='id' and lookup and lookup.matches(body):

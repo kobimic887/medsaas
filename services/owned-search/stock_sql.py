@@ -87,9 +87,12 @@ def search(body):
                 condition='m.canonical_smiles = %s AND m.mol @= mol_from_smiles(%s::cstring)'
                 parameters=[canonical,query]
             else:
-                cur.execute('SELECT qmol_from_smarts(%s::cstring) IS NOT NULL',(query,))
+                # serve.py chooses the parse with substructure_query(); plain SMILES
+                # must be a molecule so Kekule input matches aromatic stock rows.
+                parse='mol_from_smiles' if body.get('queryFormat')=='smiles' else 'qmol_from_smarts'
+                cur.execute(f'SELECT {parse}(%s::cstring) IS NOT NULL',(query,))
                 if not cur.fetchone()[0]: raise ValueError('Invalid SMILES/SMARTS pattern')
-                condition='m.mol @> qmol_from_smarts(%s::cstring)'
+                condition=f'm.mol @> {parse}(%s::cstring)'
                 parameters=[query]
             cur.execute('SELECT m.id,m.canonical_smiles,m.metadata FROM public.molecules m WHERE m.dataset_id=%s AND '+condition+' ORDER BY m.id LIMIT %s',[dataset,*parameters,cap])
             rows=cur.fetchall()

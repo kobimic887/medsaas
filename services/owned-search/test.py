@@ -2,7 +2,7 @@
 import csv, json, pathlib, tempfile, struct, hashlib, time
 from rdkit import Chem
 from build import build, STRIDE
-from serve import GraphStore, FIELDS
+from serve import GraphStore, FIELDS, substructure_query
 
 def fixture(directory):
     structures=[('CCO','DUP'),('OCC','DUP'),('C[C@H](O)F','LEFT'),('C[C@@H](O)F','RIGHT'),('Oc1ccccc1','AROM'),('C1CCCCC1','ALIPH')]
@@ -26,6 +26,14 @@ with tempfile.TemporaryDirectory() as temporary:
     assert [r['molecule_id'] for r in store.search('real','exact','C[C@H](O)F',100)['results']]==[3]
     assert [r['molecule_id'] for r in store.search('real','substructure','c1ccccc1',100)['results']]==[5]
     assert [r['molecule_id'] for r in store.search('real','substructure','C[C@H](O)F',100)['results']]==[3]
+    # Kekule SMILES (Ketcher drawings) must find aromatic rows; as SMARTS they matched nothing.
+    assert [r['molecule_id'] for r in store.search('real','substructure','C1=CC=CC=C1',100)['results']]==[5]
+    assert [r['molecule_id'] for r in store.search('real','substructure','C1C=CC=CC=1O',100)['results']]==[5]
+    assert store.search('real','substructure','C=C',100)['results']==[] # a double bond is not aromatic
+    # SMARTS-only meaning survives: bracket H counts, dummies and query bonds.
+    assert [r['molecule_id'] for r in store.search('real','substructure','[CH2]',100)['results']]==[1,2,6]
+    assert [r['molecule_id'] for r in store.search('real','substructure','c~O',100)['results']]==[5]
+    assert [substructure_query(q)[1] for q in ('c1ccccc1','C1=CC=CC=C1','[nH]1cccc1','[#6]','[CH3]','*c1ccccc1','C~C','[C,N]')]==['smiles','smiles','smiles','smarts','smarts','smarts','smarts','smarts']
     assert store.search('real','id','UNKNOWN',100)['results']==[]
     assert store.search('both','substructure','[#6]',2)['truncated']
     assert len(store.search('both','substructure','[#6]',2)['results'])==2
@@ -56,4 +64,4 @@ with tempfile.TemporaryDirectory() as temporary:
     manifest['sha256']='0'*64;(base/'stock.ids.json').write_text(json.dumps(manifest))
     try:StockIdLookup(base);assert False
     except ValueError:pass
-print('owned graph search: 13 meaningful checks passed (canonical, stereo, true graph, SMARTS, duplicate identities, bounds, incomplete refusal) + stock identifier lookup')
+print('owned graph search: 19 meaningful checks passed (canonical, stereo, true graph, Kekule SMILES, SMARTS, duplicate identities, bounds, incomplete refusal) + stock identifier lookup')
