@@ -43,6 +43,13 @@ export const MACROCYCLE_DATASETS = Object.freeze({
     sourceUrl: 'https://spectra.pyxis-discovery.com/CompChem/Pyxis_Virtual_Molecules_20260923.zip',
     kind: 'macrocycle_virtual',
   },
+  // Small-molecule virtual set on the same index engine; not part of "both".
+  smallvirtual: {
+    name: 'Small molecules virtual — 2026-10-15',
+    sourceFile: 'Asinex_Virtual.zip',
+    sourceUrl: 'https://spectra.pyxis-discovery.com/CompChem/Asinex_Virtual.zip',
+    kind: 'small_virtual',
+  },
 });
 
 export class MacrocycleSearchUnavailableError extends Error {

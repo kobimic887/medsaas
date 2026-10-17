@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Validate and normalize Anna's 2026-09-23 macrocycle exports.
+ * Validate and normalize Anna's 2026-09-23 macrocycle exports and the
+ * 2026-10-15 small-molecule virtual set (tab-separated .smi in a zip).
  *
  * The dated source files are immutable evidence; use --input to point to a
  * downloaded original outside the repo. Writes a normalized CSV plus
@@ -10,6 +11,8 @@
  *   --input /data/Pyxis_RealStock_18190.csv --out-dir /data/macro-real
  * bun scripts/import-macrocycle-datasets.mjs --source virtual \
  *   --input /data/Pyxis_Virtual_Molecules_20260923.zip --out-dir /data/macro-virtual
+ * bun scripts/import-macrocycle-datasets.mjs --source smallvirtual \
+ *   --input /data/Asinex_Virtual.zip --out-dir /data/small-virtual
  *
  * This normalizer deliberately has no upload flag. The compact SQL importer
  * in services/catalog-sql preserves the existing vectors without rebuilding
@@ -24,17 +27,21 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { MACROCYCLE_DATASETS, parseMacrocycleSource } from '../server/utils/macrocycleSearch.js';
+import { MACROCYCLE_DATASETS } from '../server/utils/macrocycleSearch.js';
 
 const HEADERS = {
   real: ['mol', 'MAIN_BAS', 'web_mg', 'web_uM', 'Lead_TIME'],
   virtual: ['mol', 'ID', 'MAIN_BAS', 'CURRENT_TOT_NETTO_MG', 'CURRENT_TOT_AMOUNT_UM', 'Lead_TIME'],
+  smallvirtual: ['SMILES_STRING', 'ID', 'LEAD_TIME', 'NETTO_MG'],
 };
+// The small-molecule set is tab-separated; its IDs are digit groups joined by "-".
+const TAB_SEPARATED = new Set(['smallvirtual']);
+const SMALL_VIRTUAL_ID = /^\d+(?:-\d+)+$/;
 const OUTPUT_HEADER = [
   'smiles', 'ID', 'MAIN_BAS', 'compound_id', 'source', 'source_file',
   'web_mg', 'web_uM', 'CURRENT_TOT_NETTO_MG', 'CURRENT_TOT_AMOUNT_UM', 'Lead_TIME',
 ];
-const EXPECTED_ROWS = { real: 18190, virtual: 2350440 };
+const EXPECTED_ROWS = { real: 18190, virtual: 2350440, smallvirtual: 6717749 };
 
 function argsFrom(argv) {
   const opts = { limit: Infinity };
@@ -49,10 +56,14 @@ function argsFrom(argv) {
     else throw new Error(`Unknown option: ${key}`);
   }
   if (opts.help) return opts;
-  opts.source = parseMacrocycleSource(opts.source);
+  if (!Object.hasOwn(HEADERS, opts.source)) throw new Error(`--source must be ${Object.keys(HEADERS).join(', ')}`);
   if (!opts.input || !opts.outDir) throw new Error('--input and --out-dir are required');
   if (!Number.isInteger(opts.limit) && opts.limit !== Infinity || opts.limit < 1) throw new Error('--limit must be a positive integer');
   return opts;
+}
+
+function parseLine(source, line) {
+  return TAB_SEPARATED.has(source) ? line.split('\t') : parseCsvLine(line);
 }
 
 function parseCsvLine(line) {
@@ -111,7 +122,7 @@ async function normalizeSource(opts, uploadCsv) {
     for await (const line of rl) {
       lineNo++;
       if (lineNo === 1) {
-        const header = parseCsvLine(line.replace(/^\uFEFF/, ''));
+        const header = parseLine(opts.source, line.replace(/^\uFEFF/, ''));
         report.header = header;
         if (header.join('\0') !== HEADERS[opts.source].join('\0')) {
           throw new Error(`Unexpected ${opts.source} source header: ${header.join(',')}`);
@@ -121,10 +132,16 @@ async function normalizeSource(opts, uploadCsv) {
       if (!line.trim()) continue;
       report.inputRows++;
       let fields;
-      try { fields = parseCsvLine(line); }
+      try { fields = parseLine(opts.source, line); }
       catch { fields = null; }
-      const values = fields && fields.length === report.header.length
+      let values = fields && fields.length === report.header.length
         ? Object.fromEntries(report.header.map((key, index) => [key, fields[index].trim()])) : null;
+      // Map the small-molecule columns onto the macrocycle contract. The ID is
+      // also the compound code; NETTO_MG ("5mg") is a made-to-order amount.
+      if (values && opts.source === 'smallvirtual') {
+        values = { mol: values.SMILES_STRING, ID: values.ID, MAIN_BAS: values.ID,
+          CURRENT_TOT_NETTO_MG: values.NETTO_MG.replace(/\s*mg$/i, ''), Lead_TIME: values.LEAD_TIME };
+      }
       // Real-stock source has no separate ID. MAIN_BAS is its supplier code,
       // and may repeat with a different amount/lead-time row; the index gives
       // each record a distinct row ID. Virtual rows keep their supplied ID.
@@ -134,6 +151,7 @@ async function normalizeSource(opts, uploadCsv) {
       else if (!values.mol) reject = 'empty mol';
       else if (!values.MAIN_BAS) reject = 'empty MAIN_BAS';
       else if (!id) reject = 'empty ID';
+      else if (opts.source === 'smallvirtual' && !SMALL_VIRTUAL_ID.test(id)) reject = 'ID is not dash-separated digits';
       // The real-stock export repeats some supplier IDs with different
       // quantity/lead-time rows. Keep every source record; the search index
       // gives each row its own identity while the supplier code stays intact.

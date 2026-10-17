@@ -49,5 +49,5 @@ def build(index_dir, out_dir, source, sample=None):
 
 if __name__ == '__main__':
     parser=argparse.ArgumentParser(); parser.add_argument('--index-dir',required=True);parser.add_argument('--out-dir',required=True)
-    parser.add_argument('--source',choices=['real','virtual'],required=True);parser.add_argument('--sample',type=int)
+    parser.add_argument('--source',choices=['real','virtual','smallvirtual'],required=True);parser.add_argument('--sample',type=int)
     args=parser.parse_args();build(args.index_dir,args.out_dir,args.source,args.sample)

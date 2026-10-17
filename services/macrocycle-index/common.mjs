@@ -67,9 +67,13 @@ export const BYTE_BIT_INDEXES = Array.from({ length: 256 }, (_, value) => {
   return indexes;
 });
 
+// The engine is generic; smallvirtual is the 2026-10-15 small-molecule virtual
+// set ("Small molecules · Virtual"). It is binary-only (format 1): at 6.7M rows a
+// count scan would take ~75 s, past the 40 s request budget.
 export const DATASETS = Object.freeze({
   real: { id: 1, name: 'Macrocycles real stock — 2026-09-23', expectedRows: 18190 },
   virtual: { id: 2, name: 'Macrocycles virtual — 2026-09-23', expectedRows: 2350440 },
+  smallvirtual: { id: 3, name: 'Small molecules virtual — 2026-10-15', expectedRows: 6717749, countStream: false },
 });
 
 export const NORMALIZED_HEADER = [

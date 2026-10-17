@@ -24,7 +24,7 @@ function argumentsFrom(argv) {
     else throw new Error(`Unknown argument: ${argv[i]}`);
   }
   if (!DATASETS[args.source] || !args.input || !args.outDir) {
-    throw new Error('Usage: bun build.mjs --source real|virtual --input normalized.csv --out-dir directory');
+    throw new Error(`Usage: bun build.mjs --source ${Object.keys(DATASETS).join('|')} --input normalized.csv --out-dir directory`);
   }
   return args;
 }
@@ -37,6 +37,8 @@ async function fileSha256(filename) {
 
 async function build({ source, input, outDir }) {
   const definition = DATASETS[source];
+  // countStream:false builds a format-1 binary index (Tanimoto only).
+  const withCounts = definition.countStream !== false;
   await fsp.mkdir(outDir, { recursive: true });
   const fpName = `${source}.fpb`;
   const rowsName = `${source}.rows.csv`;
@@ -134,18 +136,18 @@ async function build({ source, input, outDir }) {
       let packed;
       try {
         fp = mol.get_morgan_fp_as_uint8array(FINGERPRINT_DETAILS);
-        packed = countMorganPacked(mol);
+        if (withCounts) packed = countMorganPacked(mol);
       } finally { mol.delete(); }
       if (!fp || fp.length !== FINGERPRINT_BYTES) throw new Error(`RDKit fingerprint failure at row ${sourceRows}`);
-      if (!packed) throw new Error(`Count fingerprint failure at row ${sourceRows}`);
-      if (packed.isotopic) {
+      if (withCounts && !packed) throw new Error(`Count fingerprint failure at row ${sourceRows}`);
+      if (withCounts && packed.isotopic) {
         isotopicRows++;
         throw new Error(
           `Isotope-labelled atom at row ${sourceRows}; count Morgan does not reproduce RDKit's deltaMass invariant. `
           + 'Remove or normalize this row before rebuilding the index.'
         );
       }
-      assertCountSupport(fp, packed, sourceRows);
+      if (withCounts) assertCountSupport(fp, packed, sourceRows);
 
       const pos = batchRows * RECORD_BYTES;
       recordBatch.writeBigUInt64LE(BigInt(csvOffset), pos);
@@ -155,14 +157,16 @@ async function build({ source, input, outDir }) {
       recordBatch.set(fp, pos + 10);
       batchRows++;
       indexedRows++;
-      if (packed.capped) cappedCounts++;
-      for (const count of packed.counts) {
-        if (count > maxCount) maxCount = count;
+      if (withCounts) {
+        if (packed.capped) cappedCounts++;
+        for (const count of packed.counts) {
+          if (count > maxCount) maxCount = count;
+        }
+        if (countBatchBytes + packed.counts.length > countBatch.length) flushCounts();
+        countBatch.set(packed.counts, countBatchBytes);
+        countBatchBytes += packed.counts.length;
+        countsBytes += packed.counts.length;
       }
-      if (countBatchBytes + packed.counts.length > countBatch.length) flushCounts();
-      countBatch.set(packed.counts, countBatchBytes);
-      countBatchBytes += packed.counts.length;
-      countsBytes += packed.counts.length;
       if (batchRows === 4096) flushRecords();
 
       const csvLine = `${line}\n`;
@@ -194,6 +198,23 @@ async function build({ source, input, outDir }) {
   const countsPath = path.join(outDir, countsName);
   await fsp.rename(fpTemp, fpPath);
   await fsp.rename(rowsTemp, rowsPath);
+  if (!withCounts) {
+    await fsp.unlink(countsTemp);
+    const manifest = {
+      formatVersion: 1, source, datasetId: definition.id, datasetName: definition.name,
+      sourceRows, indexedRows, invalidSmiles, invalidExamples,
+      fingerprint: 'RDKit Morgan radius 2, 2048-bit, chirality off, binary Tanimoto',
+      similarityMetrics: [...BINARY_SIMILARITY_METRICS],
+      normalizedInputSha256: await fileSha256(input),
+      fingerprintsFile: fpName, rowsFile: rowsName,
+      fingerprintsBytes: (await fsp.stat(fpPath)).size, rowsBytes: (await fsp.stat(rowsPath)).size,
+      generatedAt: new Date().toISOString(),
+    };
+    if (manifest.fingerprintsBytes !== indexedRows * RECORD_BYTES) throw new Error('Fingerprint file size mismatch');
+    await fsp.writeFile(path.join(outDir, `${source}.manifest.json`), JSON.stringify(manifest, null, 2) + '\n');
+    console.log(`${source}: indexed ${indexedRows}/${sourceRows}, RDKit rejected ${invalidSmiles}, binary only`);
+    return;
+  }
   await fsp.rename(countsTemp, countsPath);
   const manifest = {
     formatVersion: FORMAT_VERSION, source, datasetId: definition.id, datasetName: definition.name,
