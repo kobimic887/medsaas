@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import express from 'express';
 import { quoteCompoundCart } from '../utils/compoundShopOffers.js';
-import { PRICE_BOOK_VERSION } from '../../shared/compoundPriceBook.js';
+import { MADE_TO_ORDER_SOURCES, PRICE_BOOK_VERSION } from '../../shared/compoundPriceBook.js';
 import {
   CHECKOUT_SESSION_ID, COMPOUND_ORDER_ID, CompoundOrderError, SHIPPING_NOTE,
   compoundOrderId, handleCompoundShopSession, orderItem, orderOwner, publicCompoundOrder,
@@ -32,7 +32,7 @@ function checkoutParams(order, appUrl) {
         currency: 'usd', unit_amount: item.unitAmountCents,
         product_data: {
           name: `${item.code} · ${item.amountMg} mg`,
-          description: `${item.source === 'virtual' ? 'Made to order. ' : ''}${SHIPPING_NOTE}`,
+          description: `${MADE_TO_ORDER_SOURCES.includes(item.source) ? 'Made to order. ' : ''}${SHIPPING_NOTE}`,
         },
       },
       quantity: item.quantity,

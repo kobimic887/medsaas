@@ -1,5 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { PRICE_BOOK_VERSION, PRICE_GUIDE_EUR_USD, workbookPacksForRow } from '../../shared/compoundPriceBook.js';
+import { MADE_TO_ORDER_SOURCES, PRICE_BOOK_VERSION, PRICE_GUIDE_EUR_USD, workbookPacksForRow } from '../../shared/compoundPriceBook.js';
+
+const madeToOrder = (source) => MADE_TO_ORDER_SOURCES.includes(source);
 
 const OFFER_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_TOKEN_LENGTH = 24000;
@@ -38,7 +40,7 @@ function positiveDecimal(value) {
 }
 
 function canonicalIdentity(input) {
-  if (!input || !['stock', 'real', 'virtual'].includes(input.source)) return null;
+  if (!input || !['stock', 'real', 'virtual', 'smallvirtual'].includes(input.source)) return null;
   const rowId = typeof input.rowId === 'string' ? input.rowId.trim()
     : Number.isSafeInteger(input.rowId) && input.rowId >= 0 ? String(input.rowId) : '';
   if (!rowId || rowId.length > 128 || [...rowId].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) return null;
@@ -47,8 +49,8 @@ function canonicalIdentity(input) {
   const code = input.code.trim();
   const price = workbookPacksForRow(input.source, code);
   if (!price) return null;
-  const availableMg = input.source === 'virtual' ? null : positiveDecimal(input.availableMg);
-  if (input.source !== 'virtual' && availableMg === null) return null;
+  const availableMg = madeToOrder(input.source) ? null : positiveDecimal(input.availableMg);
+  if (!madeToOrder(input.source) && availableMg === null) return null;
   const leadTime = input.leadTime == null ? null : String(input.leadTime).trim();
   if (leadTime !== null && (leadTime.length > 120 || typeof input.leadTime === 'object')) return null;
   return { source: input.source, rowId, code, smiles: input.smiles, availableMg, leadTime };
@@ -57,7 +59,7 @@ function canonicalIdentity(input) {
 function publicOffer(payload, token) {
   const { purpose: _purpose, issuedAt, expiresAt, ...identity } = payload;
   const packs = workbookPacksForRow(payload.source, payload.code).packs
-    .filter(({ mg }) => payload.source === 'virtual' || mg <= payload.availableMg);
+    .filter(({ mg }) => madeToOrder(payload.source) || mg <= payload.availableMg);
   return { ...identity, token, packs, issuedAt: new Date(issuedAt).toISOString(), expiresAt: new Date(expiresAt).toISOString() };
 }
 
@@ -67,7 +69,7 @@ export function mintCompoundOffer(input, { secret, now = Date.now() } = {}) {
   if (!Number.isSafeInteger(now) || now < 0) throw new TypeError('now must be epoch milliseconds.');
   const identity = canonicalIdentity(input);
   if (!identity) return null;
-  if (identity.source !== 'virtual' && identity.availableMg < 1) return null;
+  if (!madeToOrder(identity.source) && identity.availableMg < 1) return null;
   const payload = { purpose: PURPOSE, priceBookVersion: PRICE_BOOK_VERSION, ...identity, issuedAt: now, expiresAt: now + OFFER_TTL_MS };
   const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const token = `${encoded}.${signature(encoded, secret)}`;
@@ -118,7 +120,7 @@ export function quoteCompoundCart(items, { secret, now = Date.now() } = {}) {
       code: offer.code,
       smiles: offer.smiles,
       requestedMg: (existing?.requestedMg || 0) + pack.mg * item.quantity,
-      availableMg: offer.source === 'virtual' ? null : Math.min(existing?.availableMg ?? Infinity, offer.availableMg),
+      availableMg: madeToOrder(offer.source) ? null : Math.min(existing?.availableMg ?? Infinity, offer.availableMg),
     });
     return {
       key, source: offer.source, rowId: offer.rowId, code: offer.code, smiles: offer.smiles,

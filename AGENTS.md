@@ -53,6 +53,10 @@ when a path or trap moves.
   checkout refuse locally with `503 CATALOG_RETIRED`; company overrides cannot
   restore Asinex dependence. Credit-plan checkout remains available. Known
   Asinex compute URLs are refused without charging; use configured Pyxis services. Stock search belongs in Home (Simulation).
+  Home searches Small molecules (Stock, Virtual `smallvirtual`) and Macrocycles
+  (RPX, VPX) singly or together; mixed selections are `/api/owned-search`
+  `source=multi` (Morgan Tanimoto only). `smallvirtual` is an owned 6.7M-row
+  index (file named Asinex_Virtual, not a supplier route), never part of `both`.
   Result selection never overwrites query text; docking uses selected rows, with
   query fallback only when none are selected and explicit DiffDock ligand precedence.
   Structure previews depict exact SMILES with browser RDKit; workbook price displays

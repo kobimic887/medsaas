@@ -4,7 +4,10 @@ The authenticated application exposes `POST /api/owned-search` and
 `GET /api/owned-search/status?source=stock|both|real|virtual|open`. These routes
 never use the retired supplier catalog namespaces.
 
-A request selects one source and `id`, `exact`, `substructure` or `similarity`,
+A request selects one source (`stock`, `smallvirtual`, `both`, `real`, `virtual`,
+`open`) or `multi` with `sources` (1–4 distinct of stock/smallvirtual/real/virtual,
+merged into one ranked list; similarity is Morgan binary Tanimoto only), and
+`id`, `exact`, `substructure` or `similarity`,
 with 1–20 query strings, `offset` 0–900 and `limit` 1–100. Similarity additionally
 accepts the existing source-specific fingerprint/metric and threshold options.
 Each query is reported as matched, unmatched or invalid. Responses preserve

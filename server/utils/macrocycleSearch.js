@@ -29,6 +29,8 @@ export const MACROCYCLE_SIMILARITY_METRIC_LABELS = Object.freeze({
   count_dice: 'Count Dice (frequency-weighted)',
 });
 
+// "both" combines these two. Every entry of MACROCYCLE_DATASETS is an indexed
+// dataset on the same engine (INDEXED_SOURCES), including the small-molecule set.
 export const MACROCYCLE_SOURCES = Object.freeze(['real', 'virtual']);
 export const MACROCYCLE_DATASETS = Object.freeze({
   real: {
@@ -52,6 +54,8 @@ export const MACROCYCLE_DATASETS = Object.freeze({
   },
 });
 
+export const INDEXED_SOURCES = Object.freeze(Object.keys(MACROCYCLE_DATASETS));
+
 export class MacrocycleSearchUnavailableError extends Error {
   constructor(message) {
     super(message || 'Macrocycle search is unavailable');
@@ -71,8 +75,8 @@ export class MacrocycleSearchValidationError extends Error {
 }
 
 export function parseMacrocycleSource(raw) {
-  if (typeof raw !== 'string' || !MACROCYCLE_SOURCES.includes(raw.trim())) {
-    throw new MacrocycleSearchValidationError('source must be real or virtual');
+  if (typeof raw !== 'string' || !INDEXED_SOURCES.includes(raw.trim())) {
+    throw new MacrocycleSearchValidationError('source must be real, virtual or smallvirtual');
   }
   return raw.trim();
 }
@@ -82,7 +86,7 @@ export function parseMacrocycleSource(raw) {
 export function parseMacrocycleSearchSource(raw) {
   if (typeof raw === 'string' && raw.trim() === 'both') return 'both';
   try { return parseMacrocycleSource(raw); }
-  catch { throw new MacrocycleSearchValidationError('source must be both, real or virtual'); }
+  catch { throw new MacrocycleSearchValidationError('source must be both, real, virtual or smallvirtual'); }
 }
 
 export function parseMacrocycleSearchQuery(query = {}) {
@@ -127,7 +131,7 @@ export function assertMacrocycleMetricSupported(params, dataset) {
   const metrics = Array.isArray(dataset?.metrics) ? dataset.metrics : [];
   if (metrics.length > 0 && !metrics.includes(params.similarityMetric)) {
     throw new MacrocycleSearchValidationError(
-      `The ${params.source} macrocycle dataset provides ${metrics.join(', ')} only. `
+      `The ${params.source} dataset provides ${metrics.join(', ')} only. `
         + 'Rebuild its index with count fingerprints to enable the count metrics.'
     );
   }
@@ -136,7 +140,7 @@ export function assertMacrocycleMetricSupported(params, dataset) {
 export function macrocycleSearchConfig(env = process.env) {
   const baseUrl = String(env.MACROCYCLE_SEARCH_BASE || '').trim().replace(/\/+$/, '');
   const datasets = {};
-  for (const source of MACROCYCLE_SOURCES) {
+  for (const source of INDEXED_SOURCES) {
     const key = source.toUpperCase();
     const rawId = String(env[`MACROCYCLE_${key}_DATASET_ID`] || '').trim();
     const id = rawId ? Number(rawId) : null;

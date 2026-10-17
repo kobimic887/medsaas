@@ -6,8 +6,13 @@ record described in `docs/OPERATIONS.md`.
 
 ## Owned compound sources
 
-Simulation starts on Pyxis stock in every build and offers Stock, Macrocycles,
-and Open compounds. Sources never silently fall back to each other or to a
+Simulation starts on Pyxis stock in every build. Its picker groups Small molecules
+(Stock, Virtual) and Macrocycles (RPX, VPX) as four checkable collections, plus Open
+compounds on its own. Selecting only stock, only RPX, only VPX, or RPX + VPX keeps
+the dedicated paths below; any other mix is page source `multi:<collections>` and
+always uses `/api/owned-search` (`source=multi`, `sources=[...]`) with one shared
+table that labels each row's collection. Mixed similarity is Morgan (ECFP4) binary
+Tanimoto only and ranks one list; RPX + VPX stay one combined scan inside it. Sources never silently fall back to each other or to a
 supplier. Failed/new searches clear old rows and disable stale pagination.
 Retired catalog browsing cannot run from an owned source.
 
@@ -51,6 +56,12 @@ Multiple selections do not disable a new search. Select-all covers loaded rows o
   Count scores are a Pyxis method over RDKit Morgan environments, **not MOE
   ctanimoto or MOE-comparable**. Labels distinguish binary/frequency-weighted.
   See `docs/DATA-MACROCYCLES.md` and `server/utils/countMorgan.js`.
+- **Small molecules · Virtual (`smallvirtual`):** the 2026-10-15
+  `Asinex_Virtual.zip` export (6,717,749 rows, dash-separated digit IDs) indexed
+  as dataset 3 on the macrocycle engine and graph screen. The file name is
+  provenance only; the data is owned and served from the scientific host, not a
+  supplier route. Format 1 (binary Tanimoto only): a count scan at this size
+  exceeds the 40 s budget. Never part of `both`. Priced at the VPX tier, made to order.
 - **Open compounds:** authenticated deterministic status/similarity/export and
   AI search retrieve ChEMBL candidates then re-score locally with RDKit Morgan.
   “Search without AI” explicitly chooses the deterministic path; AI errors do
@@ -74,12 +85,12 @@ substitute providers. A retired provider refusal must not consume credits.
 
 ## Offers and checkout
 
-Stock, RPX and VPX search responses mint signed 24-hour offers from trusted engine
+Stock, small-molecule virtual, RPX and VPX search responses mint signed 24-hour offers from trusted engine
 rows. The browser cannot mint offers or supply authoritative prices. ChEMBL stays
 discovery-only. `shared/compoundPriceBook.js` owns the workbook's 1–3 tier and fixed
 EUR→USD conversion; at most three distinct source/row identities per order. Known
 stock/real snapshot mg bounds pack sizes and aggregate basket quantity. Virtual
-compounds are made to order. Missing pack prices or quantities never invent stock.
+compounds (VPX and small-molecule virtual) are made to order. Missing pack prices or quantities never invent stock.
 
 `/api/compound-shop` requires Mongo, JWT and an active user. `/quote` verifies offer
 signatures and calculates integer cents. `/checkout` repeats validation and requires

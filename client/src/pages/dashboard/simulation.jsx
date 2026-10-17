@@ -28,7 +28,7 @@ import { API_CONFIG, getAuthToken } from "@/utils/constants";
 import { copyToClipboard } from '@/utils/copyToClipboard';
 import { appendUniqueMacrocycleRows, macrocycleResultsFromPayload } from '@/utils/macrocycleResults';
 import { openResultsFromPayload } from '@/utils/openResults';
-import { OWNED_SEARCH_MODES, appendUniqueOwnedRows, ownedRowsFromPayload, parseSearchQueries, searchModesFromStatus } from '@/utils/ownedSearch';
+import { OWNED_COLLECTIONS, OWNED_SEARCH_MODES, appendUniqueOwnedRows, collectionLabel, collectionsForSource, isMultiSource, ownedRowsFromPayload, ownedSearchSourceParams, parseSearchQueries, searchModesFromStatus, sourceForCollections } from '@/utils/ownedSearch';
 import { cartItemFromCatalogPrice } from '@/utils/stockOffers';
 import { appendUniqueStockRows, stockResultsFromPayload } from '@/utils/stockResults';
 import { clearViewerStorage, markViewerHandoff, normalizePdbId, rcsbPdbDownloadUrl } from '@/utils/viewerStorage';
@@ -42,12 +42,20 @@ const MACROCYCLE_SOURCES = Object.freeze({
 // One short line per collection so the header never describes a source the
 // researcher is not searching (the macrocycle line used to show for stock).
 const SOURCE_BLURBS = Object.freeze({
-  stock: 'Search owned screening stock by structure.',
+  stock: 'Search small-molecule screening stock by structure.',
   both: 'Search real and virtual macrocycles together, or filter that collection below.',
   real: 'Search the real macrocycle stock.',
   virtual: 'Search the virtual macrocycle designs.',
   open: 'Discover related structures in the open ChEMBL collection.',
 });
+const sourceBlurb = (source) => SOURCE_BLURBS[source]
+  || (isMultiSource(source) ? `Search ${collectionsForSource(source).map(collectionLabel).join(', ')} together as one ranked list.` : SOURCE_BLURBS.stock);
+
+// Small molecules and Macrocycles each have two sub-collections; Open is separate.
+const COLLECTION_GROUPS = Object.freeze([
+  { title: 'Small molecules', detail: 'Stock 630,646 · Virtual 6,717,749', collections: ['stock', 'smallvirtual'] },
+  { title: 'Macrocycles', detail: 'RPX 18,171 · VPX 2,347,736', collections: ['real', 'virtual'] },
+]);
 
 // Local mirror of the server allowlist labels (docs/DATA-STOCK-COMPOUNDS.md).
 // Prefer stockStatus.capabilities when the status probe succeeded; these keep
@@ -478,7 +486,9 @@ export function Simulation({ active = true }) {
     const token = getAuthToken();
     const source = searchSource;
     setOwnedSearchStatus((previous) => ({ ...previous, [source]: { state: 'loading' } }));
-    fetch(`${API_CONFIG.buildApiUrl('/owned-search/status')}?${new URLSearchParams({ source })}`, {
+    const { source: apiSource, sources } = ownedSearchSourceParams(source);
+    const query = new URLSearchParams({ source: apiSource, ...(sources ? { sources: sources.join(',') } : {}) });
+    fetch(`${API_CONFIG.buildApiUrl('/owned-search/status')}?${query}`, {
       signal: controller.signal,
       headers: { accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     }).then(async (response) => {
@@ -760,7 +770,7 @@ export function Simulation({ active = true }) {
   // any pending page before allowing another search.
   const handleThresholdChange = (value) => {
     setSimilarityThreshold(value);
-    if (searchSourceRef.current !== 'stock' && searchSourceRef.current !== 'open' && !MACROCYCLE_SOURCES[searchSourceRef.current]) return;
+    if (searchSourceRef.current !== 'stock' && searchSourceRef.current !== 'open' && !MACROCYCLE_SOURCES[searchSourceRef.current] && !isMultiSource(searchSourceRef.current)) return;
     searchControllerRef.current?.abort();
     searchControllerRef.current = null;
     searchRequestIdRef.current += 1;
@@ -836,7 +846,7 @@ export function Simulation({ active = true }) {
   };
 
   const handleSourceChange = (nextSource) => {
-    if (!['stock', 'open', 'both', 'real', 'virtual'].includes(nextSource)) return;
+    if (!['stock', 'open', 'both', 'real', 'virtual'].includes(nextSource) && !isMultiSource(nextSource)) return;
     if (nextSource === searchSourceRef.current) return;
     searchSourceRef.current = nextSource;
     ownedSearchRequestRef.current = null;
@@ -890,7 +900,20 @@ export function Simulation({ active = true }) {
       setSearchType('similarity');
       setSimilarityThreshold(value => Math.max(0.1, value));
       if (macrocycleStatusRef.current?.[nextSource]?.state !== 'available') fetchMacrocycleStatus(nextSource);
+    } else if (isMultiSource(nextSource)) {
+      // Mixed collections rank one list by Morgan (ECFP4) binary Tanimoto.
+      setSearchType('similarity');
+      setSimilarityThreshold(value => Math.max(0.1, value));
     }
+  };
+
+  // Toggle one collection (or a whole group). The last selected collection
+  // cannot be removed; choose Open compounds to leave the owned collections.
+  const handleCollectionsChange = (values, checked) => {
+    const current = collectionsForSource(searchSourceRef.current);
+    const next = checked ? [...new Set([...current, ...values])] : current.filter((value) => !values.includes(value));
+    const source = sourceForCollections(next);
+    if (source) handleSourceChange(source);
   };
 
   const handleSearchModeChange = (mode) => {
@@ -1296,10 +1319,10 @@ export function Simulation({ active = true }) {
       const source = searchSourceRef.current;
       const status = ownedSearchStatusRef.current?.[source];
       const queries = source === 'asinex' ? [rawQuery] : parseSearchQueries(rawQuery, mode, status?.maxQueries || 20);
-      if (source !== 'asinex' && (mode !== 'similarity' || queries.length > 1)) {
+      if (source !== 'asinex' && (mode !== 'similarity' || queries.length > 1 || isMultiSource(source))) {
         if (!searchModesFromStatus(status, source).includes(mode)) throw new Error(status?.reason || 'This collection does not currently support the selected search method or batch search. No other collection was searched.');
         const request = {
-          source, mode, queries,
+          ...ownedSearchSourceParams(source), mode, queries,
           threshold: similarityThresholdRef.current,
           fingerprint_type: source === 'stock' ? stockFingerprintTypeRef.current : 'morgan',
           similarity_metric: source === 'stock' ? stockSimilarityMetricRef.current : MACROCYCLE_SOURCES[source] ? macrocycleSimilarityMetricRef.current : 'tanimoto',
@@ -2214,7 +2237,7 @@ export function Simulation({ active = true }) {
   );
   const macrocycleSearchDisabled = Boolean(MACROCYCLE_SOURCES[searchSource]) && macrocycleStatus[searchSource]?.state !== 'available';
   const ownedModes = searchModesFromStatus(activeOwnedStatus, searchSource);
-  const usesOwnedSearch = searchType !== 'similarity' || queryCount > 1;
+  const usesOwnedSearch = isMultiSource(searchSource) || searchType !== 'similarity' || queryCount > 1;
   const sourceSearchDisabled = usesOwnedSearch
     ? !ownedModes.includes(searchType)
     : stockSearchDisabled || openSearchDisabled || macrocycleSearchDisabled;
@@ -2283,40 +2306,38 @@ export function Simulation({ active = true }) {
             <p className="text-xs font-semibold uppercase tracking-widest text-brand-600 dark:text-brand-300">Compound search</p>
             <h1 className="text-xl font-semibold text-blue-gray-900 dark:text-slate-50">Pyxis compound catalog</h1>
           </div>
-          <p className="text-xs text-blue-gray-500 dark:text-slate-400">{SOURCE_BLURBS[searchSource] || SOURCE_BLURBS.stock}</p>
+          <p className="text-xs text-blue-gray-500 dark:text-slate-400">{sourceBlurb(searchSource)}</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-3">
-          {[
-            { value: 'stock', title: 'Stock compounds', detail: '630,646 searchable' },
-            { value: 'both', title: 'Macrocycles', detail: 'RPX + VPX · 2,365,907 searchable' },
-            { value: 'open', title: 'Open compounds', detail: 'ChEMBL discovery' },
-          ].map(({ value, title, detail }) => {
-            const selected = value === 'both' ? Boolean(MACROCYCLE_SOURCES[searchSource]) : searchSource === value;
+          {COLLECTION_GROUPS.map(({ title, detail, collections }) => {
+            const selectedList = collectionsForSource(searchSource);
+            const selectedCount = collections.filter((value) => selectedList.includes(value)).length;
             return (
-              <label key={value} className={`flex min-w-0 cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors ${selected ? 'border-brand-500 bg-brand-50 text-brand-900 dark:bg-brand-900/30 dark:text-brand-100' : 'border-blue-gray-100 bg-blue-gray-50/50 text-blue-gray-800 hover:border-brand-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'}`}>
-                <input type="radio" name="searchSource" value={value} checked={selected} onChange={() => handleSourceChange(value)} className="mt-1 accent-teal-700" />
-                <span className="min-w-0"><span className="block font-semibold leading-5">{title}</span><span className="mt-1 block text-xs opacity-75">{detail}</span></span>
-              </label>
+              <fieldset key={title} className={`min-w-0 rounded-xl border px-3 py-3 transition-colors ${selectedCount ? 'border-brand-500 bg-brand-50 text-brand-900 dark:bg-brand-900/30 dark:text-brand-100' : 'border-blue-gray-100 bg-blue-gray-50/50 text-blue-gray-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'}`}>
+                <legend className="sr-only">{title}</legend>
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input type="checkbox" aria-label={`All ${title.toLowerCase()}`} checked={selectedCount === collections.length}
+                    ref={(el) => { if (el) el.indeterminate = selectedCount > 0 && selectedCount < collections.length; }}
+                    onChange={(e) => handleCollectionsChange(collections, e.target.checked)} className="mt-1 accent-teal-700" />
+                  <span className="min-w-0"><span className="block font-semibold leading-5">{title}</span><span className="mt-1 block text-xs opacity-75">{detail}</span></span>
+                </label>
+                <div className="mt-2 flex flex-wrap gap-2 pl-7">
+                  {OWNED_COLLECTIONS.filter((entry) => collections.includes(entry.value)).map((entry) => (
+                    <label key={entry.value} className="flex cursor-pointer items-center gap-2 rounded-full border border-teal-300 bg-white/60 px-3 py-1 text-sm dark:border-teal-800 dark:bg-slate-950/40">
+                      <input type="checkbox" aria-label={entry.fullLabel} checked={selectedList.includes(entry.value)} onChange={(e) => handleCollectionsChange([entry.value], e.target.checked)} className="accent-teal-700" />
+                      {entry.label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
             );
           })}
+          <label className={`flex min-w-0 cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors ${searchSource === 'open' ? 'border-brand-500 bg-brand-50 text-brand-900 dark:bg-brand-900/30 dark:text-brand-100' : 'border-blue-gray-100 bg-blue-gray-50/50 text-blue-gray-800 hover:border-brand-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'}`}>
+            <input type="radio" name="searchSource" value="open" checked={searchSource === 'open'} onChange={() => handleSourceChange('open')} className="mt-1 accent-teal-700" />
+            <span className="min-w-0"><span className="block font-semibold leading-5">Open compounds</span><span className="mt-1 block text-xs opacity-75">ChEMBL discovery · searched on its own</span></span>
+          </label>
         </div>
       </fieldset>
-
-      {MACROCYCLE_SOURCES[searchSource] && (
-        <fieldset className="flex flex-wrap items-center gap-2 text-sm" aria-label="Macrocycle source filter">
-          <legend className="mr-2 font-semibold">Macrocycles:</legend>
-          {[
-            { value: 'both', label: 'Real + virtual' },
-            { value: 'real', label: 'Real only' },
-            { value: 'virtual', label: 'Virtual only' },
-          ].map(({ value, label }) => (
-            <label key={value} className="flex cursor-pointer items-center gap-2 rounded-full border border-teal-300 px-3 py-1 dark:border-teal-800">
-              <input type="radio" name="macrocycleSource" value={value} checked={searchSource === value} onChange={() => handleSourceChange(value)} />
-              {label}
-            </label>
-          ))}
-        </fieldset>
-      )}
 
       <div className="grid w-full min-w-0 gap-4 lg:grid-cols-[minmax(25rem,29rem)_minmax(0,1fr)] 2xl:grid-cols-[minmax(27rem,31rem)_minmax(0,1fr)] lg:items-start">
       <div id="query-panel" className="min-w-0 rounded-2xl border border-blue-gray-100 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950 sm:p-4">
@@ -2326,6 +2347,24 @@ export function Simulation({ active = true }) {
           <p className="text-xs text-blue-gray-500 dark:text-slate-400">Enter or draw a structure to search this collection.</p>
         </div>
 
+        {isMultiSource(searchSource) && activeOwnedStatus?.state === 'loading' && (
+          <div className="mb-2 flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/70 px-4 py-3" role="status" aria-live="polite">
+            <Spinner className="h-4 w-4 text-blue-500" />
+            <Typography variant="small" color="blue-gray">Checking search availability for the selected collections…</Typography>
+          </div>
+        )}
+        {isMultiSource(searchSource) && activeOwnedStatus?.state === 'available' && (
+          <div className="mb-2 rounded-lg border border-teal-100 bg-teal-50/70 px-4 py-3 dark:border-teal-800 dark:bg-teal-950/60">
+            <Typography variant="small" color="blue-gray" className="dark:!text-slate-100">
+              {collectionsForSource(searchSource).map(collectionLabel).join(' + ')} · searched together{activeOwnedStatus.modes?.length === 1 ? ' · similarity only for this selection' : ''}
+            </Typography>
+          </div>
+        )}
+        {isMultiSource(searchSource) && activeOwnedStatus?.state === 'unavailable' && (
+          <Alert color="amber" className="mb-2">
+            <Typography variant="small">Search is not available for this selection: {activeOwnedStatus.reason} No other collection was searched.</Typography>
+          </Alert>
+        )}
         {/* Stock-compound availability: a clear state, never a silent corpus switch. */}
         {searchSource === "stock" && stockStatus && stockStatus.state === "loading" && (
           <div className="mb-2 flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/70 px-4 py-3" role="status" aria-live="polite">
@@ -2636,7 +2675,7 @@ export function Simulation({ active = true }) {
             <div className="flex items-center gap-2 w-full min-w-0">
               <input
                 type="range"
-                min={searchSource === "stock" ? "0.1" : searchSource === "open" ? "0.4" : MACROCYCLE_SOURCES[searchSource] ? "0.1" : "0"}
+                min={searchSource === "stock" || isMultiSource(searchSource) ? "0.1" : searchSource === "open" ? "0.4" : MACROCYCLE_SOURCES[searchSource] ? "0.1" : "0"}
                 max="1"
                 step="0.1"
                 value={similarityThreshold}
@@ -3066,12 +3105,12 @@ export function Simulation({ active = true }) {
           <h2 id="results-heading" className="text-xl font-semibold text-blue-gray-900 dark:text-slate-50">Results</h2>
           <span className="text-sm text-blue-gray-600 dark:text-slate-300">{topMolecules.length} shown{hasMore && (searchSource === 'asinex' || isSearchActive) ? ' · more available' : ''}</span>
         </div>
-        {['stock', 'both', 'real', 'virtual'].includes(searchSource) && topMolecules.length > 0 && (
+        {(['stock', 'both', 'real', 'virtual'].includes(searchSource) || isMultiSource(searchSource)) && topMolecules.length > 0 && (
           <p className="mb-3 text-xs text-blue-gray-600 dark:text-slate-300">
             Workbook 1–3 tier: up to 3 distinct compounds per order. Original EUR prices shown beside the fixed USD checkout price; review shipping and terms before checkout.
           </p>
         )}
-        {['stock', 'both', 'real', 'virtual'].includes(searchSource) && topMolecules.length > 0 && (
+        {(['stock', 'both', 'real', 'virtual'].includes(searchSource) || isMultiSource(searchSource)) && topMolecules.length > 0 && (
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <span className="text-sm text-blue-gray-700 dark:text-slate-300">{selectedMolecules.size} selected</span>
             <button type="button" disabled={!selectedMolecules.size || searchLoading || topLoading} onClick={orderSelectedCompounds} className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Order selected</button>
@@ -3105,7 +3144,53 @@ export function Simulation({ active = true }) {
           {topError && (
             <Alert color="red" className="mb-4">{topError}</Alert>
           )}
-          {!initialLoading && !topError && topMolecules.length > 0 && (MACROCYCLE_SOURCES[searchSource] ? (
+          {!initialLoading && !topError && topMolecules.length > 0 && (isMultiSource(searchSource) ? (
+            <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
+              <CardBody className="p-0">
+                <div className="border-b border-teal-100 bg-teal-50/60 px-4 py-3 text-xs text-blue-gray-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+                  {collectionsForSource(searchSource).map(collectionLabel).join(' + ')} · {ownedSearchSummary ? OWNED_SEARCH_MODES.find((option) => option.value === ownedSearchSummary.mode)?.label : 'Similarity'}{searchType === 'similarity' ? ' · one list ranked by Morgan (ECFP4) binary Tanimoto, each score from its collection\'s engine' : ''} · every row keeps its collection · amounts and lead times are dated. Select rows for docking or ordering.
+                </div>
+                <table className="w-full min-w-[680px] table-fixed text-left text-sm">
+                  <thead className="sticky top-0 z-10 bg-white dark:bg-slate-900">
+                    <tr>
+                      <th className="w-10 p-2"><input type="checkbox" aria-label="Select all compounds" checked={getSelectAllState().checked} ref={(el) => { if (el) el.indeterminate = getSelectAllState().indeterminate; }} onChange={(e) => handleSelectAll(e.target.checked)} /></th>
+                      <th className="w-10 p-2">#</th>
+                      <th className="w-48 p-2">IDNUMBER · collection</th>
+                      <th className="w-28 p-2">Lead time</th>
+                      <th className="w-48 p-2">Pack size · price <span className="block text-xs font-normal">EUR / USD</span></th>
+                      <th className="w-20 p-2">{searchType === 'similarity' ? 'Similarity' : 'Match'}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {topMolecules.map((mol, idx) => {
+                      const id = moleculeSelectionId(mol, idx);
+                      const code = mol.isStockRow ? mol.stockCode : mol.macrocycleCode;
+                      const collection = mol.isStockRow ? 'stock' : mol.macrocycleSource;
+                      const madeToOrder = collection === 'virtual' || collection === 'smallvirtual';
+                      const amount = mol.isStockRow
+                        ? (mol.STOCK_MG === null ? '' : formatSnapshotMg(mol.STOCK_MG))
+                        : [mol.snapshotMg && `${mol.snapshotMg} mg`, mol.snapshotUm && `${mol.snapshotUm} µmol`].filter(Boolean).join(' · ');
+                      return (
+                        <tr key={`${id}-${idx}`} className="border-b border-blue-gray-100 dark:border-slate-800">
+                          <td className="p-2"><input type="checkbox" aria-label={`Select ${code}`} checked={selectedMolecules.has(id)} onChange={(e) => handleCheckboxChange(mol, idx, e.target.checked)} /></td>
+                          <td className="p-2">{idx + 1}</td>
+                          <td className="p-2 text-xs">
+                            <button type="button" className="font-mono font-semibold break-all underline decoration-dotted" aria-label={`Preview ${code}`} {...structurePreviewTrigger(mol.SMILES_STRING, code)}>{code}</button>
+                            {mol.matchedQueryIndices?.length > 0 && <div className="mt-1 text-xs text-teal-700 dark:text-teal-300">Queries {mol.matchedQueryIndices.map((index) => index + 1).join(', ')}</div>}
+                            <div className="mt-1 font-semibold text-teal-700 dark:text-teal-300">{collectionLabel(collection)}</div>
+                            <div className="mt-1 text-blue-gray-500" title="Dated supplier export; amount and lead time are unverified now">{madeToOrder ? 'made to order' : `${amount || 'No export amount'} · snapshot`}</div>
+                          </td>
+                          <td className="p-2 text-xs" title="Dated supplier export; amount and lead time are unverified now">{mol.snapshotLeadTime || '—'}</td>
+                          <td className="p-2"><CompoundShopPacks offer={mol.shopOffer} onAdded={showMessage} amountMg={mol.shopOffer ? selectedPacks[offerSelectionKey(mol.shopOffer)] : undefined} onPackChange={(mg) => setSelectedPacks((previous) => ({ ...previous, [offerSelectionKey(mol.shopOffer)]: mg }))} /></td>
+                          <td className="p-2 font-semibold">{searchType !== 'similarity' ? '✓' : mol.SIMILARITY === null || mol.SIMILARITY === undefined ? '—' : Number(mol.SIMILARITY).toFixed(3)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </CardBody>
+            </Card>
+          ) : MACROCYCLE_SOURCES[searchSource] ? (
             <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
               <CardBody className="p-0">
                 <div className="border-b border-teal-100 bg-teal-50/60 px-4 py-3 text-xs text-blue-gray-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
@@ -3564,6 +3649,10 @@ export function Simulation({ active = true }) {
                     ? isSearchActive
                       ? `No ${MACROCYCLE_SOURCES[searchSource].label.toLowerCase()} matched at this threshold. Lower it or try another structure.`
                       : `Search ${MACROCYCLE_SOURCES[searchSource].label.toLowerCase()}: enter a SMILES or draw a molecule, then select Search.`
+                  : isMultiSource(searchSource)
+                    ? isSearchActive
+                      ? `No compounds in ${collectionsForSource(searchSource).map(collectionLabel).join(', ')} matched this search. Lower the threshold or try another structure.`
+                      : `Search ${collectionsForSource(searchSource).map(collectionLabel).join(', ')}: enter a SMILES or draw a molecule, then select Search.`
                   : searchSource === "open"
                     ? isSearchActive
                       ? "No open compounds matched this structure at the current threshold among retrieved ChEMBL candidates. Lower the similarity threshold or try another molecule."

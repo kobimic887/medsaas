@@ -6,7 +6,7 @@ from serve import GraphStore, FIELDS, substructure_query
 
 def fixture(directory):
     structures=[('CCO','DUP'),('OCC','DUP'),('C[C@H](O)F','LEFT'),('C[C@@H](O)F','RIGHT'),('Oc1ccccc1','AROM'),('C1CCCCC1','ALIPH')]
-    for source in ('real','virtual'):
+    for source in ('real','virtual','smallvirtual'):
         offsets=[]
         with (directory/f'{source}.rows.csv').open('w',newline='') as file:
             writer=csv.writer(file)
@@ -18,7 +18,7 @@ def fixture(directory):
 
 with tempfile.TemporaryDirectory() as temporary:
     base=pathlib.Path(temporary);index=base/'index';graph=base/'graph';index.mkdir();fixture(index)
-    build(index,graph,'real');build(index,graph,'virtual')
+    build(index,graph,'real');build(index,graph,'virtual');build(index,graph,'smallvirtual')
     store=GraphStore(index,graph)
     result=store.search('both','id','DUP',100)
     assert [(r['source'],r['molecule_id']) for r in result['results']]==[('real',1),('real',2),('virtual',1),('virtual',2)]
@@ -35,6 +35,9 @@ with tempfile.TemporaryDirectory() as temporary:
     assert [r['molecule_id'] for r in store.search('real','substructure','c~O',100)['results']]==[5]
     assert [substructure_query(q)[1] for q in ('c1ccccc1','C1=CC=CC=C1','[nH]1cccc1','[#6]','[CH3]','*c1ccccc1','C~C','[C,N]')]==['smiles','smiles','smiles','smarts','smarts','smarts','smarts','smarts']
     assert store.search('real','id','UNKNOWN',100)['results']==[]
+    # The small-molecule set is its own collection and never part of "both".
+    assert [(r['source'],r['molecule_id']) for r in store.search('smallvirtual','substructure','C1=CC=CC=C1',100)['results']]==[('smallvirtual',5)]
+    assert all(r['source']!='smallvirtual' for r in store.search('both','id','DUP',100)['results'])
     assert store.search('both','substructure','[#6]',2)['truncated']
     assert len(store.search('both','substructure','[#6]',2)['results'])==2
     try:store.search('real','exact','not-smiles',100);assert False
@@ -64,4 +67,4 @@ with tempfile.TemporaryDirectory() as temporary:
     manifest['sha256']='0'*64;(base/'stock.ids.json').write_text(json.dumps(manifest))
     try:StockIdLookup(base);assert False
     except ValueError:pass
-print('owned graph search: 19 meaningful checks passed (canonical, stereo, true graph, Kekule SMILES, SMARTS, duplicate identities, bounds, incomplete refusal) + stock identifier lookup')
+print('owned graph search: 21 meaningful checks passed (canonical, stereo, true graph, Kekule SMILES, SMARTS, duplicate identities, bounds, incomplete refusal) + stock identifier lookup')

@@ -7,7 +7,7 @@ export function withCompoundShopOffers(payload, source, { secret, now } = {}) {
   return {
     ...payload,
     results: payload.results.map((row) => {
-      const actualSource = source === 'both' ? row?.source : source;
+      const actualSource = source === 'both' || source === 'multi' ? row?.source : source;
       const metadata = row?.metadata || {};
       const available = actualSource === 'stock'
         ? metadata.CURRENT_TOT_NETTO_MG

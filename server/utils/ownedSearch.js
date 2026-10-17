@@ -12,16 +12,34 @@ import {
 } from './openCompounds.js';
 import { withCompoundShopOffers } from './compoundShopSearch.js';
 
-export const OWNED_SEARCH_SOURCES = ['stock', 'both', 'real', 'virtual', 'open'];
+// Physical owned collections, in display order. "both" is RPX + VPX; "multi"
+// is any selection of collections searched together as one ranked list.
+export const OWNED_COLLECTIONS = ['stock', 'smallvirtual', 'real', 'virtual'];
+export const OWNED_SEARCH_SOURCES = ['stock', 'smallvirtual', 'both', 'real', 'virtual', 'multi', 'open'];
+const INDEXED_COLLECTIONS = ['smallvirtual', 'real', 'virtual'];
 export const OWNED_SEARCH_MODES = ['id', 'exact', 'substructure', 'similarity'];
 export const OWNED_SEARCH_MAX_QUERIES = 20;
 export const OWNED_SEARCH_MAX_OFFSET = 900;
 export class OwnedSearchError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; this.code = 'OWNED_SEARCH_ERROR'; }
 }
+/** Collections a source searches; a multi selection is returned in display order. */
+export function ownedCollections(source, sources) {
+  if (source === 'multi') {
+    const list = typeof sources === 'string' ? sources.split(',').filter(Boolean) : sources;
+    if (!Array.isArray(list) || !list.length || list.length > OWNED_COLLECTIONS.length || new Set(list).size !== list.length
+      || list.some((value) => !OWNED_COLLECTIONS.includes(value))) {
+      throw new OwnedSearchError('Choose one to four distinct collections: stock, smallvirtual, real or virtual');
+    }
+    return OWNED_COLLECTIONS.filter((value) => list.includes(value));
+  }
+  if (source === 'both') return ['real', 'virtual'];
+  return source === 'open' ? [] : [source];
+}
 export function parseOwnedSearch(body = {}) {
   const { source, mode } = body;
-  if (!OWNED_SEARCH_SOURCES.includes(source)) throw new OwnedSearchError('Choose stock, both, real, virtual or open');
+  if (!OWNED_SEARCH_SOURCES.includes(source)) throw new OwnedSearchError('Choose stock, smallvirtual, both, real, virtual, multi or open');
+  const collections = ownedCollections(source, body.sources);
   if (!OWNED_SEARCH_MODES.includes(mode)) throw new OwnedSearchError('Choose id, exact, substructure or similarity');
   if (!Array.isArray(body.queries) || !body.queries.length || body.queries.length > OWNED_SEARCH_MAX_QUERIES
     || body.queries.some((query) => typeof query !== 'string' || !query.trim() || query.length > 2000)) {
@@ -39,18 +57,25 @@ export function parseOwnedSearch(body = {}) {
       if (body.fingerprint_type && body.fingerprint_type !== 'morgan') throw new OwnedSearchError('Open compounds supports Morgan only');
       if (body.similarity_metric && body.similarity_metric !== 'tanimoto') throw new OwnedSearchError('Open compounds supports binary Tanimoto only');
       options = { threshold, fingerprintType: 'morgan', similarityMetric: 'tanimoto' };
+    } else if (source === 'multi') {
+      // One ranked list needs one score: every engine offers Morgan (ECFP4)
+      // binary Tanimoto, and the count metrics are not built for every set.
+      if (body.fingerprint_type && body.fingerprint_type !== 'morgan') throw new OwnedSearchError('Searching several collections supports Morgan (ECFP4) only');
+      if (body.similarity_metric && body.similarity_metric !== 'tanimoto') throw new OwnedSearchError('Searching several collections supports binary Tanimoto only');
+      const parsed = parseMacrocycleSearchQuery({ ...body, source: 'real', smiles: queries[0], offset: 0, limit: 100, fingerprint_type: 'morgan', similarity_metric: 'tanimoto' });
+      options = { threshold: parsed.threshold, fingerprintType: 'morgan', similarityMetric: 'tanimoto' };
     } else {
       const parsed = source === 'stock' ? parseStockSearchQuery({ ...body, smiles: queries[0], offset: 0, limit: 100 })
         : parseMacrocycleSearchQuery({ ...body, source, smiles: queries[0], offset: 0, limit: 100 });
       options = { threshold: parsed.threshold, fingerprintType: parsed.fingerprintType, similarityMetric: parsed.similarityMetric };
     }
   }
-  return { source, mode, queries, offset, limit, ...options };
+  return { source, collections, mode, queries, offset, limit, ...options };
 }
 function identity(row, source) { return source === 'open' ? `open:${row.chemblId}` : `${row.source || source}:${row.molecule_id}`; }
 function compare(a, b, mode) {
   if (mode === 'similarity' && a.similarity !== b.similarity) return (b.similarity ?? 0) - (a.similarity ?? 0);
-  const rank = { stock: 0, real: 1, virtual: 2, open: 3, chembl: 3 };
+  const rank = { stock: 0, smallvirtual: 1, real: 2, virtual: 3, open: 4, chembl: 4 };
   return (rank[a.source] ?? 0) - (rank[b.source] ?? 0)
     || (a.chemblId ? a.chemblId.localeCompare(b.chemblId) : Number(a.molecule_id) - Number(b.molecule_id));
 }
@@ -72,7 +97,7 @@ export function mergeOwnedSearch(params, responses) {
   const capTruncated = responses.some((response) => response.truncated);
   const page = sorted.slice(params.offset, params.offset + params.limit);
   const hasMore = params.offset + page.length < sorted.length && params.offset + params.limit <= OWNED_SEARCH_MAX_OFFSET;
-  return { source: params.source, mode: params.mode, results: page, queries,
+  return { source: params.source, ...(params.source === 'multi' ? { sources: params.collections } : {}), mode: params.mode, results: page, queries,
     total: sorted.length, totalExact: !capTruncated && !responses.some((response) => response.error),
     offset: params.offset, limit: params.limit, hasMore, truncated: capTruncated,
     maxOffset: OWNED_SEARCH_MAX_OFFSET,
@@ -100,16 +125,17 @@ export function createOwnedSearch({ graphBase, fetchImpl, stockConfig, stockReso
     if (!graphBase) throw new OwnedSearchError('Owned graph search is not configured', 503);
     return jsonRequest(`${graphBase.replace(/\/+$/, '')}${path}`, { method: 'POST', body: JSON.stringify(body), deadline });
   };
-  async function status(source) {
+  async function status(source, sources) {
     if (!OWNED_SEARCH_SOURCES.includes(source)) throw new OwnedSearchError('Invalid source');
     if (source === 'open' && (!openConfig.enabled || !openConfig.baseUrl)) return { available: false, modes: [], maxQueries: 20, reason: 'Open compounds is disabled' };
     try {
+      const collections = ownedCollections(source, sources);
       let health = null;
       if (graphBase) { try { health = await jsonRequest(`${graphBase.replace(/\/+$/, '')}/health`); } catch { /* Similarity remains available while graph artifacts are being qualified. */ } }
-      if (source === 'stock') await stockResolver.resolve();
-      if (['both', 'real', 'virtual'].includes(source)) await Promise.all((source === 'both' ? ['real','virtual'] : [source]).map((value) => macroResolver.resolve(value)));
-      const graphAvailable = health?.available && (source === 'open' || (source === 'both' ? ['real','virtual'] : [source]).every((value) => health.sources.includes(value)));
-      return { source, available: true, modes: graphAvailable ? [...OWNED_SEARCH_MODES] : ['similarity'], maxQueries: 20, maxOffset: OWNED_SEARCH_MAX_OFFSET,
+      if (collections.includes('stock')) await stockResolver.resolve();
+      await Promise.all(collections.filter((value) => value !== 'stock').map((value) => macroResolver.resolve(value)));
+      const graphAvailable = health?.available && collections.every((value) => health.sources.includes(value));
+      return { source, ...(source === 'multi' ? { sources: collections } : {}), available: true, modes: graphAvailable ? [...OWNED_SEARCH_MODES] : ['similarity'], maxQueries: 20, maxOffset: OWNED_SEARCH_MAX_OFFSET,
         ...(graphAvailable ? {} : { reason: 'Graph/identifier search is not configured for this source' }) };
     } catch (error) { return { source, available: false, modes: [], maxQueries: 20, reason: error.message }; }
   }
@@ -143,36 +169,54 @@ export function createOwnedSearch({ graphBase, fetchImpl, stockConfig, stockReso
     }).map((row) => ({ ...row, source: 'chembl' })).sort((a,b)=>a.chemblId.localeCompare(b.chemblId));
     return { results, truncated: Number(payload.page_meta?.total_count || candidates.length) > candidates.length };
   }
+  // One engine call for one query. A group is stock, one indexed collection, or
+  // RPX + VPX as one combined scan ("both").
+  async function groupQuery(params, group, query, cap, deadline) {
+    let payload;
+    if (params.mode !== 'similarity') {
+      payload = await graph('/search', { source: group.source, mode: params.mode, query, cap,
+        ...(group.source === 'stock' ? { datasetName: group.datasets[0].name, datasetId: group.datasets[0].id } : {}) }, deadline);
+    } else {
+      const options = { ...params, smiles: query, offset: 0, limit: cap };
+      const url = group.source === 'stock' ? buildStockSimilarityUrl({ ...options, baseUrl: stockConfig.baseUrl, datasetId: group.datasets[0].id })
+        : buildMacrocycleSimilarityUrl({ config: macroConfig, datasets: group.datasets, params: options });
+      payload = await jsonRequest(url, { deadline });
+      payload.truncated = Boolean(payload.hasMore || payload.total > payload.results?.length || payload.results?.length >= cap);
+    }
+    if (!Array.isArray(payload.results)) throw new OwnedSearchError('Search returned invalid results', 502);
+    if (group.source === 'stock') payload.results = payload.results.map((row) => ({ ...row, source: 'stock' }));
+    else {
+      const tagged = group.source === 'both' ? tagCombinedMacrocycleResults(payload, group.datasets, params)
+        : tagMacrocycleResults(payload, group.source, group.datasets[0], params);
+      payload.results = tagged.results.map((row) => ({ ...row, source: row.source || group.source }));
+    }
+    return withCompoundShopOffers(payload, group.source, { secret });
+  }
   async function run(body) {
     const params = parseOwnedSearch(body); const cap = Math.min(params.offset + params.limit + 1, 1000); const deadline = now() + 90000;
-    let datasets;
-    if (params.source === 'stock') datasets = [await stockResolver.resolve()];
-    if (['both','real','virtual'].includes(params.source)) datasets = await Promise.all((params.source === 'both' ? ['real','virtual'] : [params.source]).map((value)=>macroResolver.resolve(value)));
-    if (params.mode === 'similarity' && datasets && params.source !== 'stock') for (const dataset of datasets) assertMacrocycleMetricSupported({ ...params, source: dataset.source }, dataset);
+    let groups = [];
+    if (params.source !== 'open') {
+      const resolved = Object.fromEntries(await Promise.all(params.collections.map(async (value) => [value,
+        value === 'stock' ? await stockResolver.resolve() : await macroResolver.resolve(value)])));
+      if (params.mode === 'similarity') for (const value of INDEXED_COLLECTIONS) if (resolved[value]) assertMacrocycleMetricSupported({ ...params, source: value }, resolved[value]);
+      // RPX + VPX stay one combined scan wherever both are selected.
+      const combined = params.collections.includes('real') && params.collections.includes('virtual');
+      groups = params.collections.filter((value) => !(combined && value === 'virtual')).map((value) => (combined && value === 'real'
+        ? { source: 'both', datasets: [resolved.real, resolved.virtual] } : { source: value, datasets: [resolved[value]] }));
+    }
     const responses = [];
     for (const query of params.queries) {
       if (now() >= deadline) throw new OwnedSearchError('Batch exceeded 90 seconds; reduce the number of queries', 503);
       try {
         let payload;
         if (params.source === 'open') payload = await openQuery(params, query, cap, deadline);
-        else if (params.mode !== 'similarity') {
-          payload = await graph('/search', { source: params.source, mode: params.mode, query, cap,
-            ...(params.source === 'stock' ? { datasetName: datasets[0].name, datasetId: datasets[0].id } : {}) }, deadline);
-        } else {
-          const options = { ...params, smiles: query, offset: 0, limit: cap };
-          const url = params.source === 'stock' ? buildStockSimilarityUrl({ ...options, baseUrl: stockConfig.baseUrl, datasetId: datasets[0].id })
-            : buildMacrocycleSimilarityUrl({ config: macroConfig, datasets, params: options });
-          payload = await jsonRequest(url, { deadline });
-          payload.truncated = Boolean(payload.hasMore || payload.total > payload.results.length || payload.results.length >= cap);
-        }
-        if (!Array.isArray(payload.results)) throw new OwnedSearchError('Search returned invalid results', 502);
-        if (params.source !== 'open') {
-          if (params.source !== 'stock') {
-            const tagged = params.source === 'both' ? tagCombinedMacrocycleResults(payload, datasets, params)
-              : tagMacrocycleResults(payload, params.source, datasets[0], params);
-            payload.results = tagged.results.map((row) => ({ ...row, source: row.source || params.source }));
-          } else payload.results = payload.results.map((row) => ({ ...row, source: 'stock' }));
-          payload = withCompoundShopOffers(payload, params.source, { secret });
+        else {
+          payload = { results: [], truncated: false };
+          for (const group of groups) {
+            const part = await groupQuery(params, group, query, cap, deadline);
+            payload.results.push(...part.results);
+            payload.truncated ||= Boolean(part.truncated);
+          }
         }
         responses.push(payload);
       } catch (error) {

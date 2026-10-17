@@ -9,6 +9,42 @@ export const OWNED_SEARCH_MODES = Object.freeze([
   { value: 'substructure', label: 'Substructure' },
 ]);
 
+/** Owned collections in display order; any mix is searched as one ranked list. */
+export const OWNED_COLLECTIONS = Object.freeze([
+  { value: 'stock', group: 'Small molecules', label: 'Stock', fullLabel: 'Small molecules · Stock' },
+  { value: 'smallvirtual', group: 'Small molecules', label: 'Virtual', fullLabel: 'Small molecules · Virtual' },
+  { value: 'real', group: 'Macrocycles', label: 'Real (RPX)', fullLabel: 'Macrocycles · Real RPX' },
+  { value: 'virtual', group: 'Macrocycles', label: 'Virtual (VPX)', fullLabel: 'Macrocycles · Virtual VPX' },
+]);
+const COLLECTION_KEYS = OWNED_COLLECTIONS.map(({ value }) => value);
+
+export const isMultiSource = (source) => typeof source === 'string' && source.startsWith('multi:');
+
+/** Collections a page source searches ("both" is RPX + VPX; open has none). */
+export function collectionsForSource(source) {
+  if (source === 'both') return ['real', 'virtual'];
+  if (isMultiSource(source)) return COLLECTION_KEYS.filter((value) => source.slice(6).split(',').includes(value));
+  return COLLECTION_KEYS.includes(source) ? [source] : [];
+}
+
+/**
+ * Single legacy selections keep their dedicated paths (stock fingerprint options,
+ * macrocycle count metrics); any other selection is `multi:<collections>`.
+ */
+export function sourceForCollections(collections) {
+  const key = COLLECTION_KEYS.filter((value) => collections.includes(value)).join(',');
+  if (!key) return null;
+  if (['stock', 'real', 'virtual'].includes(key)) return key;
+  return key === 'real,virtual' ? 'both' : `multi:${key}`;
+}
+
+/** The owned-search API names a page source as source (+ sources for a mix). */
+export function ownedSearchSourceParams(source) {
+  return isMultiSource(source) ? { source: 'multi', sources: collectionsForSource(source) } : { source };
+}
+
+export const collectionLabel = (value) => OWNED_COLLECTIONS.find((entry) => entry.value === value)?.fullLabel || value;
+
 /** SMARTS bond primitives/operators; a structure never starts or ends with one. */
 const BOND_SYMBOLS = new Set(['-', '=', '#', ':', '~', '@', '/', '\\', '!', '&', ';']);
 const neighbour = (line, index, step) => { while (line[index] === ' ' || line[index] === '\t') index += step; return line[index]; };
@@ -59,9 +95,10 @@ export function searchModesFromStatus(status, source) {
 export function ownedRowsFromPayload(payload, source) {
   if (!Array.isArray(payload?.results)) throw new Error('The search response did not contain results.');
   return payload.results.map((item) => {
-    const row = source === 'stock' ? stockResultFromItem(item)
-      : source === 'open' ? openResultFromItem(item)
-        : macrocycleResultsFromPayload({ results: [item] }, source)[0];
+    const rowSource = source === 'multi' ? item?.source : source;
+    const row = rowSource === 'stock' ? stockResultFromItem(item)
+      : rowSource === 'open' ? openResultFromItem(item)
+        : macrocycleResultsFromPayload({ results: [item] }, rowSource)[0];
     if (!row) return null;
     return { ...row, matchedQueryIndices: Array.isArray(item.matchedQueryIndices)
       ? item.matchedQueryIndices.filter(Number.isInteger) : [] };
@@ -69,8 +106,8 @@ export function ownedRowsFromPayload(payload, source) {
 }
 
 export function appendUniqueOwnedRows(existing, incoming, source) {
-  const identity = (row) => source === 'stock' ? `stock:${row.stockRowId}`
-    : source === 'open' ? `open:${row.chemblId}` : `${row.macrocycleSource}:${row.macrocycleRowId}`;
+  const identity = (row) => source === 'open' ? `open:${row.chemblId}`
+    : row.isStockRow ? `stock:${row.stockRowId}` : `${row.macrocycleSource}:${row.macrocycleRowId}`;
   const seen = new Set(existing.map(identity));
   return incoming.filter((row) => {
     const key = identity(row);

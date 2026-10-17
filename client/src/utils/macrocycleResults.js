@@ -1,11 +1,11 @@
-// Macrocycle hits use the same engine envelope as stock search, but are a
-// separate source. Preserve the supplier identifier as text and never turn a
+// Macrocycle hits (and the small-molecule virtual set on the same engine) use
+// the same engine envelope as stock search, but are a separate source. Preserve the supplier identifier as text and never turn a
 // real-stock or virtual structure into a priced internal-catalog row.
 export function macrocycleResultsFromPayload(payload, source) {
   if (!Array.isArray(payload?.results)) return [];
   return payload.results.map((item) => {
-    const rowSource = source === 'both' ? item?.source : source;
-    if (rowSource !== 'real' && rowSource !== 'virtual') return null;
+    const rowSource = source === 'both' || source === 'multi' ? item?.source : source;
+    if (!['real', 'virtual', 'smallvirtual'].includes(rowSource)) return null;
     const metadata = item?.metadata && typeof item.metadata === 'object' ? item.metadata : {};
     const code = String(metadata.MAIN_BAS || metadata.compound_id || metadata.ID || item?.molecule_id || '').trim();
     const smiles = String(item?.canonical_smiles || '').trim();

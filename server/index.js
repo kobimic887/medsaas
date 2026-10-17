@@ -4545,7 +4545,7 @@ const ownedSearch = createOwnedSearch({
   openConfig: OPEN_COMPOUNDS_CONFIG, secret: JWT_SECRET,
 });
 app.get('/api/owned-search/status', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
-  try { return res.json(await ownedSearch.status(req.query.source)); }
+  try { return res.json(await ownedSearch.status(req.query.source, req.query.sources)); }
   catch (error) { return res.status(error.status || 502).json({ error: error.message }); }
 });
 app.post('/api/owned-search', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {

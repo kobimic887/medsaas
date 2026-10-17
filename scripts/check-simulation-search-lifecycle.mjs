@@ -225,7 +225,7 @@ checks.push(
   ['threshold change resets paging and old rows', context.stockOffsetRef.current === 0 && !context.isSearchActiveRef.current && calls.some(c => c[0] === 'setTopMolecules' && c[1].length === 0)],
   ['threshold change clears open AI cache', context.openRankedCacheRef.current === null],
   ['returning to stock retries unfinished availability', simulation.includes("if (stockStatusRef.current?.state !== 'available') fetchStockStatus()")],
-  ['stock threshold matches API minimum', simulation.includes('searchSource === "stock" ? "0.1"') && simulation.includes('Math.max(0.1, value)')],
+  ['stock threshold matches API minimum', simulation.includes('searchSource === "stock" || isMultiSource(searchSource) ? "0.1"') && simulation.includes('Math.max(0.1, value)')],
 );
 
 // Execute handleStockMethodChange the same way — fingerprint/metric changes must
@@ -275,7 +275,7 @@ checks.push(
   ['open AI search posts to ai-search', simulation.includes("/open-compounds/ai-search")],
   ['open availability is probed via the status endpoint', simulation.includes("/open-compounds/status")],
   ['open search is similarity-only and restarts at offset zero', simulation.includes("runOpenSearch(0, false,") || simulation.includes("runOpenAiSearch({")],
-  ['ChEMBL remains an explicit staging source', simulation.includes("{ value: 'open', title: 'Open compounds', detail: 'ChEMBL discovery' }") && simulation.includes('name="searchSource"')],
+  ['ChEMBL remains an explicit staging source', simulation.includes('value="open" checked={searchSource === \'open\'}') && simulation.includes('ChEMBL discovery · searched on its own') && simulation.includes('name="searchSource"')],
   ['open threshold floor is 0.4', simulation.includes('searchSource === "open" ? "0.4"') && simulation.includes('Math.max(0.4, value)')],
   ['open export uses authenticated export route', simulation.includes("/open-compounds/export")],
   ['open empty/error states are distinct', simulation.includes('No open compounds matched this structure')],
@@ -285,7 +285,7 @@ checks.push(
 );
 
 checks.push(
-  ['all builds combine RPX and VPX under one macrocycle collection with source filters', simulation.includes("{ value: 'both', title: 'Macrocycles'") && simulation.includes("{ value: 'both', label: 'Real + virtual' }") && simulation.includes("{ value: 'real', label: 'Real only' }") && simulation.includes("{ value: 'virtual', label: 'Virtual only' }") && simulation.includes("{ value: 'open', title: 'Open compounds'") && !simulation.includes("{ value: 'asinex', title: 'Internal catalog'")],
+  ['all builds group Small molecules (stock + virtual) and Macrocycles (RPX + VPX) as selectable collections', simulation.includes("{ title: 'Small molecules', detail: 'Stock 630,646 · Virtual 6,717,749', collections: ['stock', 'smallvirtual'] }") && simulation.includes("{ title: 'Macrocycles', detail: 'RPX 18,171 · VPX 2,347,736', collections: ['real', 'virtual'] }") && simulation.includes('handleCollectionsChange(collections, e.target.checked)') && simulation.includes('handleCollectionsChange([entry.value], e.target.checked)') && !simulation.includes("{ value: 'asinex', title: 'Internal catalog'")],
   ['all builds open the Pyxis stock index', simulation.includes('useState("stock")') && simulation.includes("fetchStockStatus()")],
   ['a non-catalog default settles the browse spinner', !simulation.includes("if (searchSourceRef.current === 'asinex') fetchAllMolecules(0, false);") && simulation.includes('setInitialLoading(false);') && simulation.includes('setCatalogSettled(true);')],
   ['macrocycle status and similarity use authenticated routes', simulation.includes("/macrocycles/status") && simulation.includes("/macrocycles/similarity")],
@@ -297,7 +297,7 @@ checks.push(
   ['macrocycle count copy never claims MOE equivalence', simulation.includes('a Pyxis method, not MOE ctanimoto')],
   ['macrocycle rows retain source identity and docking handoff alongside owned offers', simulation.includes('Select rows for docking handoff.') && simulation.includes('CompoundShopPacks offer={mol.shopOffer}') && simulation.includes('Real RPX') && simulation.includes('Virtual VPX')],
   ['owned rows show server offers and the approved workbook tier', simulation.includes('CompoundShopPacks offer={mol.shopOffer}') && simulation.includes('Workbook 1–3 tier') && simulation.includes('review shipping and terms before checkout')],
-  ['header blurb follows the selected collection', simulation.includes('SOURCE_BLURBS[searchSource]') && simulation.includes('Search owned screening stock by structure.')],
+  ['header blurb follows the selected collection', simulation.includes('sourceBlurb(searchSource)') && simulation.includes('const sourceBlurb = (source) => SOURCE_BLURBS[source]') && simulation.includes('Search small-molecule screening stock by structure.')],
   ['stock pack add confirms locally and counts repeats', simulation.includes("{justAdded ? '✓ Added to cart' : 'Add to cart'}") && simulation.includes('Added another ${selected.mg} mg pack of ${offer.code}')],
   ['query and results are adjacent columns with a wider query panel', simulation.includes('lg:grid-cols-[minmax(25rem,29rem)_minmax(0,1fr)]') && simulation.includes('aria-labelledby="results-heading"')],
   ['results offer explicit pagination in the two-column layout', simulation.includes('Load more results')],
@@ -364,11 +364,17 @@ checks.push(['stock backend inherits the resolved Tanimoto default', readFileSyn
 checks.push(['open compounds routes are registered', readFileSync(path.join(root, 'server/index.js'), 'utf8').includes("/api/open-compounds/similarity")]);
 checks.push(['open compounds AI route is registered', readFileSync(path.join(root, 'server/index.js'), 'utf8').includes("/api/open-compounds/ai-search")]);
 
-const { parseSearchQueries, searchModesFromStatus, ownedRowsFromPayload, appendUniqueOwnedRows } = await import(
+const { parseSearchQueries, searchModesFromStatus, ownedRowsFromPayload, appendUniqueOwnedRows, isMultiSource, ownedSearchSourceParams, collectionsForSource, sourceForCollections } = await import(
   pathToFileURL(path.join(root, 'client/src/utils/ownedSearch.js')).href
 );
 {
   const eq = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+  checks.push(
+    ['legacy single selections keep their dedicated sources', eq(['stock', 'real', 'virtual', 'both'], [['stock'], ['real'], ['virtual'], ['virtual', 'real']].map(sourceForCollections))],
+    ['other selections become one ordered multi source', sourceForCollections(['virtual', 'stock', 'smallvirtual', 'real']) === 'multi:stock,smallvirtual,real,virtual' && sourceForCollections(['smallvirtual']) === 'multi:smallvirtual' && sourceForCollections([]) === null],
+    ['collections round-trip through the page source', eq(collectionsForSource('both'), ['real', 'virtual']) && eq(collectionsForSource('multi:virtual,stock'), ['stock', 'virtual']) && eq(collectionsForSource('open'), [])],
+    ['multi rows map by their own collection', eq(ownedRowsFromPayload({ results: [{ source: 'stock', molecule_id: 4, canonical_smiles: 'CCO', metadata: { MAIN_BAS: 'BAS 1' } }, { source: 'smallvirtual', molecule_id: 2, canonical_smiles: 'CCN', metadata: { ID: '1-2', MAIN_BAS: '1-2' } }] }, 'multi').map((row) => row.isStockRow ? 'stock' : row.macrocycleSource), ['stock', 'smallvirtual'])],
+  );
   checks.push(
     ['batch parser preserves leading-zero identifiers and internal spaces', eq(parseSearchQueries('ASN 001, RPX 004\nVPX 003', 'id'), ['ASN 001', 'RPX 004', 'VPX 003'])],
     ['batch parser preserves disconnected chemical fragments', eq(parseSearchQueries('CCO.[Na+]\nCCN'), ['CCO.[Na+]', 'CCN'])],
@@ -402,6 +408,7 @@ const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const searchBody = simulation.split('const handleSearch = async () => {')[1].split('\n  // Function to load more search results')[0].replace(/};\s*$/, '');
 const rejectedCalls = [];
 const rejectedContext = {
+  isMultiSource, ownedSearchSourceParams,
   parseSearchQueries, searchModesFromStatus,
   AbortController, searchCode: '[N](C)(C)(C)C',
   MACROCYCLE_SOURCES: { real: true, virtual: true },
@@ -424,6 +431,7 @@ checks.push(
 
 const rejectedOpenCalls = [];
 const rejectedOpenContext = {
+  isMultiSource, ownedSearchSourceParams,
   parseSearchQueries, searchModesFromStatus,
   AbortController, searchCode: '[N](C)(C)(C)C',
   MACROCYCLE_SOURCES: { real: true, virtual: true },
@@ -448,6 +456,7 @@ checks.push(
 
 const rejectedMacroCalls = [];
 const rejectedMacroContext = {
+  isMultiSource, ownedSearchSourceParams,
   parseSearchQueries, searchModesFromStatus,
   AbortController, searchCode: '[N](C)(C)(C)C',
   MACROCYCLE_SOURCES: { real: true, virtual: true },
@@ -472,7 +481,7 @@ checks.push(
   const requestCalls = [];
   const updates = [];
   const context = {
-    AbortController, searchCode: 'ASN 001, ASN 002', parseSearchQueries, searchModesFromStatus,
+    AbortController, searchCode: 'ASN 001, ASN 002', parseSearchQueries, searchModesFromStatus, isMultiSource, ownedSearchSourceParams,
     MACROCYCLE_SOURCES: { both: true, real: true, virtual: true }, getAuthToken: () => 'fixture',
     runOwnedSearch: async (offset, append, options) => { requestCalls.push({ offset, append, ...options.request }); return true; },
     runStockSearch: async () => { throw new Error('legacy fallback must not run'); },
@@ -496,6 +505,15 @@ checks.push(
   context.ownedSearchStatusRef.current.stock = { available: true, modes: ['similarity'] };
   await new AsyncFunction(...Object.keys(context), searchBody)(...Object.values(context));
   checks.push(['unsupported mode refuses locally without searching another collection', !requestCalls.length && updates.some(([name, value]) => name === 'setSearchError' && value.includes('No other collection was searched')) && context.hasMoreRef.current === false]);
+  requestCalls.length = 0; updates.length = 0;
+  // A mixed selection always uses owned search, even for one similarity query.
+  context.searchSourceRef.current = 'multi:stock,smallvirtual'; context.searchTypeRef.current = 'similarity';
+  context.ownedSearchStatusRef.current['multi:stock,smallvirtual'] = { available: true, modes: ['similarity'], maxQueries: 20 };
+  const singleQuery = { ...context, searchCode: 'CCO' };
+  await new AsyncFunction(...Object.keys(singleQuery), searchBody)(...Object.values(singleQuery));
+  checks.push(['mixed collections send one multi request with Morgan Tanimoto and never a legacy path',
+    requestCalls.length === 1 && requestCalls[0].source === 'multi' && requestCalls[0].sources.join(',') === 'stock,smallvirtual'
+      && requestCalls[0].fingerprint_type === 'morgan' && requestCalls[0].similarity_metric === 'tanimoto']);
 }
 {
   const body = simulation.split('const runOwnedSearch = async (offset, append, { token, controller, requestId, request }) => {')[1].split('\n  };')[0];

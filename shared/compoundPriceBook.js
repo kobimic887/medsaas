@@ -35,7 +35,18 @@ export const COMPOUND_PRICE_GUIDE = freeze({
     columns: [{ label: 'VPX', values: [400, 460, 529] }],
     sizes: [1, 2, 5],
   },
+  // Small-molecule virtual set (2026-10-15): priced as VPX per the data owner.
+  smallvirtual: {
+    title: 'Small-molecule virtual price guide (VPX tier)',
+    columns: [{ label: 'VPX', values: [400, 460, 529] }],
+    sizes: [1, 2, 5],
+  },
 });
+
+/** Virtual collections are made to order: no snapshot quantity limits a pack. */
+export const MADE_TO_ORDER_SOURCES = Object.freeze(['virtual', 'smallvirtual']);
+// Small-molecule virtual IDs have no prefix: digit groups joined by "-".
+const SMALL_VIRTUAL_CODE = /^\d+(?:-\d+)+$/;
 
 export function euroToUsdCents(euros) {
   if (!Number.isSafeInteger(euros) || euros < 0 || euros > 1000000) {
@@ -52,11 +63,15 @@ export function approximateUsd(euros) {
 }
 
 export function workbookPacksForRow(source, code) {
-  if (!['stock', 'real', 'virtual'].includes(source) || typeof code !== 'string') return null;
+  if (!['stock', 'real', 'virtual', 'smallvirtual'].includes(source) || typeof code !== 'string') return null;
+  if (source === 'smallvirtual') return SMALL_VIRTUAL_CODE.test(code.trim()) ? packsFor('smallvirtual', 'VPX') : null;
   const prefix = code.trim().match(/^([a-z]+)\s*\d+$/i)?.[1].toUpperCase();
   if (!prefix || (source === 'real' && prefix !== 'RPX') || (source === 'virtual' && prefix !== 'VPX')) return null;
   if (source === 'stock' && ['RPX', 'VPX'].includes(prefix)) return null;
-  const category = source === 'real' ? 'RPX' : source === 'virtual' ? 'VPX' : prefix === 'LAS' ? 'LAS' : 'Other codes';
+  return packsFor(source, source === 'real' ? 'RPX' : source === 'virtual' ? 'VPX' : prefix === 'LAS' ? 'LAS' : 'Other codes');
+}
+
+function packsFor(source, category) {
   const guide = COMPOUND_PRICE_GUIDE[source];
   const column = guide.columns.find(({ label }) => label === category);
   const sheetColumn = { 'Other codes': 'C', LAS: 'D', RPX: 'E', VPX: 'F' }[category];

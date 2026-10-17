@@ -24,7 +24,7 @@ def substructure_query(query):
     return molecule,'smarts'
 
 class GraphStore:
-    def __init__(self,index_dir,graph_dir,sources=('real','virtual'),skip_missing=False):
+    def __init__(self,index_dir,graph_dir,sources=('real','virtual','smallvirtual'),skip_missing=False):
         self.datasets={}
         for source in sources:
             index_dir,graph_dir=pathlib.Path(index_dir),pathlib.Path(graph_dir)
@@ -139,7 +139,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.reply(200,{'matches':matches,'useChirality':True})
                 finally:self.server.gate.release()
             source=body['source'];mode=body['mode'];query=body['query'];cap=body['cap']
-            if source not in ('stock','both','real','virtual') or mode not in ('id','exact','substructure') or not isinstance(query,str) or not query or len(query)>2000 or not isinstance(cap,int) or not 1<=cap<=1001:raise ValueError('Invalid owned search query')
+            if source not in ('stock','both','real','virtual','smallvirtual') or mode not in ('id','exact','substructure') or not isinstance(query,str) or not query or len(query)>2000 or not isinstance(cap,int) or not 1<=cap<=1001:raise ValueError('Invalid owned search query')
             if not self.server.gate.acquire(timeout=min(GATE_WAIT_SECONDS,max(0,deadline-time.monotonic()-5))):return self.reply(503,{'error':'Owned graph search is busy; retry shortly'})
             try:
                 if source=='stock':
