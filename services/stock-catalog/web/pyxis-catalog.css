@@ -1,0 +1,175 @@
+/* Public Pyxis stock catalog. Everything is scoped under .pxc so the widget can
+   sit inside the WordPress theme without restyling it. Colours are the brand
+   site's --sk-color-* values. */
+.pxc {
+  --pxc-citron: #b4b239;
+  --pxc-citron-dark: #97951f;
+  --pxc-navy: #000637;
+  --pxc-teal: #072824;
+  --pxc-surface: #f7f7f7;
+  --pxc-line: #e3e5e8;
+  --pxc-muted: #5b6b68;
+  box-sizing: border-box;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+  color: var(--pxc-teal);
+  font-family: Poppins, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  scroll-margin-top: 96px;
+}
+.pxc *, .pxc *::before, .pxc *::after { box-sizing: inherit; }
+
+.pxc-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  margin-bottom: 16px;
+}
+.pxc-toolbar-bottom { justify-content: flex-end; margin: 24px 0 0; }
+.pxc-status { margin: 0; font-weight: 500; font-variant-numeric: tabular-nums; }
+
+.pxc-pager { display: flex; align-items: center; gap: 6px; }
+.pxc-page-label { display: inline-flex; align-items: center; gap: 6px; padding: 0 6px; white-space: nowrap; }
+.pxc-page-input {
+  width: 5.5em;
+  padding: 6px 8px;
+  border: 1px solid var(--pxc-line);
+  border-radius: 8px;
+  font: inherit;
+  color: inherit;
+  text-align: center;
+  background: #fff;
+}
+.pxc-page-button {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--pxc-citron);
+  color: #fff;
+  font: 600 18px/1 Poppins, system-ui, sans-serif;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.pxc-page-button:hover:not(:disabled) { background: var(--pxc-citron-dark); }
+.pxc-page-button:disabled { background: var(--pxc-line); color: #9aa5a3; cursor: default; }
+
+.pxc-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 20px;
+  border-radius: 12px;
+  background: var(--pxc-navy);
+  overflow: hidden;
+}
+.pxc-tab {
+  padding: 16px 8px 13px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  font: 500 14px/1.2 Poppins, system-ui, sans-serif;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.pxc-tab:hover { color: #fff; }
+.pxc-tab.is-active { color: #fff; border-bottom-color: var(--pxc-citron); }
+.pxc-arrow { color: var(--pxc-citron); }
+
+.pxc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 20px;
+}
+.pxc-grid[aria-busy="true"] .pxc-card { opacity: 0.55; }
+
+.pxc-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 330px;
+  border: 1px solid var(--pxc-line);
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+  transition: box-shadow 0.15s, opacity 0.15s;
+}
+.pxc-card:hover { box-shadow: 0 8px 24px rgba(0, 6, 55, 0.1); }
+.pxc-code {
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--pxc-surface);
+  color: var(--pxc-navy);
+  font: 600 15px/1.3 Poppins, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.pxc-structure {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 2 / 1;
+  padding: 6px;
+  background: #fff;
+}
+.pxc-structure img, .pxc-structure svg { display: block; width: 100%; height: 100%; object-fit: contain; }
+.pxc-structure-missing { color: var(--pxc-muted); font-size: 12px; }
+
+.pxc-props { margin: 0; padding: 10px 14px 4px; border-top: 1px solid var(--pxc-line); }
+.pxc-props div { display: flex; gap: 6px; }
+.pxc-props dt { color: var(--pxc-muted); }
+.pxc-props dt::after { content: ":"; }
+.pxc-props dd { min-width: 0; margin: 0; font-weight: 500; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.pxc-formula sub, .pxc-formula sup { font-size: 0.72em; line-height: 0; }
+
+.pxc-details { padding: 0 14px; }
+.pxc-details summary { color: var(--pxc-muted); font-size: 12px; cursor: pointer; }
+.pxc-smiles { display: block; margin: 4px 0; font-size: 11px; word-break: break-all; color: var(--pxc-teal); }
+
+.pxc-actions { display: flex; gap: 8px; margin-top: auto; padding: 10px 14px 14px; }
+.pxc-action {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid var(--pxc-line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--pxc-teal);
+  font: 500 12px/1.2 Poppins, system-ui, sans-serif;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.pxc-action:hover { border-color: var(--pxc-citron); }
+.pxc-order { border-color: var(--pxc-citron); background: var(--pxc-citron); color: #fff; }
+.pxc-order:hover { background: var(--pxc-citron-dark); border-color: var(--pxc-citron-dark); color: #fff; }
+.pxc button:focus-visible, .pxc a:focus-visible, .pxc input:focus-visible, .pxc summary:focus-visible {
+  outline: 2px solid var(--pxc-citron);
+  outline-offset: 2px;
+}
+
+.pxc-skeleton {
+  background: linear-gradient(100deg, var(--pxc-surface) 30%, #fff 50%, var(--pxc-surface) 70%) 0 0 / 300% 100%;
+  animation: pxc-shimmer 1.4s linear infinite;
+}
+@keyframes pxc-shimmer { to { background-position: -150% 0; } }
+@media (prefers-reduced-motion: reduce) { .pxc-skeleton { animation: none; } }
+
+.pxc-error { grid-column: 1 / -1; padding: 40px 16px; text-align: center; }
+.pxc-error .pxc-action { flex: none; padding: 8px 20px; }
+
+@media (max-width: 640px) {
+  .pxc-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pxc-toolbar { justify-content: center; }
+  .pxc-status { width: 100%; text-align: center; }
+  .pxc-grid { gap: 12px; }
+  .pxc-card { min-height: 0; }
+}
+@media (max-width: 480px) {
+  .pxc { padding: 16px 12px 32px; }
+  .pxc-grid { grid-template-columns: 1fr; }
+}
