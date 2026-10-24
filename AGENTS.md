@@ -88,9 +88,10 @@ when a path or trap moves.
   scientific host; ship `server/utils/ownedSearch.js` with server releases.
   Generic substructure patterns can exceed the 35 s VPX scan budget and must fail
   explicitly, never return a partial scan as complete.
-- Public stock catalog for the WordPress site: `services/stock-catalog/` — a static
-  CDN widget (pre-sorted chunks + `sha256(canonical_smiles)` SVGs). It never calls
-  the app API; ordering links to the web-shop. Not an 84 artifact.
+- Public stock catalog for the WordPress site: `services/stock-catalog/`, a WordPress
+  plugin (`[pyxis_stock_catalog]`). By owner decision it proxies the Asinex stock shop
+  API and hotlinks `compounds.asinex.com` images. WordPress-only and not an 84
+  artifact; never wire it into the app, where the no-Asinex rules above still apply.
 - Client builds write `.br`/`.gz` siblings for `assets/` and `ketcher/static/`;
   `server/utils/precompressedAssets.js` serves them. Ship them with `client/dist`.
 - Link Fragments: `docs/LINK-FRAGMENTS.md`, `services/link-fragments/README.md`.

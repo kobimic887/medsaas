@@ -1,87 +1,63 @@
-# Public stock catalog
+# Pyxis stock catalog (WordPress plugin)
 
-A browse-only page of the Pyxis stock compounds for the WordPress site
-(`www.pyxis-discovery.com`): structure, ID, MW, formula and the dated availability
-snapshot in a 25-per-page grid. You can sort by ID, library, MW or availability,
-and click the same sort again to reverse it. There is no structure or ID search;
-that stays in the app's Home page. **Order** links to the web-shop
-(`https://app.pyxis-discovery.com/dashboard/simulation`, which asks visitors to
-sign in), and purchasing goes through the normal signed-offer flow.
+This is the Asinex stock shop listing (`stock.asinex.com:5443/compounds`) with Pyxis
+branding, served from `www.pyxis-discovery.com`. It has no structure editor and no
+ID/filter search. The page is a 25-per-page grid showing the ID, structure, MW,
+formula and availability. Visitors can sort by ID, library, MW or availability,
+and clicking the active sort reverses it. **Order** links to the Pyxis web-shop
+(`app.pyxis-discovery.com/dashboard/simulation`).
 
-Everything is static. The page never calls the application API, so it needs no
-session, spends no credits and puts no load on the app host.
+The page uses the same data as the Asinex page, by owner decision:
+
+| What | Where it comes from |
+|---|---|
+| Compound pages | Asinex shop API `POST https://stock.asinex.com:5443/api/Shop`, through this plugin's proxy |
+| Structure images | Asinex CloudFront: `https://compounds.asinex.com/<LIB>/<first 4 digits>/<LIB><digits>.svg` |
+| Missing images (CloudFront 403) | Drawn in the browser from the row's SMILES with RDKit.js (jsDelivr, loaded only when needed) |
+
+The shop API sends no CORS headers, so a browser on the Pyxis site cannot call
+it directly. The plugin therefore exposes a fixed, read-only route:
+`GET /wp-json/pyxis-catalog/v1/compounds?sort=id|library|mw|availability&order=asc|desc&page=N`.
+It forwards only those three values, refuses anything else with `400`, and
+returns `502` when the shop fails. Note that the shop sometimes reports errors
+as HTTP 200 with a `SystemError` body. Pages 0–39 of each sort are cached as
+10-minute transients; deeper pages are not, so crawlers cannot fill `wp_options`.
+
+This is a WordPress artifact only. Nothing here runs on the app host, and it
+must never be wired into the Pyxis app, where the no-Asinex rules in
+`AGENTS.md` still apply.
 
 | Path | Purpose |
 |---|---|
-| `web/pyxis-catalog.js` | Self-mounting widget (ES module). Pure helpers are exported for `test.mjs` |
-| `web/pyxis-catalog.css` | Styles, all scoped under `.pxc`, using the brand site's colours and Poppins |
-| `web/index.html` | Standalone page and iframe target |
-| `build_catalog.py` | Builds `manifest.json` and the pre-sorted row chunks |
-| `test.mjs` | Pagination, image key, formatting and URL-hash contract (`bun run test:stock-catalog`) |
+| `wordpress/pyxis-stock-catalog/pyxis-stock-catalog.php` | Shortcode `[pyxis_stock_catalog]` + REST proxy (PHP 7.4+) |
+| `wordpress/pyxis-stock-catalog/assets/pyxis-catalog.js` | Widget (ES module). Pure helpers are exported for `test.mjs` |
+| `wordpress/pyxis-stock-catalog/assets/pyxis-catalog.css` | Styles scoped under `.pxc`, using the brand site's colours and Poppins |
+| `test.mjs` | Image path, formatting and URL-hash contract (`bun run test:stock-catalog`) |
+| `test/wp-harness.php` | Minimal WordPress stand-in for running the plugin with `php -S` |
 
-## Data
+## Install on WordPress
 
-`build_catalog.py` joins the import upload CSV (source ID and mg snapshot) to
-the engine export (`id, MAIN_BAS, canonical_smiles`). It needs RDKit, so run it
-on a science host, not the Mac or the app host. RDKit computes MW and formula
-from the canonical SMILES. Each sort is written once, ascending, as 500-row chunks
-(`data/sorts/<sort>/<n>.json`, about 41 KB raw or 9 KB gzipped). A descending
-page reads from the end of the same files. `manifest.json` is written last.
-
-Structure images come from [`scripts/render-structure-images.py`](../../scripts/render-structure-images.py)
-and are keyed by `sha256(canonical_smiles)`. The widget hashes the exact SMILES
-in the browser. If an image is missing, it draws that SMILES with RDKit.js
-(jsDelivr, loaded only on demand). It never shows a picture filed under another
-spelling.
-
-The 2026-09-01 build contains 630,646 compounds across 51 libraries. Six source
-rows are missing from the engine and are left out. The output is 5,048 chunk
-files (235 MB) plus 630,646 SVGs (about 6.5 GB). Generated data stays outside Git.
-
-## Hosting layout
-
-Serve one directory from a CDN, for example `https://catalog.pyxis-discovery.com/`:
-
-```
-index.html  pyxis-catalog.js  pyxis-catalog.css
-data/manifest.json  data/sorts/{id,library,mw,availability}/<n>.json
-svg/<aa>/<bb>/<sha256>.svg
-```
-
-The widget resolves `data/` and `svg/` relative to its own script URL. Override
-them with `data-data-base` / `data-image-base`. The CDN needs:
-
-- `Access-Control-Allow-Origin` for `.js`, `.css` and `.json`. Module scripts and
-  `fetch` are CORS requests when the page is embedded in WordPress. Images are not.
-- gzip/brotli for `.json`, `.svg`, `.js` and `.css`.
-- Long caching for `svg/` and `data/`. After replacing data or widget files,
-  purge the CDN cache so chunks from two builds are never mixed.
-
-## WordPress
-
-Create a page (full-width template) with a **Custom HTML** block:
-
-```html
-<div data-pyxis-catalog></div>
-<script type="module" src="https://catalog.pyxis-discovery.com/pyxis-catalog.js"></script>
-```
+1. Zip the plugin directory:
+   `cd services/stock-catalog/wordpress && zip -r pyxis-stock-catalog.zip pyxis-stock-catalog`.
+2. Go to WP admin → Plugins → Add New → Upload, then install and activate.
+3. Create a page (full-width template works best) that contains the shortcode
+   `[pyxis_stock_catalog]`, and add it to the menu.
+   `[pyxis_stock_catalog shop_url="https://…"]` overrides the Order link.
 
 Only one catalog can appear on a page, because the URL hash
 (`#pxc-sort=mw&pxc-order=asc&pxc-page=3`) holds its state. This also keeps the
-back button and shared links working. WordPress strips scripts for editors
-without `unfiltered_html`, so an administrator should add the block. If the
-theme fights the embed, use an iframe of `index.html` instead.
+back button and shared links working. When updating the plugin, bump
+`PYXIS_CATALOG_VERSION` so browsers fetch the new JS/CSS.
 
-## Rebuild and preview
+## Verify
 
 ```bash
-python3 services/stock-catalog/build_catalog.py \
-  --stock-csv stock-compounds-upload.csv \
-  --canonical stock-20260901-canonical.tsv \
-  --out-dir ./stock-catalog-data
+bun run test:stock-catalog
+# PHP + browser, with no WordPress install (PHP 7.4 in Docker, e.g. on oracleOld):
+docker run --rm -p 127.0.0.1:8790:8790 -v "$PWD/services/stock-catalog":/app -w /app \
+  php:7.4-cli php -S 0.0.0.0:8790 test/wp-harness.php
+# then open http://127.0.0.1:8790/ — the proxy calls the live shop API
 ```
 
-For a local preview, serve a directory that holds the three `web/` files plus
-`data/` and `svg/` links (for example `python3 -m http.server`). Python's server
-drops connections under many parallel image requests. Those images then use the
-RDKit fallback; a CDN does not have this problem.
+The upstream shop takes about 1–3 s per uncached page; the widget prefetches the
+next page.

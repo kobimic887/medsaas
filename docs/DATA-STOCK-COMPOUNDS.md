@@ -80,9 +80,7 @@ stock code. A missing image must fall back to browser RDKit rendering; never fil
 a picture under a different SMILES spelling. Export the engine strings with
 `\copy (select id, metadata->>'MAIN_BAS', canonical_smiles from molecules where
 dataset_id = <stock id>) to stdout` and keep the generated images outside Git.
-The [public stock catalog](../services/stock-catalog/README.md) is the first
-consumer: it looks images up by this key and falls back to browser RDKit. The
-app's Simulation results do not use the hosted images yet.
+Hosting and client lookup are not wired up yet.
 
 ## Import and verification
 

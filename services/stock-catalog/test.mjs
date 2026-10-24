@@ -1,35 +1,26 @@
-// Pure-helper contract for the public stock catalog widget.
+// Pure-helper contract for the Pyxis stock catalog widget.
 // Run: bun services/stock-catalog/test.mjs
+// The PHP proxy is checked separately (see README "Verify").
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import {
-  chunksFor, formatMass, formulaParts, imagePath, pageCount, pageIndices, readState, writeState,
-} from './web/pyxis-catalog.js';
+  formatAvailable, formulaParts, imagePath, pageCount, readState, writeState,
+} from './wordpress/pyxis-stock-catalog/assets/pyxis-catalog.js';
 
-// Pagination over ascending chunk files.
-assert.equal(pageCount(630646, 25), 25226);
+assert.equal(pageCount(636918, 25), 25477);
 assert.equal(pageCount(0, 25), 1);
-assert.deepEqual(pageIndices(60, 0, 25, 'asc').slice(0, 2), [0, 1]);
-assert.deepEqual(pageIndices(60, 2, 25, 'asc'), Array.from({ length: 10 }, (_, i) => 50 + i));
-assert.deepEqual(pageIndices(60, 0, 25, 'desc').slice(0, 2), [59, 58]);
-assert.deepEqual(pageIndices(60, 2, 25, 'desc'), Array.from({ length: 10 }, (_, i) => 9 - i));
-assert.deepEqual(pageIndices(60, 3, 25, 'asc'), []);
-// A descending page that straddles a chunk boundary reads both files.
-assert.deepEqual(chunksFor(pageIndices(1010, 0, 25, 'desc'), 500), [2, 1]);
-assert.deepEqual(chunksFor(pageIndices(1000, 0, 25, 'asc'), 500), [0]);
 
-// Image keys must match scripts/render-structure-images.py exactly.
-const smiles = 'COc1ccc(Cn2nnnc2C(c2cc3c(C)cc(C)cc3[nH]c2=O)N2CCN(C)CC2)cc1';
-const sha = createHash('sha256').update(smiles, 'utf8').digest('hex');
-assert.equal(imagePath(sha), `${sha.slice(0, 2)}/${sha.slice(2, 4)}/${sha}.svg`);
+// The shop's CloudFront layout keeps leading zeros from the code string.
+assert.equal(imagePath('LAS 100517730'), 'LAS/1005/LAS100517730.svg');
+assert.equal(imagePath('BAS 00000525'), 'BAS/0000/BAS00000525.svg');
+assert.equal(imagePath('AAM 10376335'), 'AAM/1037/AAM10376335.svg');
+assert.equal(imagePath('bad code'), null);
+assert.equal(imagePath('BAS 12/../x'), null);
 
-// Display formatting.
-assert.equal(formatMass(150), '>100 mg');
-assert.equal(formatMass(100), '100 mg');
-assert.equal(formatMass(17.2), '17 mg');
-assert.equal(formatMass(0.94), '0.9 mg');
-assert.equal(formatMass(0.04), '<0.1 mg');
-assert.equal(formatMass(0), 'On request');
+assert.equal(formatAvailable('>100'), '>100 mg');
+assert.equal(formatAvailable('9.4'), '9.4 mg');
+assert.equal(formatAvailable(''), 'On request');
+assert.equal(formatAvailable(undefined), 'On request');
+
 assert.deepEqual(formulaParts('C25H31N3O4S'), {
   atoms: [['C', '25'], ['H', '31'], ['N', '3'], ['O', '4'], ['S', '']], charge: '',
 });
@@ -38,13 +29,16 @@ assert.deepEqual(formulaParts('C12H14NO4-'), {
 });
 assert.equal(formulaParts('C2H8N2+2').charge, '+2');
 
-// Hash state: defaults, clamping, and coexistence with other hash params.
-assert.deepEqual(readState('', 100, 25), { sort: 'id', order: 'desc', page: 0 });
-assert.deepEqual(readState('#pxc-sort=mw', 100, 25), { sort: 'mw', order: 'asc', page: 0 });
-assert.deepEqual(readState('#pxc-sort=bogus&pxc-order=up&pxc-page=99', 100, 25), { sort: 'id', order: 'desc', page: 3 });
-assert.deepEqual(readState('#pxc-page=-4', 100, 25).page, 0);
+// Hash state: defaults per sort, bad input, coexistence with other hash params.
+assert.deepEqual(readState(''), { sort: 'id', order: 'desc', page: 0 });
+assert.deepEqual(readState('#pxc-sort=mw'), { sort: 'mw', order: 'asc', page: 0 });
+assert.deepEqual(readState('#pxc-sort=library'), { sort: 'library', order: 'asc', page: 0 });
+assert.deepEqual(readState('#pxc-sort=bogus&pxc-order=up&pxc-page=99'), { sort: 'id', order: 'desc', page: 98 });
+assert.equal(readState('#pxc-page=-4').page, 0);
+assert.equal(readState('#pxc-page=abc').page, 0);
+assert.equal(readState('#pxc-page=999999').page, 99999);
 const hash = writeState('#other=1', { sort: 'availability', order: 'asc', page: 4 });
 assert.equal(hash, '#other=1&pxc-sort=availability&pxc-order=asc&pxc-page=5');
-assert.deepEqual(readState(hash, 1000, 25), { sort: 'availability', order: 'asc', page: 4 });
+assert.deepEqual(readState(hash), { sort: 'availability', order: 'asc', page: 4 });
 
 console.log('stock-catalog: ok');

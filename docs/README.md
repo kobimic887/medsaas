@@ -18,7 +18,7 @@ cover behavior and maintenance; private deployment records are kept separately.
 | Guide | Use it for |
 | --- | --- |
 | [Stock compounds](DATA-STOCK-COMPOUNDS.md) | Import format and stock similarity search |
-| [Public stock catalog](../services/stock-catalog/README.md) | Static browse page for the WordPress site, CDN layout |
+| [Public stock catalog](../services/stock-catalog/README.md) | WordPress plugin: branded stock listing for the marketing site |
 | [Macrocycles](DATA-MACROCYCLES.md) | Real/virtual sources and index formats |
 | [Link Fragments](LINK-FRAGMENTS.md) | Two-fragment 3D matching, attachment rules and scientific limits |
 | [Open compounds](DATA-OPEN-COMPOUNDS.md) | ChEMBL search and optional AI assistance |
