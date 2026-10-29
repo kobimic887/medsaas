@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Pyxis Stock Catalog
  * Description: Pyxis-branded browse page for the stock screening compounds. Add the shortcode [pyxis_stock_catalog] to a page.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Requires PHP: 7.4
  * Author: Pyxis Discovery
  *
@@ -11,11 +11,15 @@
  * CORS headers, so browsers on this site cannot call it directly; this plugin
  * exposes a fixed, read-only proxy at /wp-json/pyxis-catalog/v1/compounds.
  * Only sort, order and page pass through — never SMILES, codes or filters.
+ *
+ * The site's "pyxis" theme builds pages from its own sections and never prints
+ * the editor content, so a page whose content holds the shortcode is rendered
+ * with this plugin's template (theme header + title + catalog + theme footer).
  */
 
 defined('ABSPATH') || exit;
 
-const PYXIS_CATALOG_VERSION = '1.0.0';
+const PYXIS_CATALOG_VERSION = '1.1.0';
 const PYXIS_CATALOG_UPSTREAM = 'https://stock.asinex.com:5443/api/Shop';
 const PYXIS_CATALOG_PAGE_SIZE = 25;
 // Upstream orderBy codes. The shop's library order runs Z→A for "asc", so it is
@@ -34,6 +38,14 @@ const PYXIS_CATALOG_MAX_PAGE = 100000;
 
 add_action( 'rest_api_init', 'pyxis_catalog_register_routes' );
 add_shortcode( 'pyxis_stock_catalog', 'pyxis_catalog_shortcode' );
+add_filter( 'template_include', 'pyxis_catalog_template_include', 99 );
+
+function pyxis_catalog_template_include( $template ) {
+	if ( is_page() && has_shortcode( (string) get_post_field( 'post_content', get_queried_object_id() ), 'pyxis_stock_catalog' ) ) {
+		return __DIR__ . '/templates/catalog-page.php';
+	}
+	return $template;
+}
 
 function pyxis_catalog_register_routes() {
 	register_rest_route(

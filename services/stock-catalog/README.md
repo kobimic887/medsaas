@@ -30,6 +30,7 @@ must never be wired into the Pyxis app, where the no-Asinex rules in
 | Path | Purpose |
 |---|---|
 | `wordpress/pyxis-stock-catalog/pyxis-stock-catalog.php` | Shortcode `[pyxis_stock_catalog]` + REST proxy (PHP 7.4+) |
+| `wordpress/pyxis-stock-catalog/templates/catalog-page.php` | Page template used for pages that contain the shortcode |
 | `wordpress/pyxis-stock-catalog/assets/pyxis-catalog.js` | Widget (ES module). Pure helpers are exported for `test.mjs` |
 | `wordpress/pyxis-stock-catalog/assets/pyxis-catalog.css` | Styles scoped under `.pxc`, using the brand site's colours and Poppins |
 | `test.mjs` | Image path, formatting and URL-hash contract (`bun run test:stock-catalog`) |
@@ -40,9 +41,16 @@ must never be wired into the Pyxis app, where the no-Asinex rules in
 1. Zip the plugin directory:
    `cd services/stock-catalog/wordpress && zip -r pyxis-stock-catalog.zip pyxis-stock-catalog`.
 2. Go to WP admin → Plugins → Add New → Upload, then install and activate.
-3. Create a page (full-width template works best) that contains the shortcode
-   `[pyxis_stock_catalog]`, and add it to the menu.
+3. Create a page (e.g. "Compounds", parent "Services" → `/services/compounds/`)
+   whose content is the shortcode `[pyxis_stock_catalog]`.
    `[pyxis_stock_catalog shop_url="https://…"]` overrides the Order link.
+4. Link to it: on the live site that is a new item in the Services page's
+   "Sub navigation" section (the tab strip), not the header menu.
+
+The site's `pyxis` theme never prints editor content (pages are built from
+its own sections), so the plugin renders any page whose content holds the
+shortcode with `templates/catalog-page.php`: theme header, the page title,
+the content, theme footer.
 
 Only one catalog can appear on a page, because the URL hash
 (`#pxc-sort=mw&pxc-order=asc&pxc-page=3`) holds its state. This also keeps the
