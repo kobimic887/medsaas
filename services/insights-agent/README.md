@@ -31,6 +31,10 @@ Unlike the app, this is not an 84 artifact. It runs on an always-on box
 | `claude-cli` (default) | `claude -p` with the host's Claude login (subscription). Tools, settings, MCP and session persistence are off, and it runs in an empty directory. `--bare` is avoided because it disables the subscription login. |
 | `openai` | Any OpenAI-compatible endpoint: OmniRoute (`http://127.0.0.1:20128/v1` on kobivps, needs an OmniRoute key), OpenRouter, or a paid API. |
 
+The CLI shares the subscription's usage limits. If a run hits a quota, it fails
+without posting; the journal reports the reset message and the next scheduled
+run tries again.
+
 One post costs two short model calls (paper selection and writing, plus at most
 two retries).
 

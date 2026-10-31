@@ -63,8 +63,12 @@ async function completeClaudeCli({ system, user }, config, spawnImpl) {
       child.exited,
     ]);
     clearTimeout(timer);
-    if (code !== 0) throw new Error(`claude -p exited ${code}: ${(stderr || stdout).slice(0, 300)}`);
-    const parsed = JSON.parse(stdout);
+    // Even failed CLI runs emit JSON on stdout. Extract result before truncating:
+    // usage metadata can otherwise hide the actual quota/auth error in journals.
+    let parsed;
+    try { parsed = JSON.parse(stdout); } catch { /* Report non-JSON CLI failures below. */ }
+    if (code !== 0) throw new Error(`claude -p exited ${code}: ${String(parsed?.result || stderr || stdout).slice(0, 300)}`);
+    if (!parsed) throw new Error('claude -p returned invalid JSON');
     if (parsed.is_error || typeof parsed.result !== 'string') throw new Error(`claude -p error: ${String(parsed.result).slice(0, 300)}`);
     return parsed.result;
   } finally {

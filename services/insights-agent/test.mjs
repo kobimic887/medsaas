@@ -92,6 +92,19 @@ assert.equal(await complete({ system: 'S', user: 'U' }, { provider: 'claude-cli'
 for (const flag of ['-p', '--tools', '--setting-sources', '--strict-mcp-config', '--no-session-persistence']) assert.ok(argv.includes(flag), flag);
 assert.ok(!argv.includes('--bare'), '--bare would disable the subscription login');
 
+// Failed CLI JSON may start with lengthy metadata; preserve the actionable error.
+await assert.rejects(
+  complete({ system: 'S', user: 'U' }, { provider: 'claude-cli' }, {
+    spawnImpl: () => ({
+      stdout: new Blob([JSON.stringify({ usage: 'x'.repeat(1000), is_error: true, result: 'Usage limit reached; resets at noon' })]).stream(),
+      stderr: new Blob(['']).stream(),
+      exited: Promise.resolve(1),
+      kill() {},
+    }),
+  }),
+  /exited 1: Usage limit reached; resets at noon/,
+);
+
 // WordPress: application-password auth and the Insights payload.
 const calls = [];
 const wpFetch = async (url, init) => {
