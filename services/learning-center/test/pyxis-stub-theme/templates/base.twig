@@ -1,0 +1,21 @@
+{# Same block layout as the live pyxis theme's templates/base.twig. #}
+{% block html_head_container %}
+  {% include 'parts/layout/head.twig' %}
+  {{ function('wp_head') }}
+  </head>
+{% endblock %}
+<body class="{{ body_class }}" data-template="base.twig">
+{% block header %}
+  {% include 'parts/layout/header.twig' %}
+{% endblock %}
+<main class="content-wrapper">
+  {% block content %}
+    Sorry, no content
+  {% endblock %}
+</main>
+{% block footer %}
+  {% include 'parts/layout/footer.twig' %}
+{% endblock %}
+{{ function('wp_footer') }}
+</body>
+</html>

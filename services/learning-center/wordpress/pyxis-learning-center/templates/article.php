@@ -9,7 +9,7 @@ the_post();
 $pyxis_learn_post       = get_post();
 $pyxis_learn_topic      = pyxis_learn_primary_topic( $pyxis_learn_post );
 $pyxis_learn_objectives = pyxis_learn_objectives( $pyxis_learn_post );
-// Render before get_header() so shortcode output is final and nothing enqueued
+// Render before the layout so shortcode output is final and nothing enqueued
 // late misses <head>.
 $pyxis_learn_content = apply_filters( 'the_content', get_the_content() );
 
@@ -30,7 +30,7 @@ if ( $pyxis_learn_topic ) {
 }
 $pyxis_learn_crumbs[] = array( pyxis_learn_term_label( $pyxis_learn_post ), null );
 
-get_header();
+ob_start();
 ?>
 <div class="pxl">
 	<div class="sk-container pxl-layout">
@@ -81,4 +81,4 @@ get_header();
 	</div>
 </div>
 <?php
-get_footer();
+pyxis_learn_output( ob_get_clean() );

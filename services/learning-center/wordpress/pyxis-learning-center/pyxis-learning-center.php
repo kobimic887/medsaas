@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Pyxis Learning Center
  * Description: Educational "What is …?" articles grouped by topic, served at /learning/ (hub, topic pages, articles and an A–Z glossary). Activating the plugin imports the starter articles once.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Requires PHP: 7.4
  * Requires at least: 6.0
  * Author: Pyxis Discovery
@@ -15,15 +15,17 @@
  *   /learning/<topic>/<article>/  article (pyxis_learn post)
  * "glossary" is therefore a reserved topic slug.
  *
- * The site's "pyxis" theme renders through Timber/Twig and never prints editor
- * content for these types, so every Learning Center view uses this plugin's
- * templates: theme header, plugin markup, theme footer (as the stock catalog
- * plugin does).
+ * The site's "pyxis" theme renders through Timber/Twig and has no header.php or
+ * footer.php: get_header() there falls back to WordPress's bare theme-compat
+ * header. Each Learning Center template therefore buffers its markup and
+ * pyxis_learn_output() renders it inside the theme's templates/base.twig
+ * "content" block (real header, menus, footer, cookie banner). Themes without
+ * Timber get get_header()/get_footer().
  */
 
 defined( 'ABSPATH' ) || exit;
 
-const PYXIS_LEARN_VERSION = '1.0.0';
+const PYXIS_LEARN_VERSION = '1.0.1';
 const PYXIS_LEARN_TYPE    = 'pyxis_learn';
 const PYXIS_LEARN_TOPIC   = 'pyxis_learn_topic';
 const PYXIS_LEARN_BASE    = 'learning';
@@ -386,6 +388,32 @@ function pyxis_learn_objectives( $post ) {
 /** Link to the Pyxis web app; filterable so the site can point elsewhere. */
 function pyxis_learn_app_url() {
 	return apply_filters( 'pyxis_learn_app_url', 'https://app.pyxis-discovery.com/auth/sign-in' );
+}
+
+/**
+ * Prints a Learning Center page: inside the Timber theme's base.twig when the
+ * theme uses Timber (v1 or v2), otherwise between get_header()/get_footer().
+ */
+function pyxis_learn_output( $html ) {
+	$timber = class_exists( 'Timber\\Timber' ) ? 'Timber\\Timber' : ( class_exists( 'Timber' ) ? 'Timber' : '' );
+	$layout = apply_filters( 'pyxis_learn_twig_layout', 'base.twig' );
+	if ( $timber && $layout ) {
+		try {
+			$context = method_exists( $timber, 'context' ) ? $timber::context() : $timber::get_context();
+			$context['pyxis_learn_content'] = $html;
+			$page = $timber::compile_string( '{% extends "' . $layout . '" %}{% block content %}{{ pyxis_learn_content|raw }}{% endblock %}', $context );
+			if ( is_string( $page ) && '' !== $page ) {
+				echo $page; // phpcs:ignore WordPress.Security.EscapeOutput -- theme layout + escaped template markup.
+				return;
+			}
+		} catch ( \Throwable $error ) {
+			// A missing or renamed layout must not take the page down.
+			error_log( 'pyxis-learning-center: Timber layout failed: ' . $error->getMessage() ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions
+		}
+	}
+	get_header();
+	echo $html; // phpcs:ignore WordPress.Security.EscapeOutput -- escaped template markup.
+	get_footer();
 }
 
 function pyxis_learn_template_part( $name, $vars = array() ) {

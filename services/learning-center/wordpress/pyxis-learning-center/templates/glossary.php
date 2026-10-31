@@ -33,7 +33,7 @@ foreach ( $pyxis_learn_entries as $pyxis_learn_entry ) {
 	$pyxis_learn_letters[ $pyxis_learn_letter ][] = $pyxis_learn_entry;
 }
 
-get_header();
+ob_start();
 ?>
 <div class="pxl">
 	<div class="sk-container pxl-layout">
@@ -80,4 +80,4 @@ get_header();
 	</div>
 </div>
 <?php
-get_footer();
+pyxis_learn_output( ob_get_clean() );

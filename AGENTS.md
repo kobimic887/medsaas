@@ -96,7 +96,8 @@ when a path or trap moves.
   `pyxis_insights` post type; core `posts` are disabled there.
   `services/learning-center/`: plugin serving `/learning/` (own rewrite rules,
   `glossary` reserved). Activation imports starter articles only for missing
-  slugs. `services/insights-agent/`: scheduled PubMed → model → Insights
+  slugs. Its templates render inside the Timber theme's `base.twig` content block;
+  `get_header()` alone loses this theme's real navigation/footer. `services/insights-agent/`: scheduled PubMed → model → Insights
   **draft** agent. Its guard rejects numbers absent from the abstract and any
   links other than the paper and Learning Center pages; citations are generated,
   never written by the model. Keep `WP_STATUS=draft` unless the owner opts in.

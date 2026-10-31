@@ -1,15 +1,15 @@
 <?php
 /**
  * /learning/ — hero with search, every topic with its articles, glossary link, CTA.
- * The pyxis theme's header.php opens <main class="content-wrapper"> and its
- * footer.php closes it, so templates print sections only.
+ * Templates buffer their markup and hand it to pyxis_learn_output(), which
+ * places it inside the theme's layout.
  */
 defined( 'ABSPATH' ) || exit;
 
 $pyxis_learn_topics = pyxis_learn_topics();
 $pyxis_learn_count  = (int) wp_count_posts( PYXIS_LEARN_TYPE )->publish;
 
-get_header();
+ob_start();
 ?>
 <div class="pxl">
 	<section class="pxl-hero">
@@ -55,4 +55,4 @@ get_header();
 	</div>
 </div>
 <?php
-get_footer();
+pyxis_learn_output( ob_get_clean() );

@@ -15,6 +15,13 @@ wpcli() { docker run --rm --network "$net" --user 33:33 -e WORDPRESS_DB_HOST=pxl
 
 case "${1:-up}" in
 up)
+  # PXL_TIMBER=1 (default) installs Timber 1.24.1 into the stub theme, matching
+  # the live theme's rendering path; PXL_TIMBER=0 tests the get_header() fallback.
+  if [ "${PXL_TIMBER:-1}" = 1 ]; then
+    docker run --rm --user "$(id -u):$(id -g)" -v "$here/pyxis-stub-theme:/app" -w /app composer:2 install --no-dev --quiet --ignore-platform-reqs
+  else
+    rm -rf "$here/pyxis-stub-theme/vendor"
+  fi
   docker network inspect "$net" >/dev/null 2>&1 || docker network create "$net" >/dev/null
   docker run -d --name pxl-db --network "$net" -e MARIADB_DATABASE=wp -e MARIADB_USER=wp -e MARIADB_PASSWORD=wp -e MARIADB_RANDOM_ROOT_PASSWORD=1 mariadb:11 >/dev/null
   docker run -d --name pxl-wp --network "$net" -p "127.0.0.1:$port:80" \
@@ -47,6 +54,10 @@ check)
   expect 200 /learning/macrocycles/
   expect 200 /learning/macrocycles/what-is-a-macrocycle/
   expect 200 /learning/molecular-docking/what-is-diffdock/
+  if [ -d "$here/pyxis-stub-theme/vendor" ]; then
+    renders /learning/ 'data-stub="timber-header"'
+    renders /learning/macrocycles/what-is-a-macrocycle/ 'data-stub="timber-footer"'
+  fi
   renders /learning/ 'class="pxl-hero"'
   renders /learning/glossary/ 'class="pxl-glossary"'
   renders /learning/macrocycles/ 'class="pxl-grid"'

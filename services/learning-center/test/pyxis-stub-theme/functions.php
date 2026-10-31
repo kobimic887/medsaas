@@ -1,4 +1,12 @@
 <?php
+// Like the live pyxis theme: Timber 1.x from the theme's own vendor/ with
+// templates in templates/. Without vendor/ (no composer install) the theme
+// stays a classic header.php/footer.php theme, the plugin's fallback path.
+if ( file_exists( __DIR__ . '/vendor/autoload.php' ) ) {
+	require_once __DIR__ . '/vendor/autoload.php';
+	new Timber\Timber();
+	Timber::$dirname = array( 'templates' );
+}
 // Same stylesheet the live pyxis theme enqueues as "app-css".
 add_action(
 	'wp_enqueue_scripts',

@@ -7,7 +7,7 @@ defined( 'ABSPATH' ) || exit;
 $pyxis_learn_topic    = get_queried_object();
 $pyxis_learn_articles = pyxis_learn_topic_articles( $pyxis_learn_topic );
 
-get_header();
+ob_start();
 ?>
 <div class="pxl">
 	<div class="sk-container pxl-layout">
@@ -46,4 +46,4 @@ get_header();
 	</div>
 </div>
 <?php
-get_footer();
+pyxis_learn_output( ob_get_clean() );

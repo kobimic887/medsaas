@@ -15,8 +15,9 @@ taxonomy with `rewrite => false` and adds its own four rewrite rules, so
 WordPress cannot generate competing URL patterns (`glossary` is therefore a
 reserved topic slug). An article opened under the wrong topic 301-redirects to
 its canonical URL. Like the stock catalog plugin, it renders with its own
-templates between the theme's header and footer, because the `pyxis` theme
-(Timber/Twig) does not print editor content. Styles are scoped under `.pxl` and
+templates inside the theme's `base.twig` content block, because the `pyxis`
+theme (Timber/Twig) has no classic header/footer templates. Themes without
+Timber use `get_header()` and `get_footer()` instead. Styles are scoped under `.pxl` and
 use the theme's `--sk-*` colour tokens and Poppins.
 
 ## Content
@@ -55,7 +56,9 @@ line), `pyxis_learn_order`. Topic order is term meta `pyxis_learn_order`.
 ```bash
 bun run test:learning-center   # front matter, topics, internal links, allowed HTML
 # Real WordPress in Docker (PHP 8.2, MariaDB, stub of the pyxis theme that loads the
-# live CSS). Run on a Docker host such as kobivps, not on the live server:
+# live CSS and Timber 1.24.1 / Twig 2.16.0 rendering path). The test-only Composer
+config permits those legacy dependencies to match production; never deploy its
+`vendor/` directory. Run on a Docker host such as kobivps, not on the live server:
 services/learning-center/test/run-wordpress.sh up      # http://127.0.0.1:8791
 services/learning-center/test/run-wordpress.sh check   # URLs, templates, titles, redirects, 404s, idempotent import
 services/learning-center/test/run-wordpress.sh down
