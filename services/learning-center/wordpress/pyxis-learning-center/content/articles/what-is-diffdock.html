@@ -1,0 +1,36 @@
+---
+title: What is DiffDock?
+topic: molecular-docking
+order: 3
+term: DiffDock
+summary: DiffDock is an open-source deep-learning docking method that uses a diffusion generative model to place a ligand on a protein without a predefined binding box.
+objectives:
+- Explain how a diffusion model generates docking poses
+- Compare DiffDock with classical docking programs
+- Know what DiffDock's confidence score does and does not tell you
+---
+<p><strong>DiffDock</strong> is a docking method introduced by researchers at MIT in 2022. Instead of searching poses and scoring them with a hand-built function, it <em>generates</em> poses with a <strong>diffusion model</strong>, the same family of generative AI used for image generation.</p>
+
+<h2>How it works</h2>
+<p>A diffusion model learns to reverse a noising process. During training, the ligand's correct pose from experimental structures is progressively scrambled — its position, orientation and torsion angles are randomised — and the network learns how to undo each step. At prediction time DiffDock starts from random poses and iteratively "denoises" them towards plausible binding modes on the protein.</p>
+<p>A separate <strong>confidence model</strong> then ranks the generated poses by how likely they are to be close to correct.</p>
+
+<h2>DiffDock compared with classical docking</h2>
+<table>
+<thead><tr><th></th><th>Classical (e.g. AutoDock Vina)</th><th>DiffDock</th></tr></thead>
+<tbody>
+<tr><td>Binding site</td><td>Usually a user-defined box</td><td>Can dock "blind" across the whole protein</td></tr>
+<tr><td>Pose generation</td><td>Search plus physics-inspired scoring</td><td>Learned generative model</td></tr>
+<tr><td>Output score</td><td>Estimated interaction energy (kcal/mol)</td><td>Confidence that the pose is right</td></tr>
+<tr><td>Strengths</td><td>Well understood; physically interpretable</td><td>Fast blind pose prediction; no box needed</td></tr>
+<tr><td>Watch out for</td><td>Box placement, scoring bias</td><td>Physically implausible poses; behaviour on targets unlike its training data</td></tr>
+</tbody>
+</table>
+
+<h2>Using it well</h2>
+<ul>
+<li>Treat the confidence as a pose-quality signal, <strong>not</strong> as binding affinity. To rank compounds, combine it with a physics-based [pyxis_learn_link slug="what-is-a-docking-score"]score[/pyxis_learn_link] or experimental data.</li>
+<li>Check poses for clashes and bad geometry; some versions of learned docking models can produce poses that look reasonable globally but are chemically strained.</li>
+<li>Blind docking is useful when the [pyxis_learn_link slug="what-is-a-binding-site"]binding site[/pyxis_learn_link] is unknown. When it is known, confirm that top poses land there.</li>
+</ul>
+<p>Because DiffDock is open source, it can be run on your own infrastructure, which matters when compound structures are confidential.</p>

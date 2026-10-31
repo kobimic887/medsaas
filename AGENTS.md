@@ -92,6 +92,14 @@ when a path or trap moves.
   plugin (`[pyxis_stock_catalog]`). By owner decision it proxies the Asinex stock shop
   API and hotlinks `compounds.asinex.com` images. WordPress-only and not an 84
   artifact; never wire it into the app, where the no-Asinex rules above still apply.
+- WordPress site content (not 84 artifacts). The Insights blog is the theme's
+  `pyxis_insights` post type; core `posts` are disabled there.
+  `services/learning-center/`: plugin serving `/learning/` (own rewrite rules,
+  `glossary` reserved). Activation imports starter articles only for missing
+  slugs. `services/insights-agent/`: scheduled PubMed → model → Insights
+  **draft** agent. Its guard rejects numbers absent from the abstract and any
+  links other than the paper and Learning Center pages; citations are generated,
+  never written by the model. Keep `WP_STATUS=draft` unless the owner opts in.
 - Client builds write `.br`/`.gz` siblings for `assets/` and `ketcher/static/`;
   `server/utils/precompressedAssets.js` serves them. Ship them with `client/dist`.
 - Link Fragments: `docs/LINK-FRAGMENTS.md`, `services/link-fragments/README.md`.

@@ -1,0 +1,35 @@
+---
+title: What is fragment linking?
+topic: lead-optimization
+order: 3
+term: Fragment linking
+summary: Fragment linking joins two small fragments that bind neighbouring sites on a protein with a linker, aiming for a molecule that binds much more tightly than either fragment.
+objectives:
+- Explain fragment-based drug discovery and the rule of three
+- Describe why linking fragments can give large affinity gains
+- Recognise the role of linker geometry and strain
+---
+<p><strong>Fragment-based drug discovery</strong> (FBDD) screens very small molecules, called fragments, instead of full drug-sized compounds. Fragments bind weakly — often only in the high micromolar to millimolar range — but efficiently, and they explore chemical space far better per compound tested.</p>
+
+<h2>The rule of three</h2>
+<p>Fragment libraries are often designed with the <strong>rule of three</strong>: molecular weight below 300 Da, calculated logP of 3 or less, and no more than 3 hydrogen-bond donors and 3 acceptors. Because fragments bind weakly, they are detected with sensitive biophysical methods such as X-ray crystallography, NMR or surface plasmon resonance, which also show <em>where</em> they bind.</p>
+
+<h2>Growing, merging and linking</h2>
+<ul>
+<li><strong>Growing</strong> adds atoms to one fragment to reach new interactions.</li>
+<li><strong>Merging</strong> combines overlapping fragments into a single new core.</li>
+<li><strong>Linking</strong> connects two fragments that bind in <em>neighbouring</em> sites with a linker.</li>
+</ul>
+
+<h2>Why linking can pay off</h2>
+<p>When two fragments are joined, the combined molecule pays the cost of losing its freedom to move only once instead of twice. As a result, a well-linked molecule can bind much more tightly than the two fragments' affinities would suggest when added together — an effect called <em>super-additivity</em>.</p>
+<p>The catch is geometry. The linker must hold both fragments in their original binding positions and orientations without strain. A linker that is slightly too long, too short or twisted can lose most of the expected gain.</p>
+
+<h2>Finding the right linker</h2>
+<ol>
+<li>Start from the two fragments' 3D binding poses, ideally from crystal structures.</li>
+<li>Choose the attachment atoms on each fragment — usually hydrogens pointing towards each other.</li>
+<li>Search a library of linkers whose 3D ends match the distance and angles between those attachment points.</li>
+<li>Check that candidate products do not clash with the protein and are synthetically feasible, then refine and test.</li>
+</ol>
+<p>The same 3D linker search is also a route to [pyxis_learn_link slug="what-is-scaffold-hopping"]scaffold hopping[/pyxis_learn_link]: replacing the middle of an existing molecule while keeping both ends in place.</p>

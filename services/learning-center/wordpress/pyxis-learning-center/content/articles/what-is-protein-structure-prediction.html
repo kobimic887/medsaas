@@ -1,0 +1,37 @@
+---
+title: What is protein structure prediction?
+topic: protein-structure
+order: 1
+term: Protein structure prediction
+summary: Protein structure prediction computes a protein's 3D shape from its amino-acid sequence; AI models such as AlphaFold and OpenFold now reach near-experimental accuracy for many proteins.
+objectives:
+- Explain why protein structure matters for drug design
+- Describe what AlphaFold and OpenFold predict
+- Read the confidence scores that come with a prediction
+---
+<p>A protein is a chain of amino acids that folds into a specific 3D shape, and that shape determines what it does and which molecules it binds. <strong>Protein structure prediction</strong> is the task of computing that 3D shape from the amino-acid sequence alone.</p>
+
+<h2>Why it matters for drug discovery</h2>
+<p>Structure-based methods such as [pyxis_learn_link slug="what-is-molecular-docking"]docking[/pyxis_learn_link] need a 3D structure of the target. Experimental methods — X-ray crystallography, cryo-electron microscopy and NMR — are slow and do not work for every protein. Predicted structures fill the gap, covering proteins that have never been solved.</p>
+
+<h2>The AI breakthrough</h2>
+<p>For decades, prediction accuracy lagged far behind experiment. In 2020, DeepMind's <strong>AlphaFold2</strong> reached accuracy competitive with experimental structures for many proteins in the CASP14 blind assessment. Its successor, <strong>AlphaFold3</strong> (2024), extends prediction to complexes of proteins with DNA, RNA, ions and small-molecule ligands.</p>
+<p><strong>OpenFold</strong> is an open-source, trainable reproduction of AlphaFold developed by an academic and industry consortium. <strong>OpenFold3</strong> continues that work for biomolecular complexes, so researchers and companies can run, inspect and fine-tune the model themselves.</p>
+
+<h2>Reading the confidence scores</h2>
+<table>
+<thead><tr><th>Score</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td>pLDDT (0–100)</td><td>Per-residue confidence in local structure. Above ~90 is high confidence; below ~50 often indicates a disordered or flexible region.</td></tr>
+<tr><td>PAE</td><td>Predicted aligned error between pairs of residues, in ångströms. Low values between two domains mean their relative position is reliable.</td></tr>
+<tr><td>pTM / ipTM</td><td>Overall confidence in the fold, and in the interface between chains of a complex.</td></tr>
+</tbody>
+</table>
+
+<h2>Limits to keep in mind</h2>
+<ul>
+<li>A prediction usually shows one static conformation; real proteins move, and a [pyxis_learn_link slug="what-is-a-binding-site"]binding pocket[/pyxis_learn_link] may look different with a ligand bound.</li>
+<li>Side-chain positions inside pockets can be less accurate than the backbone, which affects docking.</li>
+<li>Predicted ligand poses and complexes should be checked against experimental data where possible.</li>
+</ul>
+<div class="pxl-note"><p>Pyxis Discovery offers OpenFold3 structure prediction in the browser, with results viewable in 3D and usable for docking.</p></div>

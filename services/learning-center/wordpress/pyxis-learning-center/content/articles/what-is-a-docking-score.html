@@ -1,0 +1,34 @@
+---
+title: What is a docking score?
+topic: molecular-docking
+order: 2
+term: Docking score
+summary: A docking score is a scoring function's estimate of how favourably a ligand pose interacts with a protein; it is useful for ranking but is not a measured binding affinity.
+objectives:
+- Interpret the units and sign of a typical docking score
+- Explain why docking scores favour large molecules
+- Use ligand efficiency to compare compounds of different sizes
+---
+<p>After [pyxis_learn_link slug="what-is-molecular-docking"]docking[/pyxis_learn_link] generates poses, a <strong>scoring function</strong> assigns each one a number. In AutoDock Vina and many similar tools the score is expressed in kcal/mol, and <strong>more negative means better</strong>: a pose scoring −10 kcal/mol is predicted to bind more tightly than one scoring −7.</p>
+
+<h2>What the number means — and what it does not</h2>
+<p>The units suggest a binding free energy, but a docking score is an approximation built for speed. It typically ignores or simplifies solvation, protein flexibility, entropy and electronic effects. Scores are therefore:</p>
+<ul>
+<li><strong>useful</strong> for separating likely binders from unlikely ones in a large library;</li>
+<li><strong>unreliable</strong> for ranking close analogues whose true affinities differ by less than about ten-fold;</li>
+<li><strong>not comparable</strong> between different programs, scoring functions, or protein targets.</li>
+</ul>
+<p>Deep-learning docking methods such as [pyxis_learn_link slug="what-is-diffdock"]DiffDock[/pyxis_learn_link] report a <em>confidence</em> instead — how likely the pose is to be correct — which is a different quantity again.</p>
+
+<h2>The size bias</h2>
+<p>Bigger molecules make more contacts, so they tend to score better almost regardless of fit. To compare compounds of different sizes, chemists normalise by size using <strong>ligand efficiency</strong> (LE):</p>
+<p><code>LE ≈ −score / number of heavy atoms</code></p>
+<p>Experimental LE is calculated the same way from measured binding free energy; values around 0.3 kcal/mol per heavy atom or higher are generally considered good starting points. Size-normalised metrics are especially important when comparing [pyxis_learn_link slug="what-is-a-macrocycle"]macrocycles[/pyxis_learn_link] with small molecules.</p>
+
+<h2>Reading results sensibly</h2>
+<ol>
+<li>Look at the score distribution of the whole screen, not only the best value.</li>
+<li>Check the top poses for clashes and unsatisfied polar groups.</li>
+<li>Prefer compounds whose top few poses agree with each other.</li>
+<li>Where possible, include known actives and inactives as controls.</li>
+</ol>

@@ -1,0 +1,39 @@
+---
+title: What is a molecular fingerprint?
+topic: cheminformatics
+order: 2
+term: Molecular fingerprint
+summary: A molecular fingerprint encodes a molecule's structural features as a fixed-length bit or count vector so that millions of molecules can be compared quickly.
+objectives:
+- Explain how circular (Morgan/ECFP) fingerprints are built
+- Compare bit and count fingerprints
+- Choose a fingerprint for similarity search
+---
+<p>Comparing two molecule graphs atom by atom is slow. A <strong>molecular fingerprint</strong> turns a structure into a fixed-length vector of numbers that records which structural features are present. Comparing two vectors takes nanoseconds, so a computer can compare a query with millions of molecules in seconds.</p>
+
+<h2>Main families</h2>
+<ul>
+<li><strong>Substructure-key fingerprints</strong> (such as MACCS keys) use a predefined dictionary: bit 42 might mean "contains a carbonyl". They are easy to interpret but coarse.</li>
+<li><strong>Path-based fingerprints</strong> enumerate linear paths of atoms and bonds up to a certain length and hash each path into a bit.</li>
+<li><strong>Circular fingerprints</strong>, the most widely used today, describe the neighbourhood around every atom.</li>
+</ul>
+
+<h2>How Morgan / ECFP fingerprints work</h2>
+<p>Extended-connectivity fingerprints (ECFP), computed in RDKit with the Morgan algorithm, are built in rounds:</p>
+<ol>
+<li>Each atom gets an identifier from its own properties (element, connections, charge, ring membership).</li>
+<li>In each round, every atom's identifier is updated by combining it with its neighbours' identifiers, so it describes a larger circle around the atom.</li>
+<li>After the chosen number of rounds (the <strong>radius</strong>), all identifiers are hashed into a vector, typically 1,024 or 2,048 positions long.</li>
+</ol>
+<p>Radius 2 corresponds to ECFP4 (the "4" is the diameter) and is the standard choice for similarity searching.</p>
+
+<h2>Bits or counts?</h2>
+<p>A <strong>bit</strong> fingerprint only records whether a feature is present. A <strong>count</strong> fingerprint records how many times it occurs, so it can distinguish, for example, a molecule with one phenyl ring from one with three. Count fingerprints often give more meaningful similarity rankings for larger molecules such as [pyxis_learn_link slug="what-is-a-macrocycle"]macrocycles[/pyxis_learn_link], which contain many repeated groups.</p>
+
+<h2>What fingerprints are used for</h2>
+<ul>
+<li>[pyxis_learn_link slug="what-is-tanimoto-similarity"]Similarity search[/pyxis_learn_link] and clustering.</li>
+<li>Fast pre-filtering for [pyxis_learn_link slug="what-is-substructure-search"]substructure search[/pyxis_learn_link].</li>
+<li>Input features for machine-learning models of activity or ADMET properties.</li>
+</ul>
+<p>One caution: because features are hashed, different features can share a bit ("collisions"). Fingerprints are approximate descriptions, not unique identifiers — two different molecules can have identical fingerprints.</p>

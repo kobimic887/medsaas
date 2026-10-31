@@ -1,0 +1,39 @@
+---
+title: What is substructure search?
+topic: cheminformatics
+order: 4
+term: Substructure search
+summary: Substructure search finds every molecule in a library that contains a given fragment or pattern, such as a ring system or functional group.
+objectives:
+- Explain how substructure search differs from similarity search
+- Write simple SMARTS patterns
+- Understand why generic patterns are slow
+---
+<p>A <strong>substructure search</strong> answers a yes-or-no question for each molecule in a library: <em>does this molecule contain my query fragment?</em> Unlike [pyxis_learn_link slug="what-is-tanimoto-similarity"]similarity search[/pyxis_learn_link], which ranks molecules by overall resemblance, substructure search returns every molecule that contains the pattern, however different the rest of the molecule is.</p>
+
+<h2>When to use it</h2>
+<ul>
+<li>Finding all compounds that share a hit's core scaffold, to explore what can change around it.</li>
+<li>Pulling every molecule with a required feature, such as a warhead for [pyxis_learn_link slug="what-are-covalent-drugs"]covalent drugs[/pyxis_learn_link].</li>
+<li>Filtering out unwanted groups (reactive or assay-interfering motifs).</li>
+</ul>
+
+<h2>Describing the query: SMILES and SMARTS</h2>
+<p>A simple query can be written as [pyxis_learn_link slug="what-is-smiles"]SMILES[/pyxis_learn_link] or drawn in a structure editor. For more control, chemists use <strong>SMARTS</strong>, a pattern language that extends SMILES with wildcards and logic:</p>
+<table>
+<thead><tr><th>SMARTS</th><th>Matches</th></tr></thead>
+<tbody>
+<tr><td><code>c1ccccc1</code></td><td>A benzene ring</td></tr>
+<tr><td><code>[#7]</code></td><td>Any nitrogen atom, aromatic or not</td></tr>
+<tr><td><code>C(=O)[NX3]</code></td><td>An amide</td></tr>
+<tr><td><code>[CX3]=[CX3]C(=O)N</code></td><td>An acrylamide</td></tr>
+</tbody>
+</table>
+
+<h2>How it is computed</h2>
+<p>Checking whether one molecular graph is contained in another is a <em>subgraph isomorphism</em> problem. In the worst case it is expensive, so search engines use two stages:</p>
+<ol>
+<li><strong>Screening.</strong> A [pyxis_learn_link slug="what-is-a-molecular-fingerprint"]fingerprint[/pyxis_learn_link] filter quickly discards molecules that cannot contain the query because they lack one of its features.</li>
+<li><strong>Verification.</strong> An exact atom-by-atom match runs only on the survivors.</li>
+</ol>
+<p>Specific queries — a distinctive ring system — screen out most of the library and return quickly. Very generic queries such as a single carbon chain match almost everything, so screening removes little and verification has to run on millions of molecules. Good search tools say clearly when such a search hit its time budget instead of silently returning partial results.</p>

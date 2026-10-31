@@ -1,0 +1,33 @@
+---
+title: What is scaffold hopping?
+topic: lead-optimization
+order: 2
+term: Scaffold hopping
+summary: Scaffold hopping replaces the core of an active molecule with a different chemical framework that keeps the key interactions, to gain new IP, better properties or easier synthesis.
+objectives:
+- Explain the goals of scaffold hopping
+- Describe the main types of scaffold hop
+- Know which computational methods support it
+---
+<p>The <strong>scaffold</strong> of a molecule is its core framework — the ring systems and linkers that hold the functional groups in place. <strong>Scaffold hopping</strong> means replacing that core with a different one while keeping the groups that interact with the target in roughly the same 3D positions.</p>
+
+<h2>Why hop?</h2>
+<ul>
+<li><strong>Intellectual property.</strong> A new core can escape a crowded patent space.</li>
+<li><strong>Properties.</strong> A different scaffold may fix poor solubility, metabolic instability or toxicity linked to the original core. See [pyxis_learn_link slug="what-is-admet"]ADMET[/pyxis_learn_link].</li>
+<li><strong>Synthesis.</strong> A more accessible core can make analogues cheaper and faster to produce.</li>
+<li><strong>Rescue.</strong> When a series stalls, a hop opens new structure–activity relationships.</li>
+</ul>
+
+<h2>Types of scaffold hop</h2>
+<ol>
+<li><strong>Heterocycle replacement</strong> — swapping atoms in a ring, for example a phenyl for a pyridine.</li>
+<li><strong>Ring opening or closure</strong> — adding or removing a ring to change flexibility. Closing a large ring is the route to [pyxis_learn_link slug="what-is-a-macrocycle"]macrocycles[/pyxis_learn_link].</li>
+<li><strong>Peptide mimicry</strong> — replacing a peptide backbone with a non-peptide scaffold that presents the same side chains.</li>
+<li><strong>Topology-based hops</strong> — entirely new frameworks that share only the 3D arrangement of key features.</li>
+</ol>
+
+<h2>Computational support</h2>
+<p>Because a successful hop by definition looks different in 2D, standard [pyxis_learn_link slug="what-is-tanimoto-similarity"]2D fingerprint similarity[/pyxis_learn_link] is a weak guide. Useful methods include pharmacophore and 3D shape similarity, [pyxis_learn_link slug="what-is-molecular-docking"]docking[/pyxis_learn_link] of candidate replacements, and searches over libraries of 3D linkers or fragments that can bridge the groups you want to keep. The last approach is closely related to [pyxis_learn_link slug="what-is-fragment-linking"]fragment linking[/pyxis_learn_link].</p>
+
+<div class="pxl-note"><p>Pyxis Discovery's Scaffolding Hop tool takes two 3D fragments, with chosen attachment atoms, and searches a library of 3D linkers for geometric matches that connect them while preserving their positions.</p></div>

@@ -1,0 +1,31 @@
+---
+title: What is virtual screening?
+topic: drug-discovery-basics
+order: 3
+term: Virtual screening
+summary: Virtual screening uses computers to rank large compound libraries so that only the most promising molecules are bought, made or tested.
+objectives:
+- Distinguish ligand-based from structure-based virtual screening
+- Explain how enrichment is measured
+- Describe a practical virtual screening workflow
+---
+<p><strong>Virtual screening</strong> is the computational counterpart of high-throughput screening. Instead of testing every compound in a library, software scores the library and the team tests only the top-ranked molecules. A good virtual screen finds more active compounds per experiment than random selection.</p>
+
+<h2>Two families of methods</h2>
+<h3>Ligand-based</h3>
+<p>If you already know at least one active molecule, you can search for compounds that resemble it. The usual tools are [pyxis_learn_link slug="what-is-a-molecular-fingerprint"]molecular fingerprints[/pyxis_learn_link] compared with [pyxis_learn_link slug="what-is-tanimoto-similarity"]Tanimoto similarity[/pyxis_learn_link], [pyxis_learn_link slug="what-is-substructure-search"]substructure search[/pyxis_learn_link], pharmacophore models and 3D shape matching. Ligand-based methods are fast — billions of comparisons are feasible — but tend to find molecules similar to what you already have.</p>
+<h3>Structure-based</h3>
+<p>If a 3D structure of the target is available, from crystallography, cryo-EM or [pyxis_learn_link slug="what-is-protein-structure-prediction"]structure prediction[/pyxis_learn_link], each compound can be [pyxis_learn_link slug="what-is-molecular-docking"]docked[/pyxis_learn_link] into the binding site and ranked by a scoring function. Docking can find chemically novel actives but is slower and its scores are noisy.</p>
+
+<h2>Measuring success: enrichment</h2>
+<p>Virtual screens are judged by <strong>enrichment</strong>: how many more actives appear in the top of the ranked list than chance would give. An enrichment factor of 10 at 1% means the top 1% of the list contains ten times as many actives as a random 1% would. Retrospective benchmarks use known actives mixed with "decoys"; the real test is always a prospective experiment.</p>
+
+<h2>A practical workflow</h2>
+<ol>
+<li><strong>Choose the library.</strong> In-stock compounds can be delivered in weeks; virtual (make-on-demand) libraries are far larger but must be synthesised.</li>
+<li><strong>Filter.</strong> Remove compounds with reactive or assay-interfering groups and those outside the property range you need.</li>
+<li><strong>Rank cheaply first.</strong> Use similarity or substructure search to reduce millions of molecules to thousands.</li>
+<li><strong>Rank expensively second.</strong> Dock the shortlist and inspect the best poses by eye.</li>
+<li><strong>Pick for diversity.</strong> Choose a varied set rather than the top 50 near-duplicates, then order and test.</li>
+</ol>
+<div class="pxl-note"><p>In Pyxis Discovery, searches over stock and virtual small-molecule and macrocycle libraries feed directly into docking, so a shortlist can be ranked and ordered in one place.</p></div>

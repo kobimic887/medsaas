@@ -1,0 +1,34 @@
+---
+title: What is Tanimoto similarity?
+topic: cheminformatics
+order: 3
+term: Tanimoto similarity
+summary: Tanimoto similarity compares two molecular fingerprints as shared features divided by total features, giving a score from 0 (nothing in common) to 1 (identical fingerprints).
+objectives:
+- Calculate a Tanimoto coefficient from two fingerprints
+- Interpret similarity values and choose sensible thresholds
+- Understand the limits of 2D similarity
+---
+<p>The <strong>Tanimoto coefficient</strong> (also called Jaccard similarity) is the most common way to measure how similar two molecules are. It compares their [pyxis_learn_link slug="what-is-a-molecular-fingerprint"]fingerprints[/pyxis_learn_link].</p>
+
+<h2>The formula</h2>
+<p>For two bit fingerprints A and B:</p>
+<p><code>T(A, B) = c / (a + b − c)</code></p>
+<p>where <em>a</em> is the number of bits set in A, <em>b</em> the number set in B, and <em>c</em> the number set in both. In words: shared features divided by all features present in either molecule.</p>
+<p><strong>Example:</strong> molecule A sets 40 bits, molecule B sets 50, and 30 are shared. T = 30 / (40 + 50 − 30) = 30 / 60 = <strong>0.50</strong>.</p>
+<p>For count fingerprints the same idea uses minimums and maximums: the sum of the smaller count for each feature divided by the sum of the larger count.</p>
+
+<h2>Interpreting the score</h2>
+<ul>
+<li><strong>1.0</strong> means the fingerprints are identical — usually, but not always, the same molecule. Different stereoisomers, for example, often share a fingerprint. Use exact structure matching to be sure.</li>
+<li><strong>High values</strong> indicate close analogues. Thresholds depend on the fingerprint: with Morgan radius-2 fingerprints, pairs above roughly 0.6–0.7 are usually clearly related, while random pairs of drug-like molecules typically score well below 0.3.</li>
+<li><strong>The same pair</strong> will give different scores with different fingerprint types, lengths or radii, so compare scores only within one method.</li>
+</ul>
+
+<h2>Similarity search in practice</h2>
+<p>A similarity search computes the Tanimoto score between a query and every molecule in a library, then returns the top hits. It is the workhorse of ligand-based [pyxis_learn_link slug="what-is-virtual-screening"]virtual screening[/pyxis_learn_link] and of "analogue by catalogue" hit expansion, where you buy close analogues of a hit to explore its structure–activity relationship.</p>
+
+<h2>Limits</h2>
+<p>Tanimoto similarity is based on 2D structure. Two molecules can look different in 2D but present the same shape and features to a protein (the basis of [pyxis_learn_link slug="what-is-scaffold-hopping"]scaffold hopping[/pyxis_learn_link]), and a small change such as one methyl group can sometimes destroy activity (an "activity cliff"). Similarity guides the search; experiments decide.</p>
+
+<div class="pxl-note"><p>Pyxis Discovery's search uses Morgan-fingerprint Tanimoto similarity across small-molecule and macrocycle libraries, together with exact and substructure search.</p></div>

@@ -1,0 +1,10 @@
+[Unit]
+Description=Pyxis Insights agent, Tuesday and Friday mornings (Amsterdam)
+
+[Timer]
+OnCalendar=Tue,Fri *-*-* 07:30:00 Europe/Amsterdam
+RandomizedDelaySec=20min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

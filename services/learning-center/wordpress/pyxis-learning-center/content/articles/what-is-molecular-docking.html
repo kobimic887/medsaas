@@ -1,0 +1,39 @@
+---
+title: What is molecular docking?
+topic: molecular-docking
+order: 1
+term: Molecular docking
+summary: Molecular docking predicts how a small molecule fits into a protein's binding site and estimates how well it binds, using a search algorithm and a scoring function.
+objectives:
+- Explain the two parts of a docking program: search and scoring
+- Describe what inputs docking needs and what it returns
+- Recognise the main limitations of docking results
+---
+<p><strong>Molecular docking</strong> is a computational method that predicts the preferred position, orientation and shape — the <em>pose</em> — of a molecule (the ligand) when it binds to a protein (the receptor). It also gives each pose a score that estimates how strongly the two interact.</p>
+
+<h2>How docking works</h2>
+<p>Every docking program combines two components:</p>
+<ul>
+<li><strong>A search algorithm</strong> explores possible poses: moving and rotating the ligand within the binding site and twisting its rotatable bonds. Classical tools such as AutoDock Vina use stochastic optimisation; newer deep-learning tools such as [pyxis_learn_link slug="what-is-diffdock"]DiffDock[/pyxis_learn_link] generate poses with a trained model.</li>
+<li><strong>A scoring function</strong> ranks the poses. Physics-based, empirical and knowledge-based functions estimate contributions such as hydrogen bonds, hydrophobic contacts, steric clashes and the cost of freezing flexible bonds. See [pyxis_learn_link slug="what-is-a-docking-score"]docking scores[/pyxis_learn_link].</li>
+</ul>
+
+<h2>Inputs and outputs</h2>
+<ol>
+<li><strong>A protein structure</strong>, from the [pyxis_learn_link slug="what-is-the-protein-data-bank"]Protein Data Bank[/pyxis_learn_link] or from [pyxis_learn_link slug="what-is-protein-structure-prediction"]structure prediction[/pyxis_learn_link], prepared by adding hydrogens and removing unwanted water and ions.</li>
+<li><strong>A binding site</strong>, usually defined as a 3D box around a known pocket. "Blind" docking searches the whole protein instead. See [pyxis_learn_link slug="what-is-a-binding-site"]binding sites[/pyxis_learn_link].</li>
+<li><strong>Ligands</strong>, typically supplied as [pyxis_learn_link slug="what-is-smiles"]SMILES[/pyxis_learn_link] and converted to 3D with sensible protonation states.</li>
+</ol>
+<p>The output is a ranked list of poses per ligand, each with a score, usually viewed in a 3D molecular viewer.</p>
+
+<h2>How reliable is docking?</h2>
+<p>Docking is good at <em>pose prediction</em> when the protein's binding site is well defined: re-docking a ligand into its own crystal structure often reproduces the experimental pose within 2 Å RMSD. It is much weaker at <em>predicting affinity</em>. Scores correlate only loosely with measured binding, so docking is best used to enrich a list of candidates rather than to rank close analogues precisely.</p>
+<p>Common pitfalls include rigid protein models that cannot adapt to the ligand, missing water molecules that mediate binding, wrong protonation or tautomer states, and very flexible ligands such as large [pyxis_learn_link slug="what-is-a-macrocycle"]macrocycles[/pyxis_learn_link], whose ring conformations must be sampled carefully.</p>
+
+<h2>Good practice</h2>
+<ul>
+<li>Validate the setup first by re-docking a known ligand.</li>
+<li>Inspect the top poses visually: do they make chemically sensible contacts?</li>
+<li>Compare scores within a series, not across unrelated targets.</li>
+<li>Confirm promising compounds experimentally — docking generates hypotheses, not answers.</li>
+</ul>

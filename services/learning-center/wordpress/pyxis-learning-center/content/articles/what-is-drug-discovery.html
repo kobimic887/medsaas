@@ -1,0 +1,36 @@
+---
+title: What is drug discovery?
+topic: drug-discovery-basics
+order: 1
+term: Drug discovery
+summary: Drug discovery is the process of finding a molecule that changes a disease-relevant biological target safely enough to be tested in people.
+objectives:
+- Describe the main stages from target to clinical candidate
+- Explain why most projects fail and where computation helps
+- Name the people and data involved at each stage
+---
+<p><strong>Drug discovery</strong> is the research that turns a biological idea — "blocking this protein should slow this disease" — into a molecule that can be tested in humans. It ends when a team nominates a <em>clinical candidate</em>: a single compound with enough evidence of efficacy and safety to justify clinical trials.</p>
+
+<h2>The main stages</h2>
+<ol>
+<li><strong>Target identification and validation.</strong> Researchers pick a protein, gene or pathway linked to the disease and gather evidence (genetics, knock-out models, patient data) that changing it helps.</li>
+<li><strong>Hit finding.</strong> Large collections of compounds are tested, physically or [pyxis_learn_link slug="what-is-virtual-screening"]virtually[/pyxis_learn_link], to find <em>hits</em>: molecules with measurable activity against the target.</li>
+<li><strong>Hit-to-lead.</strong> Chemists confirm the hits, discard artefacts and expand the best ones into <em>lead series</em>. See [pyxis_learn_link slug="what-are-hits-leads-and-candidates"]hits, leads and candidates[/pyxis_learn_link].</li>
+<li><strong>Lead optimization.</strong> Many rounds of design–make–test–analyse improve potency, selectivity and [pyxis_learn_link slug="what-is-admet"]ADMET[/pyxis_learn_link] properties.</li>
+<li><strong>Preclinical development.</strong> The candidate is tested for safety in animals and manufactured to clinical standards before the first human dose.</li>
+</ol>
+
+<h2>Why it is hard</h2>
+<p>Developing a new medicine typically takes 10–15 years, and most projects never reach patients. Of the drugs that do enter clinical trials, roughly nine in ten fail, most often because they do not work well enough in people or cause unacceptable side effects. Every stage before the clinic is therefore about reducing risk early, when experiments are cheap.</p>
+
+<h2>Where computation helps</h2>
+<p>Computational methods cannot replace experiments, but they decide which experiments are worth doing:</p>
+<ul>
+<li><strong>Searching chemical space</strong> — commercial and virtual libraries now hold billions of molecules, far more than any lab can test. Similarity and substructure searches narrow them down.</li>
+<li><strong>Structure-based design</strong> — with a 3D structure of the target, [pyxis_learn_link slug="what-is-molecular-docking"]molecular docking[/pyxis_learn_link] predicts how a compound might bind.</li>
+<li><strong>Property prediction</strong> — models estimate solubility, permeability and toxicity before a compound is made.</li>
+<li><strong>Structure prediction</strong> — AI models such as AlphaFold and OpenFold predict protein structures that were never solved experimentally.</li>
+</ul>
+
+<h2>Small molecules, biologics and the space in between</h2>
+<p>Most approved drugs are either small molecules (typically under 500 Da, often taken as tablets) or biologics such as antibodies (large proteins, usually injected). [pyxis_learn_link slug="what-is-a-macrocycle"]Macrocycles[/pyxis_learn_link] sit between the two: big enough to bind flat, featureless protein surfaces, yet small enough that some can still be taken orally.</p>

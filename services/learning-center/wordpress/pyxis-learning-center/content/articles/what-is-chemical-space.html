@@ -1,0 +1,26 @@
+---
+title: What is chemical space?
+topic: drug-discovery-basics
+order: 4
+term: Chemical space
+summary: Chemical space is the set of all possible molecules; the drug-like part alone is estimated at around 10^60 compounds, far more than can ever be made.
+objectives:
+- Explain why chemical space is too large to enumerate
+- Describe how libraries sample it
+- Understand why diverse libraries matter for hit finding
+---
+<p><strong>Chemical space</strong> is the conceptual collection of every molecule that could exist. Even when it is restricted to small, stable, drug-like organic molecules, a frequently cited estimate puts its size at around <strong>10<sup>60</sup></strong> compounds — vastly more than the number of molecules ever synthesised (on the order of 10<sup>8</sup> registered substances).</p>
+
+<h2>Mapping a space too large to list</h2>
+<p>Researchers have enumerated parts of it. The GDB-17 database, for example, lists about 166 billion molecules containing up to 17 heavy atoms of C, N, O, S and halogens. Each extra atom multiplies the count, so complete enumeration of drug-sized molecules is impossible.</p>
+<p>To reason about chemical space, chemists describe molecules with numbers — molecular weight, lipophilicity, polar surface area, or [pyxis_learn_link slug="what-is-a-molecular-fingerprint"]fingerprints[/pyxis_learn_link] — and treat each molecule as a point. Molecules close together tend to have similar properties, which is why [pyxis_learn_link slug="what-is-tanimoto-similarity"]similarity search[/pyxis_learn_link] works.</p>
+
+<h2>How compound libraries sample it</h2>
+<ul>
+<li><strong>Stock libraries</strong> — physically available compounds, typically hundreds of thousands to a few million, deliverable quickly.</li>
+<li><strong>Make-on-demand (virtual) libraries</strong> — molecules designed from validated reactions and available building blocks. They reach billions of compounds, with synthesis taking a few weeks.</li>
+<li><strong>Focused libraries</strong> — sets designed for a target class or a region of space, such as kinase inhibitors, covalent fragments or [pyxis_learn_link slug="what-is-a-macrocycle"]macrocycles[/pyxis_learn_link].</li>
+</ul>
+
+<h2>Why diversity and novelty matter</h2>
+<p>Historic screening collections over-represent flat, aromatic, easy-to-make molecules, and many difficult targets — protein–protein interactions in particular — have no good binders there. Exploring under-sampled regions, such as larger three-dimensional ring systems, increases the chance of finding a hit where conventional libraries fail. That is one of the main motivations behind macrocycle libraries.</p>

@@ -1,0 +1,32 @@
+---
+title: What is ADMET?
+topic: lead-optimization
+order: 1
+term: ADMET
+summary: ADMET stands for absorption, distribution, metabolism, excretion and toxicity — the properties that decide whether an active molecule can become a safe, effective drug.
+objectives:
+- Explain each letter of ADMET
+- Name common assays used for each property
+- Understand why ADMET is assessed early
+---
+<p>A molecule can bind its target perfectly and still fail as a drug if it never reaches the target, disappears too fast, or harms the patient. <strong>ADMET</strong> groups the properties that decide this.</p>
+
+<table>
+<thead><tr><th>Letter</th><th>Question</th><th>Typical measurements</th></tr></thead>
+<tbody>
+<tr><td><strong>A</strong>bsorption</td><td>Does it get into the bloodstream?</td><td>Solubility, [pyxis_learn_link slug="what-is-membrane-permeability"]permeability[/pyxis_learn_link] (PAMPA, Caco-2), oral bioavailability</td></tr>
+<tr><td><strong>D</strong>istribution</td><td>Where does it go in the body?</td><td>Plasma protein binding, volume of distribution, brain penetration</td></tr>
+<tr><td><strong>M</strong>etabolism</td><td>How quickly is it broken down, and into what?</td><td>Liver microsome or hepatocyte stability, cytochrome P450 (CYP) inhibition</td></tr>
+<tr><td><strong>E</strong>xcretion</td><td>How is it cleared?</td><td>Renal and biliary clearance, half-life</td></tr>
+<tr><td><strong>T</strong>oxicity</td><td>Is it safe at the needed dose?</td><td>hERG channel inhibition (heart rhythm risk), cytotoxicity, genotoxicity (Ames), liver toxicity</td></tr>
+</tbody>
+</table>
+
+<h2>Why it is assessed early</h2>
+<p>Poor pharmacokinetics and toxicity are major reasons drug candidates fail. Problems are far cheaper to fix during [pyxis_learn_link slug="what-are-hits-leads-and-candidates"]hit-to-lead and lead optimization[/pyxis_learn_link], when chemists can still change the scaffold, than after a candidate has been nominated. Modern projects therefore run fast in-vitro ADMET assays alongside potency testing from the start.</p>
+
+<h2>Predicting ADMET computationally</h2>
+<p>Machine-learning models trained on large assay datasets predict many ADMET endpoints from structure, typically using [pyxis_learn_link slug="what-is-a-molecular-fingerprint"]fingerprints[/pyxis_learn_link] or graph neural networks. Predictions are most reliable for molecules similar to the training data, so they are good for prioritising which compounds to make and test — less so for compounds in unusual chemical space, such as many [pyxis_learn_link slug="what-is-beyond-rule-of-five"]beyond rule of five[/pyxis_learn_link] molecules.</p>
+
+<h2>Balancing potency and properties</h2>
+<p>Changes that improve potency often add size and lipophilicity, which tend to worsen solubility, metabolic stability and toxicity. Efficiency metrics such as ligand efficiency and lipophilic ligand efficiency (pIC<sub>50</sub> − logP) help teams improve potency without paying for it in ADMET.</p>

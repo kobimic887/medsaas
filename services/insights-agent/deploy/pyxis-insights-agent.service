@@ -1,0 +1,12 @@
+[Unit]
+Description=Pyxis Insights agent (PubMed paper -> WordPress Insights draft)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# %h is the user's home; the checkout path is the medsaas repo on this host.
+WorkingDirectory=%h/projects/medsaas/services/insights-agent
+ExecStart=%h/.bun/bin/bun agent.mjs
+Environment=PATH=%h/.local/bin:%h/.bun/bin:/usr/local/bin:/usr/bin:/bin
+TimeoutStartSec=20min

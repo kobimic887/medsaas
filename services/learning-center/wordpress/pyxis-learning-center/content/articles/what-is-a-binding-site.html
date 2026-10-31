@@ -1,0 +1,30 @@
+---
+title: What is a binding site?
+topic: molecular-docking
+order: 4
+term: Binding site
+summary: A binding site is the region of a protein where a ligand binds; its shape and chemistry determine which molecules can bind and how druggable the target is.
+objectives:
+- Distinguish orthosteric, allosteric and cryptic binding sites
+- Explain what makes a pocket druggable
+- Describe how binding sites are found and defined for docking
+---
+<p>A <strong>binding site</strong> (or binding pocket) is the part of a protein's surface where another molecule — a substrate, a natural partner or a drug — attaches. Its shape, size and the chemistry of the amino acids lining it decide which molecules can bind.</p>
+
+<h2>Types of binding site</h2>
+<ul>
+<li><strong>Orthosteric sites</strong> are where the natural substrate or ligand binds, such as an enzyme's active site. Drugs here compete directly with the natural binder.</li>
+<li><strong>Allosteric sites</strong> are elsewhere on the protein. Binding there changes the protein's shape or dynamics and indirectly alters its activity, which can give better selectivity between related proteins.</li>
+<li><strong>Cryptic sites</strong> are pockets that are not visible in the unbound structure and only open when the protein moves or a ligand binds.</li>
+<li><strong>Protein–protein interfaces</strong> are large, shallow surfaces where two proteins meet. They are hard to block with small molecules and are a key opportunity for [pyxis_learn_link slug="what-is-a-macrocycle"]macrocycles[/pyxis_learn_link].</li>
+</ul>
+
+<h2>Druggability</h2>
+<p>A pocket is considered <strong>druggable</strong> when a drug-like molecule can bind it with high affinity. Deep, enclosed, mostly hydrophobic pockets with a few well-placed polar groups score best. Shallow, highly polar or very exposed sites are harder, though not impossible, to drug.</p>
+
+<h2>Finding and defining the site</h2>
+<ol>
+<li><strong>From experiment:</strong> co-crystal or cryo-EM structures with a bound ligand show the site directly. Mutagenesis data also points to important residues.</li>
+<li><strong>From prediction:</strong> pocket-detection programs analyse the protein surface for cavities. AI structure models can also predict ligand-bound complexes; see [pyxis_learn_link slug="what-is-protein-structure-prediction"]protein structure prediction[/pyxis_learn_link].</li>
+<li><strong>For docking:</strong> the site is usually described as a box centred on the pocket, with a few ångströms of margin around a known ligand. If the site is unknown, blind methods such as [pyxis_learn_link slug="what-is-diffdock"]DiffDock[/pyxis_learn_link] can scan the whole protein.</li>
+</ol>

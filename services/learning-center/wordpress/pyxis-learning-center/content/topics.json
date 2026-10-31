@@ -1,0 +1,32 @@
+[
+  {
+    "slug": "drug-discovery-basics",
+    "name": "Drug discovery basics",
+    "description": "How a medicine gets from an idea to a clinical candidate: targets, hits, leads, screening and the size of chemical space."
+  },
+  {
+    "slug": "macrocycles",
+    "name": "Macrocycles",
+    "description": "Large ring-shaped molecules that reach targets small molecules cannot, and the rules for making them behave like drugs."
+  },
+  {
+    "slug": "molecular-docking",
+    "name": "Molecular docking",
+    "description": "Predicting how a molecule sits in a protein pocket, how docking scores work, and where modern AI docking fits."
+  },
+  {
+    "slug": "cheminformatics",
+    "name": "Cheminformatics",
+    "description": "How computers store, compare and search molecules: SMILES, fingerprints, similarity and substructure search."
+  },
+  {
+    "slug": "protein-structure",
+    "name": "Protein structure",
+    "description": "Where 3D protein structures come from, how AI predicts them, and the file formats used to share them."
+  },
+  {
+    "slug": "lead-optimization",
+    "name": "Lead optimization",
+    "description": "Turning a promising hit into a drug: ADMET, scaffold hopping, fragment linking and covalent design."
+  }
+]

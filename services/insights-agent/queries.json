@@ -1,0 +1,10 @@
+[
+  "macrocycle*[tiab] AND (drug[tiab] OR inhibitor*[tiab] OR permeability[tiab])",
+  "\"macrocyclic peptide*\"[tiab] AND (oral[tiab] OR permeab*[tiab] OR binder*[tiab])",
+  "\"beyond rule of 5\"[tiab] OR \"beyond the rule of five\"[tiab] OR bRo5[tiab]",
+  "(\"molecular docking\"[tiab] OR \"virtual screening\"[tiab]) AND (\"deep learning\"[tiab] OR \"machine learning\"[tiab] OR ultra-large[tiab])",
+  "\"targeted covalent inhibitor*\"[tiab] OR (\"covalent\"[tiab] AND \"drug discovery\"[tiab])",
+  "\"fragment-based\"[tiab] AND (\"drug discovery\"[tiab] OR linking[tiab])",
+  "(AlphaFold*[tiab] OR OpenFold*[tiab] OR \"structure prediction\"[tiab]) AND (ligand*[tiab] OR \"drug discovery\"[tiab])",
+  "(\"scaffold hopping\"[tiab] OR \"chemical space\"[tiab]) AND \"drug discovery\"[tiab]"
+]

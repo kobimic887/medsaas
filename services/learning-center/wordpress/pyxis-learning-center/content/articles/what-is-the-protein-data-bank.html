@@ -1,0 +1,38 @@
+---
+title: What is the Protein Data Bank (PDB)?
+topic: protein-structure
+order: 2
+term: Protein Data Bank (PDB)
+summary: The Protein Data Bank is the global, free archive of experimentally determined 3D structures of proteins and nucleic acids, distributed in the PDB and mmCIF file formats.
+objectives:
+- Describe what the Protein Data Bank contains
+- Compare the legacy PDB format with mmCIF
+- Check a structure's quality before using it
+---
+<p>The <strong>Protein Data Bank</strong> (PDB), founded in 1971, is the single worldwide archive of experimentally determined 3D structures of biological macromolecules. It is managed by the Worldwide PDB (wwPDB) partnership and holds more than 200,000 structures, each with a four-character identifier such as <code>1HSG</code>.</p>
+
+<h2>What an entry contains</h2>
+<ul>
+<li>Atomic coordinates for the protein, nucleic acids, bound ligands, ions and water.</li>
+<li>The experimental method (X-ray, cryo-EM, NMR) and quality statistics.</li>
+<li>Sequence, source organism, and literature references.</li>
+</ul>
+
+<h2>File formats: PDB and mmCIF</h2>
+<table>
+<thead><tr><th></th><th>Legacy PDB format (.pdb)</th><th>PDBx/mmCIF (.cif)</th></tr></thead>
+<tbody>
+<tr><td>Layout</td><td>Fixed-width text columns</td><td>Key–value and table-based text</td></tr>
+<tr><td>Size limits</td><td>At most 99,999 atoms and 62 chains per file</td><td>No practical limit</td></tr>
+<tr><td>Status</td><td>Still widely supported by tools</td><td>The wwPDB's standard archive format</td></tr>
+</tbody>
+</table>
+<p>Most docking programs still accept PDB files, while large complexes and modern structure-prediction outputs (such as those from [pyxis_learn_link slug="what-is-protein-structure-prediction"]AlphaFold3 and OpenFold3[/pyxis_learn_link]) are often delivered as mmCIF. Good viewers read both.</p>
+
+<h2>Choosing a structure for drug design</h2>
+<ol>
+<li><strong>Resolution.</strong> For X-ray structures, lower numbers are better; around 2.5 Å or better is usually suitable for [pyxis_learn_link slug="what-is-molecular-docking"]docking[/pyxis_learn_link].</li>
+<li><strong>Ligand state.</strong> A structure with a ligand already bound in your site (a holo structure) usually docks better than an empty (apo) one.</li>
+<li><strong>Completeness.</strong> Check for missing loops or side chains near the [pyxis_learn_link slug="what-is-a-binding-site"]binding site[/pyxis_learn_link].</li>
+<li><strong>Relevance.</strong> Prefer the right species, mutation state and conformation for your project.</li>
+</ol>
