@@ -98,7 +98,8 @@ when a path or trap moves.
   `glossary` reserved). Activation imports starter articles only for missing
   slugs. Its templates render inside the Timber theme's `base.twig` content block;
   `get_header()` alone loses this theme's real navigation/footer. `services/insights-agent/`: scheduled PubMed → model → Insights
-  **draft** agent. Its guard rejects numbers absent from the abstract and any
+  **draft** agent. It defaults to the direct OmniRoute free API; Claude
+  subscription mode is explicit opt-in, never an automatic fallback. Its guard rejects numbers absent from the abstract and any
   links other than the paper and Learning Center pages; citations are generated,
   never written by the model. Keep `WP_STATUS=draft` unless the owner opts in.
 - Client builds write `.br`/`.gz` siblings for `assets/` and `ketcher/static/`;

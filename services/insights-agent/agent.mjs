@@ -39,10 +39,10 @@ const config = {
   tag: env.WP_TAG || 'insight',
   featuredMedia: env.WP_FEATURED_MEDIA || '',
   llm: {
-    provider: env.LLM_PROVIDER || 'claude-cli',
-    baseUrl: env.LLM_BASE_URL,
+    provider: env.LLM_PROVIDER || 'openai',
+    baseUrl: env.LLM_BASE_URL || 'http://127.0.0.1:20128/v1',
     apiKey: env.LLM_API_KEY,
-    model: env.LLM_MODEL || (env.LLM_PROVIDER === 'openai' ? '' : 'sonnet'),
+    model: env.LLM_MODEL || (env.LLM_PROVIDER === 'claude-cli' ? 'sonnet' : 'openrouter/openrouter/free'),
     claudeBin: env.CLAUDE_BIN,
   },
   days: Number(env.PUBMED_DAYS || 21),

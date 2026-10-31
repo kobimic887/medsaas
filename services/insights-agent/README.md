@@ -28,8 +28,16 @@ Unlike the app, this is not an 84 artifact. It runs on an always-on box
 
 | `LLM_PROVIDER` | Uses |
 |---|---|
-| `claude-cli` (default) | `claude -p` with the host's Claude login (subscription). Tools, settings, MCP and session persistence are off, and it runs in an empty directory. `--bare` is avoided because it disables the subscription login. |
-| `openai` | Any OpenAI-compatible endpoint: OmniRoute (`http://127.0.0.1:20128/v1` on kobivps, needs an OmniRoute key), OpenRouter, or a paid API. |
+| `claude-cli` (explicit opt-in) | `claude -p` with the host's Claude login (subscription). Tools, settings, MCP and session persistence are off, and it runs in an empty directory. `--bare` is avoided because it disables the subscription login. |
+| `openai` (default) | Any OpenAI-compatible endpoint: OmniRoute (`http://127.0.0.1:20128/v1` on kobivps, needs an OmniRoute key), OpenRouter, or a paid API. |
+
+The default is a direct API call to loopback OmniRoute, pinned to
+`openrouter/openrouter/free`, using a dedicated client key restricted to that
+route. It does not invoke Claude Code or fall back to the Claude subscription.
+Free upstream availability and quotas still apply; failures leave WordPress
+unchanged. To use a company-owned OpenRouter account, set
+`LLM_BASE_URL=https://openrouter.ai/api/v1`, its API key, and
+`LLM_MODEL=openrouter/free` (or an explicitly selected paid model).
 
 The CLI shares the subscription's usage limits. If a run hits a quota, it fails
 without posting; the journal reports the reset message and the next scheduled
