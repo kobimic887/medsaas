@@ -27,6 +27,8 @@ cover behavior and maintenance; private deployment records are kept separately.
 | [Fingerprint metrics](REFERENCE-STOCK-FP-METRICS.md) | Comparing engines and similarity scores |
 | [Docking](DOCKING-CONTRACT.md) | Request/response format and result verification |
 | [Protein folding](OPENFOLD-UI-CONTRACT.md) | OpenFold requests and viewer behavior |
+| [Protein complex + glue](PROTEIN-COMPLEX-FOLDING.md) | Multi-protein sequences plus a candidate ligand, provider limits |
+| [Blog editorial guidelines](../services/insights-agent/EDITORIAL-GUIDELINES.md) | Macrocycle relevance, short drafts and conceptual illustrations |
 | [MCP tools](../services/mcp-server/README.md) | Connecting a compatible assistant |
 
 ## Operations and security

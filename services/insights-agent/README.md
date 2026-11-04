@@ -3,20 +3,33 @@
 Writes posts for the **Insights** section of the WordPress site
 (`www.pyxis-discovery.com/insights/`, custom post type `pyxis_insights`). Each run:
 
-1. Searches PubMed for papers from the last 21 days that match `queries.json`
-   (macrocycles, bRo5/permeability, docking and virtual screening, covalent,
-   fragments, structure prediction, scaffold hopping).
-2. Asks the model to pick the one paper most useful to Pyxis's audience.
-3. Asks the model for a 350–650-word post grounded **only in that paper's
-   abstract**, optionally linking up to three Learning Center articles.
-4. Runs the publication guard (`lib/post.mjs` → `reviewDraft`). The guard
-   rejects disallowed tags or attributes, any link other than the paper and
-   Learning Center pages, the wrong length, and **any number not present in the
-   abstract**. A rejected draft is retried with the reasons (3 attempts), then
-   the run fails without posting.
-5. Appends a citation built from PubMed fields (never written by the model) and
-   an AI-assistance note, then creates the post through the WordPress REST API
-   as a **draft** tagged "Insight". `NOTIFY_CMD` gets the edit link.
+1. Searches PubMed for papers from the last 21 days matching `queries.json`.
+   Every query requires macrocycles, and a second gate requires an explicit
+   macrocycle mention in the title or abstract. General biochemistry alone is
+   insufficient. If there is no suitable story, the run creates nothing.
+2. Asks the model to select one paper whose macrocycle relevance is directly
+   evidenced in the source. It can decline the entire shortlist.
+3. Drafts **150–250 words** grounded only in that paper's title and abstract.
+   The opening sentence explains why it matters for macrocycles. The body covers
+   the finding and a practical implication or limitation, without a generic
+   biochemical introduction or promotional closing.
+4. Runs the publication guard (`lib/post.mjs` → `reviewDraft`). It rejects an
+   irrelevant source, an opening without macrocycle relevance, disallowed tags
+   or links, malformed/incomplete HTML, wrong length, and numbers absent from
+   the source. Invalid replies are retried (3 attempts); failures create no post.
+5. Creates an original **1200×630 PNG** with the dependency-free local renderer
+   (`lib/illustration.mjs`). The schematic is clearly captioned as a conceptual
+   macrocycle illustration, not a molecular structure, binding pose or result.
+   It is uploaded to the WordPress Media Library and used both inline and as
+   the featured card image. No figure is copied from a paper, no proprietary
+   structure is sent to an image service, and no image tokens are purchased.
+6. Appends a citation built from PubMed fields and an AI-assistance/editorial
+   review note, then saves an **Insights draft** tagged "Insight". It never
+   claims a human has already reviewed the draft. `NOTIFY_CMD`, if configured,
+   gets its edit link.
+
+The editorial rules are in [EDITORIAL-GUIDELINES.md](EDITORIAL-GUIDELINES.md).
+These are prompt and validation changes; no model fine-tuning is needed.
 
 A PMID is posted at most once. The agent checks both its state file and existing
 Insights in every status, so a deleted state file cannot cause duplicates.
@@ -48,11 +61,32 @@ two retries).
 
 ## Review workflow
 
-`WP_STATUS=draft` (default) leaves every post for a person to read, add a card
-image to (Insights cards show the featured image), and publish. `pending` puts
-it in WordPress's "Pending review" list. `publish` posts without review; the
-footer then drops the "reviewed by the Pyxis Discovery team" claim. Keep `draft`
-until the team trusts the output.
+`WP_STATUS=draft` (default) leaves every post for a person to review, replace
+its conceptual image with a more specific approved visual if desired, and
+publish. `pending` puts it in WordPress's "Pending review" list. `publish` is
+an explicit owner opt-in and posts without review. Generated text never claims
+that human review has already happened. Keep `draft` until the team trusts the
+output.
+
+An existing `WP_FEATURED_MEDIA` setting can override the featured card image;
+the original conceptual PNG is still included inline. A metadata failure cleans
+up the exact new unused upload. If a post request fails ambiguously after upload,
+the PNG stays in Media because WordPress may already have committed the post.
+
+To rewrite a specific **unpublished** candidate using its same source:
+
+```bash
+bun services/insights-agent/agent.mjs --pmid 42643673 --replace-draft 653
+```
+
+This checks the draft's current status and exact PubMed citation before model
+calls, bypasses the duplicate guard only for that explicit rewrite, and keeps its
+current draft/pending status. Published posts and a different source PMID are
+refused. A paper with no macrocycle evidence cannot be fixed by inventing an
+angle; select another source for a new candidate instead. Use `--dry-run` with
+these options to inspect text without changing WordPress or uploading media.
+`--pmid <id>` alone creates a candidate for a chosen eligible paper, while keeping
+the normal duplicate guard.
 
 ## Setup (kobivps)
 

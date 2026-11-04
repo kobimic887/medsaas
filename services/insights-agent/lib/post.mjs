@@ -8,8 +8,8 @@ Its PAMPA permeability measurements on macrocycles are the largest consistent so
 The audience is medicinal chemists, computational chemists and biotech R&D leads.`;
 
 const ALLOWED_TAGS = new Set(['p', 'h3', 'ul', 'ol', 'li', 'strong', 'em', 'a', 'blockquote', 'sub', 'sup']);
-export const MIN_WORDS = 250;
-export const MAX_WORDS = 900;
+export const MIN_WORDS = 150;
+export const MAX_WORDS = 250;
 
 export function sourceUrl(article) {
   return article.doi ? `https://doi.org/${article.doi}` : `https://pubmed.ncbi.nlm.nih.gov/${article.pmid}/`;
@@ -19,13 +19,18 @@ export function pubmedUrl(article) {
   return `https://pubmed.ncbi.nlm.nih.gov/${article.pmid}/`;
 }
 
+/** Evidence gate: broad biochemistry, docking or bRo5 alone is not macrocycle news. */
+export function isMacrocycleArticle(article) {
+  return /\bmacrocycl(?:e[sd]?|ic|ization|isation)\b/i.test(`${article.title} ${article.abstract}`);
+}
+
 export function selectionPrompt(candidates) {
   const list = candidates
-    .map((article, index) => `[${index + 1}] PMID ${article.pmid} | ${article.journal} ${article.year}\nTitle: ${article.title}\nAbstract: ${article.abstract.slice(0, 500)}…`)
+    .map((article, index) => `[${index + 1}] PMID ${article.pmid} | ${article.journal} ${article.year}\nTitle: ${article.title}\nAbstract: ${article.abstract}`)
     .join('\n\n');
   return {
     system: `You are the editor of the Insights blog of Pyxis Discovery.\n${PYXIS_CONTEXT}`,
-    user: `Pick the ONE paper below that would make the most useful, accurate short blog post for our audience. Prefer primary research or substantial reviews about macrocycles, permeability, virtual screening, docking, AI for drug discovery, covalent drugs, fragment-based design or structure prediction. Avoid clinical case reports and papers only loosely related to small-molecule or macrocycle discovery.
+    user: `Pick the ONE paper below that would make the most useful, accurate short blog post for our audience. Choose primary research or a substantial review with a direct, evidenced connection to macrocyclic molecules. General biochemistry, therapeutic pathways, docking or AI alone are insufficient. Never invent a macrocycle angle. Return {"pmid": null} if none qualifies.
 
 Reply with only a JSON object: {"pmid": "<PMID>", "angle": "<one sentence on what the post should explain>"}
 
@@ -44,11 +49,11 @@ Rules you must follow:
 - Use ONLY facts stated in the paper's title and abstract below. Do not add numbers, results, methods, author names, affiliations or claims that are not in it. If something is unclear, leave it out.
 - Never claim Pyxis was involved in the paper.
 - Every number you write must appear in the abstract exactly as given.
-- 350–650 words. Plain, precise English for scientists; no hype words ("revolutionary", "game-changer").
+- 150–250 words in three short paragraphs. The very first sentence MUST begin with the exact words "For macrocycle discovery," and immediately state the source-evidenced relevance. Then explain the finding and one practical implication or limitation. Avoid generic biochemical background and sales claims. Plain, precise English for scientists; no hype words ("revolutionary", "game-changer").
 - HTML only with these tags: <p>, <h3>, <ul>, <ol>, <li>, <strong>, <em>, <a href>, <sub>, <sup>. No <h1>/<h2>, no images, no inline styles.
 - Links: you may link the paper (${sourceUrl(article)}) and, where a concept is genuinely explained, at most three of the Pyxis Learning Center articles listed. No other links.
-- Do not add a source or reference section; it is appended automatically.
-- End with one short paragraph on why this matters for drug discovery teams; you may mention that Pyxis's libraries and web platform support this kind of work only if it fits naturally.`,
+- Do not add a source or reference section, DOI text, PMID text, journal/year line or bibliography; the citation is appended automatically.
+- At most one short heading and one Learning Center link. No promotional closing paragraph. Distinguish predictions or hypotheses from experimental results. An original conceptual macrocycle illustration is added separately; do not describe it as study data.`,
     user: `Paper (PMID ${article.pmid}):
 Title: ${article.title}
 Journal: ${article.journal} ${article.year}
@@ -96,11 +101,24 @@ export function numbersIn(text) {
 export function reviewDraft(draft, article, learnLinks) {
   const problems = [];
   const { title, html } = draft;
+  if (!isMacrocycleArticle(article)) problems.push('Source has no explicit macrocycle connection; choose another paper.');
+  const opening = html.match(/<p\b[^>]*>([\s\S]*?)<\/p>/i)?.[1]?.replace(/<[^>]+>/g, ' ') || '';
+  const firstSentence = opening.trim().split(/(?<=[.!?])\s+/)[0];
+  if (!/\bmacrocycl(?:e[sd]?|ic|ization|isation)\b/i.test(firstSentence)) problems.push('First paragraph must start by explaining the source-evidenced macrocycle relevance.');
   if (!title || title.length > 90) problems.push(`Title must be 1–90 characters (got ${title?.length ?? 0}).`);
   if (/<\s*(script|style|iframe|img|h1|h2|form|input)\b/i.test(html)) problems.push('Uses a forbidden tag.');
   for (const [, tag] of html.matchAll(/<\/?([a-z0-9]+)\b/gi)) {
     if (!ALLOWED_TAGS.has(tag.toLowerCase())) problems.push(`Tag <${tag}> is not allowed.`);
   }
+  // A truncated completion can end mid-paragraph while still meeting the word
+  // count. Refuse incomplete or misnested markup rather than trusting WP repair.
+  const stack = [];
+  for (const [, closing, tag] of html.matchAll(/<(\/?)([a-z0-9]+)\b[^>]*>/gi)) {
+    if (closing) {
+      if (stack.pop() !== tag.toLowerCase()) problems.push('HTML tags are misnested or incomplete.');
+    } else stack.push(tag.toLowerCase());
+  }
+  if (stack.length || /<[^>]*$/.test(html)) problems.push('HTML tags are misnested or incomplete.');
   if (/\son\w+\s*=|style\s*=|javascript:/i.test(html)) problems.push('Contains inline script or style attributes.');
 
   const allowedLinks = new Set([sourceUrl(article), pubmedUrl(article), ...learnLinks.map((link) => link.url)]);
@@ -116,7 +134,11 @@ export function reviewDraft(draft, article, learnLinks) {
 
   const source = numbersIn(`${article.title} ${article.abstract} ${article.year}`);
   const known = new Set(source.flatMap((number) => [number, number.replace(/%$/, '')]));
-  const invented = [...new Set(numbersIn(`${title} ${html}`))].filter(
+  // An exact source DOI is an identifier, not a numerical scientific claim.
+  // Strip only that full identifier: its numeric prefix alone is still checked.
+  const draftText = `${title} ${html}`;
+  const numericText = article.doi ? draftText.split(article.doi).join('') : draftText;
+  const invented = [...new Set(numbersIn(numericText))].filter(
     (number) => !known.has(number) && !known.has(number.replace(/%$/, '')),
   );
   if (invented.length) problems.push(`Numbers not found in the abstract: ${invented.join(', ')}. Remove them or quote the abstract exactly.`);
@@ -136,17 +158,21 @@ export function citationHtml(article) {
 }
 
 /** Makes links off the WordPress site open in a new tab, like the existing Insights posts. */
-export function finalizeHtml(html, article, { reviewed = true, siteUrl = 'https://www.pyxis-discovery.com' } = {}) {
+export function finalizeHtml(html, article, { siteUrl = 'https://www.pyxis-discovery.com', illustration } = {}) {
   const site = new URL(siteUrl).host;
   const body = html.replace(/<a\b([^>]*)\bhref="(https?:\/\/[^"]+)"([^>]*)>/gi, (whole, before, href, after) => {
     if (/target=/i.test(whole) || new URL(href).host === site) return whole;
     return `<a${before}href="${href}"${after} target="_blank" rel="noopener">`;
   });
-  // Only claim a human review when a person publishes the draft.
-  const note = reviewed
-    ? "This summary was drafted with AI assistance from the paper's abstract and reviewed by the Pyxis Discovery team."
-    : "This summary was drafted with AI assistance from the paper's abstract.";
-  return `${body}\n${citationHtml(article)}\n<p><em>${note}</em></p>`;
+  // A generated draft has not been reviewed, even when its later publication is manual.
+  const note = "This summary was drafted with AI assistance from the paper's abstract. Editorial review is required before publication.";
+  let figure = '';
+  if (illustration) {
+    const imageUrl = new URL(illustration.url);
+    if (!['https:', 'http:'].includes(imageUrl.protocol) || imageUrl.host !== site) throw new Error('Illustration must be a WordPress-hosted image');
+    figure = `<figure><img src="${escapeHtml(imageUrl.href)}" alt="${escapeHtml(illustration.alt)}" width="1200" height="630" /><figcaption>${escapeHtml(illustration.caption)}</figcaption></figure>\n`;
+  }
+  return `${figure}${body}\n${citationHtml(article)}\n<p><em>${note}</em></p>`;
 }
 
 export function slugify(title) {

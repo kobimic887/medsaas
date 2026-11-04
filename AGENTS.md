@@ -30,6 +30,9 @@ when a path or trap moves.
 - OpenFold3 request/result normalization lives in `client/src/utils/openfold.js`;
   folding previews use `ProteinFoldViewer.jsx`. Preserve the PDB default for docking
   when extending the shared Molstar message format to mmCIF.
+- Protein complex + glue setup uses hosted OpenFold3 with at least two protein
+  chains and a ligand. It is not AlphaFold3 and does not establish glue efficacy.
+  API output format `cif` is normalized to viewer/history `mmcif`; docking retains PDB.
 - Folding and molecule generation stay hosted NVIDIA services. DiffDock replacement is
   OSS DiffDock — do not re-propose NVIDIA NIM / AI Enterprise for DiffDock.
 - Compute cutovers retain a measured, supported service endpoint for rollback;
@@ -87,7 +90,10 @@ when a path or trap moves.
   canonical isomeric graph equality, not similarity 1.0. Graph screens stay on the
   scientific host; ship `server/utils/ownedSearch.js` with server releases.
   Generic substructure patterns can exceed the 35 s VPX scan budget and must fail
-  explicitly, never return a partial scan as complete.
+  explicitly, never return a partial scan as complete. Home multi-SMARTS annotation
+  and any/all filtering operate on loaded results only, using browser RDKit and
+  the supplied labeled 12–69-member preset; they do not scan the full catalog
+  or infer a negative match when a structure cannot be evaluated.
 - Public stock catalog for the WordPress site: `services/stock-catalog/`, a WordPress
   plugin (`[pyxis_stock_catalog]`). By owner decision it proxies the Asinex stock shop
   API and hotlinks `compounds.asinex.com` images. WordPress-only and not an 84
@@ -98,8 +104,11 @@ when a path or trap moves.
   `glossary` reserved). Activation imports starter articles only for missing
   slugs. Its templates render inside the Timber theme's `base.twig` content block;
   `get_header()` alone loses this theme's real navigation/footer. `services/insights-agent/`: scheduled PubMed → model → Insights
-  **draft** agent. It defaults to the direct OmniRoute free API; Claude
-  subscription mode is explicit opt-in, never an automatic fallback. Its guard rejects numbers absent from the abstract and any
+  **draft** agent. Stories require an explicit macrocycle connection in their
+  source, lead with that relevance, and use 150–250 words plus an original
+  conceptual PNG illustration (inline and featured media). Unreviewed drafts
+  never claim human review. It defaults to the direct OmniRoute free API; Claude
+  subscription mode is explicit opt-in, never an automatic fallback. Its guard rejects scientific numbers absent from the abstract and any
   links other than the paper and Learning Center pages; citations are generated,
   never written by the model. Keep `WP_STATUS=draft` unless the owner opts in.
 - Client builds write `.br`/`.gz` siblings for `assets/` and `ketcher/static/`;

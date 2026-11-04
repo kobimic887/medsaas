@@ -20,6 +20,8 @@ import {
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MoleculePreviewTooltip, useStructurePreview } from '@/components/MoleculePreview';
+import { MultiSmartsFilter, SmartsAnnotation } from '@/components/MultiSmartsFilter';
+import { selectVisibleSmartsRows, smartsVisibleIndices } from '@/utils/multiSmarts';
 import { convertPriceToEuro, formatPrice } from '@/utils/algo/algo';
 import { withAppBase } from "@/utils/appEnv";
 import { addShopPack, cartLineKey, isOwnedCartItem, readShopCart, shopMoney, writeShopCart } from '@/utils/compoundShop';
@@ -240,6 +242,16 @@ export function Simulation({ active = true }) {
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState(''); // 'success', 'error', or ''
   const [topMolecules, setTopMolecules] = useState([]);
+  const [smartsResult, setSmartsResult] = useState(null);
+  const [smartsFiltering, setSmartsFiltering] = useState(false);
+  const smartsFilterPausedRef = useRef(false);
+  useEffect(() => { smartsFilterPausedRef.current = smartsFiltering; }, [smartsFiltering]);
+  // A completed local check belongs to one exact loaded-row snapshot. A new
+  // query/page must never inherit another snapshot's matches or row indices.
+  const smartsSnapshot = smartsResult?.rows === topMolecules ? smartsResult : null;
+  const visibleSmartsIndices = smartsVisibleIndices(topMolecules, smartsSnapshot);
+  const visibleSmartsIndexSet = new Set(visibleSmartsIndices);
+  const isSmartsRowVisible = (index) => visibleSmartsIndexSet.has(index);
   const [topLoading, setTopLoading] = useState(false);
   const [topError, setTopError] = useState("");
 
@@ -1952,6 +1964,7 @@ export function Simulation({ active = true }) {
         if (
           window.innerHeight + document.documentElement.scrollTop
           >= document.documentElement.offsetHeight - 1000 && // Load when 1000px from bottom
+          !smartsFilterPausedRef.current &&
           hasMoreRef.current &&
           !topLoadingRef.current &&
           !initialLoadingRef.current &&
@@ -2104,29 +2117,20 @@ export function Simulation({ active = true }) {
 
   // Handle select all/unselect all functionality
   const handleSelectAll = (isChecked) => {
-    if (isChecked) {
-      // Select all molecules on current page
-      const newSelected = new Set();
-      
-      topMolecules.forEach((mol, index) => {
-        const moleculeId = moleculeSelectionId(mol, index);
-        newSelected.add(moleculeId);
-      });
-      
-      setSelectedMolecules(newSelected);
-    } else {
-      // Unselect all molecules
-      setSelectedMolecules(new Set());
-    }
+    // Keep original result indices, including when a display filter hides rows.
+    // Selecting/unselecting the visible subset preserves hidden selections.
+    setSelectedMolecules(previous => selectVisibleSmartsRows(
+      topMolecules, visibleSmartsIndices, previous, moleculeSelectionId, isChecked,
+    ));
   };
 
   // Determine the state of the select all checkbox
   const getSelectAllState = () => {
-    if (topMolecules.length === 0) return { checked: false, indeterminate: false };
+    if (visibleSmartsIndices.length === 0) return { checked: false, indeterminate: false };
     
-    const totalMolecules = topMolecules.length;
-    const selectedCount = topMolecules.filter((mol, index) => {
-      const moleculeId = moleculeSelectionId(mol, index);
+    const totalMolecules = visibleSmartsIndices.length;
+    const selectedCount = visibleSmartsIndices.filter((index) => {
+      const moleculeId = moleculeSelectionId(topMolecules[index], index);
       return selectedMolecules.has(moleculeId);
     }).length;
     
@@ -3103,8 +3107,17 @@ export function Simulation({ active = true }) {
       <section aria-labelledby="results-heading" className="min-w-0">
         <div className="mb-3 flex items-center justify-between gap-3">
           <h2 id="results-heading" className="text-xl font-semibold text-blue-gray-900 dark:text-slate-50">Results</h2>
-          <span className="text-sm text-blue-gray-600 dark:text-slate-300">{topMolecules.length} shown{hasMore && (searchSource === 'asinex' || isSearchActive) ? ' · more available' : ''}</span>
+          <span className="text-sm text-blue-gray-600 dark:text-slate-300">{visibleSmartsIndices.length} shown{smartsFiltering ? ` of ${topMolecules.length} loaded` : ''}{hasMore && (searchSource === 'asinex' || isSearchActive) ? ' · more available' : ''}</span>
         </div>
+        {(['stock', 'smallvirtual', 'both', 'real', 'virtual', 'open'].includes(searchSource) || isMultiSource(searchSource)) && (
+          <MultiSmartsFilter rows={topMolecules} active={active} onChange={setSmartsResult} onFilteringChange={setSmartsFiltering} />
+        )}
+        {smartsSnapshot && smartsFiltering && visibleSmartsIndices.length === 0 && (
+          <p role="status" className="mb-3 text-sm text-blue-gray-700 dark:text-slate-300">No loaded results satisfy this SMARTS filter. Unknown structures are not treated as no-match; switch to all rows with annotations to inspect them, or load more results.</p>
+        )}
+        {smartsSnapshot && smartsFiltering && selectedMolecules.size > 0 && (
+          <p className="mb-3 text-xs text-blue-gray-600 dark:text-slate-300">{topMolecules.filter((mol, index) => !isSmartsRowVisible(index) && selectedMolecules.has(moleculeSelectionId(mol, index))).length} selected rows are hidden by this filter and remain included in docking/orders.</p>
+        )}
         {(['stock', 'both', 'real', 'virtual'].includes(searchSource) || isMultiSource(searchSource)) && topMolecules.length > 0 && (
           <p className="mb-3 text-xs text-blue-gray-600 dark:text-slate-300">
             Workbook 1–3 tier: up to 3 distinct compounds per order. Original EUR prices shown beside the fixed USD checkout price; review shipping and terms before checkout.
@@ -3163,6 +3176,7 @@ export function Simulation({ active = true }) {
                   </thead>
                   <tbody>
                     {topMolecules.map((mol, idx) => {
+                      if (!isSmartsRowVisible(idx)) return null;
                       const id = moleculeSelectionId(mol, idx);
                       const code = mol.isStockRow ? mol.stockCode : mol.macrocycleCode;
                       const collection = mol.isStockRow ? 'stock' : mol.macrocycleSource;
@@ -3177,6 +3191,7 @@ export function Simulation({ active = true }) {
                           <td className="p-2 text-xs">
                             <button type="button" className="font-mono font-semibold break-all underline decoration-dotted" aria-label={`Preview ${code}`} {...structurePreviewTrigger(mol.SMILES_STRING, code)}>{code}</button>
                             {mol.matchedQueryIndices?.length > 0 && <div className="mt-1 text-xs text-teal-700 dark:text-teal-300">Queries {mol.matchedQueryIndices.map((index) => index + 1).join(', ')}</div>}
+                            <SmartsAnnotation result={smartsSnapshot} index={idx} />
                             <div className="mt-1 font-semibold text-teal-700 dark:text-teal-300">{collectionLabel(collection)}</div>
                             <div className="mt-1 text-blue-gray-500" title="Dated supplier export; amount and lead time are unverified now">{madeToOrder ? 'made to order' : `${amount || 'No export amount'} · snapshot`}</div>
                           </td>
@@ -3209,6 +3224,7 @@ export function Simulation({ active = true }) {
                   </thead>
                   <tbody>
                     {topMolecules.map((mol, idx) => {
+                      if (!isSmartsRowVisible(idx)) return null;
                       const id = moleculeSelectionId(mol, idx);
                       const exportDetails = [
                         mol.snapshotMg && `${mol.snapshotMg} mg`,
@@ -3221,6 +3237,7 @@ export function Simulation({ active = true }) {
                           <td className="p-2 text-xs">
                             <button type="button" className="font-mono font-semibold break-all underline decoration-dotted" aria-label={`Preview ${mol.macrocycleCode}`} {...structurePreviewTrigger(mol.SMILES_STRING, mol.macrocycleCode)}>{mol.macrocycleCode}</button>
                             {mol.matchedQueryIndices?.length > 0 && <div className="mt-1 text-xs text-teal-700 dark:text-teal-300">Queries {mol.matchedQueryIndices.map((index) => index + 1).join(', ')}</div>}
+                            <SmartsAnnotation result={smartsSnapshot} index={idx} />
                             <div className="mt-1 font-semibold text-teal-700 dark:text-teal-300">{mol.macrocycleSource === 'real' ? 'Real RPX' : 'Virtual VPX'}</div>
                             <div className="mt-1 text-blue-gray-500" title="Dated supplier export; amount and lead time are unverified now">{exportDetails || 'No export amount'} · {mol.macrocycleSource === 'real' ? 'stock unverified' : 'virtual'}</div>
                           </td>
@@ -3267,6 +3284,7 @@ export function Simulation({ active = true }) {
                   </thead>
                   <tbody>
                     {topMolecules.map((mol, idx) => {
+                      if (!isSmartsRowVisible(idx)) return null;
                       // Same identity as handleCheckboxChange / docking handoff
                       // (ASINEX_ID holds the stock code for stock rows).
                       const stockMoleculeId = moleculeSelectionId(mol, idx);
@@ -3295,6 +3313,7 @@ export function Simulation({ active = true }) {
                               {mol.stockCode}
                             </button>
                             {mol.matchedQueryIndices?.length > 0 && <div className="mt-1 text-xs text-teal-700 dark:text-teal-300">Queries {mol.matchedQueryIndices.map((index) => index + 1).join(', ')}</div>}
+                            <SmartsAnnotation result={smartsSnapshot} index={idx} />
                             <div className="px-2 pb-2 text-xs text-blue-gray-500" title="Dated snapshot quantity from the supplier export — not live availability">{mol.STOCK_MG === null ? '—' : formatSnapshotMg(mol.STOCK_MG)} · snapshot</div>
                           </td>
                           <td className="p-2 text-xs" title="Dated supplier export lead time; unverified now">{mol.snapshotLeadTime || '—'}</td>
@@ -3361,6 +3380,7 @@ export function Simulation({ active = true }) {
                   </thead>
                   <tbody>
                     {topMolecules.map((mol, idx) => {
+                      if (!isSmartsRowVisible(idx)) return null;
                       const openMoleculeId = moleculeSelectionId(mol, idx);
                       const isChecked = selectedMolecules.has(openMoleculeId);
                       const openSmiles = mol.SMILES_STRING || "";
@@ -3403,6 +3423,7 @@ export function Simulation({ active = true }) {
                               <EyeIcon className="h-4 w-4" aria-hidden="true" />
                             </button>
                             {mol.matchedQueryIndices?.length > 0 && <div className="mt-1 text-xs text-teal-700 dark:text-teal-300">Queries {mol.matchedQueryIndices.map((index) => index + 1).join(', ')}</div>}
+                            <SmartsAnnotation result={smartsSnapshot} index={idx} />
                           </td>
                           <td className="p-0 font-mono text-xs">
                             <button
@@ -3473,6 +3494,7 @@ export function Simulation({ active = true }) {
                   </thead>
                   <tbody>
                     {topMolecules.map((mol, idx) => {
+                      if (!isSmartsRowVisible(idx)) return null;
                       const moleculeId = mol.ASINEX_ID || mol.id || `molecule-${idx}`;
                       const uniqueKey = `${moleculeId}-${idx}`;
                       const isChecked = selectedMolecules.has(moleculeId);
@@ -3632,7 +3654,7 @@ export function Simulation({ active = true }) {
           {!hasMore && topMolecules.length > 0 && !topLoading && (
             <div className="text-center py-4 mb-4">
               <Typography variant="small" color="gray">
-                No more molecules to load. Showing {topMolecules.length} total molecules.
+                No more results to load. {topMolecules.length} results loaded · {visibleSmartsIndices.length} visible.
               </Typography>
             </div>
           )}

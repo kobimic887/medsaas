@@ -38,6 +38,23 @@ is selected; an explicit DiffDock ligand remains the first choice. DiffDock view
 handoff uses the submitted ligand snapshot even if selection/query changes in flight.
 Multiple selections do not disable a new search. Select-all covers loaded rows only.
 
+The Home results panel also offers local multi-SMARTS annotation and filtering.
+It preserves all 58 owner-supplied patterns in `client/src/data/macrocycleSmarts.js`
+(12–69-member labels), supports labeled text-file import up to 100 queries, and
+checks only currently loaded result rows in a cancellable browser worker.
+It does not search or reindex the full catalog. OR means any pattern, AND means
+every pattern; annotation mode shows all rows, including unparseable/unknown
+structures. Never call unknown structures non-matches. Invalid queries or a
+30-second deadline apply no partial filter. RDKit's `rN` is a perceived-ring
+primitive: a large perimeter in a fused system need not match a size-N label.
+Preserve the exact supplied SMARTS rather than replacing them with ring counts.
+Filtering retains original server-row indices and ranking. Select-all changes
+only visible rows; previously selected hidden rows remain in docking/orders.
+Pause scroll auto-pagination while filtering and use the existing Load more
+control; recheck newly loaded row snapshots without reusing old index matches.
+Run `bun scripts/check-multi-smarts.mjs` for real WASM chemistry/OR/AND/identity
+proof, plus `test:simulation-search` for the integrated selection handlers.
+
 - **Stock:** authenticated `GET /api/stock-search/status|similarity` uses the
   configured tonomitosql dataset (`STOCK_SEARCH_BASE`, `STOCK_SEARCH_DATASET_ID`
   or `STOCK_SEARCH_DATASET_NAME`). Missing configuration/dataset returns

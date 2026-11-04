@@ -50,8 +50,42 @@ export class WordPress {
     return posts.some((post) => String(post.content?.raw ?? '').includes(`/${pmid}/`));
   }
 
-  async createInsight({ title, html, slug, status, tagIds = [], featuredMedia }) {
-    const post = await this.request('/wp/v2/pyxis_insights', {
+  /** Rewrites must name an unpublished draft already citing this exact paper. */
+  async draftForRewrite(id, pmid) {
+    const post = await this.request(`/wp/v2/pyxis_insights/${id}?context=edit`);
+    if (!['draft', 'pending'].includes(post.status)) throw new Error('Only an unpublished draft or pending Insight can be rewritten');
+    if (!String(post.content?.raw ?? '').includes(`/${pmid}/`)) throw new Error('Rewrite PMID does not match the existing draft; create a new candidate instead');
+    return post;
+  }
+
+  async uploadIllustration({ png, filename, alt, caption }) {
+    if (!this.auth) throw new Error('WP_USER and WP_APP_PASSWORD are required');
+    if (!/^pyxis-macrocycle-\d+\.png$/.test(filename)) throw new Error('Invalid illustration filename');
+    const response = await this.fetch(`${this.base}/wp/v2/media`, {
+      method: 'POST',
+      headers: {
+        Authorization: this.auth,
+        'Content-Type': 'image/png',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+      },
+      body: png,
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) throw new Error(`WordPress image upload failed: HTTP ${response.status}`);
+    const media = await response.json();
+    if (!Number.isInteger(media.id) || !media.source_url) throw new Error('WordPress image upload returned no media ID or URL');
+    try {
+      await this.request(`/wp/v2/media/${media.id}`, { method: 'POST', body: { alt_text: alt, caption } });
+    } catch (error) {
+      // The media has not yet been used by a post, so this exact new upload is safe to remove.
+      await this.request(`/wp/v2/media/${media.id}?force=true`, { method: 'DELETE' }).catch(() => {});
+      throw error;
+    }
+    return { id: media.id, url: media.source_url, alt, caption };
+  }
+
+  async createInsight({ title, html, slug, status, tagIds = [], featuredMedia, replaceId }) {
+    const post = await this.request(`/wp/v2/pyxis_insights${replaceId ? `/${replaceId}` : ''}`, {
       method: 'POST',
       body: {
         title,

@@ -6,7 +6,10 @@ Folding uses the hosted NVIDIA OpenFold3 service. The authenticated
 
 ## Inputs and results
 
-- Ligands use `ccd_codes`.
+- Ligands use `ccd_codes` or exact `smiles`.
+- [Protein complex + glue](PROTEIN-COMPLEX-FOLDING.md) guides two or more protein
+  chains plus a candidate ligand in one hosted OpenFold3 prediction.
+- The API requires `output_format: "cif"`; the UI/history/viewer call it `mmcif`.
 - Without a custom CSV MSA, proteins use a query-only A3M alignment. The UI
   explains that a richer alignment may improve prediction.
 - Unique chain IDs and empty custom alignments are checked before submission.

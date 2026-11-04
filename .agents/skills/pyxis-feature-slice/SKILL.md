@@ -77,6 +77,19 @@ bun run ci                    # only when blast radius warrants full gate
 
 A green `build` alone does not prove a dashboard flow.
 
+Protein folding uses hosted NVIDIA OpenFold3. The “Protein complex + glue” mode
+adds missing inputs while preserving existing chains and requires at least two
+protein sequences plus a candidate ligand before submission. A predicted pose or
+confidence score is not evidence of molecular-glue activity. Never relabel this
+provider as AlphaFold3: the public AlphaFold3 parameters/output have separate
+noncommercial terms. Follow `docs/PROTEIN-COMPLEX-FOLDING.md`.
+The UI, viewer and history use `mmcif`, but NVIDIA's `output_format` requires
+`cif`; normalize only at `client/src/utils/openfold.js` and keep PDB as the default
+for docking. The staging fixture accepts both tokens. Run `test:openfold` (or
+`bun scripts/check-openfold-contract.mjs`) for multi-protein/ligand requests,
+invalid-input refusal, exact ligand stereochemistry, MSA and output normalization.
+Query-only MSAs contain the submitted sequence; no homology search is performed.
+
 Link Fragments: read `docs/LINK-FRAGMENTS.md`; run `test:link-fragments` (and
 `refine-test.mjs` on the scientific host, where Python RDKit exists) and exercise
 upload, attachment/hydrogen selection, job progress and cancel, refinement, 3D

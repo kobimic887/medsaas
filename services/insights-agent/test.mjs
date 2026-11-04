@@ -1,8 +1,10 @@
 // Insights agent contract (bun run test:insights-agent). No network: PubMed,
 // the LLM and WordPress are replaced with fixtures.
 import assert from 'node:assert/strict';
+import { inflateSync } from 'node:zlib';
+import { macrocycleIllustration, ILLUSTRATION_ALT, ILLUSTRATION_CAPTION } from './lib/illustration.mjs';
 import { complete, extractJson } from './lib/llm.mjs';
-import { citationHtml, finalizeHtml, numbersIn, parseDraft, reviewDraft, slugify, writingPrompt } from './lib/post.mjs';
+import { citationHtml, finalizeHtml, isMacrocycleArticle, numbersIn, parseDraft, reviewDraft, slugify, writingPrompt } from './lib/post.mjs';
 import { decodeXml, parsePubmedXml } from './lib/pubmed.mjs';
 import { WordPress } from './lib/wordpress.mjs';
 
@@ -32,7 +34,7 @@ assert.deepEqual(numbersIn('We measured 1,234 compounds; 67 % at pH 7.4, IC<sub>
 
 const learnLinks = [{ title: 'What is a macrocycle?', url: 'https://www.pyxis-discovery.com/learning/macrocycles/what-is-a-macrocycle/' }];
 const paragraph = '<p>Macrocycles are large rings that bind flat protein surfaces, and the authors studied how they cross membranes in a careful series of experiments.</p>';
-const goodHtml = `<p>The team measured 1,234 compounds and found that 67% were permeable at pH 7.4. Read the <a href="https://doi.org/10.1021/acs.jmedchem.6b00001">paper</a> or our guide to <a href="${learnLinks[0].url}">macrocycles</a>.</p>\n<h3>Why it matters</h3>\n${paragraph.repeat(12)}`;
+const goodHtml = `<p>For macrocycle discovery, the team measured 1,234 compounds and found that 67% were permeable at pH 7.4. Read the <a href="https://doi.org/10.1021/acs.jmedchem.6b00001">paper</a> or our guide to <a href="${learnLinks[0].url}">macrocycles</a>.</p>\n<h3>Why it matters</h3>\n${paragraph.repeat(6)}`;
 const good = { title: 'Most macrocycles in a new study were permeable', html: goodHtml };
 assert.deepEqual(reviewDraft(good, article, learnLinks), []);
 
@@ -46,6 +48,10 @@ assert.match(reviewDraft({ ...good, html: '<p>Too short.</p>' }, article, learnL
 assert.match(reviewDraft({ ...good, html: `${goodHtml}<p style="color:red">x</p>` }, article, learnLinks).join(' '), /inline script or style/);
 assert.match(reviewDraft({ ...good, title: 'x'.repeat(91) }, article, learnLinks).join(' '), /Title must be/);
 
+// A displayed exact source DOI is metadata, but an isolated DOI-like number is not evidence.
+assert.deepEqual(reviewDraft({ ...good, html: goodHtml.replace('>paper</a>', `>doi:${article.doi}</a>`) }, article, learnLinks), []);
+assert.match(reviewDraft({ ...good, html: `${goodHtml}<p>A value of 10.1021 was found.</p>` }, article, learnLinks).join(' '), /Numbers not found/);
+
 // Citation is generated from PubMed fields and escaped, never written by the model.
 const citation = citationHtml(article);
 assert.match(citation, /Smith et al\., “Permeable macrocycles &amp; their chameleonic behaviour”, <em>Journal of Medicinal Chemistry<\/em>, 2026\./);
@@ -56,8 +62,35 @@ assert.match(finalized, /href="https:\/\/doi\.org\/10\.1021\/acs\.jmedchem\.6b00
 assert.doesNotMatch(finalized, new RegExp(`${learnLinks[0].url}" target`), 'internal links stay in the same tab');
 const staging = finalizeHtml('<p><a href="http://127.0.0.1:8791/learning/x/">x</a></p>', article, { siteUrl: 'http://127.0.0.1:8791' });
 assert.doesNotMatch(staging, /127\.0\.0\.1:8791\/learning\/x\/" target/, 'same-site check follows WP_URL');
-assert.match(finalized, /reviewed by the Pyxis Discovery team/);
-assert.doesNotMatch(finalizeHtml(goodHtml, article, { reviewed: false }), /reviewed by/, 'auto-publish must not claim a human review');
+assert.doesNotMatch(finalized, /reviewed by the Pyxis Discovery team/, 'unreviewed drafts must not claim human review');
+assert.match(finalized, /Editorial review is required/);
+assert.equal(isMacrocycleArticle(article), true);
+const unrelated = { ...article, title: 'Metabolic pathways in tuberculosis', abstract: 'A pathway-based approach to antimicrobial discovery.' };
+assert.equal(isMacrocycleArticle(unrelated), false);
+assert.match(reviewDraft(good, unrelated, learnLinks).join(' '), /Source has no explicit macrocycle connection/);
+assert.match(reviewDraft({ ...good, html: goodHtml.replace('For macrocycle discovery, ', '').replace('>macrocycles<', '>large rings<') }, article, learnLinks).join(' '), /First paragraph/);
+assert.match(reviewDraft({ ...good, html: goodHtml + paragraph.repeat(10) }, article, learnLinks).join(' '), /Length must be 150–250/);
+assert.match(reviewDraft({ ...good, html: goodHtml.slice(0, -4) }, article, learnLinks).join(' '), /HTML tags are misnested or incomplete/);
+
+// Original illustration is a real decodable PNG, not a remote/AI-generated structure.
+const png = macrocycleIllustration(article.pmid);
+assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+assert.equal(png.readUInt32BE(16), 1200);
+assert.equal(png.readUInt32BE(20), 630);
+const imageChunks = [];
+for (let position = 8; position < png.length;) {
+  const length = png.readUInt32BE(position);
+  const name = png.toString('ascii', position + 4, position + 8);
+  if (name === 'IDAT') imageChunks.push(png.subarray(position + 8, position + 8 + length));
+  position += length + 12;
+}
+const raster = inflateSync(Buffer.concat(imageChunks));
+assert.equal(raster.length, 630 * (1200 * 3 + 1));
+assert.ok(raster.some((value) => value < 30), 'illustration contains the dark macrocycle loop');
+const illustrated = finalizeHtml(goodHtml, article, { illustration: { url: 'https://www.pyxis-discovery.com/wp-content/uploads/macrocycle.png', alt: ILLUSTRATION_ALT, caption: ILLUSTRATION_CAPTION } });
+assert.match(illustrated, /^<figure><img/);
+assert.match(illustrated, /Not a molecular structure, binding pose or experimental result/);
+assert.throws(() => finalizeHtml(goodHtml, article, { illustration: { url: 'https://other.example/image.png', alt: '', caption: '' } }), /WordPress-hosted/);
 
 assert.deepEqual(parseDraft('```html\nTITLE: A headline.\n---\n<p>Body</p>\n```'), { title: 'A headline', html: '<p>Body</p>' });
 assert.throws(() => parseDraft('<p>no title</p>'), /format/);
@@ -109,7 +142,7 @@ await assert.rejects(
 const calls = [];
 const wpFetch = async (url, init) => {
   calls.push({ url: String(url), init });
-  return new Response(JSON.stringify({ id: 99, link: 'https://www.pyxis-discovery.com/insights/x/' }), { status: 201 });
+  return new Response(JSON.stringify({ id: 99, link: 'https://www.pyxis-discovery.com/insights/x/', source_url: 'https://www.pyxis-discovery.com/wp-content/uploads/macrocycle.png' }), { status: 201 });
 };
 const wp = new WordPress({ url: 'https://www.pyxis-discovery.com/', user: 'agent', appPassword: 'abcd efgh ijkl' }, { fetchImpl: wpFetch });
 const created = await wp.createInsight({ title: 'T', html: '<p>x</p>', slug: 't', status: 'draft', tagIds: [10], featuredMedia: '5' });
@@ -117,5 +150,16 @@ assert.equal(created.editLink, 'https://www.pyxis-discovery.com/wp-admin/post.ph
 assert.equal(calls[0].url, 'https://www.pyxis-discovery.com/wp-json/wp/v2/pyxis_insights');
 assert.equal(calls[0].init.headers.Authorization, `Basic ${Buffer.from('agent:abcdefghijkl').toString('base64')}`);
 assert.deepEqual(JSON.parse(calls[0].init.body), { title: 'T', content: '<p>x</p>', slug: 't', status: 'draft', 'pyxis-insights-tag': [10], featured_media: 5 });
+
+const uploaded = await wp.uploadIllustration({ png, filename: 'pyxis-macrocycle-40000001.png', alt: ILLUSTRATION_ALT, caption: ILLUSTRATION_CAPTION });
+assert.equal(uploaded.id, 99);
+assert.equal(calls[1].init.headers['Content-Type'], 'image/png');
+assert.equal(calls[1].init.body, png);
+assert.deepEqual(JSON.parse(calls[2].init.body), { alt_text: ILLUSTRATION_ALT, caption: ILLUSTRATION_CAPTION });
+await assert.rejects(wp.uploadIllustration({ png, filename: 'bad.png\r\nX-Header: injected' }), /Invalid illustration filename/);
+const fixtureWp = (status, content) => new WordPress({ url: 'https://www.pyxis-discovery.com', user: 'agent', appPassword: 'secret' }, { fetchImpl: async () => new Response(JSON.stringify({ status, content: { raw: content } })) });
+await assert.rejects(fixtureWp('publish', '/40000001/').draftForRewrite(99, '40000001'), /Only an unpublished/);
+await assert.rejects(fixtureWp('draft', '/40000002/').draftForRewrite(99, '40000001'), /PMID does not match/);
+assert.equal((await fixtureWp('draft', '/40000001/').draftForRewrite(99, '40000001')).status, 'draft');
 
 console.log('✓ insights agent: PubMed parsing, publication guard, citation, providers, WordPress payload');

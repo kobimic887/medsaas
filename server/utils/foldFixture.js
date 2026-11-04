@@ -251,7 +251,8 @@ export function buildFixtureFoldResponse(body, outputFormat) {
   if (!molecules.length) {
     throw Object.assign(new Error("The request contains no molecules."), { status: 400 });
   }
-  const output = outputFormat === "mmcif" ? "mmcif" : "pdb";
+  // The UI uses mmcif; NVIDIA requests use cif. Both identify the same format.
+  const output = outputFormat === "mmcif" || outputFormat === "cif" ? "mmcif" : "pdb";
   const structures = [];
   const entitySummary = [];
   for (const molecule of molecules) {

@@ -12,13 +12,22 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { ILLUSTRATION_ALT, ILLUSTRATION_CAPTION, macrocycleIllustration } from './lib/illustration.mjs';
 import { complete, extractJson } from './lib/llm.mjs';
-import { finalizeHtml, parseDraft, reviewDraft, selectionPrompt, slugify, writingPrompt } from './lib/post.mjs';
-import { collectCandidates } from './lib/pubmed.mjs';
+import { finalizeHtml, isMacrocycleArticle, parseDraft, reviewDraft, selectionPrompt, slugify, writingPrompt } from './lib/post.mjs';
+import { collectCandidates, fetchArticles } from './lib/pubmed.mjs';
 import { WordPress } from './lib/wordpress.mjs';
 
 const args = new Set(process.argv.slice(2));
 const dryRun = args.has('--dry-run');
+function option(name) {
+  const index = process.argv.indexOf(name);
+  return index < 0 ? '' : process.argv[index + 1] || '';
+}
+const requestedPmid = option('--pmid');
+const replaceId = option('--replace-draft');
+if (args.has('--pmid') && !/^\d+$/.test(requestedPmid)) throw new Error('--pmid requires a PubMed ID');
+if (args.has('--replace-draft') && (!/^[1-9]\d*$/.test(replaceId) || !requestedPmid)) throw new Error('--replace-draft requires a post ID and --pmid');
 
 function loadEnvFile(path) {
   if (!existsSync(path)) return;
@@ -79,20 +88,30 @@ async function main() {
   const state = readState();
   const covered = new Set(state.covered.map((entry) => entry.pmid));
 
-  log(`searching PubMed (${config.queries.length} queries, last ${config.days} days)`);
-  const candidates = await collectCandidates(config.queries, { covered, days: config.days, apiKey: config.pubmedKey });
+  log(requestedPmid ? `fetching requested PMID ${requestedPmid}` : `searching PubMed (${config.queries.length} queries, last ${config.days} days)`);
+  const collected = requestedPmid
+    ? await fetchArticles([requestedPmid], { apiKey: config.pubmedKey })
+    : await collectCandidates(config.queries, { covered, days: config.days, apiKey: config.pubmedKey });
+  const candidates = collected.filter(isMacrocycleArticle);
+  if (requestedPmid && !candidates.length) throw new Error('Requested paper has no explicit macrocycle connection in its title or abstract');
   if (!candidates.length) {
-    log('no new candidate papers; nothing to do');
+    log('no new papers with explicit macrocycle relevance; nothing to do');
     return;
   }
   log(`${candidates.length} candidates`);
 
   const shortlist = candidates.slice(0, 30);
-  const choice = extractJson(await complete(selectionPrompt(shortlist), config.llm));
-  const article = shortlist.find((candidate) => candidate.pmid === String(choice.pmid)) ?? shortlist[0];
+  const choice = requestedPmid ? { pmid: requestedPmid } : extractJson(await complete(selectionPrompt(shortlist), config.llm));
+  if (choice.pmid === null) {
+    log('no sufficiently relevant macrocycle story selected; nothing to do');
+    return;
+  }
+  const article = shortlist.find((candidate) => candidate.pmid === String(choice.pmid));
+  if (!article) throw new Error('Model selected a PMID outside the eligible shortlist');
   log(`picked PMID ${article.pmid}: ${article.title}`);
 
-  if (!dryRun && wp.auth && (await wp.alreadyCovered(article.pmid))) {
+  const replacing = replaceId ? await wp.draftForRewrite(replaceId, article.pmid) : null;
+  if (!replaceId && !dryRun && wp.auth && (await wp.alreadyCovered(article.pmid))) {
     log(`PMID ${article.pmid} already has an Insight; recording and stopping`);
     writeState({ covered: [...state.covered, { pmid: article.pmid, at: new Date().toISOString(), skipped: true }] });
     return;
@@ -102,8 +121,13 @@ async function main() {
   let draft;
   let problems = [];
   for (let attempt = 1; attempt <= 3; attempt += 1) {
-    draft = parseDraft(await complete(writingPrompt(article, learnLinks, problems.join('\n')), config.llm));
-    problems = reviewDraft(draft, article, learnLinks);
+    const reply = await complete(writingPrompt(article, learnLinks, problems.join('\n')), config.llm);
+    try {
+      draft = parseDraft(reply);
+      problems = reviewDraft(draft, article, learnLinks);
+    } catch (error) {
+      problems = [error.message];
+    }
     if (!problems.length) break;
     log(`draft ${attempt} rejected: ${problems.join(' | ')}`);
   }
@@ -112,20 +136,31 @@ async function main() {
     throw new Error(`draft failed checks after 3 attempts: ${problems.join(' | ')}`);
   }
 
-  const html = finalizeHtml(draft.html, article, { reviewed: config.status !== 'publish', siteUrl: config.wp.url });
   const slug = slugify(draft.title);
   if (dryRun) {
+    const html = finalizeHtml(draft.html, article, { siteUrl: config.wp.url });
     console.log(`TITLE: ${draft.title}\nSLUG: ${slug}\nSTATUS: ${config.status} (dry run, not posted)\n\n${html}`);
+    console.log(`\nILLUSTRATION: ${ILLUSTRATION_CAPTION} (1200×630 PNG; uploaded only in a real run)`);
     return;
   }
 
   const tagIds = [await wp.tagId(config.tag)];
-  const post = await wp.createInsight({ title: draft.title, html, slug, status: config.status, tagIds, featuredMedia: config.featuredMedia });
-  writeState({ covered: [...state.covered, { pmid: article.pmid, postId: post.id, at: new Date().toISOString() }] });
-  log(`created ${config.status} Insight ${post.id}: ${post.editLink}`);
+  const illustration = await wp.uploadIllustration({
+    png: macrocycleIllustration(article.pmid),
+    filename: `pyxis-macrocycle-${article.pmid}.png`,
+    alt: ILLUSTRATION_ALT,
+    caption: ILLUSTRATION_CAPTION,
+  });
+  const html = finalizeHtml(draft.html, article, { siteUrl: config.wp.url, illustration });
+  const status = replacing ? replacing.status : config.status;
+  const post = await wp.createInsight({ title: draft.title, html, slug, status, tagIds, featuredMedia: config.featuredMedia || illustration.id, replaceId });
+  // Do not delete media on an ambiguous post-request failure: WordPress might
+  // have committed the post before a connection was lost. It remains in Media.
+  writeState({ covered: [...state.covered.filter((entry) => entry.pmid !== article.pmid), { pmid: article.pmid, postId: post.id, at: new Date().toISOString() }] });
+  log(`${replaceId ? 'updated' : 'created'} ${status} Insight ${post.id}: ${post.editLink}`);
   await notify(
-    config.status === 'publish' ? 'Pyxis Insight published' : 'Pyxis Insight draft ready',
-    `${draft.title} — ${config.status === 'publish' ? post.link : post.editLink}`,
+    status === 'publish' ? 'Pyxis Insight published' : 'Pyxis Insight draft ready',
+    `${draft.title} — ${status === 'publish' ? post.link : post.editLink}`,
   );
 }
 
