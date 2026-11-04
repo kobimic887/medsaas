@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import ProteinFoldViewer from "@/components/ProteinFoldViewer";
 import FoldHistoryPanel from "@/components/folding/FoldHistoryPanel";
-import { buildFoldRequest, foldStructures } from "@/utils/openfold";
+import { buildFoldRequest, foldInputIssues, foldStructures, isGlueComplex } from "@/utils/openfold";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 import { withAppBase } from "@/utils/appEnv";
 import { FOLDING_INPUT_SAMPLES, FOLDING_STRUCTURE_SAMPLES } from "@/data/foldingSamples";
@@ -97,7 +97,7 @@ function sleep(ms, signal) {
 }
 
 const ProteinFolding = () => {
-  const [mode, setMode] = useState("single"); // "single" | "complex"
+  const [mode, setMode] = useState("single"); // "single" | "complex" | "glue"
   const [requestId, setRequestId] = useState("prediction-1");
   const [runName, setRunName] = useState("");
   const [outputFormat, setOutputFormat] = useState("pdb");
@@ -165,40 +165,27 @@ const ProteinFolding = () => {
     setEntities((prev) => [...prev, createEntity(addType, id)]);
   };
 
-  // Switching the guided mode never clears typed inputs — it only changes the
-  // guidance and the validation rules shown below the entity list.
+  // Switching modes preserves every typed input. Glue mode adds only missing
+  // blank protein/ligand slots; validation still runs before any request.
   const resetEntitiesForMode = (nextMode) => {
     setMode(nextMode);
+    if (nextMode === "glue") {
+      setEntities((previous) => {
+        const next = [...previous];
+        while (next.filter((entity) => entity.type === "protein").length < 2 && next.length < 26) {
+          next.push(createEntity("protein", getNextChainId(next)));
+        }
+        if (!next.some((entity) => entity.type === "ligand") && next.length < 26) {
+          next.push({ ...createEntity("ligand", getNextChainId(next)), ligandMode: "smiles" });
+        }
+        return next;
+      });
+    }
     setError(null);
   };
 
   // ---- Inline validation (before submission; inputs are never cleared) ------
-  const formIssues = [];
-  const seenIds = new Set();
-  entities.forEach((entity, index) => {
-    const id = String(entity.id || "").toUpperCase().trim();
-    if (!id) {
-      formIssues.push(`Chain ${index + 1} is missing a chain ID.`);
-      return;
-    }
-    if (seenIds.has(id)) {
-      formIssues.push(`Chain ID "${id}" is used more than once — each chain needs a unique ID.`);
-    }
-    seenIds.add(id);
-    if (entity.type === "protein" || entity.type === "dna" || entity.type === "rna") {
-      if (!(entity.sequence || "").trim()) {
-        formIssues.push(`Chain ${id} (${entityTypeLabel(entity)}) has no sequence.`);
-      } else if (entity.type === "protein" && entity.msaEnabled && !(entity.msaCsv || "").trim()) {
-        formIssues.push(`Chain ${id}: custom alignment is enabled but empty.`);
-      }
-    } else if (entity.type === "ligand") {
-      const value = (entity.ligandMode === "ccd" ? entity.ccdCode : entity.smiles || "").trim();
-      if (!value) formIssues.push(`Chain ${id} (ligand) is missing its ${entity.ligandMode === "ccd" ? "CCD code" : "SMILES"}.`);
-    }
-  });
-  if (mode === "single" && entities.length !== 1) {
-    formIssues.push("Single-protein mode predicts exactly one protein chain — remove the extra chains or switch to “Complex prediction”.");
-  }
+  const formIssues = foldInputIssues(entities, { mode, outputFormat });
 
   const submitSnapshot = () => ({
     requestId: requestId.trim() || "prediction",
@@ -263,7 +250,7 @@ const ProteinFolding = () => {
     const snapshot = submitSnapshot();
     let body;
     try {
-      body = buildFoldRequest(snapshot.entities, snapshot.requestId, snapshot.outputFormat);
+      body = buildFoldRequest(snapshot.entities, snapshot.requestId, snapshot.outputFormat, { mode });
     } catch (err) {
       setError(err.message);
       return;
@@ -353,7 +340,7 @@ const ProteinFolding = () => {
   // ---- Sample inputs (guided presets) ---------------------------------------
   const loadInputSample = (sample) => {
     const nextEntities = sample.entities.map(materializeEntity);
-    setMode(sample.mode === "single" ? "single" : "complex");
+    setMode(isGlueComplex(nextEntities) ? "glue" : sample.mode === "single" ? "single" : "complex");
     setEntities(nextEntities);
     setRequestId(sample.requestId);
     setOutputFormat(sample.outputFormat || "pdb");
@@ -451,7 +438,7 @@ const ProteinFolding = () => {
     const stored = Array.isArray(run.entities) && run.entities.length ? run.entities : null;
     const nextEntities = stored && stored.length ? stored.map(materializeEntity) : [createEntity("protein", "A")];
     setEntities(nextEntities);
-    setMode(nextEntities.length === 1 && nextEntities[0].type === "protein" ? "single" : "complex");
+    setMode(isGlueComplex(nextEntities) ? "glue" : nextEntities.length === 1 && nextEntities[0].type === "protein" ? "single" : "complex");
     setRequestId(run.requestId || "prediction-1");
     setOutputFormat(run.outputFormat === "mmcif" ? "mmcif" : "pdb");
     setRunName(`${run.name} (copy)`);
@@ -483,7 +470,7 @@ const ProteinFolding = () => {
       <h2 className="text-2xl font-bold mb-1">Protein Folding — OpenFold3</h2>
       <p className="mb-4 text-sm text-gray-600 dark:text-slate-400">
         Predict 3D structures of biomolecular complexes — single proteins, or complexes of
-        proteins with DNA, RNA, ligands and additional chains — using NVIDIA NIM OpenFold3.
+        proteins with DNA, RNA, ligands and additional chains — using hosted NVIDIA NIM OpenFold3.
       </p>
       {isDemo && (
         <p role="note" className="mb-4 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
@@ -513,13 +500,29 @@ const ProteinFolding = () => {
                   <span className="block text-xs text-gray-500 dark:text-slate-400">Multiple chains: proteins, DNA, RNA and ligands together.</span>
                 </span>
               </label>
+              <label className={`sm:col-span-2 flex items-start gap-2 rounded-lg border-2 p-3 cursor-pointer ${mode === "glue" ? "border-blue-500 bg-blue-50 dark:bg-blue-950/40" : "border-gray-200 dark:border-slate-700"}`}>
+                <input type="radio" name="fold-mode" className="mt-1" checked={mode === "glue"} onChange={() => resetEntitiesForMode("glue")} />
+                <span>
+                  <span className="block text-sm font-semibold">Protein complex + glue</span>
+                  <span className="block text-xs text-gray-500 dark:text-slate-400">Two or more proteins with a candidate small molecule.</span>
+                </span>
+              </label>
             </div>
             <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">
               {mode === "single"
                 ? "Single-protein mode: one chain, any chain ID you like. Switch to Complex prediction to add DNA, RNA, ligands or a second protein chain."
-                : "Complex mode: add the chains and molecules that assemble into the complex. Each chain needs a unique ID."}
+                : mode === "glue"
+                  ? "Paste each protein sequence into its own chain and enter the candidate glue as SMILES or a CCD code. Add more protein chains as needed; all molecules are predicted together."
+                  : "Complex mode: add the chains and molecules that assemble into the complex. Each chain needs a unique ID."}
             </p>
           </fieldset>
+
+          {mode === "glue" && (
+            <p role="note" className="mb-4 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300">
+              Predicts a proposed complex using <strong>OpenFold3</strong>. A pose does not establish that the molecule acts as a glue,
+              strengthens the protein interaction or has biological activity. Larger complexes can take longer and may exceed the provider’s limits.
+            </p>
+          )}
 
           {/* Sample inputs */}
           <div className="mb-5 rounded-lg border border-gray-200 p-3 dark:border-slate-700">
@@ -623,9 +626,9 @@ const ProteinFolding = () => {
                           </div>
                           {!entity.msaEnabled && (
                             <p className="mb-2 text-xs text-gray-600 dark:text-slate-400">
-                              Uses a <strong>query-only</strong> alignment: OpenFold3 aligns the single sequence you typed.
-                              A <strong>custom alignment</strong> (below) adds related sequences and can improve prediction for
-                              well-studied families, but is not required.
+                              Sends a <strong>query-only</strong> alignment containing the sequence you typed; no homology search is run.
+                              A <strong>custom alignment</strong> adds related sequences and can improve prediction. Complex-interface
+                              accuracy can be limited with query-only alignments.
                             </p>
                           )}
                           {entity.msaEnabled && (
@@ -676,7 +679,7 @@ const ProteinFolding = () => {
                 })}
               </div>
 
-              {mode === "complex" && entities.length < 26 && (
+              {mode !== "single" && entities.length < 26 && (
                 <div className="flex items-center gap-2 mt-4">
                   <label className="sr-only" htmlFor="pf-add-type">Entity type to add</label>
                   <select id="pf-add-type" value={addType} onChange={(e) => setAddType(e.target.value)} className="border border-gray-300 rounded dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 px-3 py-2 text-sm bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400">
@@ -840,6 +843,12 @@ const ProteinFolding = () => {
               ) : (
                 <p className="mb-2 text-xs text-gray-500 dark:text-slate-400">
                   No confidence metrics were returned with this structure.
+                </p>
+              )}
+              {isGlueComplex(resultMeta?.entities || []) && !resultIsExample && (
+                <p className="mb-3 rounded border border-blue-200 p-3 text-sm dark:border-blue-900">
+                  Proposed protein–ligand complex: inspect the ligand and protein interfaces in 3D. This prediction does not
+                  demonstrate molecular-glue activity or improved binding.
                 </p>
               )}
               <p className="mb-3 text-xs text-gray-600 dark:text-slate-400">

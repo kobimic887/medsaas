@@ -30,6 +30,9 @@ when a path or trap moves.
 - OpenFold3 request/result normalization lives in `client/src/utils/openfold.js`;
   folding previews use `ProteinFoldViewer.jsx`. Preserve the PDB default for docking
   when extending the shared Molstar message format to mmCIF.
+- Protein complex + glue setup uses hosted OpenFold3 with at least two protein
+  chains and a candidate ligand. A predicted pose does not establish glue efficacy.
+  API `cif` is normalized to viewer/history `mmcif`; docking retains PDB.
 - Folding and molecule generation stay hosted NVIDIA services. DiffDock replacement is
   OSS DiffDock — do not re-propose NVIDIA NIM / AI Enterprise for DiffDock.
 
@@ -80,7 +83,9 @@ when a path or trap moves.
   canonical isomeric graph equality, not similarity 1.0. Graph screens stay on the
   scientific host; ship `server/utils/ownedSearch.js` with server releases.
   Generic substructure patterns can exceed the 35 s VPX scan budget and must fail
-  explicitly, never return a partial scan as complete.
+  explicitly, never return a partial scan as complete. Multi-SMARTS annotation
+  and any/all filtering check loaded Home results only, using browser RDKit and
+  the supplied 58 labeled 12–69-member patterns. Unknown structures are not no-match.
 - Client builds write `.br`/`.gz` siblings for `assets/` and `ketcher/static/`;
   `server/utils/precompressedAssets.js` serves them. Ship them with `client/dist`.
 - Link Fragments: `docs/LINK-FRAGMENTS.md`, `services/link-fragments/README.md`.

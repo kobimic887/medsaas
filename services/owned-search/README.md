@@ -121,3 +121,33 @@ stops only the new candidate units, restores the staging application's saved
 endpoint configuration and release, and leaves existing scientific units/data
 unchanged. For production, the server package must include the owned-search
 module while graph/index artifacts stay on the scientific host.
+
+## Local multi-SMARTS macrocycle annotation
+
+Home → Results → **Macrocycle annotation · multi-SMARTS filter** checks the
+structures in the loaded result rows. The preset is the owner-supplied
+`Macrocycle_multiquery.txt`: all 58 unchanged SMARTS for labels 12–69. Text-file
+imports accept one query per line, optionally followed by `!!label`; commas
+inside SMARTS are retained. Up to 100 patterns and 2,000 loaded rows are checked
+locally in a browser worker; proprietary structures never go to a remote
+matching API. The worker loads the pinned RDKit JS/WASM runtime from a CDN.
+
+Use **All rows with annotations**, **Matches to any pattern (OR)**, or **Matches
+to every pattern (AND)**. Invalid/missing structures are *unknown*, distinct from
+checked no-match rows. Invalid patterns, worker errors or a 30-second timeout
+leave the table unfiltered; partial chemistry results are never applied.
+New pages are rechecked. This is a loaded-results filter, not a complete
+catalog scan or a definition of every possible macrocycle topology. In
+particular, supplied `rN` atoms constrain the smallest perceived ring size:
+fused systems can have a 12-atom outer perimeter and still fail every preset
+pattern because their perceived rings are smaller.
+
+Original result ordering, row identity, query text and selected structures are
+preserved. Select-all acts on visible rows only; hidden selections remain in
+docking/orders and are counted explicitly. Scroll pagination pauses while a
+filter is active; use **Load more results** to inspect additional ranked rows.
+
+Verification: `bun scripts/check-multi-smarts.mjs` uses the real RDKit runtime;
+`RDKIT_MODULE=/path/to/RDKit_minimal.js` can select the exact worker build for
+an isolated test without installing dependencies. Then run
+`bun run test:simulation-search` for the integrated UI selection/docking handlers.

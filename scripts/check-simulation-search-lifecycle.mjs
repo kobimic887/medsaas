@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { selectVisibleSmartsRows } from '../client/src/utils/multiSmarts.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const simulation = readFileSync(
@@ -46,7 +47,7 @@ const checks = [
   ['search errors do not also show an empty-state prompt', simulation.includes('!topError && !searchError && topMolecules.length === 0')],
   ['simulation feedback is rendered on the active page', simulation.includes('{active && message && (') && simulation.includes('showMessage(`Added ') && simulation.includes('to cart`);')],
   ['copy failures do not block the browser', !simulation.includes('alert(')],
-  ['selection fallbacks stay stable across renders', simulation.includes('const moleculeId = moleculeSelectionId(mol, index)') && simulation.includes('handleCheckboxChange(mol, idx, e.target.checked)')],
+  ['selection fallbacks stay stable across renders', simulation.includes('const moleculeId = moleculeSelectionId(topMolecules[index], index)') && simulation.includes('handleCheckboxChange(mol, idx, e.target.checked)')],
   ['structure preview never mutates SMILES for fallback images', !simulation.includes("replace(/[^\\w")],
   ['retired API playground state is absent', !simulation.includes("'/api/hello'") && !simulation.includes('_fetchApiData')],
   ['SMILES copy uses the shared clipboard helper', simulation.includes("import { copyToClipboard } from '@/utils/copyToClipboard'")],
@@ -587,7 +588,7 @@ checks.push(['catalog handler refuses stock/open source and pending searches bef
   const singleBody = simulation.split('const handleCheckboxChange = (molecule, index, isChecked) => {')[1].split('\n  };')[0];
   const allBody = simulation.split('const handleSelectAll = (isChecked) => {')[1].split('\n  };')[0];
   const select = new Function('moleculeSelectionId', 'topMolecules', 'setSelectedMolecules', 'setSearchCode', 'molecule', 'index', 'isChecked', singleBody);
-  const selectAll = new Function('moleculeSelectionId', 'topMolecules', 'setSelectedMolecules', 'setSearchCode', 'isChecked', allBody);
+  const selectAll = new Function('moleculeSelectionId', 'topMolecules', 'setSelectedMolecules', 'setSearchCode', 'isChecked', 'visibleSmartsIndices', 'selectVisibleSmartsRows', allBody);
   const inputBody = simulation.split('const dockingInput = ')[1].split(';')[0];
   const input = (searchType = 'similarity', queryCount = 1) => new Function('selectedMolecules', 'topMolecules', 'moleculeSelectionId', 'searchCode', 'searchType', 'queryCount', `return ${inputBody}`)(selectedMolecules, topMolecules, moleculeSelectionId, searchCode, searchType, queryCount);
   checks.push(['without selection docking falls back to the preserved query', input() === searchCode]);
@@ -596,10 +597,14 @@ checks.push(['catalog handler refuses stock/open source and pending searches bef
   checks.push(['selecting a row preserves the query and uses that exact row for docking', selectedMolecules.has('stock-2') && input() === 'CCN']);
   select(moleculeSelectionId, topMolecules, setSelectedMolecules, setSearchCode, topMolecules[1], 1, false);
   checks.push(['unticking the last result restores query fallback without clearing it', selectedMolecules.size === 0 && input() === searchCode]);
-  selectAll(moleculeSelectionId, topMolecules, setSelectedMolecules, setSearchCode, true);
+  selectAll(moleculeSelectionId, topMolecules, setSelectedMolecules, setSearchCode, true, [0, 1, 2], selectVisibleSmartsRows);
   checks.push(['select-all preserves query and distinct stock/macrocycle identities', selectedMolecules.size === 3 && input() === 'CCO,CCN,C1CCCCC1']);
-  selectAll(moleculeSelectionId, topMolecules, setSelectedMolecules, setSearchCode, false);
+  selectAll(moleculeSelectionId, topMolecules, setSelectedMolecules, setSearchCode, false, [0, 1, 2], selectVisibleSmartsRows);
   checks.push(['deselect-all preserves the original query', selectedMolecules.size === 0 && input() === searchCode]);
+  selectAll(moleculeSelectionId, topMolecules, setSelectedMolecules, setSearchCode, true, [1], selectVisibleSmartsRows);
+  checks.push(['SMARTS-filter select-all preserves original row index and docking identity', selectedMolecules.size === 1 && selectedMolecules.has('stock-2') && input() === 'CCN']);
+  selectAll(moleculeSelectionId, topMolecules, setSelectedMolecules, setSearchCode, false, [1], selectVisibleSmartsRows);
+  checks.push(['SMARTS-filter deselection restores query without rewriting it', selectedMolecules.size === 0 && input() === searchCode]);
   checks.push(['search remains available while multiple results are selected', !simulation.includes('selectedMolecules.size > 1 || sourceSearchDisabled')]);
 
   const submissions = [];
@@ -648,14 +653,18 @@ const scrollWindow = {
   addEventListener: (name, listener) => listeners.set(name, listener),
   removeEventListener: name => listeners.delete(name),
 };
-const evaluateScroll = new Function('active', 'window', 'document', 'setTimeout', 'clearTimeout', 'hasMoreRef', 'topLoadingRef', 'initialLoadingRef', 'isLoadingPageRef', 'isSearchActiveRef', 'loadMoreSearchResults', scrollBody);
-const scrollArgs = [scrollWindow, { documentElement: { scrollTop: 0, offsetHeight: 900 } }, fn => { fn(); return 1; }, () => {}, { current: true }, { current: false }, { current: false }, { current: false }, { current: true }, () => { pageCalls++; }];
+const evaluateScroll = new Function('active', 'window', 'document', 'setTimeout', 'clearTimeout', 'hasMoreRef', 'topLoadingRef', 'initialLoadingRef', 'isLoadingPageRef', 'isSearchActiveRef', 'loadMoreSearchResults', 'smartsFilterPausedRef', scrollBody);
+const scrollArgs = [scrollWindow, { documentElement: { scrollTop: 0, offsetHeight: 900 } }, fn => { fn(); return 1; }, () => {}, { current: true }, { current: false }, { current: false }, { current: false }, { current: true }, () => { pageCalls++; }, { current: false }];
 evaluateScroll(false, ...scrollArgs);
 checks.push(['inactive Home installs no window paging listener', listeners.size === 0]);
 const stopPaging = evaluateScroll(true, ...scrollArgs);
 listeners.get('scroll')();
 stopPaging();
 checks.push(['active Home pages and removes its listener when hidden', pageCalls === 1 && listeners.size === 0]);
+const stopFilteredPaging = evaluateScroll(true, ...scrollArgs.slice(0, -1), { current: true });
+listeners.get('scroll')();
+stopFilteredPaging();
+checks.push(['SMARTS filtering pauses scroll auto-pagination without requesting hidden pages', pageCalls === 1 && listeners.size === 0]);
 
 const editorBody = simulation.split('const handleEditorLoad = () => {')[1].split('\n  };')[0];
 const editorStates = [];
