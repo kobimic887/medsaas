@@ -447,10 +447,6 @@ function fetchWithTimeout(url, opts = {}) {
 // account with several keys can spread load without a code change. Keys are
 // tried in order; a 429 or 5xx moves to the next key, and once every key is
 // exhausted the request backs off and retries within a bounded budget.
-//
-// Do NOT populate these pools by registering extra NVIDIA accounts to farm more
-// free keys — that breaks build.nvidia.com's terms and the failure mode is every
-// key revoked at once. Extra capacity is a paid-tier conversation with NVIDIA.
 const NVIDIA_RETRY_BUDGET_MS = 45000; // well under EXTERNAL_HTTP_TIMEOUT_LONG_MS
 const NVIDIA_BACKOFF_BASE_MS = 1000;
 const NVIDIA_BACKOFF_MAX_MS = 8000;
