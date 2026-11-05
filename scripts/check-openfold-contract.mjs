@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { buildFoldRequest, foldInputIssues, foldStructures, isGlueComplex } from '../client/src/utils/openfold.js';
 import { buildFixtureFoldResponse } from '../server/utils/foldFixture.js';
 const protein = { type: 'protein', id: 'A', sequence: 'MKT V', msaEnabled: false };
@@ -51,4 +52,23 @@ assert.equal(results[1].format, 'mmcif');
 assert.equal(results[1].name, 'original-request-2');
 assert.equal(foldStructures({ outputs: [{ structures_with_scores: [{ structure: '# coordinates', format: 'cif' }] }] }, 'cif', 'cif-result')[0].format, 'mmcif');
 assert.deepEqual(foldStructures({ outputs: [{ error: 'failed' }] }, 'pdb', 'test'), []);
+// Execute the page's real save function with a captured fetch: prediction and
+// sample metadata both use runName, and saving must preserve coordinates.
+const page = readFileSync(new URL('../client/src/pages/dashboard/protein-folding.jsx', import.meta.url), 'utf8');
+const saveSource = page.match(/const autosaveResult = async \(structures, meta\) => \{[\s\S]*?\n  \};/)?.[0];
+assert.ok(saveSource, 'folding page save function is present');
+let posted;
+const states = [];
+const makeSave = new Function('historyAvailable', 'setSaveState', 'setSaveMessage', 'API_CONFIG', 'apiHeaders', 'fetch', `${saveSource}\nreturn autosaveResult;`);
+const save = makeSave(true, state => states.push(state), () => {}, { buildApiUrl: path => `/api${path}` }, () => ({}), async (url, options) => {
+  posted = { url, payload: JSON.parse(options.body) };
+  return { ok: true, json: async () => ({}) };
+});
+for (const runName of ['Named prediction', 'Sample structure']) {
+  await save([{ name: 'model', format: 'pdb', text: pdb }], { runName, requestId: 'request', outputFormat: 'pdb' });
+  assert.equal(posted.url, '/api/folding-history');
+  assert.equal(posted.payload.name, runName);
+  assert.equal(posted.payload.structures[0].text, pdb);
+}
+assert.deepEqual(states, ['saving', 'saved', 'saving', 'saved']);
 console.log('OpenFold contract: multi-protein/glue request, input refusal, exact ligand, query/custom MSA, cif normalization, results and download identity passed');

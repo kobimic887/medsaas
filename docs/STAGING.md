@@ -5,6 +5,10 @@ process. **It shares production accounts, database records, history, credits,
 orders, checkout, and scientific providers. Actions can affect real data and
 balances.** Browser storage separation does not provide data isolation.
 
+Folding history is private, durable Atlas data in `folding_history`, including
+coordinates. Full staging uses the normal history API, not the ephemeral demo
+store. See [the folding contract](OPENFOLD-UI-CONTRACT.md) for limits and ownership.
+
 ## Modes
 
 | Mode | Server flags | Behavior |

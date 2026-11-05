@@ -30,6 +30,11 @@ when a path or trap moves.
 - OpenFold3 request/result normalization lives in `client/src/utils/openfold.js`;
   folding previews use `ProteinFoldViewer.jsx`. Preserve the PDB default for docking
   when extending the shared Molstar message format to mmCIF.
+- Normal/full-staging folding history uses Atlas `folding_history` through
+  `server/routes/foldingHistory.js` and `server/utils/foldMongoStore.js`.
+  Every operation requires both user and company ownership. Demo history remains
+  ephemeral; never advertise it as durable storage. Failed saves retry existing
+  coordinates without calling the prediction provider again.
 - Protein complex + glue setup uses hosted OpenFold3 with at least two protein
   chains and a ligand. It is not AlphaFold3 and does not establish glue efficacy.
   API output format `cif` is normalized to viewer/history `mmcif`; docking retains PDB.
@@ -203,6 +208,7 @@ bun run test:link-fragments  # matching, explicit-H, jobs, refinement (RDKit hos
 bun run test:catalog-pricing # supplier retirement, molecule refusal, credit plans + UI
 bun run test:macrocycle-index # macrocycle index contract: RDKit parity, format-1/2, count stream
 bun run test:count-morgan    # count-Morgan support parity vs RDKit + count Tanimoto/Dice math
+bun --cwd=server run test:folding-history # normal-app history, privacy and restart durability
 bun --cwd=server run test:owned-search # owned ID/exact/substructure/batch merge + precompressed assets
 ```
 

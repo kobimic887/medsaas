@@ -206,7 +206,7 @@ const ProteinFolding = () => {
     setSaveState("saving");
     setSaveMessage("");
     const payload = {
-      name: meta.name,
+      name: meta.runName || meta.name,
       provider: meta.provider,
       providerVersion: meta.providerVersion || null,
       source: meta.source,
@@ -806,6 +806,11 @@ const ProteinFolding = () => {
                 <p role="status" className={`mb-2 rounded px-3 py-2 text-xs ${saveState === "saved" ? "border border-green-200 bg-green-50 text-green-800 dark:border-green-900 dark:bg-green-950/40 dark:text-green-300" : "border border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"}`}>
                   {saveMessage}
                 </p>
+              )}
+              {saveState === "failed" && result && resultMeta && (
+                <button type="button" onClick={() => autosaveResult(result, resultMeta)} className="mb-2 rounded border border-amber-600 px-3 py-1.5 text-sm text-amber-800 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-950/40">
+                  Retry save
+                </button>
               )}
               {saveState === "saving" && (
                 <p role="status" className="mb-2 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">

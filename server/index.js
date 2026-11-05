@@ -36,6 +36,8 @@ import { buildPlanCheckoutSessionParams, getPlan, PLAN_CATALOG } from './utils/p
 import { createRetiredCatalogRouter, refuseRetiredCatalog, isRetiredSupplierUrl, refuseRetiredScientificProvider } from './utils/catalogAccessPolicy.js';
 import { createOwnedSearch } from './utils/ownedSearch.js';
 import { precompressedAssets } from './utils/precompressedAssets.js';
+import { FoldMongoStore } from './utils/foldMongoStore.js';
+import { createFoldingHistoryRouter } from './routes/foldingHistory.js';
 import {
   buildStockSimilarityUrl,
   createStockDatasetResolver,
@@ -745,6 +747,15 @@ app.post("/api/openfold3/predict", ensureMongoConnected, authenticateToken, requ
     await respondNvidiaFailure(req, res, 'openfold3', error);
   }
 });
+
+// The demo router owns fixture history. Normal/full staging must persist real
+// predictions in Atlas rather than advertising routes that only demos provide.
+if (!DEMO_MODE) {
+  app.use('/api/folding-history', createFoldingHistoryRouter({
+    store: new FoldMongoStore(() => client.db().collection('folding_history')),
+    middleware: [ensureMongoConnected, authenticateToken, requireActiveUser],
+  }));
+}
 
 
 

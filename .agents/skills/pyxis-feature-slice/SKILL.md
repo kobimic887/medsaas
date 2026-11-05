@@ -89,6 +89,12 @@ for docking. The staging fixture accepts both tokens. Run `test:openfold` (or
 `bun scripts/check-openfold-contract.mjs`) for multi-protein/ligand requests,
 invalid-input refusal, exact ligand stereochemistry, MSA and output normalization.
 Query-only MSAs contain the submitted sequence; no homology search is performed.
+Normal/full-staging saved predictions require `server/routes/foldingHistory.js`
+and `server/utils/foldMongoStore.js`, backed by Atlas `folding_history`; the demo
+Map does not provide normal-app routes. Run `bun --cwd=server run test:folding-history`
+for real app save/list/reopen/download/rename/delete, conjunctive owner privacy,
+restart durability and no credit charge. `test:openfold` executes the client save
+payload, including `runName`; Retry save must never call the prediction provider.
 
 Link Fragments: read `docs/LINK-FRAGMENTS.md`; run `test:link-fragments` (and
 `refine-test.mjs` on the scientific host, where Python RDKit exists) and exercise

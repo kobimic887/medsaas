@@ -20,6 +20,22 @@ Folding uses the hosted NVIDIA OpenFold3 service. The authenticated
   affinities.
 - A response without structures is an error, not a JSON file labelled as PDB.
 
+## Saved predictions
+
+Normal/full staging saves metadata and coordinates in the Atlas `folding_history`
+collection through `server/routes/foldingHistory.js` and `server/utils/foldMongoStore.js`.
+The demo router retains its separate ephemeral store. All list, detail, download,
+rename and delete operations require both the submitting user and company (or
+null company); same-company peers cannot read a prediction. Lists omit coordinates.
+Each save is one atomic document, with existing per-structure limits and a 15 MiB
+BSON limit below MongoDB's document ceiling. No existing data is migrated or deleted.
+
+The client saves the submitted `runName`. Failed saves keep the result downloadable
+and offer Retry save, which resubmits the existing coordinates without another
+provider prediction or credit charge. Application releases must include both history
+modules; frontend assets alone cannot supply the history API. Reverting the app
+leaves the additive collection intact for a later compatible release.
+
 ## Viewer boundary
 
 [`ProteinFoldViewer.jsx`](../client/src/components/ProteinFoldViewer.jsx) embeds
@@ -33,6 +49,7 @@ Omitting the format retains PDB behavior for docking.
 
 ```bash
 node scripts/check-openfold-contract.mjs
+bun --cwd=server run test:folding-history
 bun run test:molecule-viewer
 bun run test:authed-fetch
 bun run build
