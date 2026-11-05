@@ -11,6 +11,8 @@ export function createFoldingHistoryRouter({ store, middleware = [] }) {
       res.status(503).json({ error: 'Prediction history is temporarily unavailable.' });
     }
   };
+  // Independent of /staging/status so the normal app can discover history too.
+  router.get('/status', (_req, res) => res.json({ historyAvailable: true }));
   router.get('/', handle(async (req, res) => res.json(await store.list({ user: req.user,
     pageRaw: req.query.page, pageSizeRaw: req.query.pageSize, search: req.query.search }))));
   router.post('/', handle(async (req, res) => res.status(201).json({ run: await store.create({ user: req.user, payload: req.body }) })));

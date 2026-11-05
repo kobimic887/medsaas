@@ -35,6 +35,13 @@ when a path or trap moves.
   Every operation requires both user and company ownership. Demo history remains
   ephemeral; never advertise it as durable storage. Failed saves retry existing
   coordinates without calling the prediction provider again.
+  `/api/folding-history/status` advertises history independently of staging.
+  Reuse fetches the full private run; list rows intentionally omit inputs.
+  Large custom MSAs are trimmed only for history, never before prediction;
+  reused omitted MSAs require re-entry. Save only finite confidence metrics.
+- Hosted OpenFold3 `202` results use bounded same-origin status polling in
+  `server/utils/nvidiaFoldResponse.js`, with the accepting key. Never resubmit
+  an accepted prediction. Empty results and polling failures refund credits.
 - Protein complex + glue setup uses hosted OpenFold3 with at least two protein
   chains and a ligand. It is not AlphaFold3 and does not establish glue efficacy.
   API output format `cif` is normalized to viewer/history `mmcif`; docking retains PDB.

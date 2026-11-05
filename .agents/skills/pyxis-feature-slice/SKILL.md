@@ -95,6 +95,15 @@ Map does not provide normal-app routes. Run `bun --cwd=server run test:folding-h
 for real app save/list/reopen/download/rename/delete, conjunctive owner privacy,
 restart durability and no credit charge. `test:openfold` executes the client save
 payload, including `runName`; Retry save must never call the prediction provider.
+History capability comes from authenticated `/api/folding-history/status` even
+outside staging. Reuse must fetch the full record; lists omit inputs. Preserve
+full custom MSAs for prediction and redact only stored copies, requiring omitted
+alignments again on reuse. Keep finite displayed confidence scores on reopen.
+`test:openfold` covers cancel, custom alignments and save state; `test:folding-history`
+also exercises accepted-provider success, failed-result refunds and score storage.
+OpenFold3 `202` polling lives in `server/utils/nvidiaFoldResponse.js`; include it
+in server releases. Never retry POST after acceptance; `test:upstream-retry`
+covers same-key/same-origin polling, deadlines and non-session errors.
 
 Link Fragments: read `docs/LINK-FRAGMENTS.md`; run `test:link-fragments` (and
 `refine-test.mjs` on the scientific host, where Python RDKit exists) and exercise

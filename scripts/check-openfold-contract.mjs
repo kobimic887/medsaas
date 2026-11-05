@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { buildFoldRequest, foldInputIssues, foldStructures, isGlueComplex } from '../client/src/utils/openfold.js';
+import { buildFoldRequest, foldInputIssues, foldStructures, isGlueComplex, finiteFoldScores, foldHistoryEntities } from '../client/src/utils/openfold.js';
 import { buildFixtureFoldResponse } from '../server/utils/foldFixture.js';
 const protein = { type: 'protein', id: 'A', sequence: 'MKT V', msaEnabled: false };
 const ligand = { type: 'ligand', id: 'B', ligandMode: 'ccd', ccdCode: 'ATP' };
@@ -55,20 +55,58 @@ assert.deepEqual(foldStructures({ outputs: [{ error: 'failed' }] }, 'pdb', 'test
 // Execute the page's real save function with a captured fetch: prediction and
 // sample metadata both use runName, and saving must preserve coordinates.
 const page = readFileSync(new URL('../client/src/pages/dashboard/protein-folding.jsx', import.meta.url), 'utf8');
-const saveSource = page.match(/const autosaveResult = async \(structures, meta\) => \{[\s\S]*?\n  \};/)?.[0];
+const saveSource = page.match(/const autosaveResult = async \(structures, meta\) => \{[\s\S]*?\n {2}\};/)?.[0];
 assert.ok(saveSource, 'folding page save function is present');
 let posted;
 const states = [];
-const makeSave = new Function('historyAvailable', 'setSaveState', 'setSaveMessage', 'API_CONFIG', 'apiHeaders', 'fetch', `${saveSource}\nreturn autosaveResult;`);
-const save = makeSave(true, state => states.push(state), () => {}, { buildApiUrl: path => `/api${path}` }, () => ({}), async (url, options) => {
+const makeSave = new Function('historyProbeRef', 'saveSequenceRef', 'mountedRef', 'foldHistoryEntities', 'finiteFoldScores', 'MAX_MSA_TO_SAVE', 'setHistoryRevision', 'setEnvStatus', 'setSaveState', 'setSaveMessage', 'API_CONFIG', 'apiHeaders', 'fetch', `${saveSource}\nreturn autosaveResult;`);
+let revisions = 0;
+const save = makeSave({ current: Promise.resolve() }, { current: 0 }, { current: true }, foldHistoryEntities, finiteFoldScores, 200000, () => revisions++, () => {}, state => states.push(state), () => {}, { buildApiUrl: path => `/api${path}` }, () => ({}), async (url, options) => {
   posted = { url, payload: JSON.parse(options.body) };
   return { ok: true, json: async () => ({}) };
 });
 for (const runName of ['Named prediction', 'Sample structure']) {
-  await save([{ name: 'model', format: 'pdb', text: pdb }], { runName, requestId: 'request', outputFormat: 'pdb' });
+  await save([{ name: 'model', format: 'pdb', text: pdb, scores: { confidence_score: 0, iptm_score: 0.8, structure: pdb, ptm_score: Infinity } }], { runName, requestId: 'request', outputFormat: 'pdb', entities: [{ ...protein, msaEnabled: true, msaCsv: 'A'.repeat(200001) }] });
   assert.equal(posted.url, '/api/folding-history');
   assert.equal(posted.payload.name, runName);
   assert.equal(posted.payload.structures[0].text, pdb);
+  assert.deepEqual(posted.payload.structures[0].scores, { confidence_score: 0, iptm_score: 0.8 });
+  assert.equal(posted.payload.request.entities[0].msaCsv, '');
+  assert.equal(posted.payload.request.entities[0].msaEnabled, true);
+  assert.equal(posted.payload.request.entities[0].msaOmitted, true);
 }
 assert.deepEqual(states, ['saving', 'saved', 'saving', 'saved']);
+assert.equal(revisions, 2);
+const longMsa = 'A'.repeat(200001);
+assert.equal(buildFoldRequest([{ ...protein, msaEnabled: true, msaCsv: longMsa }], 'long-msa').inputs[0].molecules[0].msa.main.csv.alignment, longMsa);
+assert.match(page, /entities: entities\.map\(\(e\) => \(\{ \.\.\.e \}\)\)/, 'prediction snapshot retains full inputs');
+const cancelSource = page.match(/const handleCancel = \(\) => \{[\s\S]*?\n {2}\};/)?.[0];
+let cancelledLoading = true;
+let aborted = false;
+const cancelRef = { current: { abort: () => { aborted = true; } } };
+new Function('cancelRequestedRef', 'requestControllerRef', 'setLoading', 'setError', `${cancelSource}\nhandleCancel();`)({ current: false }, cancelRef, value => { cancelledLoading = value; }, () => {});
+assert.equal(aborted, true);
+assert.equal(cancelledLoading, false);
+assert.equal(cancelRef.current, null);
+const materializeSource = page.match(/function materializeEntity\(entity\) \{[\s\S]*?\n\}/)?.[0];
+const materialize = new Function('createEntity', 'getNextChainId', `${materializeSource}\nreturn materializeEntity;`)((type, id) => ({ type, id, msaEnabled: false }), () => 'A');
+const reused = materialize({ type: 'protein', id: 'AB12', sequence: 'GG', msaEnabled: true, msaCsv: '', msaOmitted: true });
+assert.equal(reused.id, 'AB12');
+assert.equal(reused.msaEnabled, true);
+assert(foldInputIssues([reused], { outputFormat: 'mmcif' }).some(issue => issue.includes('custom alignment')));
+assert.match(page, /const reuseHistoryInputs = async \(row\) => \{[\s\S]*?await fetchHistoryRun\(row\)/, 'reuse fetches the full run');
+assert.match(page, /requestControllerRef\.current === controller/, 'old predictions cannot clear current loading state');
+const reuseSource = page.match(/const reuseHistoryInputs = async \(row\) => \{[\s\S]*?\n {2}\};/)?.[0];
+let reusedEntities;
+let fetchedId;
+const ignore = () => {};
+const reuse = new Function('fetchHistoryRun', 'materializeEntity', 'createEntity', 'isGlueComplex', 'setEntities', 'setMode', 'setRequestId', 'setOutputFormat', 'setRunName', 'setError', 'setSaveState', 'setSaveMessage', 'setSampleNotice', 'window', `${reuseSource}\nreturn reuseHistoryInputs;`)(
+  async row => { fetchedId = row.runId; return { name: 'Saved run', outputFormat: 'mmcif', entities: [{ type: 'protein', id: 'AB12', sequence: 'GG' }] }; },
+  materialize, () => ({ type: 'protein', id: 'A' }), isGlueComplex, entities => { reusedEntities = entities; },
+  ignore, ignore, ignore, ignore, ignore, ignore, ignore, ignore, { scrollTo: ignore });
+await reuse({ runId: 'metadata-only-row' });
+assert.equal(fetchedId, 'metadata-only-row');
+assert.equal(reusedEntities[0].sequence, 'GG');
+assert.equal(reusedEntities[0].id, 'AB12');
+
 console.log('OpenFold contract: multi-protein/glue request, input refusal, exact ligand, query/custom MSA, cif normalization, results and download identity passed');

@@ -22,6 +22,7 @@ import {
   serializeRunMeta,
   summarizeEntities,
   validateSavePayload,
+  finiteFoldScores,
 } from "./foldHistory.js";
 
 export class FoldDemoStore {
@@ -42,6 +43,7 @@ export class FoldDemoStore {
       name: typeof s.name === "string" ? s.name : `${runId}-structure`,
       format: s.format === "mmcif" ? "mmcif" : "pdb",
       text: s.text,
+      scores: finiteFoldScores(s.scores),
     }));
     const entities = Array.isArray(payload.request?.entities) ? payload.request.entities : [];
     const run = {

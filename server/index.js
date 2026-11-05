@@ -38,6 +38,7 @@ import { createOwnedSearch } from './utils/ownedSearch.js';
 import { precompressedAssets } from './utils/precompressedAssets.js';
 import { FoldMongoStore } from './utils/foldMongoStore.js';
 import { createFoldingHistoryRouter } from './routes/foldingHistory.js';
+import { completeNvidiaFoldResponse, hasFoldCoordinates } from './utils/nvidiaFoldResponse.js';
 import {
   buildStockSimilarityUrl,
   createStockDatasetResolver,
@@ -551,13 +552,22 @@ async function callNvidiaNim({
       firstTry = false;
 
       try {
-        const response = await axios.post(url, payload, {
+        const invocationStarted = Date.now();
+        let response = await axios.post(url, payload, {
           timeout: timeoutMs,
           headers: { Authorization: `Bearer ${key}`, Accept: 'application/json', ...extraHeaders }
         });
+        if (service === 'openfold3') {
+          response = await completeNvidiaFoldResponse(response, {
+            url, key, deadline: invocationStarted + timeoutMs, get: axios.get.bind(axios),
+          });
+        }
         nvidiaBreaker.delete(service);
         return response.data;
       } catch (error) {
+        if (error.nvidiaAccepted) {
+          throw new NvidiaUpstreamError(error.message, { status: error.status || 502 });
+        }
         const status = error.response?.status;
 
         if (status === 429) {
@@ -742,6 +752,9 @@ app.post("/api/openfold3/predict", ensureMongoConnected, authenticateToken, requ
       timeoutMs: EXTERNAL_HTTP_TIMEOUT_LONG_MS,
       extraHeaders: { 'Content-Type': 'application/json', 'NVCF-POLL-SECONDS': '300' }
     });
+    if (!hasFoldCoordinates(data)) {
+      throw new NvidiaUpstreamError('Protein folding returned no coordinate structures.', { status: 502 });
+    }
     res.json(data);
   } catch (error) {
     await respondNvidiaFailure(req, res, 'openfold3', error);

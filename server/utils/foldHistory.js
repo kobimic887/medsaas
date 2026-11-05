@@ -21,6 +21,14 @@ export const FOLD_RUN_TEXT_MAX_BYTES = 20 * 1024 * 1024; // 20 MB per run
 export const FOLD_LIST_PAGE_SIZE_DEFAULT = 8;
 export const FOLD_LIST_PAGE_SIZE_MAX = 20;
 
+// Persist only the displayed finite confidence metrics, never the provider's
+// whole scored object (which also contains a second copy of the coordinates).
+export function finiteFoldScores(scores) {
+  return Object.fromEntries(['confidence_score', 'complex_plddt_score', 'ptm_score', 'iptm_score']
+    .filter(key => typeof scores?.[key] === 'number' && Number.isFinite(scores[key]))
+    .map(key => [key, scores[key]]));
+}
+
 /** Stable identity for a prediction owner. Prefers the JWT userId. */
 export function ownerIdentity(user) {
   if (!user) return null;

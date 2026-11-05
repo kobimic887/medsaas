@@ -80,3 +80,15 @@ export function foldStructures(response, requestedFormat, requestId) {
   }
   return structures;
 }
+
+export const FOLD_SCORE_KEYS = ['confidence_score', 'complex_plddt_score', 'ptm_score', 'iptm_score'];
+export function finiteFoldScores(scores) {
+  return Object.fromEntries(FOLD_SCORE_KEYS.filter(key => Number.isFinite(scores?.[key])).map(key => [key, scores[key]]));
+}
+export function foldHistoryEntities(entities, maxMsaLength = 200_000) {
+  return entities.map(entity => {
+    const copy = { ...entity };
+    if (copy.msaCsv?.length > maxMsaLength) { copy.msaCsv = ''; copy.msaOmitted = true; }
+    return copy;
+  });
+}

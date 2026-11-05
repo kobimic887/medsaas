@@ -2,6 +2,9 @@
 //
 // Run: SERVER_RUNTIME=bun bun test/upstream-retry.test.mjs
 
+import assert from 'node:assert/strict';
+import { completeNvidiaFoldResponse, hasFoldCoordinates } from '../utils/nvidiaFoldResponse.js';
+
 import {
   fetchWithUpstreamRetry,
   isRetryableUpstreamError,
@@ -138,6 +141,41 @@ check(
     }
   );
   check('exhausts attempts on persistent 5xx', response.status === 503 && calls === 3);
+}
+
+// Accepted OpenFold jobs use bounded authenticated GETs, never another POST.
+{
+  const requests = [];
+  let clock = 0;
+  const accepted = { status: 202, headers: { 'nvcf-reqid': 'job-123' } };
+  const completed = { status: 200, data: { outputs: [{ structures_with_scores: [{ structure: 'ATOM coordinates' }] }] } };
+  const result = await completeNvidiaFoldResponse(accepted, {
+    url: 'https://health.api.nvidia.com/v1/biology/openfold/openfold3/predict', key: 'test-key', deadline: 5000,
+    now: () => clock, sleep: async ms => { clock += ms; },
+    get: async (url, options) => {
+      requests.push({ url, options });
+      if (requests.length === 1) throw { response: { status: 503 } };
+      if (requests.length === 2) return { status: 202 };
+      return completed;
+    },
+  });
+  assert.equal(result, completed);
+  assert.equal(requests.length, 3);
+  assert(requests.every(({ url, options }) => url === 'https://health.api.nvidia.com/v1/status/job-123' && options.headers.Authorization === 'Bearer test-key' && options.maxRedirects === 0));
+  assert(requests[2].options.timeout < requests[0].options.timeout);
+  check('OpenFold 202 follows one accepted job with the same key and one deadline', true);
+  for (const status of [401, 403, 404, 302]) {
+    await assert.rejects(completeNvidiaFoldResponse(accepted, {
+      url: 'https://health.api.nvidia.com/predict', key: 'test-key', deadline: 5000, now: () => 0,
+      get: async () => { throw { response: { status } }; },
+    }), error => error.nvidiaAccepted && error.status === 502);
+  }
+  await assert.rejects(completeNvidiaFoldResponse({ status: 202, headers: {} }, { url: 'https://health.api.nvidia.com/predict' }), error => error.nvidiaAccepted);
+  await assert.rejects(completeNvidiaFoldResponse(accepted, { url: 'https://health.api.nvidia.com/predict', deadline: 0, now: () => 0 }), error => error.nvidiaAccepted && error.status === 504);
+  assert(hasFoldCoordinates(completed.data));
+  assert(!hasFoldCoordinates({ outputs: [] }));
+  assert(!hasFoldCoordinates({ outputs: [{ structures_with_scores: [{ structure: '  ' }] }] }));
+  check('OpenFold pending failures stay non-session errors and empty success is refused', true);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

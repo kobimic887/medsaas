@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import ProteinFoldViewer from "@/components/ProteinFoldViewer";
 import FoldHistoryPanel from "@/components/folding/FoldHistoryPanel";
-import { buildFoldRequest, foldInputIssues, foldStructures, isGlueComplex } from "@/utils/openfold";
+import { buildFoldRequest, foldInputIssues, foldStructures, isGlueComplex, finiteFoldScores, foldHistoryEntities } from "@/utils/openfold";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 import { withAppBase } from "@/utils/appEnv";
 import { FOLDING_INPUT_SAMPLES, FOLDING_STRUCTURE_SAMPLES } from "@/data/foldingSamples";
@@ -32,14 +32,14 @@ function createEntity(type, id) {
 /** Shape a sample/manifest entity into a full form entity. */
 function materializeEntity(entity) {
   const type = String(entity?.type || "protein");
-  const id = String(entity?.id || getNextChainId([])).toUpperCase().slice(0, 1) || "A";
+  const id = String(entity?.id || getNextChainId([])).toUpperCase().slice(0, 4) || "A";
   const out = createEntity(type, id);
   if (type === "protein") {
     out.sequence = entity.sequence || "";
     const msaCsv = (entity.msaCsv || "").trim();
-    // A custom alignment that was too large to store is never re-enabled
-    // empty on reuse — that would make the next submit fail validation.
-    if (entity.msaEnabled && msaCsv) {
+    // Preserve an omitted custom-alignment requirement: silently replacing it
+    // with a query-only alignment would change the prediction on reuse.
+    if (entity.msaEnabled && (msaCsv || entity.msaOmitted)) {
       out.msaEnabled = true;
       out.msaCsv = msaCsv;
     }
@@ -118,32 +118,40 @@ const ProteinFolding = () => {
   const [saveMessage, setSaveMessage] = useState("");
   const requestControllerRef = useRef(null);
   const cancelRequestedRef = useRef(false);
+  const mountedRef = useRef(false);
+  const saveSequenceRef = useRef(0);
+  const historyProbeRef = useRef(null);
+  const [historyRevision, setHistoryRevision] = useState(0);
 
   // Server-owned environment facts (demo mode / history availability). Null on
   // the live product, where /api/staging/status does not exist.
   const [envStatus, setEnvStatus] = useState(null);
 
   useEffect(() => {
+    mountedRef.current = true;
     const controller = new AbortController();
-    (async () => {
-      try {
-        const response = await fetch(API_CONFIG.buildApiUrl("/staging/status"), {
-          signal: controller.signal,
-          headers: apiHeaders(),
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setEnvStatus(data.staging ? data : { demo: false, historyAvailable: false });
-        } else {
-          setEnvStatus({ demo: false, historyAvailable: false });
-        }
-      } catch {
-        setEnvStatus({ demo: false, historyAvailable: false });
-      } finally {
-        // no further state depends on the probe completing
+    // Demo supplies its own status; normal and full staging expose the protected
+    // history capability separately. Keep the in-flight promise for early saves.
+    historyProbeRef.current = (async () => {
+      const [staging, history] = await Promise.allSettled([
+        fetch(API_CONFIG.buildApiUrl("/staging/status"), { signal: controller.signal, headers: apiHeaders() }),
+        fetch(API_CONFIG.buildApiUrl("/folding-history/status"), { signal: controller.signal, headers: apiHeaders() }),
+      ]);
+      const stagingData = staging.status === "fulfilled" && staging.value.ok ? await staging.value.json() : null;
+      let available = stagingData?.historyAvailable === true;
+      if (!available && history.status === "fulfilled" && history.value.ok) {
+        available = (await history.value.json()).historyAvailable === true;
       }
+      if (!available) throw new Error("Prediction history is temporarily unavailable.");
+      const status = { demo: stagingData?.demo === true, historyAvailable: true };
+      if (mountedRef.current) setEnvStatus(status);
+      return status;
     })();
+    historyProbeRef.current.catch(() => {
+      if (mountedRef.current) setEnvStatus({ demo: false, historyAvailable: false });
+    });
     return () => {
+      mountedRef.current = false;
       controller.abort();
       requestControllerRef.current?.abort();
     };
@@ -191,18 +199,12 @@ const ProteinFolding = () => {
     requestId: requestId.trim() || "prediction",
     outputFormat,
     runName: runName.trim() || `${requestId.trim() || "prediction"}`,
-    entities: entities.map((e) => {
-      const copy = { ...e };
-      if (copy.msaCsv && copy.msaCsv.length > MAX_MSA_TO_SAVE) copy.msaCsv = undefined;
-      return copy;
-    }),
+    entities: entities.map((e) => ({ ...e })),
   });
 
   const autosaveResult = async (structures, meta) => {
-    if (!historyAvailable) {
-      setSaveState("idle");
-      return;
-    }
+    const sequence = ++saveSequenceRef.current;
+    const current = () => mountedRef.current && sequence === saveSequenceRef.current;
     setSaveState("saving");
     setSaveMessage("");
     const payload = {
@@ -214,21 +216,26 @@ const ProteinFolding = () => {
       request: {
         requestId: meta.requestId,
         outputFormat: meta.outputFormat,
-        entities: meta.entities || [],
+        entities: foldHistoryEntities(meta.entities || [], MAX_MSA_TO_SAVE),
       },
-      structures: structures.map((s) => ({ name: s.name, format: s.format, text: s.text })),
+      structures: structures.map((s) => ({ name: s.name, format: s.format, text: s.text, scores: finiteFoldScores(s.scores) })),
       scoreKeys: meta.scoreKeys || [],
     };
     try {
+      // A failed capability probe must not prevent a later retry from saving.
+      await historyProbeRef.current?.catch(() => {});
       const response = await fetch(API_CONFIG.buildApiUrl("/folding-history"), {
         method: "POST",
         headers: apiHeaders(true),
         body: JSON.stringify(payload),
       });
       const body = await response.json().catch(() => null);
+      if (!current()) return;
       if (response.ok) {
         setSaveState("saved");
+        setEnvStatus((status) => ({ ...status, historyAvailable: true }));
         setSaveMessage("Saved to your history.");
+        setHistoryRevision((value) => value + 1);
       } else {
         // The prediction itself succeeded — keep the result fully usable and
         // say exactly what happened. Never tell the user to rerun to save.
@@ -236,6 +243,7 @@ const ProteinFolding = () => {
         setSaveMessage(`Result is ready but could not be saved: ${body?.error || `HTTP ${response.status}`}`);
       }
     } catch (err) {
+      if (!current()) return;
       setSaveState("failed");
       setSaveMessage(`Result is ready but could not be saved: ${err.message}`);
     }
@@ -255,6 +263,7 @@ const ProteinFolding = () => {
       setError(err.message);
       return;
     }
+    saveSequenceRef.current += 1;
     setLoading(true);
     setError(null);
     setResult(null);
@@ -278,8 +287,7 @@ const ProteinFolding = () => {
           await sleep(700 + Math.random() * 600, controller.signal);
         } catch (err) {
           if (err.name === "AbortError") {
-            if (cancelRequestedRef.current) {
-              setLoading(false);
+            if (mountedRef.current && requestControllerRef.current === controller && cancelRequestedRef.current) {
               setError("Cancelled. This stopped the browser wait — on a live run a prediction already submitted to the service may still finish.");
             }
             return;
@@ -318,6 +326,7 @@ const ProteinFolding = () => {
       setResultMeta(meta);
       await autosaveResult(structures, meta);
     } catch (err) {
+      if (!mountedRef.current || requestControllerRef.current !== controller) return;
       if (err.name === "AbortError") {
         if (cancelRequestedRef.current) {
           setError("Cancelled. This stopped the browser wait — on a live run a prediction already submitted to the service may still finish.");
@@ -326,8 +335,9 @@ const ProteinFolding = () => {
       }
       setError(err.message);
     } finally {
-      if (!controller.signal.aborted) {
+      if (mountedRef.current && requestControllerRef.current === controller) {
         setLoading(false);
+        requestControllerRef.current = null;
       }
     }
   };
@@ -335,6 +345,9 @@ const ProteinFolding = () => {
   const handleCancel = () => {
     cancelRequestedRef.current = true;
     requestControllerRef.current?.abort();
+    requestControllerRef.current = null;
+    setLoading(false);
+    setError("Cancelled. This stopped the browser wait — on a live run a prediction already submitted to the service may still finish.");
   };
 
   // ---- Sample inputs (guided presets) ---------------------------------------
@@ -353,6 +366,7 @@ const ProteinFolding = () => {
 
   // ---- Sample structures (viewer testing; NOT predictions) ------------------
   const loadStructureSample = async (sample) => {
+    saveSequenceRef.current += 1;
     setLoading(true);
     setError(null);
     setSampleNotice("");
@@ -387,21 +401,25 @@ const ProteinFolding = () => {
   };
 
   // ---- History reopen / reuse ------------------------------------------------
+  const fetchHistoryRun = async (run) => {
+    const token = getAuthToken();
+    const response = await fetch(API_CONFIG.buildApiUrl(`/folding-history/${run.runId}`), {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.error || `Could not open the run (HTTP ${response.status}).`);
+    }
+    return (await response.json()).run;
+  };
+
   const openHistoryRun = async (run) => {
+    saveSequenceRef.current += 1;
     setLoading(true);
     setError(null);
     setSampleNotice("");
     try {
-      const token = getAuthToken();
-      const response = await fetch(API_CONFIG.buildApiUrl(`/folding-history/${run.runId}`), {
-        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        throw new Error(body?.error || `Could not open the run (HTTP ${response.status}).`);
-      }
-      const data = await response.json();
-      const full = data.run;
+      const full = await fetchHistoryRun(run);
       const structures = (full.structuresWithText || []).map((blob) => ({
         text: blob.text,
         format: blob.format,
@@ -433,7 +451,10 @@ const ProteinFolding = () => {
     }
   };
 
-  const reuseHistoryInputs = (run) => {
+  const reuseHistoryInputs = async (row) => {
+    let run;
+    try { run = await fetchHistoryRun(row); }
+    catch (err) { setError(err.message); return; }
     // Starts a NEW editable request. The saved run stays untouched.
     const stored = Array.isArray(run.entities) && run.entities.length ? run.entities : null;
     const nextEntities = stored && stored.length ? stored.map(materializeEntity) : [createEntity("protein", "A")];
@@ -445,7 +466,9 @@ const ProteinFolding = () => {
     setError(null);
     setSaveState("idle");
     setSaveMessage("");
-    setSampleNotice("Inputs copied into a new editable request. The saved run has not been changed — run a new prediction to save another result.");
+    setSampleNotice(stored?.some((entity) => entity.msaOmitted)
+      ? "Inputs copied. A large custom alignment was not stored; add that alignment again before predicting."
+      : "Inputs copied into a new editable request. The saved run has not been changed — run a new prediction to save another result.");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -721,7 +744,7 @@ const ProteinFolding = () => {
                   isDemo ? "Run demo prediction (no NVIDIA call)" : "Predict Structure"
                 )}
               </button>
-              {loading && (
+              {loading && requestControllerRef.current && (
                 <button type="button" onClick={handleCancel} className="rounded-lg border border-gray-300 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800">
                   Cancel
                 </button>
@@ -911,6 +934,7 @@ const ProteinFolding = () => {
       {/* ================= Saved history ================= */}
       {historyAvailable && (
         <FoldHistoryPanel
+          revision={historyRevision}
           onOpen={openHistoryRun}
           onReuse={reuseHistoryInputs}
         />

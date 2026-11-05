@@ -3,7 +3,7 @@
 // exclude coordinates; every operation includes BOTH user and company ownership.
 import crypto from 'node:crypto';
 import { BSON } from 'mongodb';
-import { buildOwnerFilter, clampPagination, ownerIdentity, serializeRunMeta, summarizeEntities, validateSavePayload } from './foldHistory.js';
+import { buildOwnerFilter, clampPagination, ownerIdentity, serializeRunMeta, summarizeEntities, validateSavePayload, finiteFoldScores } from './foldHistory.js';
 
 export class FoldMongoStore {
   constructor(getCollection) {
@@ -34,7 +34,7 @@ export class FoldMongoStore {
     const now = new Date().toISOString();
     const structures = payload.structures.map((s, index) => ({
       name: typeof s.name === 'string' ? s.name.slice(0, 200) : `${runId}-${index}`,
-      format: s.format === 'mmcif' ? 'mmcif' : 'pdb', text: s.text,
+      format: s.format === 'mmcif' ? 'mmcif' : 'pdb', text: s.text, scores: finiteFoldScores(s.scores),
     }));
     const entities = Array.isArray(payload.request?.entities) ? payload.request.entities : [];
     const run = {

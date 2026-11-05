@@ -7,6 +7,10 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { MongoClient } from 'mongodb';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import jwt from 'jsonwebtoken';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { createRequire } from 'node:module';
 
 const memory = await MongoMemoryServer.create();
 const mongo = await new MongoClient(memory.getUri('fold_history_test')).connect();
@@ -17,15 +21,33 @@ const port = socket.address().port;
 await new Promise(resolve => socket.close(resolve));
 const base = `http://127.0.0.1:${port}`;
 const secret = 'fold-history-test-jwt-secret-never-use-live';
+const fixtureDir = await mkdtemp(path.join(tmpdir(), 'fold-provider-test-'));
+const preload = path.join(fixtureDir, 'provider.mjs');
+const require = createRequire(import.meta.url);
+await writeFile(preload, `
+import axios from ${JSON.stringify(path.join(path.dirname(require.resolve('axios/package.json')), 'index.js'))};
+const originalPost = axios.post.bind(axios);
+const originalGet = axios.get.bind(axios);
+axios.post = async (url, data, options) => {
+ if (url !== 'https://health.api.nvidia.com/v1/biology/openfold/openfold3/predict') return originalPost(url, data, options);
+ if (data.request_id === 'empty') return { status: 200, data: { outputs: [] } };
+ return { status: 202, headers: { 'nvcf-reqid': data.request_id === 'poll-auth' ? 'auth-job' : 'success-job' } };
+};
+axios.get = async (url, options) => {
+ if (url === 'https://health.api.nvidia.com/v1/status/auth-job') throw { response: { status: 403 } };
+ if (url === 'https://health.api.nvidia.com/v1/status/success-job') return { status: 200, data: { outputs: [{ structures_with_scores: [{ structure: 'ATOM fixture coordinates' }] }] } };
+ return originalGet(url, options);
+};
+`);
 let child;
 let output = '';
-const start = async () => {
-  child = spawn(process.env.SERVER_RUNTIME === 'node' ? process.execPath : (process.env.BUN_PATH || `${process.env.HOME}/.bun/bin/bun`), ['index.js'], {
+const start = async (staging = true) => {
+  child = spawn(process.env.SERVER_RUNTIME === 'node' ? process.execPath : (process.env.BUN_PATH || `${process.env.HOME}/.bun/bin/bun`), [...(process.env.SERVER_RUNTIME === 'node' ? ['--import', preload] : ['--preload', preload]), 'index.js'], {
     cwd: new URL('..', import.meta.url), env: { ...process.env, PORT: String(port), BIND_HOST: '127.0.0.1',
       MONGODB_URI: memory.getUri('fold_history_test'), JWT_SECRET: secret,
-      PYXIS_STAGING_MODE: 'true', PYXIS_DEMO_MODE: 'false', FRONTEND_DIST: '',
+      PYXIS_STAGING_MODE: String(staging), PYXIS_DEMO_MODE: 'false', FRONTEND_DIST: '',
       STRIPE_SECRET_KEY: 'sk_test_dummy', NODE_ENV: 'test',
-      NVIDIA_OPENFOLD_API_KEY: '', NVIDIA_OPENFOLD_API_KEYS: '', }, stdio: ['ignore', 'pipe', 'pipe'],
+      NVIDIA_OPENFOLD_API_KEY: 'test-key-not-a-live-credential', NVIDIA_OPENFOLD_API_KEYS: '', }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   child.stdout.on('data', data => { output += data; });
   child.stderr.on('data', data => { output += data; });
@@ -48,17 +70,19 @@ const call = (path = '', { user = alice, method = 'GET', body } = {}) => fetch(`
 });
 const coordinates = 'HEADER    SAVED PREDICTION\nATOM      1  CA  GLY A   1       0.000   0.000   0.000\nEND\n';
 const payload = { name: 'Complex [A]', provider: 'openfold3-nvidia', request: { requestId: 'complex-a', entities: [{ id: 'A', type: 'protein', sequence: 'GGG', length: 3 }] },
-  structures: [{ name: 'model-1', format: 'pdb', text: coordinates }, { name: 'model-2', format: 'mmcif', text: 'data_saved\n#\n' }] };
+  structures: [{ name: 'model-1', format: 'pdb', text: coordinates, scores: { confidence_score: 0.9, complex_plddt_score: 85, ptm_score: 'invalid', unwanted: 'omit' } }, { name: 'model-2', format: 'mmcif', text: 'data_saved\n#\n' }] };
 try {
   await db.collection('companies').insertMany([{ companyId: 'co-a', slug: 'co-a', active: true }, { companyId: 'co-b', slug: 'co-b', active: true }]);
   await db.collection('users').insertMany([alice, bob, eve, solo, disabled].map(user => ({ ...user, active: user !== disabled, simulationTokens: 7 })));
   await start();
   assert.equal((await call('', { user: null })).status, 401);
+  assert.deepEqual(await (await call('/status')).json(), { historyAvailable: true });
+  assert.equal((await call('/status', { user: null })).status, 401);
   assert.equal((await call('', { user: disabled })).status, 403);
   let response = await call('', { method: 'POST', body: payload });
   assert.equal(response.status, 201, await response.clone().text());
   const runId = (await response.json()).run.runId;
-  let list = await (await call('?search=%5BA%5D&pageSize=1')).json();
+  const list = await (await call('?search=%5BA%5D&pageSize=1')).json();
   assert.equal(list.total, 1);
   assert.equal(list.pageSize, 1);
   assert(!JSON.stringify(list).includes('HEADER'));
@@ -83,15 +107,26 @@ try {
   assert.equal((await call('', { user: solo, method: 'POST', body: payload })).status, 201);
   assert.equal((await (await call('', { user: solo })).json()).total, 1);
   await stop();
-  await start();
+  await start(false);
+  assert.deepEqual(await (await call('/status')).json(), { historyAvailable: true }, 'normal app advertises history too');
   const reopened = (await (await call(`/${runId}`)).json()).run;
   assert.equal(reopened.name, 'Renamed');
   assert.equal(reopened.structuresWithText[0].text, coordinates, 'coordinates survive app restart');
   assert.equal(reopened.entities[0].sequence, 'GGG');
+  assert.deepEqual(reopened.structuresWithText[0].scores, { confidence_score: 0.9, complex_plddt_score: 85 });
   assert.equal((await db.collection('users').findOne({ username: alice.username })).simulationTokens, 7, 'history never charges prediction credits');
   assert.equal((await call(`/${runId}`, { method: 'DELETE' })).status, 200);
   assert.equal((await call(`/${runId}`)).status, 404);
-  console.log('✓ full staging folding history: real routes, save/list/search/reopen/download/rename/delete, restart durability, private ownership, atomic bounds, active-user auth and no credit charge');
+  const predict = requestId => fetch(`${base}/api/openfold3/predict`, { method: 'POST', headers: {
+    Authorization: 'Bearer '+jwt.sign(alice, secret), 'Content-Type': 'application/json',
+  }, body: JSON.stringify({ request_id: requestId }) });
+  assert.equal((await predict('async-success')).status, 200);
+  assert.equal((await db.collection('users').findOne({ username: alice.username })).simulationTokens, 6, 'accepted prediction charges once');
+  for (const requestId of ['empty', 'poll-auth']) {
+    assert.equal((await predict(requestId)).status, 502, 'bad provider result never becomes successful or logs out');
+    assert.equal((await db.collection('users').findOne({ username: alice.username })).simulationTokens, 6, 'failed prediction is refunded');
+  }
+  console.log('✓ full staging folding history: real routes, save/list/search/reopen/download/rename/delete, restart durability, private ownership, atomic bounds, active-user auth, finite scores, accepted provider jobs and failed-result refunds');
 } finally {
-  await stop(); await mongo.close(); await memory.stop();
+  await stop(); await mongo.close(); await memory.stop(); await rm(fixtureDir, { recursive: true, force: true });
 }

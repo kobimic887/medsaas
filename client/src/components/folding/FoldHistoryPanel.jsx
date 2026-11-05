@@ -33,7 +33,7 @@ function authHeaders(extra = {}) {
  * starts a fresh editable request from the stored inputs without touching the
  * saved run.
  */
-export default function FoldHistoryPanel({ onOpen, onReuse }) {
+export default function FoldHistoryPanel({ onOpen, onReuse, revision }) {
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -98,6 +98,12 @@ export default function FoldHistoryPanel({ onOpen, onReuse }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (revision) load({ nextPage: 1, quiet: true });
+    // Load the latest saved run when an autosave succeeds.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revision]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
