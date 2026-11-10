@@ -22,8 +22,10 @@ in [operations](../../docs/OPERATIONS.md).
   returns 503. The example environment selects `vina`; choose it explicitly for CPU docking.
 - DiffDock's runtime selects `oss` and needs model weights mounted at `/models`.
   Replay engines are fixtures and cannot qualify a live service.
-- GPU reservations use explicit device IDs. Several optional services share a device;
-  verify the actual assignments and behavior under representative concurrency.
+- GPU reservations use explicit device IDs from `BOX_GPU_DOCKING` (default 0) and
+  `BOX_GPU_SCIENCE` (default 1). On a single-GPU host set `BOX_GPU_SCIENCE=0`. Several
+  optional services share a device; verify the actual assignments and behavior under
+  representative concurrency.
 - ADMET, GROMACS and glioblastoma are under the `extras` profile. ADMET requires MongoDB
   Atlas access; it is a worker using a Mongo job collection, not a RabbitMQ consumer.
 - Container ports bind to loopback by default. Retain that boundary and validate

@@ -24,14 +24,19 @@
 # every version. NVIDIA_VISIBLE_DEVICES is kept alongside as belt-and-braces; the two
 # agree per service.
 #
-#   card 0 → docking      (AutoDock-GPU, the latency-critical path)
-#   card 1 → diffdock     (long jobs, and it must not stall an interactive dock)
-#   card 1 → admet        (first-ever deploy, low volume; shares with diffdock)
-#   card 1 → gromacs      (MD runs are long and batch-like)
+#   BOX_GPU_DOCKING (default 0) → docking   (AutoDock-GPU, the latency-critical path)
+#   BOX_GPU_SCIENCE (default 1) → diffdock  (long jobs, and it must not stall an interactive dock)
+#                                → admet     (first-ever deploy, low volume; shares with diffdock)
+#                                → gromacs   (MD runs are long and batch-like)
+#
+# Single-GPU box: set BOX_GPU_SCIENCE=0 so every GPU service shares card 0. With the
+# default of 1 and only one card, diffdock/admet/gromacs fail to start (no device 1).
+# Docking's vina engine is CPU-only, so a shared card costs it nothing until
+# autodock-gpu exists; the GPU services then share VRAM when they run concurrently.
 #
 # Verify after `compose up` with:
 #   docker exec box-docking  nvidia-smi -L   # must list exactly one GPU
-#   docker exec box-diffdock nvidia-smi -L   # must list exactly one, and a different UUID
+#   docker exec box-diffdock nvidia-smi -L   # exactly one; a different UUID unless single-GPU
 
 x-gpu0: &gpu0
   deploy:
@@ -39,7 +44,7 @@ x-gpu0: &gpu0
       reservations:
         devices:
           - driver: nvidia
-            device_ids: ['0']
+            device_ids: ['${BOX_GPU_DOCKING:-0}']
             capabilities: [gpu]
 
 x-gpu1: &gpu1
@@ -48,7 +53,7 @@ x-gpu1: &gpu1
       reservations:
         devices:
           - driver: nvidia
-            device_ids: ['1']
+            device_ids: ['${BOX_GPU_SCIENCE:-1}']
             capabilities: [gpu]
 
 x-base: &base
@@ -75,7 +80,7 @@ services:
     environment:
       DOCKING_ENGINE: "${DOCKING_ENGINE:-autodock-gpu}"
       CACHE_DIR: /srv/cache
-      NVIDIA_VISIBLE_DEVICES: "0"
+      NVIDIA_VISIBLE_DEVICES: "${BOX_GPU_DOCKING:-0}"
     volumes:
       - /srv/cache:/srv/cache          # prepared receptors + autogrid maps — see BRIEF §5
     healthcheck:
@@ -109,7 +114,7 @@ services:
     ports: ["${BIND_ADDR:-127.0.0.1}:8002:8002"]
     environment:
       DIFFDOCK_ENGINE: "${DIFFDOCK_ENGINE:-oss}"
-      NVIDIA_VISIBLE_DEVICES: "1"
+      NVIDIA_VISIBLE_DEVICES: "${BOX_GPU_SCIENCE:-1}"
       CONVERTSTR_URL: http://convertstr:8001/convertSTR
     depends_on: [convertstr]
     volumes:
@@ -162,7 +167,7 @@ services:
       ADMET_CALLBACK_URL: "${ADMET_CALLBACK_URL}"
       ADMET_CALLBACK_SECRET: "${ADMET_CALLBACK_SECRET}"
       ADMET_ENGINE: "${ADMET_ENGINE:-admet-ai}"
-      NVIDIA_VISIBLE_DEVICES: "1"
+      NVIDIA_VISIBLE_DEVICES: "${BOX_GPU_SCIENCE:-1}"
     profiles: ["extras"]
 
   # ── GROMACS. Deployed on 83 today, CPU-only apt build. ─────────────────────
