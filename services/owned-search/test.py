@@ -68,3 +68,28 @@ with tempfile.TemporaryDirectory() as temporary:
     try:StockIdLookup(base);assert False
     except ValueError:pass
 print('owned graph search: 21 meaningful checks passed (canonical, stereo, true graph, Kekule SMILES, SMARTS, duplicate identities, bounds, incomplete refusal) + stock identifier lookup')
+
+# Stock code spelling: "ASN10396473" finds the stored "ASN 10396473".
+from serve import normalize_stock_id
+assert normalize_stock_id('ASN10396473')=='ASN 10396473'
+assert normalize_stock_id(' asn 10396473 ')=='ASN 10396473'
+assert normalize_stock_id('BAS  05674984')=='BAS 05674984'
+assert normalize_stock_id('10396473')=='10396473'
+assert normalize_stock_id('16749288-857950')=='16749288-857950'
+assert normalize_stock_id('RPX 202406561')=='RPX 202406561'
+
+# Identifier lookup freshness survives a Postgres stats reset (host reboot) but
+# not a real write: counters below their stored values are the reset; any
+# nonzero counter after it, or growth without one, is stale.
+from stock_sql import lookup_is_current
+built={'datasetId':4,'rows':630646,'minId':3747130,'maxId':4377775,'inserted':1266437,'updated':0,'deleted':635791}
+assert lookup_is_current(dict(built),built)
+assert lookup_is_current({**built,'inserted':0,'deleted':0},built), 'reboot reset with no writes stays current'
+assert not lookup_is_current({**built,'inserted':5,'deleted':0},built), 'writes after a reset are stale'
+assert not lookup_is_current({**built,'inserted':built['inserted']+1},built), 'growth without reset is stale'
+assert not lookup_is_current({**built,'rows':630645,'inserted':0,'deleted':0},built), 'row count change is stale'
+assert not lookup_is_current({**built,'maxId':4377776},built)
+assert not lookup_is_current({**built,'datasetId':3},built)
+assert not lookup_is_current({**built,'inserted':None},built)
+assert not lookup_is_current(built,None)
+print('stock code normalization and lookup freshness: ok')

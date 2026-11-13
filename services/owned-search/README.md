@@ -86,7 +86,11 @@ It is a candidate screen only: `stock_sql.py` re-applies the original text
 equality to the candidates (~0.5 s per ID), and returns `stale` when the dataset
 row count/min/max or the table's write counters changed since the build, after
 which `serve.py` uses the full scan until a rebuilt lookup appears (picked up
-without a restart). `/graph/health` reports `stockIdLookup`
+without a restart). Postgres zeroes those counters after an unclean restart
+(every host reboot); counters below their stored values with no write since
+are that reset, not a change, so a reboot no longer forces the ~25 s full scan
+that times out. ID queries written `ASN10396473` are normalized to the stored
+`ASN 10396473`. `/graph/health` reports `stockIdLookup`
 (`ready`/`stale`/`absent`/`invalid`). Rebuild after a stock import:
 
 ```sh

@@ -3,8 +3,31 @@ import fetch from 'node-fetch';
 
 const router = express.Router();
 
-const GROMACS_API_BASE = (process.env.GROMACS_API_BASE || 'http://localhost:8001').replace(/\/$/, '');
-const GLIOBLASTOMA_API_BASE = (process.env.GLIOBLASTOMA_API_BASE || 'http://localhost:5000').replace(/\/$/, '');
+// No default endpoints. The former localhost:8001 default for GROMACS is the
+// convertSTR port, so its /health answered 200 and reported a GROMACS service
+// that did not exist. An unset base is "not configured" (503), never a guess.
+const SERVICE_ENV = { gromacs: 'GROMACS_API_BASE', glioblastoma: 'GLIOBLASTOMA_API_BASE' };
+const SERVICE_LABEL = { gromacs: 'GROMACS', glioblastoma: 'Glioblastoma prediction' };
+
+export function serviceBase(name, env = process.env) {
+  const raw = String(env[SERVICE_ENV[name]] || '').trim();
+  return raw ? raw.replace(/\/$/, '') : null;
+}
+
+function refuseNotConfigured(res, name) {
+  return res.status(503).json({
+    code: 'SERVICE_NOT_CONFIGURED',
+    error: `${SERVICE_LABEL[name]} is not configured on this server. No credits were charged.`,
+  });
+}
+
+function proxyService(name, path, options) {
+  return (req, res) => {
+    const base = serviceBase(name);
+    if (!base) return refuseNotConfigured(res, name);
+    return proxyJson(req, res, `${base}${typeof path === 'function' ? path(req) : path}`, options);
+  };
+}
 
 // Same contract as server/index.js: these proxies already ran authenticateToken,
 // so an upstream 401 is the service's credentials failing — never a user session.
@@ -43,10 +66,13 @@ async function proxyJson(req, res, targetUrl, options = {}) {
 router.get('/platform/health', async (_req, res) => {
   const checks = {};
 
-  for (const [name, baseUrl, path] of [
-    ['gromacs', GROMACS_API_BASE, '/health'],
-    ['glioblastoma', GLIOBLASTOMA_API_BASE, '/health'],
-  ]) {
+  for (const name of ['gromacs', 'glioblastoma']) {
+    const baseUrl = serviceBase(name);
+    const path = '/health';
+    if (!baseUrl) {
+      checks[name] = { status: 'not_configured' };
+      continue;
+    }
     try {
       const response = await fetch(`${baseUrl}${path}`, { method: 'GET' });
       checks[name] = {
@@ -62,38 +88,30 @@ router.get('/platform/health', async (_req, res) => {
   res.json({ checks, timestamp: new Date().toISOString() });
 });
 
-router.post('/glioblastoma/predict', async (req, res) => {
-  return proxyJson(req, res, `${GLIOBLASTOMA_API_BASE}/predict`, { method: 'POST' });
-});
+router.post('/glioblastoma/predict', proxyService('glioblastoma', '/predict', { method: 'POST' }));
 
-router.post('/glioblastoma/batch-predict', async (req, res) => {
-  return proxyJson(req, res, `${GLIOBLASTOMA_API_BASE}/batch_predict`, { method: 'POST' });
-});
+router.post('/glioblastoma/batch-predict', proxyService('glioblastoma', '/batch_predict', { method: 'POST' }));
 
-router.get('/gromacs/health', async (req, res) => {
-  return proxyJson(req, res, `${GROMACS_API_BASE}/health`, { method: 'GET' });
-});
+router.get('/gromacs/health', proxyService('gromacs', '/health', { method: 'GET' }));
 
-router.get('/gromacs/info', async (req, res) => {
-  return proxyJson(req, res, `${GROMACS_API_BASE}/info`, { method: 'GET' });
-});
+router.get('/gromacs/info', proxyService('gromacs', '/info', { method: 'GET' }));
 
-router.post('/gromacs/workflows/:workflow', async (req, res) => {
-  const { workflow } = req.params;
-  // Encode the path segment so it can't traverse (../) or inject into the
-  // upstream URL. Restrict to a sane identifier shape as well.
-  if (!/^[\w.-]{1,128}$/.test(workflow)) {
+// Encode path segments so they can't traverse (../) or inject into the
+// upstream URL. Restrict to a sane identifier shape as well.
+const workflowProxy = proxyService('gromacs', (req) => `/workflows/${encodeURIComponent(req.params.workflow)}`, { method: 'POST' });
+router.post('/gromacs/workflows/:workflow', (req, res) => {
+  if (!/^[\w.-]{1,128}$/.test(req.params.workflow)) {
     return res.status(400).json({ error: 'Invalid workflow identifier' });
   }
-  return proxyJson(req, res, `${GROMACS_API_BASE}/workflows/${encodeURIComponent(workflow)}`, { method: 'POST' });
+  return workflowProxy(req, res);
 });
 
-router.get('/gromacs/jobs/:jobId', async (req, res) => {
-  const { jobId } = req.params;
-  if (!/^[\w.-]{1,128}$/.test(jobId)) {
+const jobProxy = proxyService('gromacs', (req) => `/jobs/${encodeURIComponent(req.params.jobId)}`, { method: 'GET' });
+router.get('/gromacs/jobs/:jobId', (req, res) => {
+  if (!/^[\w.-]{1,128}$/.test(req.params.jobId)) {
     return res.status(400).json({ error: 'Invalid job identifier' });
   }
-  return proxyJson(req, res, `${GROMACS_API_BASE}/jobs/${encodeURIComponent(jobId)}`, { method: 'GET' });
+  return jobProxy(req, res);
 });
 
 export default router;

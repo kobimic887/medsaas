@@ -38,7 +38,7 @@ check('invalid and unmatched queries retain separate provenance',()=>{
  assert.deepEqual(data.queries.map(q=>q.status),['error','unmatched']);assert.equal(data.totalExact,false);
 });
 const secret='owned-search-testing-secret-long-enough';
-let upstreamStatus=200;let similarityLimit;let healthSources=['stock','real','virtual'];const similarityCalls=[];
+let upstreamStatus=200;let similarityLimit;let stockSimilarityFail=null;let clock=0;let healthSources=['stock','real','virtual'];const similarityCalls=[];
 const provider=http.createServer(async(req,res)=>{
  const url=new URL(req.url,'http://localhost');res.setHeader('Content-Type','application/json');
  if(url.pathname==='/health')return res.end(JSON.stringify({available:true,sources:healthSources}));
@@ -46,6 +46,7 @@ const provider=http.createServer(async(req,res)=>{
   similarityLimit=Number(url.searchParams.get('limit'));
   const dataset=url.searchParams.get('dataset_ids')||url.searchParams.get('dataset_id');similarityCalls.push(dataset);
   if(dataset==='3')return res.end(JSON.stringify({results:[{source:'smallvirtual',molecule_id:1,canonical_smiles:'c1ccccc1O',similarity:0.9,metadata:{ID:'16749288-857950',MAIN_BAS:'16749288-857950',CURRENT_TOT_NETTO_MG:'5',Lead_TIME:'28 days'}}]}));
+  if(dataset==='4'&&stockSimilarityFail){clock+=stockSimilarityFail.elapsedMs;res.statusCode=500;res.setHeader('Content-Type','text/plain');return res.end('Internal Server Error');}
   if(dataset==='4')return res.end(JSON.stringify({results:[{molecule_id:7,canonical_smiles:'CCN',similarity:0.85,metadata:{MAIN_BAS:'BAS 00123456',CURRENT_TOT_NETTO_MG:'10'}}]}));
   return res.end(JSON.stringify({results:[{source:'real',molecule_id:1,canonical_smiles:'CCO',similarity:0.8,metadata:{MAIN_BAS:'RPX 202406561',web_mg:'5'}}]}));
  }
@@ -84,6 +85,13 @@ try{
  await owned.run({...query,mode:'similarity',queries:['CCO'],offset:150,limit:50});check('batch pagination fetches required per-query candidate prefix',()=>assert.equal(similarityLimit,201));
  let tick=0;const slow=createOwnedSearch({graphBase:base,fetchImpl:fetch,stockConfig:{baseUrl:base},stockResolver:{resolve:async()=>({id:4,name:'Stock'})},macroConfig:{baseUrl:base},macroResolver:{resolve:async source=>datasets[source]},openConfig:{enabled:false},secret,now:()=>(tick++)*100000});
  await assert.rejects(slow.run(query),error=>error.status===503&&/reduce the number of queries/.test(error.message));checks++;console.log('PASS exhausted batch budget keeps its 503 and actionable message');
+ const clocked=createOwnedSearch({graphBase:base,fetchImpl:fetch,stockConfig:{baseUrl:base},stockResolver:{resolve:async()=>({id:4,name:'Stock'})},macroConfig:{baseUrl:base},macroResolver:{resolve:async source=>datasets[source]},openConfig:{enabled:false},secret,now:()=>clock});
+ const broad={source:'stock',mode:'similarity',queries:['CC(=O)Oc1ccccc1C(=O)O'],threshold:0.1,limit:50};
+ stockSimilarityFail={elapsedMs:25000};
+ await assert.rejects(clocked.run(broad),error=>error.status===502&&/time budget/.test(error.message)&&/0\.3 or higher/.test(error.message));checks++;console.log('PASS slow stock similarity failure names the threshold budget');
+ stockSimilarityFail={elapsedMs:0};
+ await assert.rejects(clocked.run(broad),error=>error.status===502&&!/time budget/.test(error.message));checks++;console.log('PASS fast stock failure keeps the generic upstream error');
+ stockSimilarityFail=null;
  const open=createOwnedSearch({graphBase:base,fetchImpl:fetch,openConfig:{enabled:true,baseUrl:base},secret});
  const openExact=await open.run({source:'open',mode:'exact',queries:['OCC'],limit:10});
  check('open exact canonicalizes chemistry and never mints offers',()=>{assert.equal(openExact.results.length,1);assert.equal(openExact.results[0].chemblId,'CHEMBL545');assert.equal(openExact.results[0].shopOffer,undefined);assert.equal(openExact.sendsQueryExternally,true);});

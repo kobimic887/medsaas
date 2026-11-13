@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Loopback-only additive graph/ID service. No source table or index is changed."""
-import csv, hashlib, json, mmap, os, pathlib, socket, socketserver, struct, subprocess, threading, time
+import csv, hashlib, json, mmap, os, pathlib, re, socket, socketserver, struct, subprocess, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import numpy as np
 from rdkit import Chem, DataStructs, rdBase
@@ -8,6 +8,14 @@ from build import STRIDE,digest
 from stock_ids import StockIdLookup
 rdBase.DisableLog("rdApp.*")
 FIELDS=['smiles','ID','MAIN_BAS','compound_id','source','source_file','web_mg','web_uM','CURRENT_TOT_NETTO_MG','CURRENT_TOT_AMOUNT_UM','Lead_TIME']
+
+# Stock codes are stored as "ASN 10396473" (MAIN_BAS/compound_id) and bare
+# "10396473" (ID). Orders and supplier sheets also write "ASN10396473"; insert
+# the space so that spelling finds the same compound instead of nothing.
+STOCK_CODE=re.compile(r'([A-Za-z]{3})\s*(\d{5,})')
+def normalize_stock_id(query):
+    match=STOCK_CODE.fullmatch(query.strip())
+    return f'{match[1].upper()} {match[2]}' if match else query
 
 def substructure_query(query):
     """Return (molecule, 'smiles'|'smarts'). Plain SMILES is matched as a sanitized
@@ -145,6 +153,7 @@ class Handler(BaseHTTPRequestHandler):
                 if source=='stock':
                     body.pop('lookup',None) # candidates come only from this host's lookup
                     if mode=='substructure':body['queryFormat']=substructure_query(query)[1] # same SMILES/SMARTS choice as macrocycles
+                    if mode=='id':body['query']=query=normalize_stock_id(query)
                     if mode=='id' and self.server.stock_ids is None:refresh_stock_ids(self.server)
                     payload=None;lookup=self.server.stock_ids
                     if mode=='id' and lookup and lookup.matches(body):

@@ -154,6 +154,13 @@
             overflow: hidden !important;
         }
 
+        /* ?embed=fold (ProteinFoldViewer): the page shows one predicted structure
+           and has its own download, so the standalone Load/Reset/Screenshot strip
+           only costs viewport height (233 px stacked in a 450 px column). */
+        body.embed-fold .controls {
+            display: none;
+        }
+
         .loading {
             position: absolute;
             top: 50%;
@@ -289,6 +296,16 @@
         }
         
         // Initialize Molstar viewer
+        // Folding previews sit in a ~450 px grid column. Molstar's reactive layout
+        // then stacks its left panel and Structure Tools under the sequence bar and
+        // the 3D canvas collapses to 0 px. Start a narrow fold embed with the
+        // panels collapsed; the viewport's Toggle Controls / Expand buttons bring
+        // them back. The full docking viewer (no embed param) is unchanged.
+        const EMBED_MODE = new URLSearchParams(window.location.search).get('embed');
+        const COMPACT_VIEWER_MAX_WIDTH = 1000;
+        const startCollapsed = EMBED_MODE === 'fold' && window.innerWidth < COMPACT_VIEWER_MAX_WIDTH;
+        if (EMBED_MODE === 'fold') document.body.classList.add('embed-fold');
+
         async function initViewer() {
             try {
                 viewer = await molstar.Viewer.create('molstar-container', {
@@ -297,7 +314,7 @@
                     // Structure Tools panel (Components, Quick Styles, Measurements,
                     // Superposition). These are the viewer people actually work in;
                     // a run that turned them off left only a bare 3D canvas.
-                    layoutShowControls: true,
+                    layoutShowControls: !startCollapsed,
                     layoutShowRemoteState: false,
                     layoutShowSequence: true,
                     layoutShowLog: false,

@@ -3,8 +3,11 @@
 Invoked with fixed argv and JSON stdin, never credentials or SQL from the caller.
 """
 import json, sys
-import psycopg
-from app.config import settings
+try:
+    import psycopg
+    from app.config import settings
+except ImportError:  # pure helpers (lookup_is_current) stay importable by test.py
+    psycopg = settings = None
 
 ID_CONDITION = "(m.metadata->>'ID' = %s OR m.metadata->>'MAIN_BAS' = %s OR m.metadata->>'compound_id' = %s)"
 
@@ -22,6 +25,24 @@ def fingerprint(cur, dataset, write_counters=None):
     cur.execute('SELECT count(*), min(id), max(id) FROM public.molecules WHERE dataset_id=%s', (dataset,))
     rows, low, high = cur.fetchone()
     return {'datasetId': dataset, 'rows': rows, 'minId': low, 'maxId': high, **(write_counters or counters(cur))}
+
+COUNTERS = ('inserted', 'updated', 'deleted')
+
+def lookup_is_current(current, stored):
+    """Whether a lookup built with fingerprint `stored` still describes the dataset.
+    Dataset identity, row count and min/max id must match exactly. The write
+    counters only ever grow, except that Postgres zeroes them after an unclean
+    restart (every host reboot here). A counter below its stored value is that
+    reset, not a write; with every counter still zero no write has happened
+    since the reset, so the lookup stays usable. Any write after a reset shows
+    as a nonzero counter and is stale, as is any growth without a reset."""
+    if not isinstance(stored, dict) or not isinstance(current, dict): return False
+    if any(current.get(key) != stored.get(key) for key in ('datasetId', 'rows', 'minId', 'maxId')): return False
+    now, then = [current.get(key) for key in COUNTERS], [stored.get(key) for key in COUNTERS]
+    if any(not isinstance(value, int) for value in now + then): return False
+    if now == then: return True
+    reset = any(a < b for a, b in zip(now, then))
+    return reset and not any(now)
 
 def resolve_dataset(cur, body):
     cur.execute('SELECT id FROM public.datasets WHERE name=%s',(body['datasetName'],))
@@ -73,7 +94,7 @@ def search(body):
                 # stale candidate can never match. A changed dataset falls back.
                 ids=lookup.get('ids')
                 if not isinstance(ids,list) or len(ids)>10000 or any(not isinstance(i,int) for i in ids):raise ValueError('Invalid identifier lookup')
-                if fingerprint(cur, dataset)!=lookup.get('fingerprint'):return {'stale':True}
+                if not lookup_is_current(fingerprint(cur, dataset), lookup.get('fingerprint')):return {'stale':True}
                 cur.execute('SELECT m.id,m.canonical_smiles,m.metadata FROM public.molecules m WHERE m.id = ANY(%s) AND m.dataset_id=%s AND '+ID_CONDITION+' ORDER BY m.id LIMIT %s',[ids,dataset,query,query,query,cap])
                 rows=cur.fetchall()
                 return {'results':[{'molecule_id':r[0],'canonical_smiles':r[1],'metadata':r[2],'source':'stock'} for r in rows], 'truncated':len(rows)==cap}
