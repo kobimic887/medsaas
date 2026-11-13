@@ -33,7 +33,7 @@ import {
 } from './utils/admetQueue.js';
 // "De-SaaS" branding does not remove plans, checkout, roles, or credits.
 import { buildPlanCheckoutSessionParams, getPlan, PLAN_CATALOG } from './utils/planCheckout.js';
-import { createRetiredCatalogRouter, refuseRetiredCatalog, isRetiredSupplierUrl, refuseRetiredScientificProvider } from './utils/catalogAccessPolicy.js';
+import { createRetiredCatalogRouter, refuseRetiredCatalog } from './utils/catalogAccessPolicy.js';
 import { createOwnedSearch } from './utils/ownedSearch.js';
 import { precompressedAssets } from './utils/precompressedAssets.js';
 import { FoldMongoStore } from './utils/foldMongoStore.js';
@@ -434,7 +434,6 @@ axios.defaults.timeout = EXTERNAL_HTTP_TIMEOUT_MS;
 // Wrap native fetch so every outbound request is bounded. Callers may pass a
 // longer `timeoutMs`; an explicit `signal` is respected and wins.
 function fetchWithTimeout(url, opts = {}) {
-  if (isRetiredSupplierUrl(url)) throw new Error("Supplier access is retired; configure a Pyxis service");
   const { timeoutMs = EXTERNAL_HTTP_TIMEOUT_MS, ...rest } = opts;
   if (rest.signal) return fetch(url, rest);
   return fetch(url, { ...rest, signal: AbortSignal.timeout(timeoutMs) });
@@ -1615,7 +1614,7 @@ async function assertConfiguredUrlsArePublic(config) {
   const checks = [];
   for (const field of ['dockingApiUrl', 'diffdockApiUrl']) {
     const value = config[field];
-    if (value && !isRetiredSupplierUrl(value) && value !== DEFAULT_LIGAND_SERVICE_CONFIG[field]) {
+    if (value && value !== DEFAULT_LIGAND_SERVICE_CONFIG[field]) {
       checks.push(assertValidHttpUrl(value, field));
     }
   }
@@ -3247,7 +3246,6 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, requireActiv
     // findOne-then-update: two concurrent requests on a single remaining token would both
     // pass a separate read and drive the balance negative.
     const { dockingApiUrl } = await getRequestLigandServiceConfig(req);
-    if (isRetiredSupplierUrl(dockingApiUrl)) return refuseRetiredScientificProvider(res);
     const charged = await chargeSimulationToken(req, res, 'simulation', { refundOnDisconnect: false });
     if (!charged.ok) {
       return res.status(403).json({ error: charged.error });
@@ -3404,7 +3402,6 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, requireActi
     // Charge the credit — see the GET handler for why this stays inline and is a
     // conditional update rather than a separate read.
     const { dockingApiUrl } = await getRequestLigandServiceConfig(req);
-    if (isRetiredSupplierUrl(dockingApiUrl)) return refuseRetiredScientificProvider(res);
     const charged = await chargeSimulationToken(req, res, 'simulation', { refundOnDisconnect: false });
     if (!charged.ok) {
       return res.status(403).json({ error: charged.error });
@@ -4969,18 +4966,18 @@ app.get('/api/open-compounds/export', ensureMongoConnected, authenticateToken, r
  *       500:
  *         description: Server error or DiffDock service unavailable
  */
-async function requireIndependentDiffdockProvider(req, res, next) {
+// Supplier catalog retirement does not disable the owner-authorized scientific providers.
+async function validateDiffdockProvider(req, res, next) {
   if (!req.body?.protein || !req.body?.ligand) return res.status(400).json({ error: 'protein and ligand are required' });
   try {
-    const { diffdockApiUrl } = await getRequestLigandServiceConfig(req);
-    if (isRetiredSupplierUrl(diffdockApiUrl)) return refuseRetiredScientificProvider(res);
+    await getRequestLigandServiceConfig(req);
     return next();
   } catch (error) {
     return res.status(503).json({ error: 'Scientific provider configuration is unavailable', details: error.message });
   }
 }
 
-app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requireActiveUser, requireIndependentDiffdockProvider, consumeSimulationToken('diffdock'), async (req, res) => {
+app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requireActiveUser, validateDiffdockProvider, consumeSimulationToken('diffdock'), async (req, res) => {
   try {
     const { diffdockApiUrl } = await getRequestLigandServiceConfig(req);
     const {

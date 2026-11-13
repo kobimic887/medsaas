@@ -87,8 +87,8 @@ async function main() {
         NODE_ENV: 'test',
         PYXIS_DEMO_MODE: 'false',
         PYXIS_STAGING_MODE: 'true',
-        ASINEX_DOCKING_API_URL: 'https://services.asinex.com:8000/docking',
-        DIFFDOCK_API_URL: 'https://services.asinex.com:58000/molecular-docking/diffdock/generate',
+        ASINEX_DOCKING_API_URL: `http://127.0.0.1:${STUB_PORT}/docking`,
+        DIFFDOCK_API_URL: `http://127.0.0.1:${STUB_PORT}/diffdock`,
         FRONTEND_DIST: '',
         NVIDIA_MOLMIM_API_KEY: '',
         ASINEX_API_BASE: `http://127.0.0.1:${STUB_PORT}`,
@@ -177,13 +177,11 @@ async function main() {
     const unauth = await fetch(`${BASE}/api/asinex/all/0_10`);
     check('retired catalog keeps missing-session 401', unauth.status === 401);
 
-    // A stored company override cannot revive the catalog or supplier compute.
+    // A stored company override cannot revive the catalog; compute is independent.
     const company = await client.db(DB_NAME).collection('companies').insertOne({
       name: 'Override company', active: true,
       ligandServiceConfig: {
         catalogApiBase: `http://127.0.0.1:${STUB_PORT}/company-catalog`,
-        dockingApiUrl: 'https://SERVICES.ASINEX.COM.:8000/docking',
-        diffdockApiUrl: 'https://services.asinex.com:58000/diffdock',
       },
     });
     await client.db(DB_NAME).collection('users').updateOne({ username: 'cataloguser' }, { $set: { companyId: company.insertedId.toString() } });
@@ -192,15 +190,15 @@ async function main() {
     for (const [method, route, body] of [
       ['GET', '/api/simulation?pdbid=1abc&smiles=CCO', null],
       ['POST', '/api/simulation', { pdbid: '1abc', smiles: 'CCO' }],
-      ['POST', '/api/diffdock/generate', { protein: '1abc', ligand: 'CCO' }],
     ]) {
       const response = await fetch(`${BASE}${route}`, { method, headers: auth, ...(body ? { body: JSON.stringify(body) } : {}) });
       const data = await response.json();
-      check(`${method} ${route} refuses supplier compute before credits`, response.status === 503 && data.code === 'SUPPLIER_PROVIDER_RETIRED', JSON.stringify(data));
+      check(`${method} ${route} reaches configured compute and refunds upstream failure`, response.status === 502, JSON.stringify(data));
     }
     const user = await client.db(DB_NAME).collection('users').findOne({ username: 'cataloguser' });
-    check('refused science preserves credit balance', user.simulationTokens === 5);
-    check('zero supplier catalog HTTP requests, including overrides', stub.requests.length === 0, JSON.stringify(stub.requests));
+    check('failed science refunds credit balance', user.simulationTokens === 5);
+    check('both docking methods reach compute', stub.requests.length === 2 && stub.requests.every(r => r.path.startsWith('/docking')), JSON.stringify(stub.requests));
+    check('zero catalog HTTP requests, including overrides', stub.requests.every(r => !r.path.includes('catalog')), JSON.stringify(stub.requests));
     const events = await client.db(DB_NAME).collection('billing_events').countDocuments();
     check('zero billing events for refused molecule baskets', events === 0);
 

@@ -21,6 +21,36 @@ const index = readFileSync(new URL('../index.js', import.meta.url), 'utf8');
 const registration = index.indexOf("app.post('/create-checkout-session-onetime'");
 const start = index.indexOf('async (req, res) => {', registration) + 'async (req, res) => {'.length;
 const end = index.indexOf('\n});', start);
+// Production/full-staging provider validation must accept the configured
+// scientific supplier; catalog retirement is not a compute authorization gate.
+const providerStart = index.indexOf('async function validateDiffdockProvider(');
+const providerEnd = index.indexOf("\napp.post('/api/diffdock/generate'", providerStart);
+assert.ok(providerStart > 0 && providerEnd > providerStart);
+const makeProvider = new Function('getRequestLigandServiceConfig',
+  index.slice(providerStart, providerEnd) + '; return validateDiffdockProvider;');
+let advanced = 0;
+const validateProvider = makeProvider(async () => ({ diffdockApiUrl: 'https://services.asinex.com:58000/molecular-docking/diffdock/generate' }));
+const providerRes = { status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } };
+await validateProvider({ body: { protein: '2RH1', ligand: 'E20' } }, providerRes, () => advanced++);
+assert.equal(advanced, 1, 'configured scientific supplier reaches the paid route');
+await validateProvider({ body: {} }, providerRes, () => advanced++);
+assert.equal(providerRes.code, 400);
+assert.equal(advanced, 1, 'invalid inputs stop before credit charge');
+
+// Exercise the actual common fetch wrapper too: a domain-wide rejection here
+// previously blocked compute even after its route guards were removed.
+const wrapperStart = index.indexOf('function fetchWithTimeout(');
+const wrapperEnd = index.indexOf('\n}', wrapperStart) + 2;
+const requested = [];
+const fetchWrapper = new Function('fetch', 'EXTERNAL_HTTP_TIMEOUT_MS',
+  index.slice(wrapperStart, wrapperEnd) + '; return fetchWithTimeout;')(
+  async (url, opts) => { requested.push({ url, opts }); return { ok: true }; }, 120000);
+for (const url of ['https://services.asinex.com:8000/docking', 'https://services.asinex.com:58000/molecular-docking/diffdock/generate']) {
+  assert.equal((await fetchWrapper(url, { method: 'POST', timeoutMs: 1000 })).ok, true);
+}
+assert.equal(requested.length, 2);
+assert.ok(requested.every(r => r.opts.signal instanceof AbortSignal));
+
 let sessions = [];
 let events = [];
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;

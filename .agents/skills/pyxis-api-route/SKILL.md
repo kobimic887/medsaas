@@ -65,6 +65,9 @@ that a route uses it.
 
 ## Proxies
 
+- Catalog/shop retirement does not disable configured Asinex docking or DiffDock
+  in production/full staging. Keep SSRF checks and refund upstream failures.
+
 - Remap upstream **401 → 502** (`relayUpstreamStatus` / scientific router).
 - Encode path params; do not concatenate untrusted path segments.
 - Prefer existing ligand/SSRF helpers over raw user-supplied URLs.

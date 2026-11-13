@@ -48,7 +48,8 @@ when a path or trap moves.
 - Folding and molecule generation stay hosted NVIDIA services. DiffDock replacement is
   OSS DiffDock — do not re-propose NVIDIA NIM / AI Enterprise for DiffDock.
 - Compute cutovers retain a measured, supported service endpoint for rollback;
-  retired Asinex compute URLs must never be restored as rollback targets.
+  production/full-staging Asinex docking and DiffDock remain supported until a
+  qualified replacement is configured; catalog retirement does not block compute.
 
 ## Architecture
 
@@ -66,8 +67,9 @@ when a path or trap moves.
   and `/api/compound-shop`; ChEMBL stays discovery-only. Missing data never falls
   back to another source. Supplier catalog aliases and legacy molecule
   checkout refuse locally with `503 CATALOG_RETIRED`; company overrides cannot
-  restore Asinex dependence. Credit-plan checkout remains available. Known
-  Asinex compute URLs are refused without charging; use configured Pyxis services. Stock search belongs in Home (Simulation).
+  restore Asinex dependence. Credit-plan checkout remains available. Configured
+  Asinex docking/DiffDock remain supported in production/full staging; preserve
+  SSRF checks and failure refunds. Stock search belongs in Home (Simulation).
   Home searches Small molecules (Stock, Virtual `smallvirtual`) and Macrocycles
   (RPX, VPX) singly or together; mixed selections are `/api/owned-search`
   `source=multi` (Morgan Tanimoto only). `smallvirtual` is an owned 6.7M-row
@@ -109,7 +111,7 @@ when a path or trap moves.
 - Public stock catalog for the WordPress site: `services/stock-catalog/`, a WordPress
   plugin (`[pyxis_stock_catalog]`). By owner decision it proxies the Asinex stock shop
   API and hotlinks `compounds.asinex.com` images. WordPress-only and not an 84
-  artifact; never wire it into the app, where the no-Asinex rules above still apply.
+  artifact; never wire it into the app, where the supplier catalog/shop retirement above still applies.
 - WordPress site content (not 84 artifacts). The Insights blog is the theme's
   `pyxis_insights` post type; core `posts` are disabled there.
   `services/learning-center/`: plugin serving `/learning/` (own rewrite rules,

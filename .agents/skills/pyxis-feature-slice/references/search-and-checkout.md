@@ -96,9 +96,10 @@ Control Panel and Molstar do not fetch supplier prices or invent missing prices.
 The legacy pricing utilities/fixtures may remain for historical contract tests;
 they are not an active offer source or a route around retirement.
 
-Known Asinex scientific URLs are refused locally. Configured Pyxis compute
-alternatives remain supported; do not change company records or automatically
-substitute providers. A retired provider refusal must not consume credits.
+Production/full-staging scientific compute is separate: configured Asinex docking
+and DiffDock remain supported until a qualified replacement is configured. Keep
+company URL SSRF validation and upstream failure refunds; catalog/shop retirement
+must not block compute. Demo fixtures retain their explicit provider restrictions.
 
 ## Offers and checkout
 

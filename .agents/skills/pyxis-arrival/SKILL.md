@@ -29,9 +29,10 @@ read `docs/OPERATIONS.md` to locate them and confirm operational facts read-only
 - Bring up and validate one compute service at a time. Use real request/response contract evidence;
   replay fixtures alone are insufficient.
 - Repoint one production path at a time and retain the measured, supported previous
-  service endpoint as rollback. Retired Asinex compute URLs are refused by the app;
-  never restore them as a fallback or rollback target. If no supported rollback
-  endpoint exists, establish a recovery plan before the cutover.
+  service endpoint as rollback. Asinex scientific compute remains supported until
+  a replacement passes real inference and browser qualification. Do not retire the
+  current provider merely because migration is planned. If it is unavailable,
+  establish a recovery plan before cutover; never claim an outage endpoint works.
 - Verify credit consumption/refund behavior and the actual user path after each relevant cutover.
 - Change shared Atlas company configuration only within the approved cutover. Apply
   host-local environment changes on the measured application host.

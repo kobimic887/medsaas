@@ -8,10 +8,11 @@ service must preserve. DiffDock uses a separate API. Implementations and checks:
 - Payload verifier: [`verify-docking-response.mjs`](../scripts/verify-docking-response.mjs).
 - Compute service: [`deploy/box/docking/`](../deploy/box/docking/).
 
-Known Asinex provider URLs are retired and refused locally with
-`503 SUPPLIER_PROVIDER_RETIRED`, without a new credit charge. Configure a qualified
-Pyxis compute URL; there is no automatic supplier fallback. Existing saved
-results remain application data.
+Production and full staging may use the configured Asinex docking and DiffDock
+services. Catalog/shop retirement is separate and must not block scientific
+compute. Keep company URL validation, session ownership and failure refunds.
+Fixture/demo mode retains its explicit provider restrictions. Qualify any
+self-hosted replacement before changing the configured endpoint.
 
 ## Request and response
 
