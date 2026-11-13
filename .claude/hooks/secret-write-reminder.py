@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PreToolUse: remind file-editing tools of named secret-write authorization.
+"""PreToolUse: remind file-editing tools of scoped secret-write authorization.
 
 This is model guidance, not a sandbox: shell commands are not intercepted and
 prior user approval cannot be inferred reliably from hook input. Never deny an
@@ -81,10 +81,11 @@ def main() -> int:
             print(json.dumps({"hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
                 "additionalContext": (
-                    "This edit targets a secret-like file. Proceed only if the user "
-                    "named that file and explicitly approved the write in this session. "
-                    "Existing approval is sufficient; do not ask again. If approval "
-                    "is missing, do not perform or route around this edit. Never "
+                    "This edit targets a secret-like file. Proceed when the edit is "
+                    "necessary for work the user already authorized; the user need "
+                    "not name the implementation filename. Ask only when the edit "
+                    "exceeds that scope or needs separate live/data authorization. "
+                    "Keep credential files protected (0600) and outside git. Never "
                     "print secret values or commit the file."
                 ),
             }}))

@@ -18,12 +18,11 @@ in [operations](../../docs/OPERATIONS.md).
 
 - Compose does not build the external Tanimoto image. Supply an appropriate image and verify
   the RDKit extension in both the API/runtime and database where required.
-- `DOCKING_ENGINE` falls back to `autodock-gpu` in Compose, but that engine deliberately
-  returns 503. The example environment selects `vina`; choose it explicitly for CPU docking.
+- Compose and the example environment default to CPU `vina`, with no GPU reservation
+  for docking. `autodock-gpu` deliberately returns 503 and is not deployable.
 - DiffDock's runtime selects `oss` and needs model weights mounted at `/models`.
   Replay engines are fixtures and cannot qualify a live service.
-- GPU reservations use explicit device IDs from `BOX_GPU_DOCKING` (default 0) and
-  `BOX_GPU_SCIENCE` (default 1). On a single-GPU host set `BOX_GPU_SCIENCE=0`. Several
+- GPU services reserve the explicit device ID from `BOX_GPU_SCIENCE` (default 1). On a single-GPU host set `BOX_GPU_SCIENCE=0`. Several
   optional services share a device; verify the actual assignments and behavior under
   representative concurrency.
 - ADMET, GROMACS and glioblastoma are under the `extras` profile. ADMET requires MongoDB

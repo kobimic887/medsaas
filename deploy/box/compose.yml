@@ -9,43 +9,10 @@
 # Local service ports: docking 8000, convertSTR 8001, DiffDock 8002,
 # Tanimoto 8003, glioblastoma 8005, GROMACS 8006.
 
-# ⚠ There is deliberately no shared `x-gpu` anchor any more.
-#
-# It used to reserve `driver: nvidia, capabilities: [gpu]` with no `count` and no
-# `device_ids`, and every GPU service inherited that same reservation. Which card each
-# container then got was left to the Docker/nvidia-toolkit version: a reservation with
-# no device_ids can hand EVERY card to EVERY container, and when a `deploy` reservation
-# is present the per-service NVIDIA_VISIBLE_DEVICES may be overridden rather than
-# respected. So docking and diffdock could both land on card 0 while card 1 sat idle —
-# two jobs fighting for one GPU, at half the throughput you paid for, and nothing in the
-# logs saying so.
-#
-# Each service now names its card in the reservation itself, which is unambiguous on
-# every version. NVIDIA_VISIBLE_DEVICES is kept alongside as belt-and-braces; the two
-# agree per service.
-#
-#   BOX_GPU_DOCKING (default 0) → docking   (AutoDock-GPU, the latency-critical path)
-#   BOX_GPU_SCIENCE (default 1) → diffdock  (long jobs, and it must not stall an interactive dock)
-#                                → admet     (first-ever deploy, low volume; shares with diffdock)
-#                                → gromacs   (MD runs are long and batch-like)
-#
-# Single-GPU box: set BOX_GPU_SCIENCE=0 so every GPU service shares card 0. With the
-# default of 1 and only one card, diffdock/admet/gromacs fail to start (no device 1).
-# Docking's vina engine is CPU-only, so a shared card costs it nothing until
-# autodock-gpu exists; the GPU services then share VRAM when they run concurrently.
-#
-# Verify after `compose up` with:
-#   docker exec box-docking  nvidia-smi -L   # must list exactly one GPU
-#   docker exec box-diffdock nvidia-smi -L   # exactly one; a different UUID unless single-GPU
-
-x-gpu0: &gpu0
-  deploy:
-    resources:
-      reservations:
-        devices:
-          - driver: nvidia
-            device_ids: ['${BOX_GPU_DOCKING:-0}']
-            capabilities: [gpu]
+# Docking uses the implemented CPU Vina engine and reserves no GPU.
+# GPU services explicitly reserve BOX_GPU_SCIENCE (default 1); on a single-GPU
+# host set BOX_GPU_SCIENCE=0. Verify GPU identity and representative concurrency
+# before routing application jobs. autodock-gpu is an unavailable stub.
 
 x-gpu1: &gpu1
   deploy:
@@ -73,14 +40,13 @@ services:
 
   # ── Docking. The reason the box exists. ────────────────────────────────────
   docking:
-    <<: [*base, *gpu0]
+    <<: *base
     build: ./docking/service
     container_name: box-docking
     ports: ["${BIND_ADDR:-127.0.0.1}:8000:8000"]
     environment:
-      DOCKING_ENGINE: "${DOCKING_ENGINE:-autodock-gpu}"
+      DOCKING_ENGINE: "${DOCKING_ENGINE:-vina}"
       CACHE_DIR: /srv/cache
-      NVIDIA_VISIBLE_DEVICES: "${BOX_GPU_DOCKING:-0}"
     volumes:
       - /srv/cache:/srv/cache          # prepared receptors + autogrid maps — see BRIEF §5
     healthcheck:
@@ -90,7 +56,7 @@ services:
       retries: 3
       start_period: 60s
 
-  # ── SMILES -> SDF. Currently DOWN in production, which is why DiffDock is broken. ──
+  # ── SMILES -> SDF. Measure the configured service before diagnosing failures. ──
   convertstr:
     <<: *base
     build: ./convertstr

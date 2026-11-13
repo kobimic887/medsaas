@@ -50,6 +50,8 @@ when a path or trap moves.
 - Compute cutovers retain a measured, supported service endpoint for rollback;
   production/full-staging Asinex docking and DiffDock remain supported until a
   qualified replacement is configured; catalog retirement does not block compute.
+- The replacement Compose defaults to CPU Vina without a GPU reservation.
+  `autodock-gpu` is an unavailable stub, never a production default.
 
 ## Architecture
 
@@ -194,17 +196,18 @@ located through `docs/OPERATIONS.md` and must be checked against current evidenc
 ## Local development
 
 Start with `git status --short`, then read only the files/docs relevant to the task.
-Do not start Mongo to make the app work: application data is Atlas. Existing
-`services:up` and `scripts/ensure-dev.mjs` contain stale local-Mongo guidance.
-`bun run dev` can invoke `predev`, which creates `.env` when missing. Until that
-helper is repaired, prefer `bun run dev:bun` to start both services without the
-bootstrap helper; do not create/edit environment files without named approval.
+Do not start Mongo to make the app work: application data is Atlas. The legacy
+`services:up` command still starts local Mongo; it is not application setup.
+`bun run dev` invokes an informational `predev` that never writes configuration
+or starts services; `bun run dev:bun` starts both services directly. Use the
+approved Atlas configuration. Necessary credential-file edits follow authorized
+task scope and protection rules; do not require the user to name filenames.
 Frontend-only preview: `bun --cwd=client run dev` (API must be available separately).
 
 ## Commands
 
 ```bash
-bun run dev:bun           # API + Vite; avoids legacy predev helper
+bun run dev:bun           # API + Vite; skips informational predev
 bun run check             # server compile + client build
 bun run lint
 bun run test              # server suite

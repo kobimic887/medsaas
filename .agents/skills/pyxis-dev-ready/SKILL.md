@@ -31,13 +31,14 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 - Root, `client/`, and `server/` keep **both** Bun and npm lockfiles. After a dependency change: `bun run lockfiles:refresh` and commit **both** families.
 - `bun run lint` is Biome **lint only**. Formatter is off. Do not `biome format --write` or `lint:fix` unless asked.
 
-## Start development without the legacy bootstrap
+## Start development
 
-`bun run dev:bun` starts API + Vite without `predev`. The legacy `dev` bootstrap
-can copy `.env.example` to `.env` and prints stale local-Mongo advice. Do not run
-it to manufacture configuration. Use the existing environment; if missing, report
-which configuration is needed without printing secrets. Global policy requires a
-named file and explicit approval before any environment-file write.
+`bun run dev` and `bun run dev:bun` start API + Vite. The `predev` helper is
+informational: it never creates or reads configuration contents and never starts
+a database. Use the approved Atlas environment; if missing, report the missing
+configuration without printing secrets. Necessary credential-file edits are
+covered by the authorized task; keep them protected and outside git. Live/data
+changes still need their own authorization.
 
 ## Never start local Mongo
 

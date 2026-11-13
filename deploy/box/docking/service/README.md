@@ -74,7 +74,7 @@ Select an implementation with `DOCKING_ENGINE`:
 | `vina` | CPU AutoDock Vina reference backend | Testable with `RUN_VINA=1`; requires RCSB network access on a cold receptor |
 | `autodock-gpu` | Reserved GPU backend | Stub that deliberately returns 503 |
 
-Set `DOCKING_ENGINE=vina` explicitly when using the implemented CPU backend. The shared Compose fallback is `autodock-gpu`, while the example environment selects `vina`. A GPU inventory or healthy replay service does not establish real inference readiness.
+The shared Compose and example environment default to the implemented CPU `vina` backend without a GPU reservation. Direct service/test settings retain `replay` as their offline default. The `autodock-gpu` stub deliberately returns 503 and is not a deployable replacement. A healthy replay service does not establish real inference readiness.
 
 ## Serialization compatibility
 
