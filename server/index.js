@@ -4503,6 +4503,7 @@ app.get('/api/stock-search/similarity', ensureMongoConnected, authenticateToken,
   });
 
   try {
+    const started = Date.now();
     const response = await fetchWithTimeout(upstreamUrl, {
       headers: { Accept: 'application/json' },
     });
@@ -4513,7 +4514,7 @@ app.get('/api/stock-search/similarity', ensureMongoConnected, authenticateToken,
     if (!response.ok) {
       const status = relayStockUpstreamStatus(response.status);
       return res.status(status).json({
-        error: describeStockUpstreamError(response.status, data),
+        error: describeStockUpstreamError(response.status, data, { elapsedMs: Date.now() - started, threshold: params.threshold }),
         ...(status === 502 ? { details: `Upstream HTTP ${response.status}` } : {}),
       });
     }

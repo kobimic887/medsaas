@@ -6,6 +6,7 @@ import {
   buildStockSimilarityUrl,
   createStockDatasetResolver,
   describeStockUpstreamError,
+  STOCK_SIMILARITY_SLOW_FAILURE_MS,
   parseStockSearchQuery,
   relayStockUpstreamStatus,
   stockSearchCapabilities,
@@ -314,6 +315,10 @@ check('detail from upstream validation error surfaces', describeStockUpstreamErr
 check('502 wording is generic and clear', describeStockUpstreamError(502, '') === 'Stock search is temporarily unavailable');
 
 check("non-chemistry validation retains upstream detail", describeStockUpstreamError(400, { detail: "threshold out of range" }) === "threshold out of range");
+check('slow upstream 500 names the threshold budget', /threshold 0\.1 exceeded the database time budget.*0\.3 or higher/.test(describeStockUpstreamError(500, 'Internal Server Error', { elapsedMs: 30000, threshold: 0.1 })));
+check('fast upstream 500 keeps the generic wording', !/time budget/.test(describeStockUpstreamError(500, 'Internal Server Error', { elapsedMs: 500, threshold: 0.1 })));
+check('slow-failure cutoff stays below the 25 s statement timeout', STOCK_SIMILARITY_SLOW_FAILURE_MS < 25000);
+check('slow validation 400 is never relabelled as a timeout', describeStockUpstreamError(400, { detail: 'threshold out of range' }, { elapsedMs: 30000 }) === 'threshold out of range');
 
 console.log(`\nstockSearch util: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

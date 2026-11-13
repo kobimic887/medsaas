@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { selectVisibleSmartsRows } from '../client/src/utils/multiSmarts.js';
+import { fetchWithGatewayRetry, isGatewayRetryable } from '../client/src/utils/gatewayRetry.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const simulation = readFileSync(
@@ -697,6 +698,28 @@ editorWindow.tick();
 checks.push(['editor unlocks only after its API is usable', editorStates.length === 1 && editorStates[0] === 'ready']);
 checks.push(['editor releases startup focus before revealing its fixed-height frame', startupFocusReleased && simulation.includes("style={editorState === 'ready' ? undefined : { display: 'none' }}")]);
 checks.push(['Draw preserves the iframe after switching to text', simulation.includes('{editorVisited && (') && simulation.includes('hidden={queryType === "text"}')]);
+
+{
+  // Gateway retry: only nginx's non-JSON 5xx during a restart is retried. A JSON
+  // 5xx is the API's own answer (e.g. a stock similarity time budget) and must
+  // reach the user once, not after three ~30 s repeats behind "Searching".
+  const reply = (status, type) => ({ status, ok: status < 400, headers: { get: (name) => (name.toLowerCase() === 'content-type' ? type : null) } });
+  checks.push(
+    ['gateway HTML 502/503/504 is retryable', [502, 503, 504].every((status) => isGatewayRetryable(reply(status, 'text/html')))],
+    ['API JSON 5xx is never retried', [502, 503, 504].every((status) => !isGatewayRetryable(reply(status, 'application/json; charset=utf-8')))],
+    ['other statuses are never retried', [200, 400, 401, 403, 500].every((status) => !isGatewayRetryable(reply(status, 'text/html')))],
+  );
+  let calls = 0;
+  const jsonFailure = await fetchWithGatewayRetry('/x', {}, { baseDelayMs: 0, fetchImpl: async () => { calls += 1; return reply(502, 'application/json'); } });
+  checks.push(['JSON 502 returns after one request', calls === 1 && jsonFailure.status === 502]);
+  calls = 0;
+  const recovered = await fetchWithGatewayRetry('/x', {}, { baseDelayMs: 0, fetchImpl: async () => { calls += 1; return calls < 3 ? reply(502, 'text/html') : reply(200, 'application/json'); } });
+  checks.push(['gateway 502 during restart retries until the API answers', calls === 3 && recovered.status === 200]);
+  calls = 0;
+  const exhausted = await fetchWithGatewayRetry('/x', {}, { baseDelayMs: 0, fetchImpl: async () => { calls += 1; return reply(504, 'text/html'); } });
+  checks.push(['gateway retries stop at three attempts', calls === 3 && exhausted.status === 504]);
+  checks.push(['Simulation uses the shared gateway retry helper', simulation.includes('from "@/utils/gatewayRetry"') && !simulation.includes('async function fetchWithGatewayRetry')]);
+}
 
 const failures = checks.filter(([, passed]) => !passed).map(([label]) => label);
 if (failures.length) {

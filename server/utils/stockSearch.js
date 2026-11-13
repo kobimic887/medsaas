@@ -340,8 +340,21 @@ export function relayStockUpstreamStatus(status) {
   return status;
 }
 
+/**
+ * A stock similarity failure after this long is the engine's 25-30 s statement
+ * timeout (it answers a bare text/plain 500), almost always a threshold too broad
+ * for the full set, not an outage.
+ */
+export const STOCK_SIMILARITY_SLOW_FAILURE_MS = 20000;
+
+export function stockSimilarityBudgetMessage(threshold) {
+  const at = Number.isFinite(Number(threshold)) ? ` at threshold ${threshold}` : '';
+  return `Stock similarity search${at} exceeded the database time budget. Raise the similarity threshold (0.3 or higher) and try again.`;
+}
+
 /** Human-readable client error for a failed upstream stock search. */
-export function describeStockUpstreamError(status, body) {
+export function describeStockUpstreamError(status, body, { elapsedMs, threshold } = {}) {
+  if (status >= 500 && elapsedMs >= STOCK_SIMILARITY_SLOW_FAILURE_MS) return stockSimilarityBudgetMessage(threshold);
   // A generic cartridge parse failure also covers sanitization/valence failures.
   // Explain what to check without claiming an atom-level diagnosis or repairing it.
   const detailText = typeof body === 'string' ? body : body?.detail ?? body?.error ?? body?.message;

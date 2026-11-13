@@ -1,7 +1,7 @@
 // Unified, bounded owned-source searches. Retired supplier namespaces remain
 // refused; no missing source ever falls back to a different collection.
 import {
-  buildStockSimilarityUrl, parseStockSearchQuery, relayStockUpstreamStatus,
+  buildStockSimilarityUrl, parseStockSearchQuery, relayStockUpstreamStatus, STOCK_SIMILARITY_SLOW_FAILURE_MS, stockSimilarityBudgetMessage,
 } from './stockSearch.js';
 import {
   assertMacrocycleMetricSupported, buildMacrocycleSimilarityUrl,
@@ -20,8 +20,6 @@ const INDEXED_COLLECTIONS = ['smallvirtual', 'real', 'virtual'];
 export const OWNED_SEARCH_MODES = ['id', 'exact', 'substructure', 'similarity'];
 export const OWNED_SEARCH_MAX_QUERIES = 20;
 export const OWNED_SEARCH_MAX_OFFSET = 900;
-/** A stock similarity failure after this long is the engine's statement timeout, not an outage. */
-export const STOCK_SIMILARITY_SLOW_FAILURE_MS = 20000;
 export class OwnedSearchError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; this.code = 'OWNED_SEARCH_ERROR'; }
 }
@@ -184,11 +182,8 @@ export function createOwnedSearch({ graphBase, fetchImpl, stockConfig, stockReso
         : buildMacrocycleSimilarityUrl({ config: macroConfig, datasets: group.datasets, params: options });
       const started = now();
       try { payload = await jsonRequest(url, { deadline }); } catch (error) {
-        // The stock engine cancels at its 25-30 s statement timeout and answers a
-        // bare text/plain 500. A late upstream failure on a stock similarity scan is
-        // that budget, almost always a threshold too broad for the full set.
         if (group.source === 'stock' && error instanceof OwnedSearchError && error.status === 502 && now() - started >= STOCK_SIMILARITY_SLOW_FAILURE_MS) {
-          throw new OwnedSearchError(`Stock similarity search at threshold ${params.threshold} exceeded the database time budget. Raise the similarity threshold (0.3 or higher) and try again.`, 502);
+          throw new OwnedSearchError(stockSimilarityBudgetMessage(params.threshold), 502);
         }
         throw error;
       }

@@ -34,6 +34,7 @@ import { OWNED_COLLECTIONS, OWNED_SEARCH_MODES, appendUniqueOwnedRows, collectio
 import { cartItemFromCatalogPrice } from '@/utils/stockOffers';
 import { appendUniqueStockRows, stockResultsFromPayload } from '@/utils/stockResults';
 import { clearViewerStorage, markViewerHandoff, normalizePdbId, rcsbPdbDownloadUrl } from '@/utils/viewerStorage';
+import { fetchWithGatewayRetry } from "@/utils/gatewayRetry";
 
 const MACROCYCLE_SOURCES = Object.freeze({
   both: { label: 'Macrocycles', count: 2368630 },
@@ -202,29 +203,6 @@ function describeUpstreamHttpError(status, statusText = '', bodyHint = '', kind 
   return trimmed ? `${base} - ${trimmed}` : base;
 }
 
-/**
- * Brief client retry for gateway 5xx during pyxis-web restart (nginx 502 while bun is down).
- * Only non-JSON responses come from the gateway. A JSON 5xx is the API's own
- * answer (e.g. a search that hit its database time budget); retrying it just
- * repeats a ~30 s failure three times while the screen says "Searching".
- */
-function isGatewayRetryable(response) {
-  const gatewayStatus = response.status === 502 || response.status === 503 || response.status === 504;
-  const contentType = response.headers?.get?.('content-type') || '';
-  return gatewayStatus && !contentType.includes('application/json');
-}
-
-async function fetchWithGatewayRetry(url, init = {}, { maxAttempts = 3, baseDelayMs = 400 } = {}) {
-  let lastResponse;
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    lastResponse = await fetch(url, init);
-    const retryable = isGatewayRetryable(lastResponse);
-    if (!retryable || attempt === maxAttempts) return lastResponse;
-    if (init.signal?.aborted) return lastResponse;
-    await new Promise((resolve) => setTimeout(resolve, baseDelayMs * attempt));
-  }
-  return lastResponse;
-}
 
 export function Simulation({ active = true }) {
   // Popup state for clipboard copy
