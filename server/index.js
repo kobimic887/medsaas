@@ -39,6 +39,7 @@ import { precompressedAssets } from './utils/precompressedAssets.js';
 import { FoldMongoStore } from './utils/foldMongoStore.js';
 import { createFoldingHistoryRouter } from './routes/foldingHistory.js';
 import { completeNvidiaFoldResponse, hasFoldCoordinates } from './utils/nvidiaFoldResponse.js';
+import { configuredDiffDockPoseCount, completedDiffDockResult } from './utils/diffdockResult.js';
 import {
   buildStockSimilarityUrl,
   createStockDatasetResolver,
@@ -4984,6 +4985,7 @@ app.get('/api/open-compounds/export', ensureMongoConnected, authenticateToken, r
 async function validateDiffdockProvider(req, res, next) {
   if (!req.body?.protein || !req.body?.ligand) return res.status(400).json({ error: 'protein and ligand are required' });
   try {
+    req.diffdockNumPoses = configuredDiffDockPoseCount(process.env.DIFFDOCK_NUM_POSES);
     await getRequestLigandServiceConfig(req);
     return next();
   } catch (error) {
@@ -5091,7 +5093,7 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
         ligand: ligandPayload,
         ligand_file_type: ligandFileType,
         protein: protein_bytes,
-        num_poses: 100,
+        num_poses: req.diffdockNumPoses,
         time_divisions: time_divisions,
         steps: steps,
         save_trajectory: save_trajectory,
@@ -5134,18 +5136,14 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
       ({ response, data } = await makeDiffDockRequest(ligand_raw));
     }
 
-    res.status(relayUpstreamStatus(response.status));
-    if (response.headers.get('content-type')) {
-      res.setHeader('Content-Type', response.headers.get('content-type'));
-    }
-    if (typeof data === 'object') {
-      res.json(data);
-    } else {
-      res.send(data);
-    }
+    // HTTP 200/status=failed (or padded empty poses) is not paid scientific work.
+    // Validate before answering and refund explicitly, even after a disconnect.
+    if (!response.ok) throw new Error('DiffDock service is unavailable');
+    return res.json(completedDiffDockResult(data, req.diffdockNumPoses));
   } catch (error) {
-    console.error('DiffDock API proxy error:', error);
-    res.status(500).json({ error: 'Failed to connect to DiffDock API', details: error.message });
+    await refundSimulationToken(req, `diffdock: ${error.message}`);
+    console.error('DiffDock API proxy error:', error.message);
+    return res.status(502).json({ error: 'DiffDock did not return a complete result', details: error.message });
   }
 });
 

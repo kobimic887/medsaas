@@ -89,7 +89,8 @@ RUN python - <<'PY'
 import torch
 version = torch.__version__
 assert "cu128" in version, f"torch is not the cu128 build: {version}"
-arches = torch.cuda.get_arch_list()
+# BuildKit has no GPU; inspect compiled wheel metadata without runtime initialization.
+arches = torch._C._cuda_getArchFlags().split()
 assert "sm_86" in arches, f"no RTX 3060 sm_86 in {arches}"
 print(f"OK: torch {version} targets {arches}")
 PY

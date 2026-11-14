@@ -60,6 +60,10 @@ when a path or trap moves.
   `deploy/box/WORKSTATION-3060.md`. DiffDock writes effective per-request YAML
   because upstream YAML overrides CLI flags; prepare both docking and ESM2
   embedding weights before serving. Health is not real inference qualification.
+  Set application `DIFFDOCK_NUM_POSES=10` only for an explicitly approved,
+  qualified smaller workload; absent configuration preserves 100. Invalid counts
+  refuse before charging. HTTP 200 with failed, empty or incomplete poses is a
+  failed inference and refunds; include `server/utils/diffdockResult.js` in releases.
 
 ## Architecture
 

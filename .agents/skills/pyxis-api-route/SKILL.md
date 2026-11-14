@@ -72,6 +72,11 @@ that a route uses it.
 
 - Catalog/shop retirement does not disable configured Asinex docking or DiffDock
   in production/full staging. Keep SSRF checks and refund upstream failures.
+- DiffDock workload comes from server `DIFFDOCK_NUM_POSES` (1–100, default 100),
+  validated before charging. Do not silently cap the requested workload. Failed
+  or incomplete pose envelopes, including HTTP 200/status=failed, return 502 and
+  refund explicitly. Ship `server/utils/diffdockResult.js`; verify with
+  `bun server/test/diffdock-route.test.mjs` (actual route + HTTP fixtures).
 
 - Remap upstream **401 → 502** (`relayUpstreamStatus` / scientific router).
 - Encode path params; do not concatenate untrusted path segments.

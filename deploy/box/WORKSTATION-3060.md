@@ -80,6 +80,11 @@ starting with one pose. The canonical fixture contains a truncated receptor and
 cannot qualify inference. Verify positive usable pose count, finite coordinates
 and confidences, alignment, elapsed time and GPU peak memory. The current app
 requests 100 poses: qualifying a one-pose smoke test does not qualify that workload.
+The application supports explicit operator `DIFFDOCK_NUM_POSES` from 1 to 100;
+it defaults to 100. A proposed ten-pose cutover sets this to 10 after approval.
+The app checks exact real-pose/confidence counts and refunds incomplete or failed
+results, even when the provider reports HTTP 200. Do not use a service-side clamp
+to substitute fewer poses without matching the application's explicit request.
 If 100 poses exceed the service/app budgets, stop before cutover. Agree an explicit
 smaller workload or implement a longer-running job flow; do not silently truncate
 the request and advertise a complete 100-pose result. Increase requested

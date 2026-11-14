@@ -69,6 +69,11 @@ usable poses, confidence alignment, latency and the application viewer.
 | `DIFFDOCK_BATCH_SIZE` | `10` | Inference batch size |
 | `CONVERTSTR_URL` | unset | Optional SMILES conversion endpoint |
 
+The separate application setting `DIFFDOCK_NUM_POSES` controls the actual request
+(1–100, default 100). Match it to the qualified workload; the application rejects
+incomplete or padded output and refunds failed inference. A service clamp is not
+a substitute for an explicitly approved smaller application request.
+
 The application normally converts SMILES before submitting SDF. If a caller sends SMILES
 directly, the optional converter must be configured. Keep service access restricted through
 [ingress](../ingress/README.md); use [operations](../../../docs/OPERATIONS.md) for deployment records.

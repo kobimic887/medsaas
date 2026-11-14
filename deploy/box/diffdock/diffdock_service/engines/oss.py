@@ -102,6 +102,7 @@ class OssDiffDockEngine:
             ) from exc
 
         if completed.returncode != 0:
+            logger.error("DiffDock subprocess stdout: %s\nstderr: %s", completed.stdout[-8000:], completed.stderr[-8000:])
             # DiffDock's own failure text is the most useful thing available; keep the last
             # line only, so an upstream stack trace does not become the user-facing message.
             tail = (completed.stderr or completed.stdout or "").strip().splitlines()
@@ -111,6 +112,7 @@ class OssDiffDockEngine:
 
         poses = self.collect_poses(out_dir, save_trajectory=request.save_trajectory)
         if not poses:
+            logger.error("DiffDock exited without poses; stdout: %s\nstderr: %s", completed.stdout[-8000:], completed.stderr[-8000:])
             raise DockFailure("Fail to generate complex graph -no poses were written")
         return poses
 

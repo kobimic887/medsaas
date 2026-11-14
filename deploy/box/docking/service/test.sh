@@ -72,7 +72,7 @@ docker run --rm \
   --read-only \
   --tmpfs /tmp:rw,noexec,nosuid,size=64m \
   --mount "type=bind,src=${REPO_ROOT}/scripts/verify-docking-response.mjs,dst=/verify.mjs,readonly" \
-  --mount "type=bind,src=${REPO_ROOT}/deploy/box/docking/reference/1cx7-asinex.json,dst=/baseline.json,readonly" \
+  --mount "type=bind,src=${SCRIPT_DIR}/docking_service/assets/1cx7-asinex.json,dst=/baseline.json,readonly" \
   node:24-bookworm \
   sh -ec "node -e '\
 const fs = require(\"node:fs/promises\");\
