@@ -94,6 +94,27 @@ async function scenario({ status, disconnect = false, explicit = false, refundOn
   }
 }
 
+// Exercise the missing-event failure independently of the installed Bun version.
+// Newer adapters may emit close reliably; the old live adapter did not.
+{
+  let balance = 10;
+  const credits = makeCredits({
+    async updateOne(_filter, update) {
+      balance += update.$inc.simulationTokens;
+      return { matchedCount: 1 };
+    },
+  }, async () => {});
+  const req = { user: { username: 'credit-test', companyId: 'test-company' } };
+  const response = { statusCode: 408, on() {}, end() {} };
+  await credits.chargeSimulationToken(req, response, 'diffdock');
+  response.end();
+  response.end();
+  await delay(0);
+  assert.equal(balance, 10, 'end() refunds exactly once without finish/close events');
+  assert.equal(req.simulationTokenCharged, null);
+  console.log('PASS eventless error response: exactly one refund');
+}
+
 const watchdog = setTimeout(() => { console.error('credit-refund test timed out'); process.exit(1); }, 15000);
 try {
   await scenario({ status: 408, disconnect: true });
