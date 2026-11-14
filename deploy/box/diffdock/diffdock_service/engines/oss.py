@@ -7,6 +7,8 @@ import shutil
 import subprocess
 import tempfile
 
+import yaml
+
 from ..errors import DockFailure, EngineUnavailable
 from ..models import EngineRequest, Pose
 from ..settings import Settings
@@ -49,8 +51,20 @@ class OssDiffDockEngine:
         model_dir = self._settings.model_dir
         if not model_dir.is_dir():
             raise EngineUnavailable(f"DiffDock weights missing at {model_dir}")
-        if not any(model_dir.iterdir()):
-            raise EngineUnavailable(f"DiffDock weights directory {model_dir} is empty")
+        required = (
+            "score_model/model_parameters.yml",
+            "score_model/best_ema_inference_epoch_model.pt",
+            "confidence_model/model_parameters.yml",
+            "confidence_model/best_model_epoch75.pt",
+            "torch/hub/checkpoints/esm2_t33_650M_UR50D.pt",
+            "torch/hub/checkpoints/esm2_t33_650M_UR50D-contact-regression.pt",
+        )
+        for relative in required:
+            artifact = model_dir / relative
+            if not artifact.is_file() or not artifact.stat().st_size:
+                raise EngineUnavailable(f"DiffDock weights missing or empty: {artifact}")
+        if not (repo / "default_inference_args.yaml").is_file():
+            raise EngineUnavailable("DiffDock inference configuration missing")
 
     def dock(self, request: EngineRequest) -> list[Pose]:
         self.preflight()
@@ -108,36 +122,29 @@ class OssDiffDockEngine:
         out_dir: Path,
     ) -> list[str]:
         settings = self._settings
-        argv = [
-            settings.python_executable,
-            "-m",
-            "inference",
-            "--config",
-            str(settings.repo_dir / "default_inference_args.yaml"),
-            "--complex_name",
-            "",  # the captured poses are titled `_rank1`, i.e. an EMPTY complex name
-            "--protein_path",
-            str(protein_path),
-            "--ligand_description",
-            str(ligand_path),
-            "--out_dir",
-            str(out_dir),
-            "--samples_per_complex",
-            str(request.num_poses),
-            "--inference_steps",
-            str(request.time_divisions),
-            "--actual_steps",
-            str(request.steps),
-            "--batch_size",
-            str(settings.engine.batch_size),
-            "--model_dir",
-            str(settings.model_dir / "score_model"),
-            "--confidence_model_dir",
-            str(settings.model_dir / "confidence_model"),
-        ]
-        if request.save_trajectory:
-            argv.append("--save_visualisation")
-        return argv
+        # Upstream main() applies YAML AFTER argparse, overriding CLI values.
+        # Put request values and mounted model paths in the effective YAML itself.
+        base_config = yaml.safe_load(
+            (settings.repo_dir / "default_inference_args.yaml").read_text()
+        )
+        if not isinstance(base_config, dict):
+            raise EngineUnavailable("Invalid DiffDock inference configuration")
+        base_config.update({
+            "complex_name": "pyxis",
+            "protein_path": str(protein_path),
+            "ligand_description": str(ligand_path),
+            "out_dir": str(out_dir),
+            "samples_per_complex": request.num_poses,
+            "inference_steps": request.time_divisions,
+            "actual_steps": request.steps,
+            "batch_size": settings.engine.batch_size,
+            "model_dir": str(settings.model_dir / "score_model"),
+            "confidence_model_dir": str(settings.model_dir / "confidence_model"),
+            "save_visualisation": request.save_trajectory,
+        })
+        config_path = out_dir.parent / "effective-config.yaml"
+        config_path.write_text(yaml.safe_dump(base_config))
+        return [settings.python_executable, "-m", "inference", "--config", str(config_path)]
 
     @staticmethod
     def collect_poses(out_dir: Path, *, save_trajectory: bool) -> list[Pose]:

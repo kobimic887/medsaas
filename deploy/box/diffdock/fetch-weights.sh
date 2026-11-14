@@ -18,9 +18,11 @@ set -euo pipefail
 TARGET="${1:-/srv/models/diffdock}"
 URL="https://github.com/gcorso/DiffDock/releases/download/v1.1/diffdock_models.zip"
 EXPECTED_BYTES=129825226
+EXPECTED_SHA256=5a95b6a1555be47ab1d6f0a8ffd25152f7fe32f5956005bb821e13e7a37d4a3d
 
 command -v curl >/dev/null || { echo "curl is required" >&2; exit 1; }
 command -v unzip >/dev/null || { echo "unzip is required" >&2; exit 1; }
+command -v python3 >/dev/null || { echo "python3 is required" >&2; exit 1; }
 
 mkdir -p "$TARGET"
 workdir="$(mktemp -d)"
@@ -35,6 +37,13 @@ if [ "$actual_bytes" != "$EXPECTED_BYTES" ]; then
   echo "Upstream may have republished the release. Verify before using these weights." >&2
   exit 1
 fi
+
+python3 - "$workdir/diffdock_models.zip" "$EXPECTED_SHA256" <<'PYHASH'
+import hashlib, sys
+from pathlib import Path
+if hashlib.sha256(Path(sys.argv[1]).read_bytes()).hexdigest() != sys.argv[2]:
+    raise SystemExit("DiffDock weights SHA-256 mismatch")
+PYHASH
 
 unzip -q "$workdir/diffdock_models.zip" -d "$workdir/extracted"
 

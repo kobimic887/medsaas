@@ -29,8 +29,9 @@ additional scientific services described in [the architecture](BOX-ARCHITECTURE.
   and verify access from both an allowed and a disallowed machine. Preserve an independent
   recovery path before changing SSH or firewall policy.
 - Start one service at a time. Review the resolved Compose configuration and selected engines.
-  Set `DOCKING_ENGINE=vina` explicitly for the implemented CPU backend; the Compose fallback
-  is `autodock-gpu`, which is deliberately unavailable. Replay mode is test data.
+  The Compose default is the implemented CPU `vina` backend without a GPU reservation;
+  `autodock-gpu` is deliberately unavailable. Replay mode is test data. A single-GPU
+  workstation can use [the isolated 3060 preparation stack](../deploy/box/WORKSTATION-3060.md).
 - Run the [docking contract verifier](DOCKING-CONTRACT.md) against a real engine response.
   Check receptor coordinates, SDF serialization, positive pose count and viewer behavior.
 - Exercise convertSTR with valid and invalid SMILES. Run DiffDock preflight and a real

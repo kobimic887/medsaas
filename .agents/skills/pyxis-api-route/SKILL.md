@@ -81,6 +81,10 @@ that a route uses it.
   job/result refusals, partial provenance and atomic failure on changed history;
   staging deployment must not require a shared scientific-service restart.
 
+Long-running science also requires the app nginx server-block include
+`deploy/nginx/scientific-timeouts.conf` (650s proxy read timeout versus the
+600s inference budget). Changing source does not update live nginx.
+
 ## Client callers
 
 Protected `fetch` to `/api/*` must send `Authorization: Bearer` (see

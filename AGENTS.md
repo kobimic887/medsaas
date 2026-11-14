@@ -56,6 +56,10 @@ when a path or trap moves.
   qualified replacement is configured; catalog retirement does not block compute.
 - The replacement Compose defaults to CPU Vina without a GPU reservation.
   `autodock-gpu` is an unavailable stub, never a production default.
+  Single-GPU 3060 preparation uses `deploy/box/compose.3060.yml` and
+  `deploy/box/WORKSTATION-3060.md`. DiffDock writes effective per-request YAML
+  because upstream YAML overrides CLI flags; prepare both docking and ESM2
+  embedding weights before serving. Health is not real inference qualification.
 
 ## Architecture
 
@@ -131,6 +135,10 @@ when a path or trap moves.
   subscription mode is explicit opt-in, never an automatic fallback. Its guard rejects scientific numbers absent from the abstract and any
   links other than the paper and Learning Center pages; citations are generated,
   never written by the model. Keep `WP_STATUS=draft` unless the owner opts in.
+- Scientific API proxy reads must outlast the ten-minute application inference
+  budget: use `deploy/nginx/scientific-timeouts.conf` in the app HTTPS server
+  block (including staging). The nginx default of 60 seconds cuts off valid
+  docking/folding jobs before the API can answer.
 - Client builds write `.br`/`.gz` siblings for `assets/` and `ketcher/static/`;
   `server/utils/precompressedAssets.js` serves them. Ship them with `client/dist`.
 - Link Fragments: `docs/LINK-FRAGMENTS.md`, `services/link-fragments/README.md`.

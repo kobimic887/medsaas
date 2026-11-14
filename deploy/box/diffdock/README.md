@@ -72,3 +72,18 @@ usable poses, confidence alignment, latency and the application viewer.
 The application normally converts SMILES before submitting SDF. If a caller sends SMILES
 directly, the optional converter must be configured. Keep service access restricted through
 [ingress](../ingress/README.md); use [operations](../../../docs/OPERATIONS.md) for deployment records.
+
+## Runtime preparation traps
+
+Upstream applies YAML after CLI parsing. The adapter writes a per-request effective
+YAML so requested pose counts, steps and `/models` paths survive that merge while
+retaining the pinned scientific settings and checkpoint filenames. Preflight rejects
+missing/empty checkpoint files rather than accepting any nonempty directory.
+
+PDB inference still imports `fair-esm` and computes ESM2 embeddings. The runtime
+includes it, compatible ProDy/Biopython pins, and a build-time upstream import check.
+Prepare the ESM cache before serving with [`prepare-embeddings.py`](prepare-embeddings.py).
+Only trusted pinned upstream checkpoints are allowed; the runtime explicitly enables
+legacy loading for PyTorch 2.7. This is a preparation fix, not GPU qualification.
+
+For the single-GPU workstation use [the 3060 preparation checklist](../WORKSTATION-3060.md).

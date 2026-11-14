@@ -17,7 +17,7 @@ def main() -> None:
         settings = Settings.from_environment()
         engine = create_engine(settings)
         engine.preflight()
-        print(f"OK: engine {engine.name} is ready")
+        print(f"OK: engine {engine.name} assets present; run GPU and real inference qualification separately")
         return
 
     import uvicorn

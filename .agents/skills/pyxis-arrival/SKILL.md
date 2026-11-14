@@ -26,6 +26,9 @@ read `docs/OPERATIONS.md` to locate them and confirm operational facts read-only
 - Probe DNS, host identity, architecture, GPUs, listeners, services, disk/RAM, network reachability,
   database access, and deployed build identity read-only first.
 - Keep the application API and MongoDB Atlas off the compute box.
+- Single-GPU 3060 preparation uses `deploy/box/compose.3060.yml` and
+  `deploy/box/WORKSTATION-3060.md`; prepare both DiffDock and ESM2 embedding weights.
+  Upstream YAML overrides CLI flags, so retain the adapter's effective request YAML.
 - Bring up and validate one compute service at a time. Use real request/response contract evidence;
   replay fixtures alone are insufficient.
 - Repoint one production path at a time and retain the measured, supported previous

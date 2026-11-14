@@ -62,11 +62,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DIFFDOCK_ENGINE=oss \
     DIFFDOCK_REPO_DIR=/opt/diffdock \
     DIFFDOCK_MODEL_DIR=/models \
-    DIFFDOCK_WORK_DIR=/tmp/diffdock
+    DIFFDOCK_WORK_DIR=/tmp/diffdock \
+    TORCH_HOME=/models/torch \
+    TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1
 
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
-         ca-certificates curl git python3.10 python3.10-venv python3-pip libgomp1 \
+         ca-certificates curl git python3.10 python3.10-dev python3.10-venv python3-pip libgomp1 build-essential \
     && rm -rf /var/lib/apt/lists/* \
     && update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1
 
@@ -88,7 +90,7 @@ import torch
 version = torch.__version__
 assert "cu128" in version, f"torch is not the cu128 build: {version}"
 arches = torch.cuda.get_arch_list()
-assert any(a.startswith("sm_120") for a in arches), f"no sm_120 in {arches}"
+assert "sm_86" in arches, f"no RTX 3060 sm_86 in {arches}"
 print(f"OK: torch {version} targets {arches}")
 PY
 
@@ -96,6 +98,9 @@ PY
 RUN git clone --filter=blob:none https://github.com/gcorso/DiffDock.git /opt/diffdock \
     && git -C /opt/diffdock checkout --quiet "${DIFFDOCK_REF}" \
     && rm -rf /opt/diffdock/.git
+
+# Catch missing PDB-inference dependencies during the build, before accepting jobs.
+RUN cd /opt/diffdock && python -c "import inference, esm, prody, torch_cluster, torch_scatter"
 
 # Weights are NOT baked in. compose mounts /srv/models/diffdock at /models read-only; run
 # deploy/box/diffdock/fetch-weights.sh once on the box to populate it.

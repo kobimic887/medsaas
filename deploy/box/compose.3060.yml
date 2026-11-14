@@ -1,0 +1,36 @@
+# Standalone workstation preparation: no application, Atlas, search DB or extras.
+# Usage: docker compose -f deploy/box/compose.3060.yml ...
+# Keep ports private; an application cutover requires separate owner approval.
+services:
+  docking:
+    build: ./docking/service
+    environment:
+      DOCKING_ENGINE: vina
+      CACHE_DIR: /srv/cache
+    ports: ["127.0.0.1:8000:8000"]
+    volumes: ["${DOCKING_CACHE_DIR:-/srv/cache}:/srv/cache"]
+    restart: unless-stopped
+  convertstr:
+    build: ./convertstr
+    ports: ["127.0.0.1:8001:8001"]
+    restart: unless-stopped
+  diffdock:
+    build: ./diffdock
+    environment:
+      DIFFDOCK_ENGINE: oss
+      DIFFDOCK_BATCH_SIZE: "2"
+      NVIDIA_VISIBLE_DEVICES: "${BOX_GPU_SCIENCE:-0}"
+      CONVERTSTR_URL: http://convertstr:8001/convertSTR
+    ports: ["127.0.0.1:8002:8002"]
+    volumes: ["${DIFFDOCK_MODEL_DIR:-/srv/models/diffdock}:/models:ro"]
+    depends_on: [convertstr]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['${BOX_GPU_SCIENCE:-0}']
+              capabilities: [gpu]
+    # ESM preprocessing and multiple poses need shared memory beyond Docker's default.
+    shm_size: 2gb
+    restart: unless-stopped

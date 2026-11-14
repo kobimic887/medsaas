@@ -15,13 +15,11 @@
 # loader API does not import against it.
 #
 # ── What is deliberately NOT installed ───────────────────────────────────────────────
-# openfold, fair-esm[esmfold], pytorch-lightning and dllogger are all in upstream's
-# requirements and are all omitted. They exist for ONE feature: folding a protein from a
-# raw SEQUENCE with ESMFold when no structure is supplied. `inference.py` imports none of
-# them, and the platform always sends a PDB — server/index.js fetches ATOM records from
-# RCSB before it ever calls this service. Installing openfold means a from-source CUDA
-# extension build pinned to an old setuptools; skipping it removes the single most fragile
-# step in this image.
+# openfold, fair-esm[esmfold], pytorch-lightning and dllogger are omitted: the
+# application always supplies PDB coordinates rather than asking ESMFold to predict
+# them. The plain fair-esm package IS required even for PDB input because upstream
+# InferenceDataset computes ESM2 sequence embeddings. Prepopulate that cache too.
+# ProDy 2.6.1 and Biopython 1.85 supply compatible PDB parsing on Python 3.10.
 #
 # ⚠ NOTE: this has nothing to do with NVIDIA OpenFold3. That is the hosted protein-folding
 # endpoint at health.api.nvidia.com behind /api/openfold3/predict, it is staying on NVIDIA
@@ -42,7 +40,7 @@ e3nn==0.5.1
 networkx==2.8.4
 numpy==1.26.4
 pandas==1.5.1
-prody==2.2.0
+prody==2.6.1
 pybind11==2.11.1
 pyyaml==6.0.2
 rdkit==2022.3.3
@@ -51,3 +49,8 @@ scipy==1.12.0
 spyrmsd==0.5.2
 torchmetrics==0.11.0
 tqdm==4.67.1
+
+# PDB inference still computes ESM2 embeddings; this is not ESMFold.
+fair-esm==2.0.0
+biopython==1.85
+requests==2.32.3
