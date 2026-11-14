@@ -85,6 +85,9 @@ request IDs, start/completion, elapsed time and pose counts without molecular bo
 With `DIFFDOCK_REQUIRE_CUDA=true`, the inference process proves a CUDA operation
 before loading models. A lost GPU context fails the request instead of using CPU.
 `/health` checks engine assets; a 200 still does not prove CUDA or real inference.
+For a stalled CUDA-guarded inference, an operator can send `SIGUSR1` to that
+measured child PID to write its Python stacks to stderr. Inspect only that
+request's process; the signal does not change model parameters or stop the job.
 
 The application normally converts SMILES before submitting SDF. If a caller sends SMILES
 directly, the optional converter must be configured. Keep service access restricted through

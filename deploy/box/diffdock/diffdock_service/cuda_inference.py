@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import runpy
+import faulthandler
+import signal
 
 
 def require_cuda() -> None:
@@ -17,8 +19,17 @@ def require_cuda() -> None:
 
 
 def main() -> None:
-    require_cuda()
-    runpy.run_module("inference", run_name="__main__")
+    # Operators can inspect a stuck, measured request PID without installing a
+    # profiler, logging input tensors, or terminating unrelated GPU work.
+    diagnostic_signal = getattr(signal, "SIGUSR1", None)
+    if diagnostic_signal is not None:
+        faulthandler.register(diagnostic_signal, all_threads=True)
+    try:
+        require_cuda()
+        runpy.run_module("inference", run_name="__main__")
+    finally:
+        if diagnostic_signal is not None:
+            faulthandler.unregister(diagnostic_signal)
 
 
 if __name__ == "__main__":

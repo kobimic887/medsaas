@@ -64,6 +64,7 @@ when a path or trap moves.
   fail rather than silently run on CPU. Each service process admits one inference
   at a time and returns `503 DIFFDOCK_BUSY` for overlaps. Request-ID/timing logs
   exclude molecular inputs; deadlines terminate only the request's process group.
+  The guarded inference supports `SIGUSR1` stack dumps for its measured child PID.
   Set application `DIFFDOCK_NUM_POSES=10` only for an explicitly approved,
   qualified smaller workload; absent configuration preserves 100. Invalid counts
   refuse before charging. HTTP 200 with failed, empty or incomplete poses is a
