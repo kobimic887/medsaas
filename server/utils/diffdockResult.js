@@ -51,7 +51,7 @@ export function completedDiffDockResult(data, requested) {
   return { ...data, requested_poses: requested, generated_poses: requested };
 }
 
-export function diffDockFailureResponse(error, refunded = false) {
+export function diffDockFailureResponse(error, refunded = false, requestId) {
   let failure;
   if (error?.name === 'TimeoutError' || error?.name === 'AbortError' || error?.code === 'DIFFDOCK_TIMEOUT') {
     failure = { status: 502, code: 'DIFFDOCK_TIMEOUT', error: 'DiffDock timed out before returning a result. Please try again.' };
@@ -60,5 +60,7 @@ export function diffDockFailureResponse(error, refunded = false) {
   } else {
     failure = { status: 502, code: 'DIFFDOCK_FAILED', error: 'DiffDock did not return a complete result.' };
   }
-  return { ...failure, refundStatus: refunded ? 'confirmed' : 'unconfirmed', error: `${failure.error} ${refunded ? 'No credits were charged.' : 'Your credit refund could not be confirmed. Contact support with the request ID.'}` };
+  const refundMessage = refunded ? 'No credits were charged.'
+    : `Your credit refund could not be confirmed. Contact support${requestId ? ` with reference ${requestId}` : ''}.`;
+  return { ...failure, refundStatus: refunded ? 'confirmed' : 'unconfirmed', error: `${failure.error} ${refundMessage}` };
 }

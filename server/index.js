@@ -5155,7 +5155,7 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
     return res.json(completedDiffDockResult(data, req.diffdockNumPoses));
   } catch (error) {
     const refunded = await refundSimulationToken(req, `diffdock: ${error.message}`);
-    const failure = diffDockFailureResponse(error, refunded);
+    const failure = diffDockFailureResponse(error, refunded, requestId);
     logToFile(`DIFFDOCK ERROR: id=${requestId} phase=${phase} elapsed_ms=${Date.now() - startedAt} code=${failure.code}`);
     console.error('DiffDock API proxy error:', requestId, error.message);
     const { status, ...body } = failure;

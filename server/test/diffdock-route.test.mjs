@@ -107,6 +107,7 @@ async function run(setting, scenario, expectedStatus, charged, expectedCalls = 1
   if (scenario === 'refund-failed') {
     assert.equal(result.refundStatus, 'unconfirmed');
     assert.match(result.error, /refund could not be confirmed/);
+    assert.ok(result.error.includes(result.requestId), 'support reference must be visible in the existing client error text');
     assert.doesNotMatch(result.error, /No credits were charged/);
   }
   if (expectedStatus === 200) {
