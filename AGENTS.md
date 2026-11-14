@@ -71,6 +71,9 @@ when a path or trap moves.
   `ASINEX_DOCKING_API_URL`. Store inherited company endpoints as omitted fields,
   never environment-derived loopback URLs; malformed docking payloads must fail
   before entering the persistent simulation cache.
+- Missing `ADMET_CALLBACK_SECRET` refuses new ADMET queue work with 503 after
+  ownership checks. Existing saved predictions remain readable; never advertise
+  an unconfigured pipeline as a queued prediction that will finish.
 
 ## Architecture
 

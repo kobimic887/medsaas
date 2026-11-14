@@ -84,6 +84,9 @@ that a route uses it.
   company configs omit inherited endpoints; admin saves use
   `persistedLigandServiceConfig` so rollback cannot strand stored loopback defaults.
   Validate docking receptor/SDF strings before caching and charging success.
+- ADMET availability is checked after simulation ownership and before enqueue.
+  Missing callback secret returns 503 without new jobs; saved results remain
+  readable. Check with `bun server/test/admet-availability.test.mjs`.
 
 - Remap upstream **401 → 502** (`relayUpstreamStatus` / scientific router).
 - Encode path params; do not concatenate untrusted path segments.

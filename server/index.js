@@ -6424,6 +6424,14 @@ app.get('/api/simulation/:simulationKey/admet', ensureMongoConnected, authentica
 
     // If ADMET data is not present, create a RabbitMQ task for processing
     if (!simulation.admet) {
+      // A worker cannot deliver results without the callback secret. Refuse
+      // before enqueuing; keep already saved predictions readable above.
+      if (!process.env.ADMET_CALLBACK_SECRET) {
+        return res.status(503).json({
+          code: 'SERVICE_NOT_CONFIGURED',
+          error: 'ADMET prediction is not configured on this server. No credits were charged.'
+        });
+      }
       try {
         console.log(`No ADMET data found for simulation ${simulationKey}, creating RabbitMQ task...`);
         
