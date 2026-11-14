@@ -99,6 +99,9 @@ The wrapper admits one job per process and rejects overlaps with
 fast refusal and the next successful request. Request-ID/timing INFO logs must
 be visible in container logs; do not log molecular inputs. Health checks assets,
 so validate CUDA and real inference separately after WSL/GPU/container restarts.
+The workstation allows 30 minutes of compute; the matching app, nginx and Home
+deadlines are 31, 32 and 33 minutes. Keep these layers coordinated. Sharing the
+GPU with interactive workloads can still prevent completion within that budget.
 
 ## Live cutover gate
 

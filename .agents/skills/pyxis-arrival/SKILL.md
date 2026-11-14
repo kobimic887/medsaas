@@ -39,6 +39,9 @@ read `docs/OPERATIONS.md` to locate them and confirm operational facts read-only
   stack via `SIGUSR1` to the exact measured request child PID, never a broad signal.
   ESM preparation verifies pinned artifact hashes before deserialization. An approved smaller
   workload requires matching app `DIFFDOCK_NUM_POSES`, never a silent service cap.
+  The shared-workstation DiffDock deadlines are compute1800s/app1860s/
+  exact nginx location1920s/browser1980s. Keep the other scientific budgets
+  independent and requalify completion after changing the GPU workload.
 - Bring up and validate one compute service at a time. Use real request/response contract evidence;
   replay fixtures alone are insufficient.
 - Repoint one production path at a time and retain the measured, supported previous

@@ -15,6 +15,18 @@ assert.equal(resolveDiffDockUrl('http://169.254.169.254/generate', 'http://127.0
 assert.equal(resolveDiffDockUrl('https://independent.example/generate', 'http://127.0.0.1:18002/generate'), 'https://independent.example/generate');
 
 const source = readFileSync(new URL('../index.js', import.meta.url), 'utf8');
+const deadlineDeclaration = source.match(/^const DIFFDOCK_HTTP_TIMEOUT_MS = .+;$/m)?.[0];
+assert.ok(deadlineDeclaration, 'DiffDock has an independent application deadline');
+const diffdockDeadline = new Function(`${deadlineDeclaration}; return DIFFDOCK_HTTP_TIMEOUT_MS;`)();
+const composeSource = readFileSync(new URL('../../deploy/box/compose.3060.yml', import.meta.url), 'utf8');
+const computeDeadline = Number(composeSource.match(/DIFFDOCK_TIMEOUT_SECONDS: "(\d+)"/)[1]) * 1000;
+const proxySource = readFileSync(new URL('../../deploy/nginx/diffdock-timeouts.conf', import.meta.url), 'utf8');
+const proxyDeadline = Number(proxySource.match(/proxy_read_timeout (\d+)s/)[1]) * 1000;
+const clientSource = readFileSync(new URL('../../client/src/pages/dashboard/simulation.jsx', import.meta.url), 'utf8');
+const browserExpression = clientSource.slice(clientSource.indexOf('diffDockControllerRef.current = controller;')).match(/controller.abort\(\), ([\d *]+)\);/)[1];
+const browserDeadline = new Function(`return ${browserExpression}`)();
+assert.equal(computeDeadline, 30 * 60 * 1000);
+assert.ok(computeDeadline < diffdockDeadline && diffdockDeadline < proxyDeadline && proxyDeadline < browserDeadline, 'all DiffDock deadline layers leave time for the inner layer to answer');
 assert.equal(resolveDockingUrl('https://services.asinex.com:8000/docking', 'http://127.0.0.1:18000/docking'), 'http://127.0.0.1:18000/docking');
 assert.equal(resolveDockingUrl('http://169.254.169.254', 'http://127.0.0.1:18000/docking'), 'http://169.254.169.254');
 assert.deepEqual(persistedLigandServiceConfig({ dockingApiUrl: 'http://127.0.0.1:18000/docking', diffdockApiUrl: 'https://custom.example/diffdock' }, { dockingApiUrl: 'http://127.0.0.1:18000/docking' }), { diffdockApiUrl: 'https://custom.example/diffdock' });
@@ -78,8 +90,9 @@ const deps = {
   app, ensureMongoConnected: pass, authenticateToken: identity, requireActiveUser: pass,
   configuredDiffDockPoseCount, completedDiffDockResult, diffDockFailureResponse, crypto,
   getRequestLigandServiceConfig: async () => ({ diffdockApiUrl: `${upstream}/diffdock` }),
-  ...credits, logToFile() {}, SDF_CONVERTER_URL: `${upstream}/converter`, EXTERNAL_HTTP_TIMEOUT_LONG_MS: 1000,
+  ...credits, logToFile() {}, SDF_CONVERTER_URL: `${upstream}/converter`, DIFFDOCK_HTTP_TIMEOUT_MS: diffdockDeadline,
   fetchWithTimeout: (url, options = {}) => {
+    if (url === `${upstream}/diffdock`) assert.equal(options.timeoutMs, diffdockDeadline);
     const budget = mode === 'timeout' && url === `${upstream}/diffdock` ? 50 : 2000;
     return fetch(url.includes('files.rcsb.org/download/') ? `${upstream}/pdb` : url.includes('files.rcsb.org/ligands/') ? `${upstream}/ligand` : url, { ...options, signal: AbortSignal.timeout(budget) });
   },

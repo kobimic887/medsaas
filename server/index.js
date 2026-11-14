@@ -429,7 +429,10 @@ const PUBMED_TIMEOUT_MS = 15000;
 // catalog/search/stock calls use the default; long-running docking jobs pass
 // the longer value explicitly.
 const EXTERNAL_HTTP_TIMEOUT_MS = 120000; // 2 min — interactive catalog/search/stock
-const EXTERNAL_HTTP_TIMEOUT_LONG_MS = 600000; // 10 min — docking / diffdock generate jobs
+const EXTERNAL_HTTP_TIMEOUT_LONG_MS = 600000; // 10 min — docking / folding jobs
+// Workstation DiffDock can share a gaming GPU: allow its 30-minute compute
+// budget plus transfer/serialization, independently of docking and folding.
+const DIFFDOCK_HTTP_TIMEOUT_MS = 31 * 60 * 1000;
 axios.defaults.timeout = EXTERNAL_HTTP_TIMEOUT_MS;
 
 // Wrap native fetch so every outbound request is bounded. Callers may pass a
@@ -5112,7 +5115,7 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
       );
       phase = 'compute';
       logToFile(`DIFFDOCK START: id=${requestId} endpoint=${new URL(diffdockApiUrl).origin}`);
-      const response = await fetchWithTimeout(diffdockApiUrl, { redirect: 'error', timeoutMs: EXTERNAL_HTTP_TIMEOUT_LONG_MS,
+      const response = await fetchWithTimeout(diffdockApiUrl, { redirect: 'error', timeoutMs: DIFFDOCK_HTTP_TIMEOUT_MS,
         method: 'POST',
         headers: {
           'Accept': 'application/json',

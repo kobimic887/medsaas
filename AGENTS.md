@@ -154,10 +154,13 @@ when a path or trap moves.
   subscription mode is explicit opt-in, never an automatic fallback. Its guard rejects scientific numbers absent from the abstract and any
   links other than the paper and Learning Center pages; citations are generated,
   never written by the model. Keep `WP_STATUS=draft` unless the owner opts in.
-- Scientific API proxy reads must outlast the ten-minute application inference
-  budget: use `deploy/nginx/scientific-timeouts.conf` in the app HTTPS server
-  block (including staging). The nginx default of 60 seconds cuts off valid
-  docking/folding jobs before the API can answer.
+- Scientific API proxy reads must outlast the application inference budget:
+  use `deploy/nginx/scientific-timeouts.conf` for the default ten-minute
+  docking/folding calls. Workstation DiffDock uses compute1800s/app1860s/
+  nginx1920s/browser1980s; use `deploy/nginx/diffdock-timeouts.conf` in exact
+  production/staging generation locations. Update built browser artifacts and
+  cache identities along with source. The nginx default of 60 seconds cuts off
+  valid jobs before the API can answer.
 - Client builds write `.br`/`.gz` siblings for `assets/` and `ketcher/static/`;
   `server/utils/precompressedAssets.js` serves them. Ship them with `client/dist`.
 - Link Fragments: `docs/LINK-FRAGMENTS.md`, `services/link-fragments/README.md`.

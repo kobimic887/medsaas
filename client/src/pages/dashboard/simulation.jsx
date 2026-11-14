@@ -1714,7 +1714,7 @@ export function Simulation({ active = true }) {
     diffDockSubmittedLigandRef.current = ligandId;
     const controller = new AbortController();
     diffDockControllerRef.current = controller;
-    const timeout = window.setTimeout(() => controller.abort(), 11 * 60 * 1000);
+    const timeout = window.setTimeout(() => controller.abort(), 33 * 60 * 1000);
     try {
       const token = getAuthToken();
       
@@ -1744,7 +1744,7 @@ export function Simulation({ active = true }) {
       showMessage('DiffDock simulation completed successfully!');
     } catch (err) {
       if (err.name === 'AbortError') {
-        setDiffDockError('DiffDock is taking longer than expected and was stopped after 11 minutes. No result was returned.');
+        setDiffDockError('DiffDock is taking longer than expected and was stopped after 33 minutes. No result was returned.');
       } else {
         setDiffDockError(`Failed to run DiffDock: ${err.message}`);
       }

@@ -104,7 +104,11 @@ that a route uses it.
 
 Long-running science also requires the app nginx server-block include
 `deploy/nginx/scientific-timeouts.conf` (650s proxy read timeout versus the
-600s inference budget). Changing source does not update live nginx.
+600s docking/folding budget). DiffDock has its own coordinated deadlines:
+compute 1800s, app 1860s, nginx exact generation locations 1920s
+(`deploy/nginx/diffdock-timeouts.conf`), and Home 1980s. Update the deployed
+browser artifacts and cache identities too. Changing source does not update
+live nginx or already-built frontend assets.
 
 ## Client callers
 
