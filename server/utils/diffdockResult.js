@@ -6,6 +6,25 @@ export function resolveDiffDockUrl(companyUrl, configuredUrl) {
   return configuredUrl && companyUrl?.replace(/\/$/, '') === legacy ? configuredUrl : companyUrl;
 }
 
+export function resolveDockingUrl(companyUrl, configuredUrl) {
+  const legacy = 'https://services.asinex.com:8000/docking';
+  return configuredUrl && companyUrl?.replace(/\/$/, '') === legacy ? configuredUrl : companyUrl;
+}
+
+export function persistedLigandServiceConfig(config, defaults) {
+  // Omitted endpoints inherit operator defaults at request time. Persisting a
+  // loopback default would turn it into a forbidden company override on rollback.
+  return Object.fromEntries(Object.entries(config).filter(([key, value]) => value !== defaults[key]));
+}
+
+export function completedDockingResult(data) {
+  if (typeof data?.pdb !== 'string' || !data.pdb.trim()
+    || typeof data?.sdf !== 'string' || !data.sdf.trim()) {
+    throw new Error('Docking returned no receptor or pose structures');
+  }
+  return data;
+}
+
 // Keep the legacy workload unless an operator explicitly configures a qualified
 // smaller run. Never rely on a compute service silently capping 100 requested poses.
 export function configuredDiffDockPoseCount(raw) {

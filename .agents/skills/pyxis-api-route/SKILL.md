@@ -80,6 +80,10 @@ that a route uses it.
   `resolveDiffDockUrl` lets an explicit platform endpoint replace only the exact
   seeded Asinex default in old company records; independent endpoints and SSRF
   refusals stay intact. Endpoint cutover must not require rewriting shared Atlas.
+  Docking uses `resolveDockingUrl` for the same seeded-default cutover. New/backfilled
+  company configs omit inherited endpoints; admin saves use
+  `persistedLigandServiceConfig` so rollback cannot strand stored loopback defaults.
+  Validate docking receptor/SDF strings before caching and charging success.
 
 - Remap upstream **401 → 502** (`relayUpstreamStatus` / scientific router).
 - Encode path params; do not concatenate untrusted path segments.

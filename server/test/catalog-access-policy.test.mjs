@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import { isRetiredSupplierUrl, refuseRetiredCatalog } from '../utils/catalogAccessPolicy.js';
 import { getPlan, buildPlanCheckoutSessionParams } from '../utils/planCheckout.js';
 import { createStagingDemoRouter } from '../routes/stagingDemo.js';
+import { configuredDiffDockPoseCount } from '../utils/diffdockResult.js';
 
 for (const url of [
   'https://asinex.com', 'https://SERVICES.ASINEX.COM.:58000/diffdock',
@@ -26,10 +27,10 @@ const end = index.indexOf('\n});', start);
 const providerStart = index.indexOf('async function validateDiffdockProvider(');
 const providerEnd = index.indexOf("\napp.post('/api/diffdock/generate'", providerStart);
 assert.ok(providerStart > 0 && providerEnd > providerStart);
-const makeProvider = new Function('getRequestLigandServiceConfig',
+const makeProvider = new Function('getRequestLigandServiceConfig', 'configuredDiffDockPoseCount',
   index.slice(providerStart, providerEnd) + '; return validateDiffdockProvider;');
 let advanced = 0;
-const validateProvider = makeProvider(async () => ({ diffdockApiUrl: 'https://services.asinex.com:58000/molecular-docking/diffdock/generate' }));
+const validateProvider = makeProvider(async () => ({ diffdockApiUrl: 'https://services.asinex.com:58000/molecular-docking/diffdock/generate' }), configuredDiffDockPoseCount);
 const providerRes = { status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } };
 await validateProvider({ body: { protein: '2RH1', ligand: 'E20' } }, providerRes, () => advanced++);
 assert.equal(advanced, 1, 'configured scientific supplier reaches the paid route');

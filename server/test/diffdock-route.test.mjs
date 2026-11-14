@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import { once } from 'node:events';
 import express from 'express';
-import { configuredDiffDockPoseCount, completedDiffDockResult, resolveDiffDockUrl } from '../utils/diffdockResult.js';
+import { configuredDiffDockPoseCount, completedDiffDockResult, resolveDiffDockUrl, resolveDockingUrl, persistedLigandServiceConfig, completedDockingResult } from '../utils/diffdockResult.js';
 
 const legacy = 'https://services.asinex.com:58000/molecular-docking/diffdock/generate';
 assert.equal(resolveDiffDockUrl(legacy, 'http://127.0.0.1:18002/generate'), 'http://127.0.0.1:18002/generate');
@@ -14,6 +14,23 @@ assert.equal(resolveDiffDockUrl('http://169.254.169.254/generate', 'http://127.0
 assert.equal(resolveDiffDockUrl('https://independent.example/generate', 'http://127.0.0.1:18002/generate'), 'https://independent.example/generate');
 
 const source = readFileSync(new URL('../index.js', import.meta.url), 'utf8');
+assert.equal(resolveDockingUrl('https://services.asinex.com:8000/docking', 'http://127.0.0.1:18000/docking'), 'http://127.0.0.1:18000/docking');
+assert.equal(resolveDockingUrl('http://169.254.169.254', 'http://127.0.0.1:18000/docking'), 'http://169.254.169.254');
+assert.deepEqual(persistedLigandServiceConfig({ dockingApiUrl: 'http://127.0.0.1:18000/docking', diffdockApiUrl: 'https://custom.example/diffdock' }, { dockingApiUrl: 'http://127.0.0.1:18000/docking' }), { diffdockApiUrl: 'https://custom.example/diffdock' });
+assert.throws(() => completedDockingResult({ error: 'upstream broken' }), /no receptor/);
+assert.throws(() => completedDockingResult({ pdb: ' ', sdf: ' ' }), /no receptor/);
+assert.deepEqual(completedDockingResult({ pdb: 'ATOM', sdf: 'pose' }), { pdb: 'ATOM', sdf: 'pose' });
+// Execute the real backfill boundary; runtime defaults must never be written to Atlas.
+let savedCompanyPatch;
+const company = { _id: 'company', companyId: 'company', usagePolicy: {}, monthlyUsage: { monthKey: 'current' } };
+const companySource = source.slice(source.indexOf('async function getCompanyRecord('), source.indexOf('async function incrementCompanyMonthlyUsage('));
+const loadCompany = new Function('companiesCollection', 'toObjectIdSafe', 'normalizeUsagePolicy', 'normalizeMonthlyUsage', 'normalizeLigandServiceConfig', 'normalizeBrandPalette', companySource + '; return getCompanyRecord;')({
+  async findOne() { return company; }, async updateOne(_query, update) { savedCompanyPatch = update.$set; },
+}, () => null, x => x, x => x, x => ({ dockingApiUrl: 'http://127.0.0.1:18000/docking', ...x }), x => x);
+const loaded = await loadCompany('company');
+assert.deepEqual(savedCompanyPatch.ligandServiceConfig, {});
+assert.equal(loaded.ligandServiceConfig.dockingApiUrl, 'http://127.0.0.1:18000/docking');
+
 const creditSource = source.slice(source.indexOf('async function chargeSimulationToken('), source.indexOf('\nfunction secretsEqual('));
 const start = source.indexOf('// Supplier catalog retirement does not disable the owner-authorized scientific providers.');
 const routeSource = source.slice(start, source.indexOf('\n/**\n * @swagger\n * /api/diffdock/generate_file:', start));

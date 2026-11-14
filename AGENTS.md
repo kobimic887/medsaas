@@ -67,6 +67,10 @@ when a path or trap moves.
   When `DIFFDOCK_API_URL` explicitly changes the platform endpoint, company records
   holding the exact seeded Asinex default inherit that endpoint without Atlas edits.
   Independent company endpoints retain the request-time SSRF guard.
+  Docking follows the same exact legacy-default mapping for
+  `ASINEX_DOCKING_API_URL`. Store inherited company endpoints as omitted fields,
+  never environment-derived loopback URLs; malformed docking payloads must fail
+  before entering the persistent simulation cache.
 
 ## Architecture
 

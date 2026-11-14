@@ -39,7 +39,7 @@ import { precompressedAssets } from './utils/precompressedAssets.js';
 import { FoldMongoStore } from './utils/foldMongoStore.js';
 import { createFoldingHistoryRouter } from './routes/foldingHistory.js';
 import { completeNvidiaFoldResponse, hasFoldCoordinates } from './utils/nvidiaFoldResponse.js';
-import { configuredDiffDockPoseCount, completedDiffDockResult, resolveDiffDockUrl } from './utils/diffdockResult.js';
+import { configuredDiffDockPoseCount, completedDiffDockResult, resolveDiffDockUrl, resolveDockingUrl, persistedLigandServiceConfig, completedDockingResult } from './utils/diffdockResult.js';
 import {
   buildStockSimilarityUrl,
   createStockDatasetResolver,
@@ -1455,7 +1455,7 @@ async function getCompanyRecord(companyId) {
   const patch = {};
   if (!company.companyId) patch.companyId = normalizedCompanyId;
   if (!company.usagePolicy) patch.usagePolicy = normalizedUsagePolicy;
-  if (!company.ligandServiceConfig) patch.ligandServiceConfig = normalizedLigandServiceConfig;
+  if (!company.ligandServiceConfig) patch.ligandServiceConfig = {};
   if (!company.monthlyUsage || company.monthlyUsage.monthKey !== normalizedMonthlyUsage.monthKey) {
     patch.monthlyUsage = normalizedMonthlyUsage;
   }
@@ -1523,6 +1523,7 @@ async function getRequestLigandServiceConfig(req) {
   }
   const config = normalizeLigandServiceConfig(company.ligandServiceConfig || {});
   config.diffdockApiUrl = resolveDiffDockUrl(config.diffdockApiUrl, process.env.DIFFDOCK_API_URL);
+  config.dockingApiUrl = resolveDockingUrl(config.dockingApiUrl, process.env.ASINEX_DOCKING_API_URL);
   await assertConfiguredUrlsArePublic(config);
   return config;
 }
@@ -2200,7 +2201,7 @@ app.post('/api/signup', authRateLimit, ensureMongoConnected, async (req, res) =>
       name: normalizedCompanyName,
       slug: companySlug,
       companyId: null,
-      ligandServiceConfig: { ...DEFAULT_LIGAND_SERVICE_CONFIG },
+      ligandServiceConfig: {},
       active: true,
       usagePolicy: { ...DEFAULT_USAGE_POLICY },
       monthlyUsage: {
@@ -3283,7 +3284,7 @@ app.get('/api/simulation', ensureMongoConnected, authenticateToken, requireActiv
     if (!response.ok) {
       throw new Error(`Docking service returned ${response.status}`);
     }
-    const data = await response.json();
+    const data = completedDockingResult(await response.json());
     dockingSucceeded = true;
     // Record invocation in MongoDB, including the result and simulationKey.
     // Dual-write nested user.username so legacy Control Panel filters still match.
@@ -3441,7 +3442,7 @@ app.post('/api/simulation', ensureMongoConnected, authenticateToken, requireActi
     if (!response.ok) {
       throw new Error(`Docking service returned ${response.status}`);
     }
-    const data = await response.json();
+    const data = completedDockingResult(await response.json());
     dockingSucceeded = true;
     // Dual-write nested user.username so legacy Control Panel filters still match.
     await simulationLogs.insertOne({
@@ -4053,7 +4054,7 @@ app.patch('/api/company/ligand-service-config', ensureMongoConnected, authentica
     const ligandServiceConfig = normalizeLigandServiceConfig({ ...currentConfig, ...updates });
     await companiesCollection.updateOne(
       { companyId: req.user.companyId },
-      { $set: { ligandServiceConfig, updatedAt: new Date() } }
+      { $set: { ligandServiceConfig: persistedLigandServiceConfig(ligandServiceConfig, DEFAULT_LIGAND_SERVICE_CONFIG), updatedAt: new Date() } }
     );
 
     await recordAuditEvent(req, 'company.ligand_service_config.update', {
