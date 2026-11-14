@@ -78,7 +78,11 @@ this pinned upstream stack. No request should trigger a fresh model download.
 Submit a complete qualified PDB/SDF pair to the loopback generation endpoint,
 starting with one pose. The canonical fixture contains a truncated receptor and
 cannot qualify inference. Verify positive usable pose count, finite coordinates
-and confidences, alignment, elapsed time and GPU peak memory. Increase requested
+and confidences, alignment, elapsed time and GPU peak memory. The current app
+requests 100 poses: qualifying a one-pose smoke test does not qualify that workload.
+If 100 poses exceed the service/app budgets, stop before cutover. Agree an explicit
+smaller workload or implement a longer-running job flow; do not silently truncate
+the request and advertise a complete 100-pose result. Increase requested
 poses only after measuring the smaller case. Batch size 2 is a starting setting,
 not a guarantee that every receptor fits. Record image digest, dependency versions,
 GPU/driver, inputs and measurements privately.
