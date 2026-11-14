@@ -39,7 +39,7 @@ import { precompressedAssets } from './utils/precompressedAssets.js';
 import { FoldMongoStore } from './utils/foldMongoStore.js';
 import { createFoldingHistoryRouter } from './routes/foldingHistory.js';
 import { completeNvidiaFoldResponse, hasFoldCoordinates } from './utils/nvidiaFoldResponse.js';
-import { configuredDiffDockPoseCount, completedDiffDockResult, resolveDiffDockUrl, resolveDockingUrl, persistedLigandServiceConfig, completedDockingResult } from './utils/diffdockResult.js';
+import { configuredDiffDockPoseCount, completedDiffDockResult, resolveDiffDockUrl, resolveDockingUrl, persistedLigandServiceConfig, completedDockingResult, diffDockFailureResponse } from './utils/diffdockResult.js';
 import {
   buildStockSimilarityUrl,
   createStockDatasetResolver,
@@ -4996,6 +4996,9 @@ async function validateDiffdockProvider(req, res, next) {
 }
 
 app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requireActiveUser, validateDiffdockProvider, consumeSimulationToken('diffdock'), async (req, res) => {
+  const requestId = crypto.randomUUID();
+  const startedAt = Date.now();
+  let phase = 'prepare-inputs';
   try {
     const { diffdockApiUrl } = await getRequestLigandServiceConfig(req);
     const {
@@ -5107,11 +5110,14 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
         `protein_bytes=${Buffer.byteLength(String(protein_bytes || ''))} ` +
         `num_poses=${requestBody.num_poses}`
       );
+      phase = 'compute';
+      logToFile(`DIFFDOCK START: id=${requestId} endpoint=${new URL(diffdockApiUrl).origin}`);
       const response = await fetchWithTimeout(diffdockApiUrl, { redirect: 'error', timeoutMs: EXTERNAL_HTTP_TIMEOUT_LONG_MS,
         method: 'POST',
         headers: {
           'Accept': 'application/json',
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'X-Pyxis-Request-Id': requestId
         },
         body: JSON.stringify(requestBody)
       });
@@ -5123,7 +5129,7 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
         ? data.slice(0, 240)
         : String(data?.details || data?.error || '').slice(0, 240);
       logToFile(
-        `makeDiffDockRequest RESPONSE: status=${response.status} ` +
+        `makeDiffDockRequest RESPONSE: id=${requestId} status=${response.status} elapsed_ms=${Date.now() - startedAt} ` +
         `bytes=${Buffer.byteLength(text)}` +
         (errorSnippet ? ` snippet=${errorSnippet}` : '')
       );
@@ -5140,12 +5146,20 @@ app.post('/api/diffdock/generate', ensureMongoConnected, authenticateToken, requ
 
     // HTTP 200/status=failed (or padded empty poses) is not paid scientific work.
     // Validate before answering and refund explicitly, even after a disconnect.
-    if (!response.ok) throw new Error('DiffDock service is unavailable');
+    if (!response.ok) {
+      const error = new Error('DiffDock service is unavailable');
+      if (response.status === 503 && data?.code === 'DIFFDOCK_BUSY') error.code = 'DIFFDOCK_BUSY';
+      throw error;
+    }
+    phase = 'validate-result';
     return res.json(completedDiffDockResult(data, req.diffdockNumPoses));
   } catch (error) {
-    await refundSimulationToken(req, `diffdock: ${error.message}`);
-    console.error('DiffDock API proxy error:', error.message);
-    return res.status(502).json({ error: 'DiffDock did not return a complete result', details: error.message });
+    const refunded = await refundSimulationToken(req, `diffdock: ${error.message}`);
+    const failure = diffDockFailureResponse(error, refunded);
+    logToFile(`DIFFDOCK ERROR: id=${requestId} phase=${phase} elapsed_ms=${Date.now() - startedAt} code=${failure.code}`);
+    console.error('DiffDock API proxy error:', requestId, error.message);
+    const { status, ...body } = failure;
+    return res.status(status).json({ ...body, requestId });
   }
 });
 

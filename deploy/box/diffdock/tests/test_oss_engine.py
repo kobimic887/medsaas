@@ -136,6 +136,7 @@ from pathlib import Path
 import yaml
 parser = argparse.ArgumentParser()
 parser.add_argument('--config')
+parser.add_argument('--loglevel')
 args = parser.parse_args()
 cfg = yaml.safe_load(Path(args.config).read_text())
 assert cfg['actual_steps'] == 18

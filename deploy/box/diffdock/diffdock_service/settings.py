@@ -33,6 +33,7 @@ class EngineConfig:
     # available evidence that the mapping is right.
     batch_size: int = 10
     inference_timeout_seconds: int = 540
+    require_cuda: bool = False
     # chem_beo aborts the whole call at 600 s (EXTERNAL_HTTP_TIMEOUT_LONG_MS). Finishing
     # *inside* that leaves room to serialize ~100 poses and still answer.
     max_num_poses: int = 100
@@ -63,5 +64,6 @@ class Settings:
                 batch_size=_int("DIFFDOCK_BATCH_SIZE", 10),
                 inference_timeout_seconds=_int("DIFFDOCK_TIMEOUT_SECONDS", 540),
                 max_num_poses=_int("DIFFDOCK_MAX_POSES", 100),
+                require_cuda=os.environ.get("DIFFDOCK_REQUIRE_CUDA", "").lower() in {"1", "true", "yes"},
             ),
         )

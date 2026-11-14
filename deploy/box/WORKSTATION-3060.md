@@ -92,6 +92,14 @@ poses only after measuring the smaller case. Batch size 2 is a starting setting,
 not a guarantee that every receptor fits. Record image digest, dependency versions,
 GPU/driver, inputs and measurements privately.
 
+The workstation Compose enables `DIFFDOCK_REQUIRE_CUDA=true`; each inference
+proves a CUDA operation before loading models and refuses a lost GPU context.
+The wrapper admits one job per process and rejects overlaps with
+`503 DIFFDOCK_BUSY` rather than queuing behind a full inference. Qualify this
+fast refusal and the next successful request. Request-ID/timing INFO logs must
+be visible in container logs; do not log molecular inputs. Health checks assets,
+so validate CUDA and real inference separately after WSL/GPU/container restarts.
+
 ## Live cutover gate
 
 Ports stay on loopback. Before application traffic, qualify private connectivity

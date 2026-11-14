@@ -60,6 +60,10 @@ when a path or trap moves.
   `deploy/box/WORKSTATION-3060.md`. DiffDock writes effective per-request YAML
   because upstream YAML overrides CLI flags; prepare both docking and ESM2
   embedding weights before serving. Health is not real inference qualification.
+  The workstation requires CUDA in the inference process; lost GPU access must
+  fail rather than silently run on CPU. Each service process admits one inference
+  at a time and returns `503 DIFFDOCK_BUSY` for overlaps. Request-ID/timing logs
+  exclude molecular inputs; deadlines terminate only the request's process group.
   Set application `DIFFDOCK_NUM_POSES=10` only for an explicitly approved,
   qualified smaller workload; absent configuration preserves 100. Invalid counts
   refuse before charging. HTTP 200 with failed, empty or incomplete poses is a

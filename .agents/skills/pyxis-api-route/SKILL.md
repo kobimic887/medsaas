@@ -77,6 +77,12 @@ that a route uses it.
   or incomplete pose envelopes, including HTTP 200/status=failed, return 502 and
   refund explicitly. Ship `server/utils/diffdockResult.js`; verify with
   `bun server/test/diffdock-route.test.mjs` (actual route + HTTP fixtures).
+  The single-process compute service rejects overlapping jobs with
+  `503 DIFFDOCK_BUSY`; relay that code as 503 and refund. Timeout errors return
+  `502 DIFFDOCK_TIMEOUT`, including the wrapper's `DIFFDOCK_TIMEOUT:` details
+  reason. Confirm the refund before promising no charge; otherwise report that
+  settlement could not be confirmed with the request ID. Keep bounded
+  request-ID/phase/timing logs and never log molecular request bodies.
   `resolveDiffDockUrl` lets an explicit platform endpoint replace only the exact
   seeded Asinex default in old company records; independent endpoints and SSRF
   refusals stay intact. Endpoint cutover must not require rewriting shared Atlas.

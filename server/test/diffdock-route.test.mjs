@@ -5,7 +5,8 @@ import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import { once } from 'node:events';
 import express from 'express';
-import { configuredDiffDockPoseCount, completedDiffDockResult, resolveDiffDockUrl, resolveDockingUrl, persistedLigandServiceConfig, completedDockingResult } from '../utils/diffdockResult.js';
+import crypto from 'node:crypto';
+import { configuredDiffDockPoseCount, completedDiffDockResult, resolveDiffDockUrl, resolveDockingUrl, persistedLigandServiceConfig, completedDockingResult, diffDockFailureResponse } from '../utils/diffdockResult.js';
 
 const legacy = 'https://services.asinex.com:58000/molecular-docking/diffdock/generate';
 assert.equal(resolveDiffDockUrl(legacy, 'http://127.0.0.1:18002/generate'), 'http://127.0.0.1:18002/generate');
@@ -40,6 +41,7 @@ let balance = 10;
 let refunds = 0;
 const credits = new Function('usersCollection', 'recordAuditEvent', `${creditSource}\nreturn { consumeSimulationToken, refundSimulationToken };`)({
   async updateOne(_filter, update) {
+    if (mode === 'refund-failed' && update.$inc.simulationTokens === 1) throw new Error('fixture database outage');
     balance += update.$inc.simulationTokens;
     if (update.$inc.simulationTokens === 1) refunds++;
     return { matchedCount: 1 };
@@ -54,9 +56,12 @@ const fixture = http.createServer(async (req, res) => {
   for await (const chunk of req) raw += chunk;
   const body = JSON.parse(raw);
   submitted.push(body);
+  if (mode === 'timeout') return; // Real upstream socket accepts work but never answers.
   res.setHeader('Content-Type', 'application/json');
   const count = mode === 'partial' ? body.num_poses - 1 : body.num_poses;
   if (mode === 'auth') { res.statusCode = 401; return res.end('{}'); }
+  if (mode === 'busy' || mode === 'refund-failed') { res.statusCode = 503; return res.end(JSON.stringify({ code: 'DIFFDOCK_BUSY' })); }
+  if (mode === 'engine-timeout') return res.end(JSON.stringify({ ...pose, status: 'failed', details: 'DIFFDOCK_TIMEOUT: DiffDock exceeded 540s' }));
   if (mode === 'failed' || (mode === 'retry' && submitted.length === 1)) {
     return res.end(JSON.stringify({ ...pose, status: 'failed', ligand_positions: [''], details: mode === 'retry' ? 'Fail to read ligand molecule description' : 'no poses' }));
   }
@@ -71,10 +76,13 @@ const pass = (_req, _res, next) => next();
 const identity = (req, _res, next) => { req.user = { username: 'test', companyId: 'test' }; next(); };
 const deps = {
   app, ensureMongoConnected: pass, authenticateToken: identity, requireActiveUser: pass,
-  configuredDiffDockPoseCount, completedDiffDockResult,
+  configuredDiffDockPoseCount, completedDiffDockResult, diffDockFailureResponse, crypto,
   getRequestLigandServiceConfig: async () => ({ diffdockApiUrl: `${upstream}/diffdock` }),
   ...credits, logToFile() {}, SDF_CONVERTER_URL: `${upstream}/converter`, EXTERNAL_HTTP_TIMEOUT_LONG_MS: 1000,
-  fetchWithTimeout: (url, options = {}) => fetch(url.includes('files.rcsb.org/download/') ? `${upstream}/pdb` : url.includes('files.rcsb.org/ligands/') ? `${upstream}/ligand` : url, { ...options, signal: AbortSignal.timeout(2000) }),
+  fetchWithTimeout: (url, options = {}) => {
+    const budget = mode === 'timeout' && url === `${upstream}/diffdock` ? 50 : 2000;
+    return fetch(url.includes('files.rcsb.org/download/') ? `${upstream}/pdb` : url.includes('files.rcsb.org/ligands/') ? `${upstream}/ligand` : url, { ...options, signal: AbortSignal.timeout(budget) });
+  },
 };
 new Function(...Object.keys(deps), routeSource)(...Object.values(deps));
 const server = app.listen(0, '127.0.0.1');
@@ -89,8 +97,18 @@ async function run(setting, scenario, expectedStatus, charged, expectedCalls = 1
   const result = await response.json();
   assert.equal(response.status, expectedStatus, JSON.stringify(result));
   assert.equal(balance, 10 - charged);
-  assert.equal(refunds, expectedStatus === 502 ? 1 : 0);
+  assert.equal(refunds, expectedStatus === 502 || scenario === 'busy' ? 1 : 0);
   assert.equal(submitted.length, expectedCalls);
+  if (scenario === 'busy' || scenario === 'timeout' || scenario === 'engine-timeout') {
+    assert.equal(result.code, scenario === 'busy' ? 'DIFFDOCK_BUSY' : 'DIFFDOCK_TIMEOUT');
+    assert.match(result.error, /No credits were charged/);
+    assert.match(result.requestId, /^[a-f0-9-]{36}$/);
+  }
+  if (scenario === 'refund-failed') {
+    assert.equal(result.refundStatus, 'unconfirmed');
+    assert.match(result.error, /refund could not be confirmed/);
+    assert.doesNotMatch(result.error, /No credits were charged/);
+  }
   if (expectedStatus === 200) {
     const count = setting === undefined ? 100 : Number(setting);
     assert.equal(submitted[0].num_poses, count);
@@ -109,6 +127,10 @@ try {
   await run('10', 'empty', 502, 0);
   await run('10', 'invalid-confidence', 502, 0);
   await run('10', 'auth', 502, 0);
+  await run('10', 'busy', 503, 0);
+  await run('10', 'timeout', 502, 0);
+  await run('10', 'engine-timeout', 502, 0);
+  await run('10', 'refund-failed', 503, 1);
   await run('10', 'retry', 200, 1, 2);
 } finally {
   if (previous === undefined) delete process.env.DIFFDOCK_NUM_POSES;

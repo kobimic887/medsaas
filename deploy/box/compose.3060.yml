@@ -19,6 +19,7 @@ services:
     environment:
       DIFFDOCK_ENGINE: oss
       DIFFDOCK_BATCH_SIZE: "2"
+      DIFFDOCK_REQUIRE_CUDA: "true"
       NVIDIA_VISIBLE_DEVICES: "${BOX_GPU_SCIENCE:-0}"
       CONVERTSTR_URL: http://convertstr:8001/convertSTR
     ports: ["127.0.0.1:8002:8002"]

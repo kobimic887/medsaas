@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 
 
 def main() -> None:
@@ -22,7 +23,10 @@ def main() -> None:
 
     import uvicorn
 
-    # Access logs would carry a 100 KB protein per line; the service logs what matters itself.
+    # Uvicorn configures its own loggers, not the service's INFO records. Without
+    # this, a stalled request leaves no ingress, inference or completion evidence.
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    # Request metadata is logged by the service; never log protein/ligand bodies.
     uvicorn.run(
         "diffdock_service.api:create_app",
         factory=True,

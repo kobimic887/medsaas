@@ -30,7 +30,11 @@ read `docs/OPERATIONS.md` to locate them and confirm operational facts read-only
   `deploy/box/WORKSTATION-3060.md`; prepare both DiffDock and ESM2 embedding weights.
   Upstream YAML overrides CLI flags, so retain the adapter's effective request YAML.
   Docker builds have no GPU: inspect compiled architecture metadata at build time,
-  then prove a real CUDA operation and inference at runtime. ESM preparation
+  then prove a real CUDA operation and inference at runtime. Enable the
+  workstation's `DIFFDOCK_REQUIRE_CUDA=true` guard in the inference
+  process; it must refuse lost CUDA rather than fall back to CPU. Qualify the
+  single-slot busy response and request-process-group deadline cleanup too.
+  INFO request logs must be enabled without logging molecular bodies. ESM preparation
   verifies pinned artifact hashes before deserialization. An approved smaller
   workload requires matching app `DIFFDOCK_NUM_POSES`, never a silent service cap.
 - Bring up and validate one compute service at a time. Use real request/response contract evidence;

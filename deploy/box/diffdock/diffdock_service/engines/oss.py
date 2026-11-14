@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
 
@@ -26,6 +28,12 @@ logger = logging.getLogger(__name__)
 # downstream does arithmetic on it — the dashboard prints it — but it IS a visible difference
 # from the captured contract and it is recorded in the README rather than hidden here.
 _POSE_RE = re.compile(r"^rank(?P<rank>\d+)_confidence(?P<confidence>-?\d+(?:\.\d+)?)\.sdf$")
+
+
+def _log_tail(stream) -> str:
+    stream.seek(0, os.SEEK_END)
+    stream.seek(max(0, stream.tell() - 8000))
+    return stream.read().decode("utf-8", errors="replace")
 
 
 class OssDiffDockEngine:
@@ -87,32 +95,46 @@ class OssDiffDockEngine:
 
         argv = self.build_argv(request, protein_path, ligand_path, out_dir)
         logger.info("diffdock inference starting: poses=%d", request.num_poses)
-        try:
-            completed = subprocess.run(  # noqa: S603 - fixed argv, no shell
-                argv,
-                cwd=str(self._settings.repo_dir),
-                capture_output=True,
-                text=True,
-                timeout=self._settings.engine.inference_timeout_seconds,
-                check=False,
+        # File-backed output avoids both unbounded in-memory logs and communicate()
+        # waiting forever for inherited pipes held by preprocessing children after
+        # a timeout. Kill only this request's new process group on expiration.
+        with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
+            process = subprocess.Popen(  # noqa: S603 - fixed argv, no shell
+                argv, cwd=str(self._settings.repo_dir), stdout=stdout, stderr=stderr,
+                start_new_session=True,
             )
-        except subprocess.TimeoutExpired as exc:
-            raise DockFailure(
-                f"DiffDock exceeded {self._settings.engine.inference_timeout_seconds}s"
-            ) from exc
+            try:
+                returncode = process.wait(timeout=self._settings.engine.inference_timeout_seconds)
+            except subprocess.TimeoutExpired as exc:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait(timeout=5)
+                logger.error("DiffDock deadline exceeded: job=%s stdout: %s\nstderr: %s", work.name, _log_tail(stdout), _log_tail(stderr))
+                # Keep the seven-key legacy envelope, with a machine-readable
+                # reason in details that the app can distinguish from bad poses.
+                raise DockFailure(f"DIFFDOCK_TIMEOUT: DiffDock exceeded {self._settings.engine.inference_timeout_seconds}s") from exc
+            finally:
+                # Descendants must not outlive a failed or completed request.
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            stdout_tail, stderr_tail = _log_tail(stdout), _log_tail(stderr)
 
-        if completed.returncode != 0:
-            logger.error("DiffDock subprocess stdout: %s\nstderr: %s", completed.stdout[-8000:], completed.stderr[-8000:])
+        if returncode != 0:
+            logger.error("DiffDock subprocess stdout: %s\nstderr: %s", stdout_tail, stderr_tail)
             # DiffDock's own failure text is the most useful thing available; keep the last
             # line only, so an upstream stack trace does not become the user-facing message.
-            tail = (completed.stderr or completed.stdout or "").strip().splitlines()
-            detail = tail[-1] if tail else f"exit {completed.returncode}"
+            tail = (stderr_tail or stdout_tail).strip().splitlines()
+            detail = tail[-1] if tail else f"exit {returncode}"
             logger.error("diffdock inference failed: %s", detail)
             raise DockFailure(f"DiffDock inference failed: {detail}")
 
         poses = self.collect_poses(out_dir, save_trajectory=request.save_trajectory)
         if not poses:
-            logger.error("DiffDock exited without poses; stdout: %s\nstderr: %s", completed.stdout[-8000:], completed.stderr[-8000:])
+            logger.error("DiffDock exited without poses; stdout: %s\nstderr: %s", stdout_tail, stderr_tail)
             raise DockFailure("Fail to generate complex graph -no poses were written")
         return poses
 
@@ -146,7 +168,8 @@ class OssDiffDockEngine:
         })
         config_path = out_dir.parent / "effective-config.yaml"
         config_path.write_text(yaml.safe_dump(base_config))
-        return [settings.python_executable, "-m", "inference", "--config", str(config_path)]
+        module = "diffdock_service.cuda_inference" if settings.engine.require_cuda else "inference"
+        return [settings.python_executable, "-m", module, "--config", str(config_path), "--loglevel", "INFO"]
 
     @staticmethod
     def collect_poses(out_dir: Path, *, save_trajectory: bool) -> list[Pose]:

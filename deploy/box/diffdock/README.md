@@ -67,12 +67,24 @@ usable poses, confidence alignment, latency and the application viewer.
 | `DIFFDOCK_TIMEOUT_SECONDS` | `540` | Inference deadline |
 | `DIFFDOCK_MAX_POSES` | `100` | Requested-pose clamp |
 | `DIFFDOCK_BATCH_SIZE` | `10` | Inference batch size |
+| `DIFFDOCK_REQUIRE_CUDA` | `false` | Refuse CPU fallback; enabled by workstation Compose |
 | `CONVERTSTR_URL` | unset | Optional SMILES conversion endpoint |
 
 The separate application setting `DIFFDOCK_NUM_POSES` controls the actual request
 (1–100, default 100). Match it to the qualified workload; the application rejects
 incomplete or padded output and refunds failed inference. A service clamp is not
 a substitute for an explicitly approved smaller application request.
+
+Each service process admits one inference at a time. Overlapping generation
+requests receive `503 DIFFDOCK_BUSY` immediately, with `Retry-After: 10`; the
+application refunds these and displays a retry message. Run one service worker
+per GPU unless a different concurrency limit has been qualified. A deadline kills
+the request's subprocess group, including preprocessing children. INFO logs record
+request IDs, start/completion, elapsed time and pose counts without molecular bodies.
+
+With `DIFFDOCK_REQUIRE_CUDA=true`, the inference process proves a CUDA operation
+before loading models. A lost GPU context fails the request instead of using CPU.
+`/health` checks engine assets; a 200 still does not prove CUDA or real inference.
 
 The application normally converts SMILES before submitting SDF. If a caller sends SMILES
 directly, the optional converter must be configured. Keep service access restricted through
