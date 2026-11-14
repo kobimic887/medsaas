@@ -52,7 +52,12 @@ Never return same-origin **401** for authorization or upstream credential failur
    (upstream down, validation fail). Safe in `catch`; clears the flag.
 4. Persisted/cacheable docks (`/api/simulation`): follow existing
    `refundOnDisconnect: false` rules — do not invent a new refund policy.
-5. Do not add new tenant or billing products unless the user explicitly asks.
+5. Error-status refunds must run at `res.end()`, independently of `finish`:
+   Bun may emit neither response `finish` nor `close` after a client disconnect.
+   Request `close` also fires on completed bodies, so never use it to refund.
+   Keep the best-effort response `close` listener and the explicit-refund guard.
+   Regression: `bun server/test/credit-refund.test.mjs` (real HTTP disconnect).
+6. Do not add new tenant or billing products unless the user explicitly asks.
 
 ## Plan checkout
 

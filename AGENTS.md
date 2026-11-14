@@ -21,6 +21,10 @@ when a path or trap moves.
   features without a direct request.
 - **`401` is a dead session only.** The client logs out on any same-origin `401`.
   Authorization failures are `403`, validation `400`, upstream auth failures `502`.
+- Metered error responses refund at `res.end()` as well as `finish`: Bun may emit
+  neither response `finish` nor `close` after a disconnect. Request `close` is not
+  a disconnect signal. Preserve `/api/simulation`'s `refundOnDisconnect: false`
+  because its results are cached; explicit refunds clear the charge flag first.
 - Credits are granted server-side from the Stripe webhook, never from the client.
   Credit packs are one-time purchases. Both plan checkout routes must use
   `server/utils/planCheckout.js`; do not duplicate the catalog or restore recurring billing.

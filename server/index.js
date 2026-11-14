@@ -1751,13 +1751,18 @@ async function chargeSimulationToken(req, res, feature, { refundOnDisconnect = t
   // Backstop. Metered routes have many early returns between the charge and the
   // upstream call — a missing key, a bad SMILES, an unreachable PDB — and each one
   // used to keep the credit. Rather than rely on every branch remembering to
-  // refund, settle up when the response finishes: a request that ends in an error
+  // refund, settle up when the response ends: a request that ends in an error
   // status produced no simulation, so it owes nothing. Explicit refunds clear the
   // flag first, so this cannot double-refund.
   //
-  // 'close' as well as 'finish', but only where refundOnDisconnect allows it.
-  // 'finish' fires for a fully-flushed response; 'close' catches a client that
-  // gave up on a long request, which would otherwise strand the charge.
+  // Bun 1.3.12 can emit neither response 'finish' nor 'close' after a client
+  // disconnect, even when the handler later ends an error response. Check status
+  // at end() as well as finish; do not make error refunds depend on socket events.
+  // req 'close' is NOT a disconnect signal: it fires on completed request bodies,
+  // and Bun's req.socket.destroyed can remain false after the client leaves.
+  // No reliable disconnect signal was found in Bun's node:http adapter; retain
+  // response 'close' as a best-effort refund where supported. A disconnected
+  // request that later succeeds cannot be refunded reliably on Bun 1.3.12.
   //
   // The distinction matters and is not cosmetic. Nothing cancels the upstream call
   // when the client disconnects — AbortSignal.timeout aborts on time, not on the
@@ -1768,12 +1773,20 @@ async function chargeSimulationToken(req, res, feature, { refundOnDisconnect = t
   // is stored, and is then free forever after — so refunding on disconnect would
   // give the credit away for work that was delivered. A "persisted" flag cannot
   // fix that: 'close' fires long before insertOne runs.
+  const refundErrorStatus = () => {
+    if (res.statusCode >= 400 && req.simulationTokenCharged) {
+      refundSimulationToken(req, `HTTP ${res.statusCode}`).catch(() => {});
+    }
+  };
+  if (res && typeof res.end === 'function') {
+    const originalEnd = res.end;
+    res.end = function (...args) {
+      refundErrorStatus();
+      return originalEnd.apply(this, args);
+    };
+  }
   if (res && typeof res.on === 'function') {
-    res.on('finish', () => {
-      if (res.statusCode >= 400 && req.simulationTokenCharged) {
-        refundSimulationToken(req, `HTTP ${res.statusCode}`).catch(() => {});
-      }
-    });
+    res.on('finish', refundErrorStatus);
     if (refundOnDisconnect) {
       res.on('close', () => {
         if (!res.writableEnded && req.simulationTokenCharged) {
