@@ -39,7 +39,7 @@ import { precompressedAssets } from './utils/precompressedAssets.js';
 import { FoldMongoStore } from './utils/foldMongoStore.js';
 import { createFoldingHistoryRouter } from './routes/foldingHistory.js';
 import { completeNvidiaFoldResponse, hasFoldCoordinates } from './utils/nvidiaFoldResponse.js';
-import { configuredDiffDockPoseCount, completedDiffDockResult } from './utils/diffdockResult.js';
+import { configuredDiffDockPoseCount, completedDiffDockResult, resolveDiffDockUrl } from './utils/diffdockResult.js';
 import {
   buildStockSimilarityUrl,
   createStockDatasetResolver,
@@ -1522,6 +1522,7 @@ async function getRequestLigandServiceConfig(req) {
     return { ...DEFAULT_LIGAND_SERVICE_CONFIG };
   }
   const config = normalizeLigandServiceConfig(company.ligandServiceConfig || {});
+  config.diffdockApiUrl = resolveDiffDockUrl(config.diffdockApiUrl, process.env.DIFFDOCK_API_URL);
   await assertConfiguredUrlsArePublic(config);
   return config;
 }

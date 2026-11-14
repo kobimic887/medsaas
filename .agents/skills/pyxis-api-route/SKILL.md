@@ -77,6 +77,9 @@ that a route uses it.
   or incomplete pose envelopes, including HTTP 200/status=failed, return 502 and
   refund explicitly. Ship `server/utils/diffdockResult.js`; verify with
   `bun server/test/diffdock-route.test.mjs` (actual route + HTTP fixtures).
+  `resolveDiffDockUrl` lets an explicit platform endpoint replace only the exact
+  seeded Asinex default in old company records; independent endpoints and SSRF
+  refusals stay intact. Endpoint cutover must not require rewriting shared Atlas.
 
 - Remap upstream **401 → 502** (`relayUpstreamStatus` / scientific router).
 - Encode path params; do not concatenate untrusted path segments.

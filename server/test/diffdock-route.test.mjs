@@ -5,7 +5,13 @@ import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import { once } from 'node:events';
 import express from 'express';
-import { configuredDiffDockPoseCount, completedDiffDockResult } from '../utils/diffdockResult.js';
+import { configuredDiffDockPoseCount, completedDiffDockResult, resolveDiffDockUrl } from '../utils/diffdockResult.js';
+
+const legacy = 'https://services.asinex.com:58000/molecular-docking/diffdock/generate';
+assert.equal(resolveDiffDockUrl(legacy, 'http://127.0.0.1:18002/generate'), 'http://127.0.0.1:18002/generate');
+assert.equal(resolveDiffDockUrl(legacy, undefined), legacy);
+assert.equal(resolveDiffDockUrl('http://169.254.169.254/generate', 'http://127.0.0.1:18002/generate'), 'http://169.254.169.254/generate');
+assert.equal(resolveDiffDockUrl('https://independent.example/generate', 'http://127.0.0.1:18002/generate'), 'https://independent.example/generate');
 
 const source = readFileSync(new URL('../index.js', import.meta.url), 'utf8');
 const creditSource = source.slice(source.indexOf('async function chargeSimulationToken('), source.indexOf('\nfunction secretsEqual('));

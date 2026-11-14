@@ -64,6 +64,9 @@ when a path or trap moves.
   qualified smaller workload; absent configuration preserves 100. Invalid counts
   refuse before charging. HTTP 200 with failed, empty or incomplete poses is a
   failed inference and refunds; include `server/utils/diffdockResult.js` in releases.
+  When `DIFFDOCK_API_URL` explicitly changes the platform endpoint, company records
+  holding the exact seeded Asinex default inherit that endpoint without Atlas edits.
+  Independent company endpoints retain the request-time SSRF guard.
 
 ## Architecture
 

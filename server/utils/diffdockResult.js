@@ -1,3 +1,11 @@
+export function resolveDiffDockUrl(companyUrl, configuredUrl) {
+  // Signup persisted the old platform default into company records. Let an
+  // explicit operator cutover replace that exact default without editing Atlas.
+  // Independent company providers still pass through the existing SSRF guard.
+  const legacy = 'https://services.asinex.com:58000/molecular-docking/diffdock/generate';
+  return configuredUrl && companyUrl?.replace(/\/$/, '') === legacy ? configuredUrl : companyUrl;
+}
+
 // Keep the legacy workload unless an operator explicitly configures a qualified
 // smaller run. Never rely on a compute service silently capping 100 requested poses.
 export function configuredDiffDockPoseCount(raw) {
