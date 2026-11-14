@@ -37,7 +37,7 @@ const fixture = http.createServer(async (req, res) => {
   if (mode === 'failed' || (mode === 'retry' && submitted.length === 1)) {
     return res.end(JSON.stringify({ ...pose, status: 'failed', ligand_positions: [''], details: mode === 'retry' ? 'Fail to read ligand molecule description' : 'no poses' }));
   }
-  res.end(JSON.stringify({ ...pose, ligand_positions: Array(count).fill(pose.ligand_positions[0]), position_confidence: Array(count).fill(-0.5) }));
+  res.end(JSON.stringify({ ...pose, ligand_positions: Array(count).fill(mode === 'empty' ? '' : pose.ligand_positions[0]), position_confidence: Array(count).fill(mode === 'invalid-confidence' ? null : -0.5) }));
 });
 fixture.listen(0, '127.0.0.1');
 await once(fixture, 'listening');
@@ -83,6 +83,8 @@ try {
   for (const invalid of ['0', '101', '1.5', '10junk']) await run(invalid, 'success', 503, 0, 0);
   await run('10', 'failed', 502, 0);
   await run('10', 'partial', 502, 0);
+  await run('10', 'empty', 502, 0);
+  await run('10', 'invalid-confidence', 502, 0);
   await run('10', 'auth', 502, 0);
   await run('10', 'retry', 200, 1, 2);
 } finally {
