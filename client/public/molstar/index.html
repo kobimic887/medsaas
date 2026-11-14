@@ -301,7 +301,14 @@
         // the 3D canvas collapses to 0 px. Start a narrow fold embed with the
         // panels collapsed; the viewport's Toggle Controls / Expand buttons bring
         // them back. The full docking viewer (no embed param) is unchanged.
-        const EMBED_MODE = new URLSearchParams(window.location.search).get('embed');
+        // Client bundles built before ?embed=fold existed (live 2026-10-10) load this
+        // page without the param; recognise the folding iframe by its title so the
+        // fix also works when only this static file is updated.
+        const FOLD_FRAME_TITLE = 'Predicted structure in Molstar';
+        let parentFrameTitle = null;
+        try { parentFrameTitle = window.frameElement?.title || null; } catch { /* cross-origin */ }
+        const EMBED_MODE = new URLSearchParams(window.location.search).get('embed')
+            || (parentFrameTitle === FOLD_FRAME_TITLE ? 'fold' : null);
         const COMPACT_VIEWER_MAX_WIDTH = 1000;
         const startCollapsed = EMBED_MODE === 'fold' && window.innerWidth < COMPACT_VIEWER_MAX_WIDTH;
         if (EMBED_MODE === 'fold') document.body.classList.add('embed-fold');
