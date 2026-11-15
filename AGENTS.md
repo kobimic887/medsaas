@@ -154,6 +154,15 @@ when a path or trap moves.
   subscription mode is explicit opt-in, never an automatic fallback. Its guard rejects scientific numbers absent from the abstract and any
   links other than the paper and Learning Center pages; citations are generated,
   never written by the model. Keep `WP_STATUS=draft` unless the owner opts in.
+- Pyxis SAR Explorer is a separate desktop program (a GPL-licensed, modified DataWarrior
+  with Pyxis scaffold/R-group analysis), built and released from its own repository
+  `kobimic887/pyxis-sar-explorer`; it is not part of this repo and is not an 84 artifact.
+  The app only links to it: `/dashboard/sar-explorer` (`client/src/pages/dashboard/sar-explorer.jsx`,
+  links and installer names in `client/src/utils/sarExplorer.js`). Installer file names
+  must match that repository's `pyxis/stable-installer-names.sh`. Buttons open the
+  releases page until `SAR_EXPLORER_DIRECT_DOWNLOADS` is set, which is only correct once
+  a release exists (a direct link is a 404 before that). Keep the DataWarrior/GPL
+  attribution on the page and make no claim that it reproduces another SAR product.
 - Scientific API proxy reads must outlast the application inference budget:
   use `deploy/nginx/scientific-timeouts.conf` for the default ten-minute
   docking/folding calls. Workstation DiffDock uses compute1800s/app1860s/
@@ -252,6 +261,7 @@ bun run test:staging-build # staging client build scoping checks
 bun run test:compound-shop   # signed offers, payment retries, orders and cart lifecycle
 bun run test:link-fragments  # matching, explicit-H, jobs, refinement (RDKit host), API and UI lifecycle
 bun run test:catalog-pricing # supplier retirement, molecule refusal, credit plans + UI
+bun run test:sar-explorer   # SAR Explorer download page: links, platform guess, routing, attribution
 bun run test:macrocycle-index # macrocycle index contract: RDKit parity, format-1/2, count stream
 bun run test:count-morgan    # count-Morgan support parity vs RDKit + count Tanimoto/Dice math
 bun --cwd=server run test:folding-history # normal-app history, privacy and restart durability

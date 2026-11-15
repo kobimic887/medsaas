@@ -35,6 +35,7 @@ const Simulation = lazy(() => import("@/pages/dashboard/simulation"));
 const MoleculeViewer = lazy(() => import("@/pages/dashboard/moleculeviewer"));
 const Molstar3D = lazy(() => import("@/pages/dashboard/molstar3d"));
 const Literature = lazy(() => import("@/pages/dashboard/literature"));
+const SarExplorer = lazy(() => import("@/pages/dashboard/sar-explorer"));
 const GenerateMolecules = lazy(() => import("@/pages/dashboard/generate-molecules"));
 const ProteinFolding = lazy(() => import("@/pages/dashboard/protein-folding"));
 const GromacsMd = lazy(() => import("@/pages/dashboard/gromacs-md"));
@@ -202,6 +203,13 @@ export const routes = [
         name: "literature",
         path: "/literature",
         element: <Literature />,
+      },
+      {
+        // The desktop SAR program is downloaded, not run here; the page only links to it.
+        icon: <Square2StackIcon {...icon} />,
+        name: "SAR Explorer",
+        path: "/sar-explorer",
+        element: <SarExplorer />,
       },
       {
         icon: <CreditCardIcon {...icon} />,
