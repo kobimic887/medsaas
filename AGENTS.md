@@ -159,9 +159,9 @@ when a path or trap moves.
   `kobimic887/pyxis-sar-explorer`; it is not part of this repo and is not an 84 artifact.
   The app only links to it: `/dashboard/sar-explorer` (`client/src/pages/dashboard/sar-explorer.jsx`,
   links and installer names in `client/src/utils/sarExplorer.js`). Installer file names
-  must match that repository's `pyxis/stable-installer-names.sh`. Buttons open the
-  releases page until `SAR_EXPLORER_DIRECT_DOWNLOADS` is set, which is only correct once
-  a release exists (a direct link is a 404 before that). Keep the DataWarrior/GPL
+  must match that repository's `pyxis/stable-installer-names.sh`. Buttons download
+  the newest release directly (`SAR_EXPLORER_DIRECT_DOWNLOADS`; first release `pyxis-v1.0.0`).
+  Switch it off only if the releases are withdrawn, since a direct link is then a 404. Keep the DataWarrior/GPL
   attribution on the page and make no claim that it reproduces another SAR product.
 - Scientific API proxy reads must outlast the application inference budget:
   use `deploy/nginx/scientific-timeouts.conf` for the default ten-minute

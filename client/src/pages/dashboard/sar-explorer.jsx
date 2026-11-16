@@ -19,6 +19,8 @@ const FEATURES = [
   ["Substituent pairs and swaps", "Molecules that differ at one position, and which exchange goes with which change of a value."],
   ["Your own core", "Analyse collections without a common ring system, such as amino acids, around a core you draw."],
   ["Reports", "Tables and the scaffold tree exported to Word with structure pictures."],
+  ["Linked views and locked columns", "Keep key columns in view while scrolling, and let a selection in one plot decide what another shows."],
+  ["Built-in example and quick start", "A public COX-2 inhibitor set from ChEMBL and a short guide inside the program, so you can try everything before loading your own data."],
 ];
 
 const cardClass = "border border-blue-gray-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100";

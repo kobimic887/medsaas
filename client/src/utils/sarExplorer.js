@@ -7,10 +7,14 @@ export const SAR_EXPLORER_RELEASES_URL = `${SAR_EXPLORER_REPOSITORY_URL}/release
 
 // Release files keep the same names from version to version, so that
 // `${SAR_EXPLORER_RELEASES_URL}/latest/download/<file>` always resolves to the newest
-// installer. That URL is a 404 until the first release exists. Flip this to true in the
-// same change that confirms a release is published; until then every button opens the
-// releases page, which is valid with or without a release.
-export const SAR_EXPLORER_DIRECT_DOWNLOADS = false;
+// installer. A release is published (first: pyxis-v1.0.0), so buttons download directly.
+// Set this to false only if the releases are withdrawn: a direct link is a 404 without
+// one, while the releases page is valid either way.
+export const SAR_EXPLORER_DIRECT_DOWNLOADS = true;
+
+// Current macOS no longer offers "Open" from the right-click menu for unsigned apps;
+// the confirmation moved to System Settings. Older versions still use the right-click.
+const MAC_FIRST_START = "macOS refuses the first start because the app is not code-signed: open System Settings, Privacy & Security, and choose Open Anyway. On macOS 14 and earlier, right-click the app and choose Open.";
 
 export const SAR_EXPLORER_INSTALLERS = [
   {
@@ -25,14 +29,14 @@ export const SAR_EXPLORER_INSTALLERS = [
     label: "macOS (Apple silicon)",
     detail: "M-series Macs (.dmg)",
     file: "Pyxis-SAR-Explorer-macos-arm64.dmg",
-    firstStart: "macOS warns on first start because the app is not code-signed: right-click the app and choose Open.",
+    firstStart: MAC_FIRST_START,
   },
   {
     id: "macos-x64",
     label: "macOS (Intel)",
     detail: "Intel Macs (.dmg)",
     file: "Pyxis-SAR-Explorer-macos-x64.dmg",
-    firstStart: "macOS warns on first start because the app is not code-signed: right-click the app and choose Open.",
+    firstStart: MAC_FIRST_START,
   },
   {
     id: "linux",

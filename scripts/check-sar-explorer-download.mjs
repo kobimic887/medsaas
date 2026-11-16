@@ -35,8 +35,12 @@ const checks = [
     && byId['macos-x64']?.file === 'Pyxis-SAR-Explorer-macos-x64.dmg'
     && byId.linux?.file === 'Pyxis-SAR-Explorer-linux-x64.deb'],
   ['every installer explains the first start', installers.every(({ firstStart }) => firstStart.length > 20)],
-  ['without a published release every button opens the releases page',
+  ['Mac installers name the current confirmation step and the older one',
+    ['macos-arm64', 'macos-x64'].every((id) => byId[id]?.firstStart.includes('Open Anyway') && byId[id]?.firstStart.includes('right-click'))],
+  ['with direct downloads switched off every button opens the releases page',
     installers.every((installer) => url(installer, false) === releases)],
+  ['buttons download directly now that a release is published',
+    installers.every((installer) => url(installer) === `${releases}/latest/download/${installer.file}`)],
   ['with a release each button is a permanent latest-download link',
     installers.every((installer) => url(installer, true) === `${releases}/latest/download/${installer.file}`)],
   ['links stay on the project repository over https',
