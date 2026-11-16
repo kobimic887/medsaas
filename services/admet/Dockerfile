@@ -13,7 +13,7 @@
 ARG CUDA_VERSION=12.8.1
 
 # ── test: the worker logic, no model ─────────────────────────────────────────
-FROM python:3.10-slim-bookworm AS test
+FROM python:3.14-slim-bookworm AS test
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
