@@ -14,7 +14,7 @@ ARG CUDA_VERSION=12.8.1
 ARG DIFFDOCK_REF=9a22cbcbc7612c7565c80e8399d9be298971f156
 
 # ── wrapper: the HTTP service, no model ──────────────────────────────────────
-FROM python:3.10-slim-bookworm AS wrapper
+FROM python:3.14-slim-bookworm AS wrapper
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
