@@ -30,6 +30,11 @@ the other 550,438 (BAS 191,444, ASN 128,223, BDE 54,173, …, PYX 2,013, MAC 242
 take the Other codes column. Any family-based formula (BAS/LAS/…) beyond this
 two-way split is not implemented.
 
+A retired legacy path, `server/utils/asinexCompound.js`, still holds an older USD
+table keyed by a supplier `price_category` (1–3; e.g. category 1 = $100/1 mg,
+$160/10 mg) plus a $50 shipping surcharge. It belongs to the retired supplier
+shop and prices nothing today; tests keep it only as history.
+
 Changing a price requires a new `PRICE_BOOK_VERSION`: offers signed under the old
 version stop verifying, so customers re-search and see the new price before paying.
 

@@ -171,7 +171,8 @@ export async function buildSnapshot(lines, { maxRejectRate = 0.001, allowNewTags
   const families = {};
   for (const row of rows) {
     const prefix = row.code.slice(0, 3);
-    const family = families[prefix] ||= { compounds: 0, offerable: 0, priceCategory: stockPriceCategory(row.code) };
+    if (!families[prefix]) families[prefix] = { compounds: 0, offerable: 0, priceCategory: stockPriceCategory(row.code) };
+    const family = families[prefix];
     family.compounds += 1;
     if (row.mg >= MIN_OFFER_MG && family.priceCategory) family.offerable += 1;
   }
