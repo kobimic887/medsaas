@@ -105,9 +105,10 @@ must not block compute. Demo fixtures retain their explicit provider restriction
 
 Stock, small-molecule virtual, RPX and VPX search responses mint signed 24-hour offers from trusted engine
 rows. The browser cannot mint offers or supply authoritative prices. ChEMBL stays
-discovery-only. `shared/compoundPriceBook.js` owns the workbook's 1–3 tier and fixed
-EUR→USD conversion. EU browser time zones (`client/src/utils/compoundShop.js`) check
-out in EUR at the workbook value; all others in USD. At most three distinct source/row identities per order. Known
+discovery-only. `shared/compoundPriceBook.js` prices stock from Dmitry’s December 2025
+USD 1–10 block (other / LAS / PRO), RPX and VPX from the Pyxis EUR 1–3 block,
+and smallvirtual at VPX prices. EU browser time zones pay EUR, all others USD;
+convert at 1 EUR = 1.1367 USD and round per pack. At most three distinct source/row identities per order. Known
 stock/real snapshot mg bounds pack sizes and aggregate basket quantity. Virtual
 compounds (VPX and small-molecule virtual) are made to order. Missing pack prices or quantities never invent stock.
 

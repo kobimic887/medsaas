@@ -69,7 +69,7 @@ export function stockResultFromItem(item) {
     // Dated snapshot quantities from the import (umol / mg). Shown as
     // "snapshot", never as availability, never priced.
     STOCK_UM: amountFrom(meta, 'CURRENT_TOT_AMOUNT_UM'),
-    STOCK_MG: amountFrom(meta, 'CURRENT_TOT_NETTO_MG'),
+    STOCK_MG: Object.hasOwn(item, 'snapshotAvailableMg') ? item.snapshotAvailableMg : amountFrom(meta, 'CURRENT_TOT_NETTO_MG'),
     snapshotLeadTime: String(meta.Lead_TIME ?? meta.LEAD_TIME ?? meta.lead_time ?? '').trim(),
   };
 }

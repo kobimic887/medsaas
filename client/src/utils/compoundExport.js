@@ -11,8 +11,8 @@ export function compoundCsvCell(value) {
 
 export function compoundOrderCsv(order) {
   const code = order.currency === 'eur' ? 'EUR' : 'USD';
-  const headers = ['ID', 'SMILES', 'Source', 'Pack size (mg)', 'Quantity', 'List price (EUR)', `Unit price (${code})`, `Line total (${code})`];
-  const rows = (order.items || []).map((item) => [item.code, item.smiles, item.source || item.catalogSource, item.amountMg, item.quantity, item.eur, (item.unitAmountCents / 100).toFixed(2), ((item.lineTotalCents ?? item.totalCents ?? item.unitAmountCents * item.quantity) / 100).toFixed(2)]);
+  const headers = ['ID', 'SMILES', 'Source', 'Pack size (mg)', 'Quantity', 'Price (EUR)', `Unit price (${code})`, `Line total (${code})`];
+  const rows = (order.items || []).map((item) => [item.code, item.smiles, item.source || item.catalogSource, item.amountMg, item.quantity, Number.isFinite(item.eur) ? item.eur.toFixed(2) : item.eur, (item.unitAmountCents / 100).toFixed(2), ((item.lineTotalCents ?? item.totalCents ?? item.unitAmountCents * item.quantity) / 100).toFixed(2)]);
   return [headers, ...rows].map((row) => row.map(compoundCsvCell).join(',')).join('\r\n') + '\r\n';
 }
 

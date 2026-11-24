@@ -63,10 +63,12 @@ try {
   const searched = await request('/api/stock-search/similarity?smiles=CCO&threshold=1&limit=1');
   const offer = searched.body.results?.[0]?.shopOffer;
   check(searched.status === 200 && offer?.token && offer.code === 'LAS123', 'real search mints an offer from the owned row');
-  check(offer.packs.length === 3 && offer.packs[0].unitAmountCents === 25689, 'search offers approved LAS prices bounded by snapshot mg');
+  check(offer.packs.length === 3 && offer.packs[0].unitAmountCents === 19400, 'search offers approved LAS prices bounded by snapshot mg');
   const items = [{ offerToken: offer.token, amountMg: 1, quantity: 2, price: 0.01 }];
   const quoted = await request('/api/compound-shop/quote', { items });
-  check(quoted.status === 200 && quoted.body.totalCents === 51378, 'server quotes exact workbook cents, ignoring forged client prices');
+  check(quoted.status === 200 && quoted.body.totalCents === 38800, 'server quotes exact workbook cents, ignoring forged client prices');
+  const euroQuote = await request('/api/compound-shop/quote', { items, currency: 'eur' });
+  check(euroQuote.status === 200 && euroQuote.body.totalCents === 34134, 'EUR stock quote rounds each converted pack before multiplying');
   check((await request('/api/compound-shop/quote', { items: [{ ...items[0], offerToken: offer.token + 'x' }] })).status === 400, 'tampered offer rejected before checkout');
   check((await request('/api/compound-shop/quote', { items: [{ source: 'open', code: 'CHEMBL25', amountMg: 1, quantity: 1 }] })).status === 400, 'ChEMBL and unsigned invented rows cannot be bought');
   const mismatch = await request('/api/compound-shop/checkout', { items, expectedTotalCents: 1, priceBookVersion: quoted.body.priceBookVersion, idempotencyKey: '12345678-1234-4123-8123-123456789012' });

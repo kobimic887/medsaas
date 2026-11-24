@@ -7,7 +7,7 @@ export const shopMoney = (cents, currency = 'usd') => new Intl.NumberFormat(curr
 }).format(cents / 100);
 
 // IANA time zones of the 27 EU member states, including their outermost regions.
-// Visitors there are charged the workbook EUR price; everyone else pays USD.
+// Visitors in these zones pay EUR; everyone else pays USD.
 // The zone is only a currency preference: both are approved list prices and the
 // server prices whichever currency is requested.
 export const EU_TIME_ZONES = new Set([
@@ -33,7 +33,7 @@ export const shopUnitCents = (packOrItem, currency = shopCurrency()) => packUnit
 export const compoundKey = (item) => `${item.catalogSource}:${item.rowId}`;
 export const cartLineKey = (item) => `${compoundKey(item)}:${item.amountMg}`;
 export const isOwnedCartItem = (item) => item?.source === 'pyxis' && typeof item.offerToken === 'string' && item.offerToken.length > 0;
-// Cart lines keep the offer's USD cents and whole-euro list value; totals use the shop currency.
+// Old saved lines have a whole-euro value; new lines carry cents in both currencies.
 export const shopCartTotal = (items, currency = shopCurrency()) => items.reduce((sum, item) => sum + (isOwnedCartItem(item) ? shopUnitCents(item, currency) * item.quantity : 0), 0);
 export function readShopCart(storage) {
   try {
@@ -46,8 +46,9 @@ export function writeShopCart(storage, items) {
 }
 export function addShopPack(items, offer, amountMg) {
   const pack = offer?.packs?.find((entry) => entry.mg === amountMg);
-  if (!offer?.token || !pack || !Number.isInteger(pack.unitAmountCents) || pack.unitAmountCents <= 0 || !Number.isInteger(pack.eur) || pack.eur <= 0) throw new Error('This pack is unavailable. Search again for current offers.');
-  const item = { entryId: crypto.randomUUID(), source: 'pyxis', catalogSource: offer.source, rowId: offer.rowId, code: offer.code, name: offer.code, smiles: offer.smiles, offerToken: offer.token, amountMg: pack.mg, amount: pack.mg, quantity: 1, unitAmountCents: pack.unitAmountCents, eur: pack.eur, currency: 'usd', expiresAt: offer.expiresAt };
+  const eurCents = pack && shopUnitCents(pack, 'eur');
+  if (!offer?.token || !pack || !Number.isSafeInteger(pack.unitAmountCents) || pack.unitAmountCents <= 0 || !Number.isSafeInteger(eurCents) || eurCents <= 0) throw new Error('This pack is unavailable. Search again for current offers.');
+  const item = { entryId: crypto.randomUUID(), source: 'pyxis', catalogSource: offer.source, rowId: offer.rowId, code: offer.code, name: offer.code, smiles: offer.smiles, offerToken: offer.token, amountMg: pack.mg, amount: pack.mg, quantity: 1, unitAmountCents: pack.unitAmountCents, eurCents, eur: eurCents / 100, currency: 'usd', expiresAt: offer.expiresAt };
   const distinct = new Set(items.filter(isOwnedCartItem).map(compoundKey));
   distinct.add(compoundKey(item));
   if (distinct.size > 3) throw new Error('This price tier supports up to 3 distinct compounds per order.');

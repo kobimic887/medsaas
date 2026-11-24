@@ -106,10 +106,11 @@ when a path or trap moves.
   Result selection never overwrites query text; docking uses selected rows, with
   query fallback only when none are selected and explicit DiffDock ligand precedence.
   Structure previews depict exact SMILES with browser RDKit. Checkout currency is
-  automatic from the browser time zone: EU visitors pay the workbook EUR value,
-  everyone else the fixed-rate USD price (USD displays keep the EUR list value);
-  the server prices only `eur`/`usd` and a checkout key never switches currency
-  (1–3 tier only, at most three distinct compounds per order). Shipping is
+  automatic from the browser time zone (EU pays EUR, others USD). Stock uses
+  Dmitry’s December 2025 USD list (1–10 tier, not LAS / LAS / PRO). Macrocycles
+  use the Pyxis EUR workbook’s 1–3 tier; smallvirtual uses VPX. Convert only
+  the other currency at the fixed rate per pack. A checkout key never switches
+  currency and each order allows at most three distinct compounds. Shipping is
   included; Stripe charges immediately.
   Owned results omit Formula/MW/SMILES columns but retain exact identifier previews.
   Selected pack additions are atomic and open `/dashboard/review-order`, with
@@ -120,7 +121,7 @@ when a path or trap moves.
   Verified compound payments save `compound_orders`, never grant credits. Include
   `shared/compoundPriceBook.js` in server releases. See `docs/COMPOUND-SHOP.md`.
   Price/availability source mapping and the offline weekly stock snapshot tool:
-  `docs/STOCK-AVAILABILITY.md`; snapshots are not wired into offers yet.
+  `docs/STOCK-AVAILABILITY.md`; activating a validated snapshot on the scientific host and configuring the app lookup enables stock checks on search, new quotes and checkout. See `services/owned-search/README.md` for activation and rollback.
 - Scientific SQL inspection: `services/catalog-sql/README.md`. The additive
   `pyxis_catalog` schema combines stock views with all RPX/VPX source rows and
   copied vectors. Never ingest these into the legacy public search tables;

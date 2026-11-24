@@ -10,7 +10,7 @@ import {
 import {
   chemblMoleculeToCandidate, loadRDKit, runOpenCompoundsSearch,
 } from './openCompounds.js';
-import { withCompoundShopOffers } from './compoundShopSearch.js';
+import { withCompoundShopOffersChecked } from './compoundShopSearch.js';
 
 // Physical owned collections, in display order. "both" is RPX + VPX; "multi"
 // is any selection of collections searched together as one ranked list.
@@ -106,7 +106,7 @@ export function mergeOwnedSearch(params, responses) {
       : { graphMatch: params.mode, useChirality: true, exactIncludesStereochemistry: true },
   };
 }
-export function createOwnedSearch({ graphBase, fetchImpl, stockConfig, stockResolver, macroConfig, macroResolver, openConfig, secret, now = Date.now }) {
+export function createOwnedSearch({ graphBase, fetchImpl, stockConfig, stockResolver, macroConfig, macroResolver, openConfig, secret, stockAvailability = null, now = Date.now }) {
   async function boundedFetch(url, options = {}, deadline) {
     const remaining = deadline === undefined ? 40000 : deadline - now();
     if (remaining <= 0) throw new OwnedSearchError('Batch exceeded 90 seconds; reduce the number of queries', 503);
@@ -196,7 +196,7 @@ export function createOwnedSearch({ graphBase, fetchImpl, stockConfig, stockReso
         : tagMacrocycleResults(payload, group.source, group.datasets[0], params);
       payload.results = tagged.results.map((row) => ({ ...row, source: row.source || group.source }));
     }
-    return withCompoundShopOffers(payload, group.source, { secret });
+    return withCompoundShopOffersChecked(payload, group.source, { secret, stockAvailability, timeoutMs: deadline - now() });
   }
   async function run(body) {
     const params = parseOwnedSearch(body); const cap = Math.min(params.offset + params.limit + 1, 1000); const deadline = now() + 90000;

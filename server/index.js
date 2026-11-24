@@ -105,7 +105,8 @@ import { createStagingDemoRouter } from './routes/stagingDemo.js';
 import { createLinkFragmentsRouter } from './routes/linkFragments.js';
 import { createCompoundShopRouter } from './routes/compoundShop.js';
 import { handleCompoundShopSession } from './utils/compoundShopOrders.js';
-import { withCompoundShopOffers } from './utils/compoundShopSearch.js';
+import { withCompoundShopOffersChecked } from './utils/compoundShopSearch.js';
+import { createStockAvailability } from './utils/stockAvailability.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -201,6 +202,12 @@ const macrocycleSearchResolver = createMacrocycleDatasetResolver({
   fetchImpl: (url) => fetchWithTimeout(url, { timeoutMs: 10000 }),
 });
 const OPEN_COMPOUNDS_CONFIG = openCompoundsConfig(process.env);
+// Opt-in weekly stock availability snapshot (services/owned-search/README.md,
+// "Weekly stock availability snapshot"). Unset keeps the imported amounts.
+const stockAvailability = createStockAvailability({
+  baseUrl: process.env.STOCK_AVAILABILITY_BASE,
+  fetchImpl: fetchWithTimeout,
+});
 // The fallback below targets a retired host. Set SDF_CONVERTER_URL explicitly
 // for a working converter; measure the deployed environment before changing it.
 // See docs/OPERATIONS.md. This module-scope setting requires a restart to change.
@@ -2064,6 +2071,7 @@ app.use('/api/compound-shop', ensureMongoConnected, authenticateToken, requireAc
     getOrders: () => client.db().collection('compound_orders'),
     secret: JWT_SECRET,
     getAppUrl: getPublicAppUrl,
+    stockAvailability,
   }));
 
 // Credit-plan checkout is restricted to company admins. Credits are granted only
@@ -4556,7 +4564,7 @@ app.get('/api/stock-search/similarity', ensureMongoConnected, authenticateToken,
         });
       }
       return res.json({
-        ...withCompoundShopOffers(data, 'stock', { secret: JWT_SECRET }),
+        ...await withCompoundShopOffersChecked(data, 'stock', { secret: JWT_SECRET, stockAvailability }),
         method: {
           fingerprint_type: params.fingerprintType,
           similarity_metric: params.similarityMetric,
@@ -4579,7 +4587,7 @@ const ownedSearch = createOwnedSearch({
   graphBase: process.env.OWNED_SEARCH_BASE || '', fetchImpl: fetchWithTimeout,
   stockConfig: STOCK_SEARCH_CONFIG, stockResolver: stockSearchResolver,
   macroConfig: MACROCYCLE_SEARCH_CONFIG, macroResolver: macrocycleSearchResolver,
-  openConfig: OPEN_COMPOUNDS_CONFIG, secret: JWT_SECRET,
+  openConfig: OPEN_COMPOUNDS_CONFIG, secret: JWT_SECRET, stockAvailability,
 });
 app.get('/api/owned-search/status', ensureMongoConnected, authenticateToken, requireActiveUser, async (req, res) => {
   try { return res.json(await ownedSearch.status(req.query.source, req.query.sources)); }
@@ -4658,7 +4666,7 @@ app.get('/api/macrocycles/similarity', ensureMongoConnected, authenticateToken, 
     const payload = params.source === 'both'
       ? tagCombinedMacrocycleResults(data, datasets, params)
       : tagMacrocycleResults(data, params.source, datasets[0], params);
-    return res.json(withCompoundShopOffers(payload, params.source, { secret: JWT_SECRET }));
+    return res.json(await withCompoundShopOffersChecked(payload, params.source, { secret: JWT_SECRET, stockAvailability }));
   } catch (error) {
     console.error(`Macrocycle search proxy error url=${safeUpstreamUrl(upstreamUrl)}:`, error.message || error);
     return res.status(502).json({ error: 'Macrocycle search is temporarily unavailable' });

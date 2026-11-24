@@ -151,7 +151,7 @@ Result selection must preserve query text. Verify single/all selection and desel
 selected-row docking payloads, explicit DiffDock ligand precedence and submitted
 ligand handoff; a new search must remain enabled with several selected results.
 
-Owned stock/RPX/VPX checkout uses signed offers, the shared workbook price book and
+Owned stock/RPX/VPX checkout uses signed offers, the shared USD-stock/EUR-macrocycle price book and
 `/api/compound-shop`. Use `test:compound-shop` for pricing, idempotency, verified
 payment/order ownership and cart persistence. Legacy catalog checkout remains
 `503 CATALOG_RETIRED`; never restore supplier repricing. Credit-plan checkout and

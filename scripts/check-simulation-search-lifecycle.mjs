@@ -76,7 +76,7 @@ const { workbookPacksForRow } = await import(
 }
 
 checks.push(
-  ['workbook row mapping uses LAS and stock-other separately', workbookPacksForRow('stock', 'LAS 001')?.packs[0]?.eur === 226 && workbookPacksForRow('stock', 'ASN 001')?.packs[0]?.eur === 170],
+  ['stock row mapping uses LAS, PRO and not-LAS separately', workbookPacksForRow('stock', 'LAS 001')?.packs[0]?.unitAmountCents === 19400 && workbookPacksForRow('stock', 'PRO 001')?.packs[0]?.unitAmountCents === 25100 && workbookPacksForRow('stock', 'ASN 001')?.packs[0]?.unitAmountCents === 13200],
   ['RPX and VPX rows use their own tiers and only three pack sizes', workbookPacksForRow('real', 'RPX 001')?.packs.length === 3 && workbookPacksForRow('real', 'RPX 001')?.packs[0]?.eur === 317 && workbookPacksForRow('virtual', 'VPX 001')?.packs[0]?.eur === 400],
   ['unexpected source prefixes cannot acquire a workbook price', workbookPacksForRow('stock', 'VPX 001') === null && workbookPacksForRow('real', 'LAS 001') === null],
 );
@@ -298,7 +298,7 @@ checks.push(
   ['macrocycle result banner reports the method that produced the rows', simulation.includes('macrocycleResultMethodLabel') && simulation.includes('macrocycleMetricLabel')],
   ['macrocycle count copy never claims MOE equivalence', simulation.includes('a Pyxis method, not MOE ctanimoto')],
   ['macrocycle rows retain source identity and docking handoff alongside owned offers', simulation.includes('Select rows for docking handoff.') && simulation.includes('CompoundShopPacks offer={mol.shopOffer}') && simulation.includes('Real RPX') && simulation.includes('Virtual VPX')],
-  ['owned rows show server offers and the approved workbook tier', simulation.includes('CompoundShopPacks offer={mol.shopOffer}') && simulation.includes('Workbook 1–3 tier') && simulation.includes('review shipping and terms before checkout')],
+  ['owned rows show server offers and the approved workbook tier', simulation.includes('CompoundShopPacks offer={mol.shopOffer}') && simulation.includes('up to 3 distinct compounds') && simulation.includes('review shipping and terms before checkout')],
   ['header blurb follows the selected collection', simulation.includes('sourceBlurb(searchSource)') && simulation.includes('const sourceBlurb = (source) => SOURCE_BLURBS[source]') && simulation.includes('Search small-molecule screening stock by structure.')],
   ['stock pack add confirms locally and counts repeats', simulation.includes("{justAdded ? '✓ Added to cart' : 'Add to cart'}") && simulation.includes('Added another ${selected.mg} mg pack of ${offer.code}')],
   ['query and results are adjacent columns with a wider query panel', simulation.includes('lg:grid-cols-[minmax(25rem,29rem)_minmax(0,1fr)]') && simulation.includes('aria-labelledby="results-heading"')],

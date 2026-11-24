@@ -4,7 +4,9 @@ import express from 'express';
 import { createCompoundShopRouter } from '../routes/compoundShop.js';
 import { handleCompoundShopSession } from '../utils/compoundShopOrders.js';
 import { PRICE_BOOK_VERSION } from '../../shared/compoundPriceBook.js';
+import { mintCompoundOffer } from '../utils/compoundShopOffers.js';
 
+const PRICED_SECRET = 'priced-fixture-secret-0123456789';
 const records = new Map();
 function matches(row, filter) {
   return Object.entries(filter).every(([key, value]) => {
@@ -78,6 +80,8 @@ app.use((req, _res, next) => {
   next();
 });
 app.use('/api/compound-shop', createCompoundShopRouter({ stripe, getOrders: () => orders, getAppUrl: () => 'https://app.example/staging', secret: 'test', quoteCart }));
+// Same Stripe fixture and order store, but the real server-side quote and price book.
+app.use('/api/compound-shop-priced', createCompoundShopRouter({ stripe, getOrders: () => orders, getAppUrl: () => 'https://app.example/staging', secret: PRICED_SECRET }));
 const server = app.listen(0, '127.0.0.1');
 await new Promise((resolve) => server.once('listening', resolve));
 const base = `http://127.0.0.1:${server.address().port}/api/compound-shop`;
@@ -204,6 +208,29 @@ try {
   await assert.rejects(handleCompoundShopSession({ ...eurSession, currency: 'usd' }, { orders }), /does not match/);
   await handleCompoundShopSession(eurSession, { orders, eventType: 'checkout.session.completed' });
   ok(records.get(eurOrder._id).status === 'paid', 'verified EUR payment marks the EUR order paid');
+  // Real price book through the Stripe fixture: stock is a USD list (LAS 1 mg = $194), macrocycles an EUR list (RPX 1 mg = €317).
+  const priced = (path, body) => fetch(`${base.replace('/compound-shop', '/compound-shop-priced')}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then(async (r) => ({ status: r.status, body: await r.json() }));
+  const mint = (source, rowId, code, availableMg) => mintCompoundOffer({ source, rowId, code, smiles: 'CCO', availableMg, leadTime: '14 days' }, { secret: PRICED_SECRET }).token;
+  const stockItems = [{ offerToken: mint('stock', 41, 'LAS123', 20.5), amountMg: 1, quantity: 2 }];
+  const macroItems = [{ offerToken: mint('real', 3, 'RPX123', 10), amountMg: 1, quantity: 1 }];
+  const pricedCases = [
+    ['stock', 'usd', stockItems, 19400, 38800], ['stock', 'eur', stockItems, 17067, 34134],
+    ['real', 'usd', macroItems, 36033, 36033], ['real', 'eur', macroItems, 31700, 31700],
+  ];
+  for (const [label, currency, items, unit, total] of pricedCases) {
+    const quote = await priced('/quote', { items, currency });
+    ok(quote.status === 200 && quote.body.currency === currency && quote.body.totalCents === total, `${label} ${currency} quote is ${total} minor units`);
+    const checkout = await priced('/checkout', { items, currency, expectedTotalCents: total, priceBookVersion: PRICE_BOOK_VERSION, idempotencyKey: randomUUID() });
+    ok(checkout.status === 200, `${label} ${currency} checkout is created`);
+    const order = records.get(checkout.body.orderId);
+    const params = creations.get(order._id).params;
+    ok(params.line_items.length === 1 && params.line_items[0].price_data.currency === currency && params.line_items[0].price_data.unit_amount === unit && params.line_items[0].quantity === items[0].quantity, `Stripe is asked for ${unit} ${currency} per ${label} pack`);
+    ok(order.currency === currency && order.totalCents === total && order.items[0].unitAmountCents === unit && Number.isSafeInteger(order.items[0].eurCents) && order.items[0].offerToken === undefined, `${label} ${currency} order keeps charged cents and the EUR value without the signed offer`);
+    const done = sessions.get(checkout.body.sessionId); done.status = 'complete'; done.payment_status = 'paid';
+    await assert.rejects(handleCompoundShopSession({ ...done, currency: currency === 'eur' ? 'usd' : 'eur' }, { orders }), /does not match/);
+    await handleCompoundShopSession(done, { orders, eventType: 'checkout.session.completed' });
+    ok(records.get(order._id).status === 'paid', `${label} ${currency} payment settles only in the charged currency`);
+  }
   const malformedId = await request('/orders/not-an-order');
   ok(malformedId.status === 400, 'malformed order IDs cannot reach database lookup');
   console.log(`compound shop orders: ${assertions} checks passed`);

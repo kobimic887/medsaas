@@ -7,29 +7,55 @@ offline tool for a recurring stock availability feed. Checkout rules are in
 
 ## Current pricing behavior
 
-One versioned price book, `shared/compoundPriceBook.js`, prices every offer.
-It holds the **1–3 compounds tier** of the owner-supplied `Pyxis-e-shop_PRICE_LIST.xlsx`
-(Sheet1 C:F rows 5–12, workbook SHA-256 recorded in the file), in **EUR**, converted
-to USD at the fixed 24 Sep 2026 rate 1.1367 and rounded to whole cents. EU visitors
-(by browser time zone) are charged the EUR value, everyone else the USD amount;
-shipping is included. There is no per-compound
-price, no quantity discount above 3 compounds and no supplier repricing.
+The signed-in shop uses two source workbooks in `shared/compoundPriceBook.js`.
+The order limit is three distinct compounds. Pack count and compound count are separate.
 
-| Collection (`source`) | Code rule | Price column | Packs (mg) | Availability |
-|---|---|---|---|---|
-| Stock (`stock`) | prefix `LAS` | LAS (D) | 1, 2, 5, 10, 20, 30, 50, 100 | Snapshot mg, packs ≤ snapshot |
-| Stock (`stock`) | any other 3-letter prefix (BAS, ASN, BDE, SYN, PYX, MAC, …) | Other codes (C) | same | Snapshot mg, packs ≤ snapshot |
-| Stock (`stock`) | `RPX`/`VPX` prefix | none: no offer | — | — |
-| Real macrocycles (`real`) | `RPX` | RPX (E) | 1, 2, 5 | `web_mg` snapshot |
-| Virtual macrocycles (`virtual`) | `VPX` | VPX (F) | 1, 2, 5 | Made to order |
-| Small-molecule virtual (`smallvirtual`) | dash-separated digits | VPX (F), by owner decision | 1, 2, 5 | Made to order |
-| Open compounds (ChEMBL) | — | discovery only, never priced | — | — |
+| Collection | Source of pack prices | Packs (mg) | Availability |
+|---|---|---|---|
+| Stock | Dmitry’s December 2025 USD workbook, “ASINEX Price List USD”, C6:E13, 1–10 compounds tier | 1, 2, 5, 10, 20, 30, 50, 100 | Imported stock mg |
+| RPX real macrocycles | Pyxis-e-shop_PRICE_LIST.xlsx, Sheet1 E10:E12, EUR 1–3 tier | 1, 2, 5 | Imported RPX mg |
+| VPX virtual macrocycles | Same Pyxis workbook, F10:F12 | 1, 2, 5 | Made to order |
+| Virtual small molecules | VPX column by owner decision | 1, 2, 5 | Made to order |
+| Open compounds (ChEMBL) | Discovery only | — | — |
 
-The only stock family distinction is LAS versus everything else. The
-2026-09-01 stock file has 51 prefixes; LAS covers 80,214 of 630,652 compounds and
-the other 550,438 (BAS 191,444, ASN 128,223, BDE 54,173, …, PYX 2,013, MAC 242)
-take the Other codes column. Any family-based formula (BAS/LAS/…) beyond this
-two-way split is not implemented.
+Both of Dmitry’s attachments contain all three stock columns. Excel’s last-save
+metadata dates `Prices_NEW (December 2025) (15).xls` to 17 December 2025 and
+`Prices_NEW (PRO).xls` to 24 May 2023. The newer attachment supplies all three
+columns. The email recommends these USD lists but gives no separate contractual
+effective date. The September Pyxis workbook’s stock columns are superseded for
+new offers under the revised price-book version.
+
+| Stock pack | Other stock codes (including BAS, ASN) | LAS | PRO |
+|---:|---:|---:|---:|
+| 1 mg | $132 | $194 | $251 |
+| 2 mg | $158 | $224 | $291 |
+| 5 mg | $184 | $254 | $330 |
+| 10 mg | $211 | $284 | $370 |
+| 20 mg | $277 | $375 | $487 |
+| 30 mg | $330 | $466 | $606 |
+| 50 mg | $422 | $568 | $739 |
+| 100 mg | $587 | $786 | $1,022 |
+
+These are pack prices including shipping. For example, the price for 5 mg
+comes from its own row. RPX costs €317/€365/€420 and VPX costs €400/€460/€529
+for 1/2/5 mg. A stock row carrying an RPX or VPX code is ineligible. No
+published formula from Mark is needed to reproduce these values.
+
+The browser chooses EUR for EU time zones and USD otherwise. The server quotes
+stock at its listed USD amount or divides by 1.1367 for EUR. For EUR-listed
+collections it multiplies by 1.1367 for USD. Both conversions round to cents
+per pack before multiplying by quantity. A 1 mg LAS pack is $194 or €170.67.
+
+To audit the stock mapping against a supplied attachment, run
+`python3 scripts/check-stock-price-workbook.py "<path to .xls>"` with Node.js
+and Python’s `xlrd` installed. It checks the tier, family labels, pack sizes,
+cell references and all 24 USD values against the shop code and prints the file
+digest. The reference digest is recorded in the price book. A different source
+file is reviewed before changing the mapping or version.
+
+The separate public WordPress stock catalog displays supplier-reported
+availability and links to the signed-in shop to order. Its cards display no
+checkout price. See [stock catalog](../services/stock-catalog/README.md).
 
 A retired legacy path, `server/utils/asinexCompound.js`, still holds an older USD
 table keyed by a supplier `price_category` (1–3; e.g. category 1 = $100/1 mg,
@@ -77,9 +103,7 @@ dumps (batch, purity, salt, `EXCLUSIVITY`, initial amounts, box location — the
 2026-10-26 dump no longer carries `EXCLUSIVITY`, `BATCH` or `T0_*`). Amounts are
 summed per `MAIN_BAS`. Summing the 2026-09-01 dump reproduces that date's
 per-compound `CURRENT_TOT_NETTO_MG` within 0.05 mg for 99.98% of compounds, so
-the vial dump is a usable feed. Dumps also contain zero and negative vial
-amounts and, occasionally, vials without `MAIN_BAS`; those are rejected and
-counted.
+the vial dump is a usable feed. Zero-mg vials contribute zero. Negative amounts and vials missing `MAIN_BAS` are rejected and counted. Vials marked Exclusive count toward stock under the current owner decision.
 
 ```bash
 unzip -p STRUCTURES_FullDump_20261026_1165950.zip \
@@ -103,15 +127,12 @@ Guards — a refused run writes nothing and leaves the last good snapshot intact
 - More than 5% of the previous snapshot's compounds missing unless
   `--allow-large-change` after review.
 - A different snapshot for the same date unless `--replace`. Rerunning the same
-  file is a verified no-op.
+  file verifies the stored CSV before reporting a no-op. A missing or corrupt published revision requires an explicit repair.
 
 `bun run test:stock-availability` covers aggregation, price-family mapping,
 invalid inputs, guards and reruns with fixtures.
 
-**Not wired into offers.** Search offers still use the imported
-`CURRENT_TOT_NETTO_MG`. Using the snapshot needs owner decisions first: whether a
-compound absent from the newest snapshot is unavailable, how old a snapshot may
-be before stock offers stop, whether compounds with an `Exclusive` vial may be
-sold (the current stock data includes them), who approves each
-upload, and where the snapshot lives (dataset copies do not belong on the
-application host). Keep generated snapshots outside Git.
+Snapshot generation alone does not change checkout. Keep generated snapshots
+outside Git on the scientific host. To activate a validated snapshot for stock offers, quotes and new checkouts, follow the [activation and rollback instructions](../services/owned-search/README.md). A weekly upload cadence still depends on
+the supplier publishing new dumps. The newest file measures availability on its
+export date. Physical stock can change between exports.

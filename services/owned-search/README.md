@@ -167,3 +167,59 @@ Verification: `bun scripts/check-multi-smarts.mjs` uses the real RDKit runtime;
 `RDKIT_MODULE=/path/to/RDKit_minimal.js` can select the exact worker build for
 an isolated test without installing dependencies. Then run
 `bun run test:simulation-search` for the integrated UI selection/docking handlers.
+
+## Weekly stock availability snapshot (opt-in)
+
+Stock offers can use the per-compound weekly snapshot written by
+`scripts/stock-availability-snapshot.mjs` (`<dir>/<date>/{manifest.json,availability.csv}`)
+instead of the imported `CURRENT_TOT_NETTO_MG`. Off by default: nothing changes until
+both the host and the app are switched on, and the snapshot files stay on the
+scientific host. The combined service serves them under `/stock-availability`
+(`stockAvailability.mjs`), so the app reuses the existing 8276/18276 connection.
+
+Rules once a snapshot is active:
+
+- The snapshot amount is authoritative for `stock` rows, higher or lower than the import.
+  A code missing from it, a zero, or under 1 mg has **no offer** (the row stays in search).
+  Compounds with an `Exclusive` vial are sold; there is no maximum snapshot age.
+- Every stock search offer path uses it: `/api/stock-search/similarity` and
+  `/api/owned-search` (stock, multi, id/exact/substructure/similarity). RPX/VPX rows never
+  consult it.
+- New quotes (`/api/compound-shop/quote`, and a checkout that has no Stripe session yet)
+  are revalidated against the current snapshot: gone or short stock → `409`
+  `COMPOUND_STOCK_UNAVAILABLE` / `COMPOUND_STOCK_LIMIT`. This is a pure gate; quoted lines,
+  fingerprints and the stored Stripe parameters are not changed. A checkout that already
+  has a Stripe session is reconciled with Stripe first and never looks at stock.
+- Fail closed: if the lookup service is unreachable, still loading, or holds only an
+  invalid snapshot, stock rows get no offer and quotes answer `503`; the app never falls
+  back to the imported amounts after the snapshot is switched on. "No snapshot activated"
+  is the only state that keeps them.
+
+Activation is explicit. `<dir>/ACTIVE.json` pins one date **and the CSV's SHA-256**, so a
+same-date `--replace` is not live until activated again. `activate` validates everything
+first (format, date, checksum, header, unique canonical codes, row count) and writes the
+pointer atomically; a failing snapshot leaves the live one untouched. The running service
+notices pointer changes within a second and keeps the last good snapshot if a reload
+fails (`/stock-availability/status` then shows `degraded`).
+
+```sh
+# Host: one-time setup (needs a new search release and a restart of the SHARED combined
+# service, so production approval): systemd drop-in on the combined unit
+#   Environment=STOCK_AVAILABILITY_DIR=/home/ubuntu/.local/share/pyxis/stock-availability
+# Weekly: build the snapshot (see docs/STOCK-AVAILABILITY.md), then, from the release dir:
+bun services/owned-search/stockAvailability.mjs status
+bun services/owned-search/stockAvailability.mjs activate 2026-11-02
+# App: opt in through the existing tunnel, then restart the app service
+#   STOCK_AVAILABILITY_BASE=http://127.0.0.1:18276/stock-availability
+curl -s http://127.0.0.1:8276/stock-availability/status   # host-side check: state "active"
+```
+
+Rollback, fastest first: `bun services/owned-search/stockAvailability.mjs activate <older date>`
+(previous snapshots are retained); `... deactivate` (removes the pointer: imported amounts
+return, no restart); unset `STOCK_AVAILABILITY_BASE` and restart the app (the code path
+is skipped entirely). Offers already issued stay valid for 24 hours; new quotes are checked
+against whatever is active. Nothing is reserved between checkout and payment.
+
+Tests: `bun --cwd=server run test:owned-search` (loader, activation, last-good retention,
+fail-closed start, routing) and `bun --cwd=server run test:compound-shop` (offer paths,
+quote/checkout revalidation, stored-Stripe-retry behaviour, real-server routes).

@@ -24,7 +24,7 @@ export function compoundOrderId(owner, key) {
 // Explicit projection prevents signed offer tokens, request hashes and internal
 // payment parameters from leaking into order history or Stripe product metadata.
 export function orderItem(item) {
-  const fields = ['key', 'source', 'rowId', 'code', 'smiles', 'amountMg', 'quantity', 'eur', 'unitAmountCents', 'lineTotalCents', 'availableMg', 'leadTime'];
+  const fields = ['key', 'source', 'rowId', 'code', 'smiles', 'amountMg', 'quantity', 'eur', 'eurCents', 'unitAmountCents', 'lineTotalCents', 'availableMg', 'leadTime'];
   return Object.fromEntries(fields.filter((field) => item[field] !== undefined).map((field) => [field, item[field]]));
 }
 

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import express from 'express';
 import { quoteCompoundCart } from '../utils/compoundShopOffers.js';
+import { assertStockOffersAvailable } from '../utils/stockAvailability.js';
 import { MADE_TO_ORDER_SOURCES, PRICE_BOOK_VERSION, SHOP_CURRENCIES } from '../../shared/compoundPriceBook.js';
 import {
   CHECKOUT_SESSION_ID, COMPOUND_ORDER_ID, CompoundOrderError, SHIPPING_NOTE,
@@ -51,7 +52,7 @@ function sendError(res, error) {
   });
 }
 
-export function createCompoundShopRouter({ stripe, getOrders, secret, getAppUrl, quoteCart = quoteCompoundCart }) {
+export function createCompoundShopRouter({ stripe, getOrders, secret, getAppUrl, quoteCart = quoteCompoundCart, stockAvailability = null }) {
   const router = express.Router();
   const config = () => ({
     enabled: Boolean(stripe), paymentMode: 'automatic', currency: 'usd', currencies: SHOP_CURRENCIES,
@@ -63,7 +64,15 @@ export function createCompoundShopRouter({ stripe, getOrders, secret, getAppUrl,
     if (!SHOP_CURRENCIES.includes(currency)) throw new CompoundOrderError(400, 'INVALID_COMPOUND_CURRENCY', 'Choose EUR or USD.');
     return currency;
   };
-  const quote = (items, currency) => quoteCart(items, { secret, currency });
+  // Stock lines are revalidated against the active weekly snapshot on every NEW
+  // quote (/quote and a checkout that has no Stripe session yet). A pure gate:
+  // quoted lines are untouched, so fingerprints and stored Stripe parameters of
+  // retries stay identical. Orders with a session never reach this.
+  const quote = async (items, currency) => {
+    const quoted = await quoteCart(items, { secret, currency });
+    await assertStockOffersAvailable(quoted.items, stockAvailability);
+    return quoted;
+  };
   router.get('/config', (_req, res) => res.json(config()));
   router.post('/quote', async (req, res) => {
     try { res.json({ ...await quote(req.body?.items, requestedCurrency(req.body)), config: config() }); }

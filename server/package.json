@@ -71,10 +71,10 @@
     "test:staging-simulation": "SERVER_RUNTIME=bun bun test/staging-simulation.test.mjs",
     "test:staging-simulation:bun": "SERVER_RUNTIME=bun bun test/staging-simulation.test.mjs",
     "test:staging-simulation:node": "SERVER_RUNTIME=node node test/staging-simulation.test.mjs",
-    "test:compound-shop": "bun test/compound-shop-offers.test.mjs && bun test/compound-shop-orders.test.mjs && SERVER_RUNTIME=bun bun test/compound-shop-integration.test.mjs",
-    "test:compound-shop:node": "node test/compound-shop-offers.test.mjs && node test/compound-shop-orders.test.mjs && SERVER_RUNTIME=node node test/compound-shop-integration.test.mjs",
+    "test:compound-shop": "bun test/compound-shop-offers.test.mjs && bun test/compound-shop-orders.test.mjs && bun test/stock-availability-offers.test.mjs && SERVER_RUNTIME=bun bun test/compound-shop-integration.test.mjs && SERVER_RUNTIME=bun bun test/stock-availability-route.test.mjs",
+    "test:compound-shop:node": "node test/compound-shop-offers.test.mjs && node test/compound-shop-orders.test.mjs && node test/stock-availability-offers.test.mjs && SERVER_RUNTIME=node node test/compound-shop-integration.test.mjs && SERVER_RUNTIME=node node test/stock-availability-route.test.mjs",
     "test:link-fragments": "bun test test/link-fragments-route.test.mjs",
-    "test:owned-search": "bun test/owned-search.test.mjs && bun test test/precompressed-assets.test.mjs && bun test ../services/owned-search/combined-test.mjs",
+    "test:owned-search": "bun test/owned-search.test.mjs && bun test test/precompressed-assets.test.mjs && bun test ../services/owned-search/combined-test.mjs && bun test ../services/owned-search/stock-availability-test.mjs",
     "test:link-fragments:node": "node --test test/link-fragments-route.test.mjs"
   },
   "dependencies": {

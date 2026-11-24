@@ -4,10 +4,7 @@
  * vial-level SDF dump (`STRUCTURES_FullDump_<YYYYMMDD>_<records>.zip`).
  *
  * OFFLINE ONLY. This tool reads a file (or stdin) and writes a snapshot directory.
- * It calls no service and does not change what the app offers: search offers
- * still use CURRENT_TOT_NETTO_MG imported into the stock search dataset
- * (server/utils/compoundShopSearch.js). Wiring a snapshot into offers is a
- * separate, owner-approved change (see docs/STOCK-AVAILABILITY.md).
+ * Publishing to the scientific host is separate (see docs/STOCK-AVAILABILITY.md).
  *
  * Why a separate snapshot: the stock dataset import computes fingerprints for
  * ~630k structures (measured ~12.5 h) and the search service has no
@@ -22,11 +19,16 @@
  * per-compound names the app already uses.
  *
  * Safety:
- * - A run that fails validation writes nothing. Output is written to a temp
- *   directory and renamed into place only after every check passes.
+ * - A run that fails validation writes nothing. Each snapshot is written to a
+ *   revision directory and published by atomically switching the date entry
+ *   (a symlink) to it, so readers never see a partial snapshot. Older revisions
+ *   are kept for rollback. A same-date lock (`.<date>.lock`) serializes writers;
+ *   a stale one from a crashed run is reported, never removed automatically.
  * - An existing snapshot for the same date is never overwritten: identical
- *   source bytes → verified no-op (exit 0); different bytes → refusal unless
- *   --replace.
+ *   source bytes and an intact stored CSV → verified no-op (exit 0); different
+ *   bytes → refusal unless --replace. A damaged published snapshot (unreadable
+ *   manifest, missing or altered CSV) is never a no-op: it is refused with a
+ *   pointer to --replace, which rebuilds it from the same source.
  * - --previous compares with an earlier snapshot CSV (or the original
  *   STRUCTURES_*_unique.txt) and refuses large compound losses unless
  *   --allow-large-change is given after review.
@@ -82,6 +84,7 @@ export function parseDumpName(name) {
 
 /** Async iterator of { index, tags } for each SDF record; molblocks are skipped. */
 export async function* readSdfRecords(lines) {
+  let pendingRecord = false;
   let index = 0; let inData = false; let tags = new Map(); let current = null; let value = [];
   const flush = () => { if (current !== null) tags.set(current, (tags.has(current) ? null : value.join('\n'))); current = null; value = []; };
   for await (const raw of lines) {
@@ -90,15 +93,16 @@ export async function* readSdfRecords(lines) {
       flush();
       index += 1;
       yield { index, tags };
-      inData = false; tags = new Map();
+      inData = false; pendingRecord = false; tags = new Map();
       continue;
     }
+    if (line.trim()) pendingRecord = true;
     if (!inData) { if (line.startsWith('M  END')) inData = true; continue; }
     const header = /^>\s*<([^>]+)>/.exec(line);
     if (header) { flush(); current = header[1]; continue; }
     if (current !== null) { if (line === '') flush(); else value.push(line); }
   }
-  if (inData || tags.size) throw new SnapshotError('Input ended inside an SDF record (truncated file?).');
+  if (pendingRecord) throw new SnapshotError('Input ended inside an SDF record (truncated file?).');
 }
 
 function decimal(text) {
@@ -135,7 +139,7 @@ const SAME_MG = 0.005;
 
 /** Aggregate vial records into a per-compound snapshot plus a report. */
 export async function buildSnapshot(lines, { maxRejectRate = 0.001, allowNewTags = false } = {}) {
-  const compounds = new Map(); const vials = new Set(); const unknownTags = {}; const optionalTags = {};
+  const compounds = new Map(); const vials = new Set(); const unknownTags = Object.create(null); const optionalTags = {};
   const rejects = { total: 0, byReason: {}, samples: [] };
   let records = 0;
   for await (const { index, tags } of readSdfRecords(lines)) {
@@ -180,9 +184,9 @@ export async function buildSnapshot(lines, { maxRejectRate = 0.001, allowNewTags
     rows,
     report: {
       records, acceptedVials: records - rejects.total, compounds: rows.length,
-      offerableCompounds: rows.filter((r) => r.mg >= MIN_OFFER_MG && stockPriceCategory(r.code)).length,
+      offerableCompounds: Object.values(families).reduce((sum, family) => sum + family.offerable, 0),
       belowOfferMinimum: rows.filter((r) => r.mg < MIN_OFFER_MG).length,
-      rejects, families, optionalTags, unknownTags,
+      rejects, families, optionalTags, unknownTags: { ...unknownTags },
     },
   };
 }
@@ -210,7 +214,7 @@ export async function readPrevious(lines) {
     const fields = line.split(sep);
     const code = fields[codeAt]?.trim().toUpperCase().replace(/\s+/g, ' ');
     const mg = decimal(fields[mgAt]);
-    if (!code || mg === null) throw new SnapshotError(`Previous snapshot has an unreadable row: ${line.slice(0, 120)}`);
+    if (!MAIN_BAS.test(code || '') || map.has(code) || mg === null) throw new SnapshotError(`Previous snapshot has an unreadable row: ${line.slice(0, 120)}`);
     map.set(code, mg);
   }
   if (!map.size) throw new SnapshotError('Previous snapshot is empty.');
@@ -252,12 +256,18 @@ export async function runSnapshot(options) {
   const asOf = options.asOf || named?.asOf;
   if (!asOf || !/^\d{4}-\d{2}-\d{2}$/.test(asOf)) throw new SnapshotError('Snapshot date unknown: use a STRUCTURES_FullDump_<YYYYMMDD>_<n> source name or --as-of YYYY-MM-DD.');
 
+  const date = new Date(asOf + 'T00:00:00Z');
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== asOf ||
+      (named && named.asOf !== asOf) || (!named && path.basename(sourceName || '').startsWith('STRUCTURES_FullDump_'))) {
+    throw new SnapshotError('Invalid or conflicting snapshot date or dump name.');
+  }
+
   const hash = createHash('sha256');
   const { stream, lines } = linesOf(input);
   stream.on('data', (chunk) => hash.update(chunk));
   const { rows, report } = await buildSnapshot(lines, { maxRejectRate, allowNewTags });
   const sourceSha256 = hash.digest('hex');
-  if (named && options.asOf === undefined && report.records !== named.expectedRecords) {
+  if (named && report.records !== named.expectedRecords) {
     throw new SnapshotError(`File name promises ${named.expectedRecords} records but the dump holds ${report.records} (incomplete upload?).`);
   }
 
@@ -276,23 +286,47 @@ export async function runSnapshot(options) {
     minOfferMg: MIN_OFFER_MG, ...report, diff,
   };
   const dir = path.join(outDir, asOf);
-  const existing = await fs.readFile(path.join(dir, 'manifest.json'), 'utf8').then(JSON.parse, () => null);
-  if (existing) {
-    if (existing.source?.sha256 === sourceSha256 && existing.snapshotSha256 === manifest.snapshotSha256) {
-      return { status: 'unchanged', dir, manifest: existing };
-    }
-    if (!replace) throw new SnapshotError(`A different snapshot for ${asOf} already exists in ${dir}. Rerun with --replace after review.`);
-  }
   await fs.mkdir(outDir, { recursive: true });
-  const tmp = await fs.mkdtemp(path.join(outDir, `.${asOf}.tmp-`));
-  try {
-    await fs.writeFile(path.join(tmp, 'availability.csv'), csv);
-    await fs.writeFile(path.join(tmp, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-    if (existing) await fs.rm(dir, { recursive: true });
-    await fs.rename(tmp, dir);
-  } catch (error) {
-    await fs.rm(tmp, { recursive: true, force: true });
+  const lock = path.join(outDir, '.' + asOf + '.lock');
+  await fs.mkdir(lock).catch((error) => {
+    if (error.code === 'EEXIST') throw new SnapshotError(`Another run holds ${lock}. Remove it only after confirming no snapshot run is active.`);
     throw error;
+  }); // serialize same-date writers, including first publication
+  try {
+    // A damaged published snapshot (unparseable manifest, missing or altered CSV)
+    // is never reported as an unchanged no-op; --replace rebuilds it from this source.
+    let existing = null; let intact = false;
+    try {
+      existing = JSON.parse(await fs.readFile(path.join(dir, 'manifest.json'), 'utf8'));
+      const bytes = await fs.readFile(path.join(dir, 'availability.csv'));
+      intact = createHash('sha256').update(bytes).digest('hex') === existing?.snapshotSha256;
+    } catch (error) {
+      if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error;
+    }
+    const entry = await fs.lstat(dir).catch((error) => { if (error.code === 'ENOENT') return null; throw error; });
+    const sameSource = existing?.source?.sha256 === sourceSha256 && existing?.snapshotSha256 === manifest.snapshotSha256;
+    if (sameSource && intact) return { status: 'unchanged', dir, manifest: existing };
+    if (entry && !replace) {
+      throw new SnapshotError(!existing || !intact
+        ? `The existing snapshot for ${asOf} in ${dir} is damaged or incomplete. Rerun with --replace to rebuild it from this source.`
+        : `A different snapshot for ${asOf} already exists in ${dir}. Rerun with --replace after review.`);
+    }
+    if (entry && !entry.isSymbolicLink()) throw new SnapshotError('Existing snapshot is a legacy directory. Use a fresh output directory for the replacement.');
+    // Keep the published revision readable up to the instant of the switch.
+    // Older revisions are intentionally retained for rollback.
+    const revision = await fs.mkdtemp(path.join(outDir, '.' + asOf + '.revision-'));
+    try {
+      await fs.writeFile(path.join(revision, 'availability.csv'), csv);
+      await fs.writeFile(path.join(revision, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
+      const link = path.join(lock, 'publish');
+      await fs.symlink(path.basename(revision), link);
+      await fs.rename(link, dir);
+    } catch (error) {
+      await fs.rm(revision, { recursive: true, force: true });
+      throw error;
+    }
+  } finally {
+    await fs.rm(lock, { recursive: true, force: true });
   }
   return { status: 'written', dir, manifest };
 }

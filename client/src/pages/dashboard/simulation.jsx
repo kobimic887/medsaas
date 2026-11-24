@@ -131,7 +131,7 @@ function CompoundShopPacks({ offer, onAdded, amountMg, onPackChange }) {
           {packs.map((pack) => <option key={pack.mg} value={pack.mg}>{pack.mg} mg · {shopMoney(shopUnitCents(pack, currency), currency)}</option>)}
         </select>
       </label>
-      <div><strong>{shopMoney(shopUnitCents(selected, currency), currency)}</strong>{currency === 'usd' ? <span> · list €{selected.eur}</span> : null}</div>
+      <div><strong>{shopMoney(shopUnitCents(selected, currency), currency)}</strong>{currency === 'usd' && <span> · {shopMoney(shopUnitCents(selected, 'eur'), 'eur')}</span>}</div>
       <button type="button" className="rounded-lg bg-teal-700 px-3 py-2 font-semibold text-white hover:bg-teal-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-500" onClick={() => {
         try {
           const nextItems = addShopPack(readShopCart(localStorage), offer, selected.mg);
@@ -3107,7 +3107,7 @@ export function Simulation({ active = true }) {
         )}
         {(['stock', 'both', 'real', 'virtual'].includes(searchSource) || isMultiSource(searchSource)) && topMolecules.length > 0 && (
           <p className="mb-3 text-xs text-blue-gray-600 dark:text-slate-300">
-            Workbook 1–3 tier: up to 3 distinct compounds per order. Original EUR prices shown beside the fixed USD checkout price; review shipping and terms before checkout.
+            Orders support up to 3 distinct compounds. Prices include shipping. You can review shipping and terms before checkout.
           </p>
         )}
         {(['stock', 'both', 'real', 'virtual'].includes(searchSource) || isMultiSource(searchSource)) && topMolecules.length > 0 && (

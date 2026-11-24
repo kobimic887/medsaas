@@ -45,7 +45,7 @@ Macrocycle filters can search both indexes or one source; matching structures ke
 their source identity. Switching sources clears previous results.
 
 Eligible stock and macrocycle packs use signed Pyxis offers and real Stripe
-checkout; listed USD prices include shipping. Staging payments are not a sandbox.
+checkout; listed pack prices include shipping. Staging payments are not a sandbox.
 See [compound shop](COMPOUND-SHOP.md) and the
 [stock](DATA-STOCK-COMPOUNDS.md), [macrocycle](DATA-MACROCYCLES.md), and
 [open-compound](DATA-OPEN-COMPOUNDS.md) contracts. Optional AI search requires

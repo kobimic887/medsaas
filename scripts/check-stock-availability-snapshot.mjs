@@ -3,7 +3,7 @@
 // aggregation, price-family mapping, invalid input, guards and reruns. Fixtures
 // only; no network or search service.
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import { appendFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -34,8 +34,9 @@ test('pinned format and dump names', () => {
 
 test('stock families map to the current workbook columns', () => {
   assert.equal(stockPriceCategory('LAS 51234567'), 'LAS');
+  assert.equal(stockPriceCategory('PRO 12345678'), 'PRO');
   for (const code of ['BAS 02324364', 'ASN 04188606', 'BDD 27882327', 'SYN 12345678', 'PYX 12345678', 'MAC 12345678']) {
-    assert.equal(stockPriceCategory(code), 'Other codes', code);
+    assert.equal(stockPriceCategory(code), 'not LAS', code);
   }
   // RPX/VPX codes are never priced as stock.
   assert.equal(stockPriceCategory('RPX 202406561'), null);
@@ -117,7 +118,107 @@ test('writes once, reruns are no-ops, conflicting data is refused', async () => 
   assert.deepEqual(readFileSync(path.join(out, '2026-10-26', 'availability.csv')), csvBefore, 'good data is untouched');
   assert.equal((await runSnapshot({ input: changed, outDir: out, replace: true })).status, 'written');
   assert.match(readFileSync(path.join(out, '2026-10-26', 'availability.csv'), 'utf8'), /BAS 00000001,10,20,2/);
-  assert.deepEqual(readdirSync(out).filter((n) => n.includes('.tmp-')), [], 'no temp directories left');
+  assert.deepEqual(readdirSync(out).filter((n) => n.endsWith('.lock') || n.includes('.tmp-')), [], 'no lock or temp entries left');
+  assert.ok(lstatSync(path.join(out, '2026-10-26')).isSymbolicLink(), 'published date is an atomically switched link');
+});
+
+test('damaged published snapshots are never a no-op and --replace rebuilds them', async () => {
+  const dir = tmp(); const out = path.join(dir, 'out');
+  const input = path.join(dir, 'STRUCTURES_FullDump_20261026_2.sdf');
+  writeFileSync(input, vial('BAS 00000001', '2') + vial('LAS 00000002', '3'));
+  await runSnapshot({ input, outDir: out });
+  const published = path.join(out, '2026-10-26');
+  const good = readFileSync(path.join(published, 'availability.csv'));
+  const manifest = readFileSync(path.join(published, 'manifest.json'));
+  const damage = {
+    'altered CSV': () => appendFileSync(path.join(published, 'availability.csv'), 'BAS 99999999,9,9,1\n'),
+    'corrupt manifest': () => writeFileSync(path.join(published, 'manifest.json'), '{not json'),
+    'missing CSV': () => rmSync(path.join(published, 'availability.csv')),
+    'missing manifest': () => rmSync(path.join(published, 'manifest.json')),
+  };
+  for (const [name, hurt] of Object.entries(damage)) {
+    hurt();
+    await assert.rejects(runSnapshot({ input, outDir: out }), (e) => e instanceof SnapshotError && /damaged or incomplete.*--replace/.test(e.message), `${name}: rerun must refuse, not report unchanged`);
+    const rebuilt = await runSnapshot({ input, outDir: out, replace: true });
+    assert.equal(rebuilt.status, 'written', `${name}: --replace repairs it`);
+    assert.deepEqual(readFileSync(path.join(published, 'availability.csv')), good);
+    assert.deepEqual(readFileSync(path.join(published, 'manifest.json')), manifest);
+    assert.equal((await runSnapshot({ input, outDir: out })).status, 'unchanged', `${name}: repaired snapshot is a no-op again`);
+  }
+  // A stale lock from a crashed run is reported, not overwritten or swallowed as a crash.
+  mkdirSync(path.join(out, '.2026-10-26.lock'));
+  await assert.rejects(runSnapshot({ input, outDir: out }), (e) => e instanceof SnapshotError && /holds/.test(e.message));
+  rmSync(path.join(out, '.2026-10-26.lock'), { recursive: true });
+});
+
+test('corrupt rerun through the CLI is a refusal (exit 1), never an unhandled crash', () => {
+  const dir = tmp(); const out = path.join(dir, 'out');
+  const input = path.join(dir, 'STRUCTURES_FullDump_20261026_1.sdf');
+  writeFileSync(input, vial('BAS 00000001', '2'));
+  const args = ['--input', input, '--out-dir', out];
+  assert.equal(spawnSync(process.execPath, [script, ...args]).status, 0);
+  writeFileSync(path.join(out, '2026-10-26', 'manifest.json'), '{not json');
+  const refused = spawnSync(process.execPath, [script, ...args]);
+  assert.equal(refused.status, 1, refused.stderr.toString());
+  assert.match(refused.stderr.toString(), /Refused: .*--replace/);
+  assert.equal(spawnSync(process.execPath, [script, ...args, '--replace']).status, 0);
+  assert.match(spawnSync(process.execPath, [script, ...args]).stdout.toString(), /Unchanged/);
+});
+
+test('explicit --as-of: record count still enforced, conflicting or impossible dates refused', async () => {
+  const dir = tmp();
+  const named = path.join(dir, 'STRUCTURES_FullDump_20261026_2.sdf');
+  writeFileSync(named, vial('BAS 00000001', '2') + vial('LAS 00000002', '3'));
+  const one = path.join(dir, 'STRUCTURES_FullDump_20261102_5.sdf');
+  writeFileSync(one, vial('BAS 00000001', '2'));
+  // Matching --as-of must not switch the incomplete-upload guard off.
+  await assert.rejects(runSnapshot({ input: one, outDir: path.join(dir, 'a'), asOf: '2026-11-02' }), /promises 5 records/);
+  assert.equal((await runSnapshot({ input: named, outDir: path.join(dir, 'b'), asOf: '2026-10-26' })).status, 'written');
+  // An --as-of that disagrees with the dump name, or is not a real date, writes nothing.
+  for (const asOf of ['2026-10-27', '2026-02-30', '2026-13-01', '20261026']) {
+    await assert.rejects(runSnapshot({ input: named, outDir: path.join(dir, 'c'), asOf }), SnapshotError, asOf);
+  }
+  // A malformed dump name is not silently relabelled by --as-of.
+  const malformed = path.join(dir, 'STRUCTURES_FullDump_20261399_1.sdf');
+  writeFileSync(malformed, vial('BAS 00000001', '2'));
+  await assert.rejects(runSnapshot({ input: malformed, outDir: path.join(dir, 'c'), asOf: '2026-11-01' }), /conflicting/);
+  assert.equal(existsSync(path.join(dir, 'c')) ? readdirSync(path.join(dir, 'c')).length : 0, 0, 'refused runs write nothing');
+  // A plainly named file takes the explicit date and has no promised count.
+  const plain = path.join(dir, 'dump.sdf');
+  writeFileSync(plain, vial('BAS 00000001', '2') + vial('BAS 00000003', '2') + vial('LAS 00000002', '3'));
+  const written = await runSnapshot({ input: plain, outDir: path.join(dir, 'd'), asOf: '2026-10-26' });
+  assert.equal(written.manifest.records, 3);
+  assert.ok(existsSync(path.join(dir, 'd', '2026-10-26', 'availability.csv')));
+  const cli = (extra) => spawnSync(process.execPath, [script, '--input', one, '--out-dir', path.join(dir, 'e'), ...extra]);
+  assert.equal(cli(['--as-of', '2026-11-02']).status, 1, 'CLI enforces the promised count with --as-of');
+  assert.equal(cli(['--as-of', '2026-11-03']).status, 1, 'CLI refuses a conflicting --as-of');
+});
+
+test('tag names cannot pollute the report and previous snapshots reject duplicate or malformed codes', async () => {
+  const hostile = vial('BAS 02324364', '2', { extra: { constructor: '1', ['__proto__']: '1', toString: '1' } });
+  await assert.rejects(buildSnapshot(lines(hostile)), (e) => e instanceof SnapshotError
+    && Object.keys(e.details.unknownTags).sort().join() === '__proto__,constructor,toString');
+  const allowed = await buildSnapshot(lines(hostile), { allowNewTags: true });
+  assert.deepEqual(Object.keys(allowed.report.unknownTags).sort(), ['__proto__', 'constructor', 'toString']);
+  assert.equal(Object.getPrototypeOf({}).constructor, Object, 'Object.prototype untouched');
+  await assert.rejects(readPrevious(lines('MAIN_BAS,CURRENT_TOT_NETTO_MG\nBAS 00000001,2\nbas  00000001,3\n')), /unreadable/);
+  await assert.rejects(readPrevious(lines('MAIN_BAS,CURRENT_TOT_NETTO_MG\nnot-a-code,2\n')), /unreadable/);
+  await assert.rejects(readPrevious(lines('MAIN_BAS,CURRENT_TOT_NETTO_MG\n,2\n')), /unreadable/);
+});
+
+test('offerable totals follow the stock price families, including PRO', async () => {
+  const sdf = vial('BAS 00000001', '1') + vial('LAS 00000002', '2') + vial('PRO 00000003', '5') + vial('PRO 00000004', '0.5') + vial('VPX 202400001', '9');
+  const { report } = await buildSnapshot(lines(sdf));
+  assert.deepEqual(report.families.PRO, { compounds: 2, offerable: 1, priceCategory: 'PRO' });
+  assert.equal(report.offerableCompounds, 3, 'BAS, LAS and the one PRO compound of at least 1 mg; VPX is not stock');
+  assert.equal(report.offerableCompounds, Object.values(report.families).reduce((n, f) => n + f.offerable, 0));
+});
+
+test('truncated final records fail, trailing blank lines do not', async () => {
+  const ok = vial('BAS 02324364', '2');
+  assert.equal((await buildSnapshot(lines(`${ok}\n\n`))).report.records, 1);
+  await assert.rejects(buildSnapshot(lines(ok + ok.replace('$$$$\n', '').slice(0, -1))), /truncated/);
+  await assert.rejects(buildSnapshot(lines(`${ok}\n  dangling header line\n`)), /truncated/);
 });
 
 test('guards: record count, large drops, invalid runs write nothing', async () => {

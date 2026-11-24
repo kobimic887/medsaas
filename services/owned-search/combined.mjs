@@ -2,6 +2,7 @@
 // One loopback service for every macrocycle search on the scientific host:
 //   /health, /v1/*   similarity (services/macrocycle-index, in process)
 //   /graph/*         ID/exact/substructure + stock graph (serve.py child)
+//   /stock-availability/*  opt-in weekly stock availability snapshot (stockAvailability.mjs)
 // The app points MACROCYCLE_SEARCH_BASE at <base> and OWNED_SEARCH_BASE at
 // <base>/graph. Two chemistry engines remain on purpose: the similarity index
 // was fingerprinted with RDKit WASM and the graph screens with Python RDKit, so
@@ -15,6 +16,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createIndexHandler, openIndexStore } from '../macrocycle-index/serve.mjs';
+import { createStockAvailabilityHandler, createStockAvailabilityStore } from './stockAvailability.mjs';
 
 const MAX_GRAPH_BODY = 2_000_000; // serve.py's own request limit
 // serve.py answers within its 35 s arrival budget; the app gives up at 40 s.
@@ -72,11 +74,14 @@ export function unixGraphRequest(socketPath, timeoutMs = GRAPH_TIMEOUT_MS) {
   });
 }
 
-export function createCombinedServer({ indexHandler, graphRequest }) {
+export function createCombinedServer({ indexHandler, graphRequest, stockAvailabilityHandler }) {
   return http.createServer(async (req, res) => {
     let pathname;
     try { ({ pathname } = new URL(req.url, 'http://127.0.0.1')); }
     catch { return sendJson(res, 400, { error: 'Bad request' }); }
+    if (pathname === '/stock-availability' || pathname.startsWith('/stock-availability/')) {
+      return stockAvailabilityHandler ? stockAvailabilityHandler(req, res, pathname) : sendJson(res, 404, { error: 'Not found' });
+    }
     if (pathname !== '/graph' && !pathname.startsWith('/graph/')) return indexHandler(req, res);
     const aborted = new AbortController();
     // Node reports a caller that gave up; Bun's node:http does not (measured on
@@ -122,7 +127,13 @@ async function main() {
     process.exit(1);
   });
 
-  const server = createCombinedServer({ indexHandler: createIndexHandler(store), graphRequest: unixGraphRequest(socketPath) });
+  // Opt-in: without STOCK_AVAILABILITY_DIR the endpoint answers "inactive". The
+  // snapshot is read lazily, so a bad snapshot can never block or crash startup.
+  const stockStore = process.env.STOCK_AVAILABILITY_DIR ? createStockAvailabilityStore({ dir: process.env.STOCK_AVAILABILITY_DIR }) : null;
+  const server = createCombinedServer({
+    indexHandler: createIndexHandler(store), graphRequest: unixGraphRequest(socketPath),
+    stockAvailabilityHandler: createStockAvailabilityHandler(stockStore),
+  });
   server.on('error', (error) => { console.error(error); stopping = true; child.kill('SIGTERM'); process.exit(1); });
   server.listen(port, host, () => console.log(`Combined macrocycle search ready on ${host}:${port}`));
   const close = () => {

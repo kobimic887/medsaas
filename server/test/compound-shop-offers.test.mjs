@@ -27,19 +27,34 @@ function resign(payload) {
 }
 
 console.log('Owned workbook pricing and signed compound offers:');
-check('all 22 approved workbook EUR values, source cells and USD cents match', () => {
+check('all approved list values, source cells and EUR/USD cents match', () => {
+  // Stock: December 2025 Asinex USD list, 1–10 compounds (EUR = USD / 1.1367).
+  const stock = [
+    ['BAS123', 'C', [132, 158, 184, 211, 277, 330, 422, 587], [11613, 13900, 16187, 18563, 24369, 29031, 37125, 51641]],
+    ['LAS123', 'D', [194, 224, 254, 284, 375, 466, 568, 786], [17067, 19706, 22345, 24985, 32990, 40996, 49969, 69148]],
+    ['PRO123', 'E', [251, 291, 330, 370, 487, 606, 739, 1022], [22081, 25600, 29031, 32550, 42843, 53312, 65013, 89909]],
+  ];
+  for (const [code, column, dollars, eurCents] of stock) {
+    const { packs, listCurrency } = workbookPacksForRow('stock', code);
+    assert.equal(listCurrency, 'usd');
+    assert.deepEqual(packs.map(p => p.unitAmountCents), dollars.map((usd) => usd * 100));
+    assert.deepEqual(packs.map(p => p.eurCents), eurCents);
+    assert.deepEqual(packs.map(p => p.sourceCell), dollars.map((_, index) => `ASINEX Price List USD!${column}${13 - index}`));
+    assert.deepEqual(packs.map(p => p.mg), [1, 2, 5, 10, 20, 30, 50, 100]);
+  }
+  // Macrocycles and virtual: Pyxis EUR workbook (USD = EUR × 1.1367).
   const fixtures = [
-    ['stock', 'BAS123', 'C', [170, 194, 218, 242, 302, 350, 434, 584], [19324, 22052, 24780, 27508, 34328, 39785, 49333, 66383]],
-    ['stock', 'LAS123', 'D', [226, 254, 281, 309, 391, 474, 567, 765], [25689, 28872, 31941, 35124, 44445, 53880, 64451, 86958]],
     ['real', 'RPX123', 'E', [317, 365, 420], [36033, 41490, 47741]],
     ['virtual', 'VPX123', 'F', [400, 460, 529], [45468, 52288, 60131]],
+    ['smallvirtual', '123-456', 'F', [400, 460, 529], [45468, 52288, 60131]],
   ];
   for (const [source, code, column, euros, cents] of fixtures) {
     const { packs } = workbookPacksForRow(source, code);
     assert.deepEqual(packs.map(p => p.eur), euros);
+    assert.deepEqual(packs.map(p => p.eurCents), euros.map((eur) => eur * 100));
     assert.deepEqual(packs.map(p => p.unitAmountCents), cents);
     assert.deepEqual(packs.map(p => p.sourceCell), euros.map((_, index) => `Sheet1!${column}${12 - index}`));
-    assert.deepEqual(packs.map(p => p.mg), euros.length === 3 ? [1, 2, 5] : [1, 2, 5, 10, 20, 30, 50, 100]);
+    assert.deepEqual(packs.map(p => p.mg), [1, 2, 5]);
   }
   assert.equal(approximateUsd(317), '$360.33');
   assert.equal(approximateUsd(350), '$397.85');
@@ -86,11 +101,11 @@ check('server identity, workbook price and integer cents override untrusted cart
   assert.equal(quote.priceBookVersion, PRICE_BOOK_VERSION);
   assert.equal(quote.currency, 'usd');
 });
-check('EUR quotes charge the exact workbook euro value in cents', () => {
+check('EUR quotes combine exact euro list values and converted stock prices in cents', () => {
   const quote = quoteCompoundCart([line(real, 2, 3), line(stock, 1, 2)], { ...options, currency: 'eur' });
   assert.equal(quote.currency, 'eur');
-  assert.deepEqual(quote.items.map((item) => [item.eur, item.unitAmountCents, item.lineTotalCents, item.currency]), [[365, 36500, 109500, 'eur'], [226, 22600, 45200, 'eur']]);
-  assert.equal(quote.totalCents, 154700);
+  assert.deepEqual(quote.items.map((item) => [item.eurCents, item.unitAmountCents, item.lineTotalCents, item.currency]), [[36500, 36500, 109500, 'eur'], [17067, 17067, 34134, 'eur']]);
+  assert.equal(quote.totalCents, 143634);
   rejects([line(real, 2)], 'INVALID_COMPOUND_CURRENCY', { currency: 'gbp' });
 });
 check('signed identity, quantity, price-book version and purpose cannot be tampered with', () => {
@@ -128,8 +143,9 @@ check('the tier counts source plus row ID, preserving duplicate codes and cross-
   rejects([...items, line({ ...real, rowId: 5 })], 'COMPOUND_TIER_LIMIT');
 });
 check('combined rounded unit prices sum in cents without total-level conversion drift', () => {
-  const quote = quoteCompoundCart([line({ ...stock, availableMg: 500 }, 30, 3), line(real, 1, 2), line(virtual, 2, 3)], options);
-  assert.equal(quote.totalCents, 53880 * 3 + 36033 * 2 + 52288 * 3);
+  const items = [line({ ...stock, availableMg: 500 }, 30, 3), line(real, 1, 2), line(virtual, 2, 3)];
+  assert.equal(quoteCompoundCart(items, options).totalCents, 46600 * 3 + 36033 * 2 + 52288 * 3);
+  assert.equal(quoteCompoundCart(items, { ...options, currency: 'eur' }).totalCents, 40996 * 3 + 31700 * 2 + 46000 * 3);
 });
 check('tokens, row metadata and cart size are bounded', () => {
   for (const offerToken of ['', 'x'.repeat(24001), 'a.b', null]) rejects([{ offerToken, amountMg: 1, quantity: 1 }], 'INVALID_COMPOUND_OFFER');

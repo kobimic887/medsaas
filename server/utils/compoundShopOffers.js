@@ -97,7 +97,7 @@ function verifyOffer(token, secret, now) {
 }
 
 // unitAmountCents/lineTotalCents/totalCents are minor units of `currency`;
-// `eur` is always the workbook's whole-euro list value.
+// eurCents is the EUR pack price, including the conversion for USD-listed stock.
 export function quoteCompoundCart(items, { secret, now = Date.now(), currency = 'usd' } = {}) {
   signingKey(secret);
   if (!Number.isSafeInteger(now) || now < 0) throw new TypeError('now must be epoch milliseconds.');
@@ -128,7 +128,7 @@ export function quoteCompoundCart(items, { secret, now = Date.now(), currency = 
     const unitAmountCents = packUnitCents(pack, currency);
     return {
       key, source: offer.source, rowId: offer.rowId, code: offer.code, smiles: offer.smiles,
-      amountMg: pack.mg, quantity: item.quantity, eur: pack.eur,
+      amountMg: pack.mg, quantity: item.quantity, eur: pack.eur, eurCents: pack.eurCents,
       unitAmountCents, lineTotalCents: unitAmountCents * item.quantity,
       currency, offerToken: item.offerToken, leadTime: offer.leadTime, availableMg: offer.availableMg,
     };
