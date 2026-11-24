@@ -1,0 +1,23 @@
+# Guarded weekly refresh of the live stock availability snapshot (scientific host).
+# Runs scripts/stock-availability-refresh.mjs from an immutable job release
+# (`stock-refresh-releases/current`, see docs/STOCK-AVAILABILITY.md), never from the
+# mutable checkout. Does nothing unless the publisher lists a strictly newer full dump;
+# never passes an override flag; a refused run leaves the active snapshot unchanged.
+[Unit]
+Description=Pyxis stock availability weekly refresh (guarded, scientific host)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Environment=STOCK_AVAILABILITY_DIR=/home/ubuntu/.local/share/pyxis/stock-availability
+WorkingDirectory=/home/ubuntu/.local/share/pyxis/stock-refresh-releases/current
+# flock: an overlapping run exits instead of racing; the kernel drops the lock if the job dies.
+ExecStart=/usr/bin/flock -n /home/ubuntu/.local/share/pyxis/stock-availability/.refresh.lock /home/ubuntu/.bun/bin/bun scripts/stock-availability-refresh.mjs --notify /home/ubuntu/.local/bin/kobi-notify
+Nice=10
+IOSchedulingClass=idle
+MemoryMax=1500M
+TimeoutStartSec=3h
+NoNewPrivileges=true
+PrivateTmp=true

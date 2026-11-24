@@ -133,6 +133,33 @@ Guards — a refused run writes nothing and leaves the last good snapshot intact
 invalid inputs, guards and reruns with fixtures.
 
 Snapshot generation alone does not change checkout. Keep generated snapshots
-outside Git on the scientific host. To activate a validated snapshot for stock offers, quotes and new checkouts, follow the [activation and rollback instructions](../services/owned-search/README.md). A weekly upload cadence still depends on
-the supplier publishing new dumps. The newest file measures availability on its
+outside Git on the scientific host. To activate a validated snapshot for stock offers, quotes and new checkouts, follow the [activation and rollback instructions](../services/owned-search/README.md). The newest file measures availability on its
 export date. Physical stock can change between exports.
+
+## Scheduled refresh (scientific host)
+
+The publisher posts full dumps in the same CompChem directory the shop was
+activated from, on no fixed schedule (2026: May 5, May 26, Jul 8, Sep 1, Oct 26).
+`scripts/stock-availability-refresh.mjs`, run by `pyxis-stock-availability-refresh.timer`
+(Mondays 12:30 UTC, `deploy/stock-availability/`), checks that directory and does
+nothing unless a strictly newer `STRUCTURES_FullDump_<date>_<records>.zip` exists.
+Then it downloads to a private temporary directory, runs the snapshot tool with the
+active CSV as `--previous`, activates the new date, confirms the running service
+reports it and, if it does not, reverts to the previous snapshot.
+
+- Refuses (non-zero exit, push through `kobi-notify`, active snapshot unchanged):
+  any guard of the snapshot tool, a dump that is not newer, a future date, two
+  dumps with one date, an index with no dumps, a damaged active CSV, an unconfirmed
+  activation. It never passes `--replace`, `--allow-large-change` or `--allow-new-tags`;
+  a person reviews and runs those by hand.
+- Does nothing when `ACTIVE.json` is absent: an operator deactivated the snapshot
+  on purpose and the job never turns it back on. It also leaves a pointer alone that
+  changed while it ran. Nothing is ever deleted, so every earlier date stays a rollback target.
+- The job runs from an immutable release, not the checkout:
+  `git archive <sha> scripts/stock-availability-snapshot.mjs scripts/stock-availability-refresh.mjs shared/compoundPriceBook.js services/owned-search/stockAvailability.mjs server/utils/stockAvailability.js`
+  extracted to `~/.local/share/pyxis/stock-refresh-releases/<sha>`, with `current` linking to it.
+  Re-cut that release whenever those files change.
+- Check: `systemctl list-timers pyxis-stock-availability-refresh.timer`, `journalctl -u pyxis-stock-availability-refresh`,
+  or run `systemctl start pyxis-stock-availability-refresh.service` (a no-newer run takes seconds).
+  Test: `bun run test:stock-availability` (index parsing, unchanged, older, deactivated, valid, truncated,
+  invalid, unknown-tag, large-loss, unconfirmed, concurrent-pointer cases against a fake publisher).

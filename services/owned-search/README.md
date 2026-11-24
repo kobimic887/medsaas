@@ -220,6 +220,8 @@ return, no restart); unset `STOCK_AVAILABILITY_BASE` and restart the app (the co
 is skipped entirely). Offers already issued stay valid for 24 hours; new quotes are checked
 against whatever is active. Nothing is reserved between checkout and payment.
 
+A guarded weekly timer builds, activates and confirms newer dumps on its own and never overrides a guard or a deactivation: see "Scheduled refresh" in `docs/STOCK-AVAILABILITY.md`.
+
 Tests: `bun --cwd=server run test:owned-search` (loader, activation, last-good retention,
 fail-closed start, routing) and `bun --cwd=server run test:compound-shop` (offer paths,
 quote/checkout revalidation, stored-Stripe-retry behaviour, real-server routes).

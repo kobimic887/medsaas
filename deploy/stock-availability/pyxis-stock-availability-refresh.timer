@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly guarded check for a newer CompChem stock dump
+
+[Timer]
+OnCalendar=Mon *-*-* 12:30:00 UTC
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
