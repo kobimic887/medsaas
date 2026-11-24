@@ -18,6 +18,7 @@ cover behavior and maintenance; private deployment records are kept separately.
 | Guide | Use it for |
 | --- | --- |
 | [Stock compounds](DATA-STOCK-COMPOUNDS.md) | Import format and stock similarity search |
+| [Prices and stock availability](STOCK-AVAILABILITY.md) | Price book mapping, snapshot data and the weekly availability feed tool |
 | [Public stock catalog](../services/stock-catalog/README.md) | WordPress plugin: branded stock listing for the marketing site |
 | [Learning Center](../services/learning-center/README.md) | WordPress plugin: `/learning/` hub, topics, "What is …?" articles and glossary |
 | [Insights agent](../services/insights-agent/README.md) | Automated blog: PubMed paper → grounded Insights draft in WordPress |

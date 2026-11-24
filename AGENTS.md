@@ -116,6 +116,8 @@ when a path or trap moves.
   reserving its height.
   Verified compound payments save `compound_orders`, never grant credits. Include
   `shared/compoundPriceBook.js` in server releases. See `docs/COMPOUND-SHOP.md`.
+  Price/availability source mapping and the offline weekly stock snapshot tool:
+  `docs/STOCK-AVAILABILITY.md`; snapshots are not wired into offers yet.
 - Scientific SQL inspection: `services/catalog-sql/README.md`. The additive
   `pyxis_catalog` schema combines stock views with all RPX/VPX source rows and
   copied vectors. Never ingest these into the legacy public search tables;
@@ -262,6 +264,7 @@ bun run test:compound-shop   # signed offers, payment retries, orders and cart l
 bun run test:link-fragments  # matching, explicit-H, jobs, refinement (RDKit host), API and UI lifecycle
 bun run test:catalog-pricing # supplier retirement, molecule refusal, credit plans + UI
 bun run test:sar-explorer   # SAR Explorer download page: links, platform guess, routing, attribution
+bun run test:stock-availability # offline CompChem stock availability snapshot: vial sums, guards, reruns
 bun run test:macrocycle-index # macrocycle index contract: RDKit parity, format-1/2, count stream
 bun run test:count-morgan    # count-Morgan support parity vs RDKit + count Tanimoto/Dice math
 bun --cwd=server run test:folding-history # normal-app history, privacy and restart durability

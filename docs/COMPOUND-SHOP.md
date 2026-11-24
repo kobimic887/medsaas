@@ -41,6 +41,8 @@ They are dated snapshots. Basket validation caps aggregate requested mg against
 the snapshot; it does **not** reserve inventory across customers or decrement the
 scientific source database. Virtual packs are made to order. Operational stock,
 synthesis, delivery and refunds are handled by the merchant after payment.
+See [prices and stock availability](STOCK-AVAILABILITY.md) for the field mapping
+and the offline weekly availability snapshot.
 
 ## Orders and fulfillment
 
