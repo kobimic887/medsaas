@@ -106,14 +106,16 @@ must not block compute. Demo fixtures retain their explicit provider restriction
 Stock, small-molecule virtual, RPX and VPX search responses mint signed 24-hour offers from trusted engine
 rows. The browser cannot mint offers or supply authoritative prices. ChEMBL stays
 discovery-only. `shared/compoundPriceBook.js` owns the workbook's 1–3 tier and fixed
-EUR→USD conversion; at most three distinct source/row identities per order. Known
+EUR→USD conversion. EU browser time zones (`client/src/utils/compoundShop.js`) check
+out in EUR at the workbook value; all others in USD. At most three distinct source/row identities per order. Known
 stock/real snapshot mg bounds pack sizes and aggregate basket quantity. Virtual
 compounds (VPX and small-molecule virtual) are made to order. Missing pack prices or quantities never invent stock.
 
 `/api/compound-shop` requires Mongo, JWT and an active user. `/quote` verifies offer
 signatures and calculates integer cents. `/checkout` repeats validation and requires
-an explicit matching total/version; mismatch returns409 for review. Stripe uses
-immediate card capture, listed USD prices include shipping, and checkout collects
+an explicit matching total/version/currency; mismatch returns409 for review. Requests
+without a currency are USD; a checkout key bound to one currency refuses the other.
+Stripe uses immediate card capture, listed prices include shipping, and checkout collects
 billing/shipping addresses. The persisted order and Stripe idempotency key prevent
 retries from creating duplicate sessions. Preserve exact request snapshots.
 

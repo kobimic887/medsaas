@@ -24,7 +24,7 @@ import { MultiSmartsFilter, SmartsAnnotation } from '@/components/MultiSmartsFil
 import { selectVisibleSmartsRows, smartsVisibleIndices } from '@/utils/multiSmarts';
 import { convertPriceToEuro, formatPrice } from '@/utils/algo/algo';
 import { withAppBase } from "@/utils/appEnv";
-import { addShopPack, cartLineKey, isOwnedCartItem, readShopCart, shopMoney, writeShopCart } from '@/utils/compoundShop';
+import { addShopPack, cartLineKey, isOwnedCartItem, readShopCart, shopCurrency, shopMoney, shopUnitCents, writeShopCart } from '@/utils/compoundShop';
 import { addSelectedShopPacks, offerSelectionKey } from '@/utils/compoundSelection';
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 import { copyToClipboard } from '@/utils/copyToClipboard';
@@ -115,6 +115,7 @@ function CompoundShopPacks({ offer, onAdded, amountMg, onPackChange }) {
   const [justAdded, setJustAdded] = useState(false);
   const packs = offer?.packs || [];
   const selected = packs.find((pack) => pack.mg === amountMg) || packs[0];
+  const currency = shopCurrency();
   // Flash the button after each successful add; re-adding restarts the flash.
   useEffect(() => {
     if (!addCount) return undefined;
@@ -127,10 +128,10 @@ function CompoundShopPacks({ offer, onAdded, amountMg, onPackChange }) {
     <div className="min-w-[13rem] space-y-2 text-xs tabular-nums">
       <label className="flex flex-col gap-1">Pack size for {offer.code}
         <select aria-label={`Pack size for ${offer.code}`} value={selected.mg} onChange={(event) => { onPackChange(Number(event.target.value)); setError(''); }} className="rounded border border-slate-400 bg-white p-2 text-slate-900 dark:bg-slate-900 dark:text-white">
-          {packs.map((pack) => <option key={pack.mg} value={pack.mg}>{pack.mg} mg · {shopMoney(pack.unitAmountCents)} USD</option>)}
+          {packs.map((pack) => <option key={pack.mg} value={pack.mg}>{pack.mg} mg · {shopMoney(shopUnitCents(pack, currency), currency)}</option>)}
         </select>
       </label>
-      <div>€{selected.eur} EUR · <strong>{shopMoney(selected.unitAmountCents)} USD</strong></div>
+      <div><strong>{shopMoney(shopUnitCents(selected, currency), currency)}</strong>{currency === 'usd' ? <span> · list €{selected.eur}</span> : null}</div>
       <button type="button" className="rounded-lg bg-teal-700 px-3 py-2 font-semibold text-white hover:bg-teal-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-500" onClick={() => {
         try {
           const nextItems = addShopPack(readShopCart(localStorage), offer, selected.mg);

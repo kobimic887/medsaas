@@ -10,8 +10,9 @@ offline tool for a recurring stock availability feed. Checkout rules are in
 One versioned price book, `shared/compoundPriceBook.js`, prices every offer.
 It holds the **1–3 compounds tier** of the owner-supplied `Pyxis-e-shop_PRICE_LIST.xlsx`
 (Sheet1 C:F rows 5–12, workbook SHA-256 recorded in the file), in **EUR**, converted
-to USD at the fixed 24 Sep 2026 rate 1.1367 and rounded to whole cents. The USD
-amount is what Stripe charges; shipping is included. There is no per-compound
+to USD at the fixed 24 Sep 2026 rate 1.1367 and rounded to whole cents. EU visitors
+(by browser time zone) are charged the EUR value, everyone else the USD amount;
+shipping is included. There is no per-compound
 price, no quantity discount above 3 compounds and no supplier repricing.
 
 | Collection (`source`) | Code rule | Price column | Packs (mg) | Availability |

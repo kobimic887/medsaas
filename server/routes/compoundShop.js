@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import express from 'express';
 import { quoteCompoundCart } from '../utils/compoundShopOffers.js';
-import { MADE_TO_ORDER_SOURCES, PRICE_BOOK_VERSION } from '../../shared/compoundPriceBook.js';
+import { MADE_TO_ORDER_SOURCES, PRICE_BOOK_VERSION, SHOP_CURRENCIES } from '../../shared/compoundPriceBook.js';
 import {
   CHECKOUT_SESSION_ID, COMPOUND_ORDER_ID, CompoundOrderError, SHIPPING_NOTE,
   compoundOrderId, handleCompoundShopSession, orderItem, orderOwner, publicCompoundOrder,
@@ -29,7 +29,7 @@ function checkoutParams(order, appUrl) {
     phone_number_collection: { enabled: true },
     line_items: order.items.map((item) => ({
       price_data: {
-        currency: 'usd', unit_amount: item.unitAmountCents,
+        currency: order.currency, unit_amount: item.unitAmountCents,
         product_data: {
           name: `${item.code} · ${item.amountMg} mg`,
           description: `${MADE_TO_ORDER_SOURCES.includes(item.source) ? 'Made to order. ' : ''}${SHIPPING_NOTE}`,
@@ -54,19 +54,26 @@ function sendError(res, error) {
 export function createCompoundShopRouter({ stripe, getOrders, secret, getAppUrl, quoteCart = quoteCompoundCart }) {
   const router = express.Router();
   const config = () => ({
-    enabled: Boolean(stripe), paymentMode: 'automatic', currency: 'usd',
+    enabled: Boolean(stripe), paymentMode: 'automatic', currency: 'usd', currencies: SHOP_CURRENCIES,
     priceBookVersion: PRICE_BOOK_VERSION, shippingNote: SHIPPING_NOTE, maxCompounds: 3,
   });
-  const quote = (items) => quoteCart(items, { secret });
+  // Older clients send no currency and keep paying USD.
+  const requestedCurrency = (body) => {
+    const currency = body?.currency ?? 'usd';
+    if (!SHOP_CURRENCIES.includes(currency)) throw new CompoundOrderError(400, 'INVALID_COMPOUND_CURRENCY', 'Choose EUR or USD.');
+    return currency;
+  };
+  const quote = (items, currency) => quoteCart(items, { secret, currency });
   router.get('/config', (_req, res) => res.json(config()));
   router.post('/quote', async (req, res) => {
-    try { res.json({ ...await quote(req.body?.items), config: config() }); }
+    try { res.json({ ...await quote(req.body?.items, requestedCurrency(req.body)), config: config() }); }
     catch (error) { sendError(res, error); }
   });
   router.post('/checkout', async (req, res) => {
     try {
       if (!stripe) throw new CompoundOrderError(503, 'SHOP_UNAVAILABLE', 'Checkout is not configured.');
       const owner = orderOwner(req.user);
+      const currency = requestedCurrency(req.body);
       const key = req.body?.idempotencyKey;
       if (typeof key !== 'string' || !UUID.test(key)) throw new CompoundOrderError(400, 'SHOP_INVALID_REQUEST', 'A UUID checkout key is required.');
       const orders = await getOrders();
@@ -75,6 +82,9 @@ export function createCompoundShopRouter({ stripe, getOrders, secret, getAppUrl,
         Array.isArray(req.body?.items) ? req.body.items.map((item) => ({ offerToken: item?.offerToken, amountMg: item?.amountMg, quantity: item?.quantity })) : null
       )).digest('hex');
       let order = await orders.findOne({ _id: id });
+      if (order && (order.currency || 'usd') !== currency) {
+        throw new CompoundOrderError(409, 'SHOP_CHECKOUT_KEY_REUSED', 'This checkout key belongs to a checkout in another currency. Start a new checkout.');
+      }
       if (order?.requestFingerprint && order.requestFingerprint !== requestFingerprint) {
         throw new CompoundOrderError(409, 'SHOP_CHECKOUT_KEY_REUSED', 'This checkout key belongs to a different cart. Start a new checkout.');
       }
@@ -105,7 +115,8 @@ export function createCompoundShopRouter({ stripe, getOrders, secret, getAppUrl,
       // Reconcile known attempts before validating expiring search offers. An
       // expired offer must not hide a payment that Stripe already completed.
       if (order?.sessionId && order.requestFingerprint) return await respondToExistingSession(order);
-      const quoted = await quote(req.body?.items);
+      const quoted = await quote(req.body?.items, currency);
+      if (quoted.currency !== currency) throw new Error('Quote currency does not match the checkout request');
       if (req.body.expectedTotalCents !== quoted.totalCents || req.body.priceBookVersion !== quoted.priceBookVersion) {
         return res.status(409).json({ code: 'SHOP_PRICES_CHANGED', error: 'Review the current total before paying.', quote: quoted });
       }
@@ -115,7 +126,7 @@ export function createCompoundShopRouter({ stripe, getOrders, secret, getAppUrl,
         const now = new Date();
         const candidate = {
           _id: id, ...owner, userId: String(req.user.userId || ''), items,
-          totalCents: quoted.totalCents, currency: 'usd', priceBookVersion: quoted.priceBookVersion,
+          totalCents: quoted.totalCents, currency, priceBookVersion: quoted.priceBookVersion,
           fx: quoted.fx, fingerprint, requestFingerprint, status: 'awaiting_payment', fulfillmentStatus: 'pending', createdAt: now, updatedAt: now,
         };
         // Persist the exact Stripe request: retries remain identical even across

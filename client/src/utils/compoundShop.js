@@ -1,10 +1,40 @@
+import { packUnitCents } from '../../../shared/compoundPriceBook.js';
+
 // Display prices are convenient; only the authenticated server validates offers
 // and computes the amount sent to Stripe.
-export const shopMoney = (cents) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
+export const shopMoney = (cents, currency = 'usd') => new Intl.NumberFormat(currency === 'eur' ? 'en-IE' : 'en-US', {
+  style: 'currency', currency: currency === 'eur' ? 'EUR' : 'USD',
+}).format(cents / 100);
+
+// IANA time zones of the 27 EU member states, including their outermost regions.
+// Visitors there are charged the workbook EUR price; everyone else pays USD.
+// The zone is only a currency preference: both are approved list prices and the
+// server prices whichever currency is requested.
+export const EU_TIME_ZONES = new Set([
+  'Europe/Vienna', 'Europe/Brussels', 'Europe/Sofia', 'Europe/Zagreb', 'Asia/Nicosia', 'Asia/Famagusta',
+  'Europe/Nicosia', 'Europe/Prague', 'Europe/Copenhagen', 'Europe/Tallinn', 'Europe/Helsinki', 'Europe/Mariehamn',
+  'Europe/Paris', 'Europe/Berlin', 'Europe/Busingen', 'Europe/Athens', 'Europe/Budapest', 'Europe/Dublin',
+  'Europe/Rome', 'Europe/Riga', 'Europe/Vilnius', 'Europe/Luxembourg', 'Europe/Malta', 'Europe/Amsterdam',
+  'Europe/Warsaw', 'Europe/Lisbon', 'Atlantic/Madeira', 'Atlantic/Azores', 'Europe/Bucharest', 'Europe/Bratislava',
+  'Europe/Ljubljana', 'Europe/Madrid', 'Africa/Ceuta', 'Atlantic/Canary', 'Europe/Stockholm',
+  'America/Guadeloupe', 'America/Martinique', 'America/Cayenne', 'Indian/Reunion', 'Indian/Mayotte', 'America/Marigot',
+]);
+export function detectShopCurrency(timeZone) {
+  let zone = timeZone;
+  if (zone === undefined) {
+    try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { zone = ''; }
+  }
+  return EU_TIME_ZONES.has(zone) ? 'eur' : 'usd';
+}
+let detectedCurrency;
+export const shopCurrency = () => (detectedCurrency ??= detectShopCurrency());
+/** Charged unit amount of an offer pack or cart line in the shop currency. */
+export const shopUnitCents = (packOrItem, currency = shopCurrency()) => packUnitCents(packOrItem, currency);
 export const compoundKey = (item) => `${item.catalogSource}:${item.rowId}`;
 export const cartLineKey = (item) => `${compoundKey(item)}:${item.amountMg}`;
 export const isOwnedCartItem = (item) => item?.source === 'pyxis' && typeof item.offerToken === 'string' && item.offerToken.length > 0;
-export const shopCartTotal = (items) => items.reduce((sum, item) => sum + (isOwnedCartItem(item) ? item.unitAmountCents * item.quantity : 0), 0);
+// Cart lines keep the offer's USD cents and whole-euro list value; totals use the shop currency.
+export const shopCartTotal = (items, currency = shopCurrency()) => items.reduce((sum, item) => sum + (isOwnedCartItem(item) ? shopUnitCents(item, currency) * item.quantity : 0), 0);
 export function readShopCart(storage) {
   try {
     const saved = JSON.parse(storage.getItem('moleculeCart') || '[]');
@@ -12,11 +42,11 @@ export function readShopCart(storage) {
   } catch { return []; }
 }
 export function writeShopCart(storage, items) {
-  storage.setItem('moleculeCart', JSON.stringify({ items, total: shopCartTotal(items) / 100 }));
+  storage.setItem('moleculeCart', JSON.stringify({ items, total: shopCartTotal(items, 'usd') / 100 }));
 }
 export function addShopPack(items, offer, amountMg) {
   const pack = offer?.packs?.find((entry) => entry.mg === amountMg);
-  if (!offer?.token || !pack || !Number.isInteger(pack.unitAmountCents) || pack.unitAmountCents <= 0) throw new Error('This pack is unavailable. Search again for current offers.');
+  if (!offer?.token || !pack || !Number.isInteger(pack.unitAmountCents) || pack.unitAmountCents <= 0 || !Number.isInteger(pack.eur) || pack.eur <= 0) throw new Error('This pack is unavailable. Search again for current offers.');
   const item = { entryId: crypto.randomUUID(), source: 'pyxis', catalogSource: offer.source, rowId: offer.rowId, code: offer.code, name: offer.code, smiles: offer.smiles, offerToken: offer.token, amountMg: pack.mg, amount: pack.mg, quantity: 1, unitAmountCents: pack.unitAmountCents, eur: pack.eur, currency: 'usd', expiresAt: offer.expiresAt };
   const distinct = new Set(items.filter(isOwnedCartItem).map(compoundKey));
   distinct.add(compoundKey(item));

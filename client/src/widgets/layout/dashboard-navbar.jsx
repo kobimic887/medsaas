@@ -31,7 +31,7 @@ import { useThemeMode } from "@/context/theme";
 import { useState, useEffect, useRef } from "react";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 import { withAppBase, IS_STAGING_BUILD } from "@/utils/appEnv";
-import { readShopCart, writeShopCart, shopCartTotal, shopMoney, isOwnedCartItem } from "@/utils/compoundShop";
+import { readShopCart, writeShopCart, shopCartTotal, shopCurrency, shopMoney, shopUnitCents, isOwnedCartItem } from "@/utils/compoundShop";
 
 const NAVBAR_VALIDATE_TIMEOUT_MS = 15_000;
 const CART_FETCH_TIMEOUT_MS = 15_000;
@@ -274,7 +274,7 @@ export function DashboardNavbar() {
       const cartItemsText = cartData.items.map((item, index) => `
 ${index + 1}. SMILES: ${item.smiles || 'N/A'}
    Pack: ${item.amountMg || item.amount || 'N/A'}mg × ${item.quantity || 1}
-   Price: ${isOwnedCartItem(item) ? shopMoney(item.unitAmountCents * item.quantity) : 'Unavailable legacy item'}
+   Price: ${isOwnedCartItem(item) ? shopMoney(shopUnitCents(item) * item.quantity, shopCurrency()) : 'Unavailable legacy item'}
    ${item.name ? `Name: ${item.name}` : ''}
       `).join('\n');
 
@@ -488,7 +488,7 @@ Please contact the customer at ${userEmail} to process this order.
                     Total Amount: {cartItems.reduce((sum, item) => sum + (item.amountMg || item.amount || 0) * (item.quantity || 1), 0)}mg
                   </Typography>
                   <Typography variant="small" className="font-bold text-lg text-brand-500">
-                    Total: ${cartTotal.toFixed(2)}
+                    Total: {shopMoney(Math.round(cartTotal * 100), shopCurrency())}
                   </Typography>
                 </div>
               </div>
@@ -511,7 +511,7 @@ Please contact the customer at ${userEmail} to process this order.
                             {item.amountMg || item.amount} mg × {item.quantity || 1}
                           </Typography>
                           <Typography variant="small" className="font-bold text-xs text-brand-500">
-                            {isOwnedCartItem(item) ? shopMoney(item.unitAmountCents * item.quantity) : 'Unavailable legacy item'}
+                            {isOwnedCartItem(item) ? shopMoney(shopUnitCents(item) * item.quantity, shopCurrency()) : 'Unavailable legacy item'}
                           </Typography>
                         </div>
                         {isOwnedCartItem(item) && <label className="mt-2 flex items-center gap-2 text-xs">Packs

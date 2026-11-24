@@ -1,19 +1,21 @@
-import { basketSignature, checkoutAttempt, readShopCart, shopRequestItems } from './compoundShop.js';
+import { basketSignature, checkoutAttempt, readShopCart, shopCurrency, shopRequestItems } from './compoundShop.js';
 
 // This boundary creates no payment until an explicitly reviewed, unchanged cart
 // is submitted. Keep it independent of the page so retry/race behavior is tested.
-export async function requestCompoundCheckout({ storage, reviewed, reviewOnly = false, signal, fetchImpl = fetch, buildApiUrl, authToken, randomId = () => crypto.randomUUID() }) {
+export async function requestCompoundCheckout({ storage, reviewed, reviewOnly = false, signal, fetchImpl = fetch, buildApiUrl, authToken, randomId = () => crypto.randomUUID(), currency = shopCurrency() }) {
   const current = readShopCart(storage);
   const items = shopRequestItems(current);
   const signature = basketSignature(current);
-  const continuing = !reviewOnly && reviewed?.signature === signature;
+  // Pay in the currency the customer reviewed; a new review uses the detected currency.
+  const continuing = !reviewOnly && reviewed?.signature === signature && reviewed.quote?.currency === currency;
   const response = await fetchImpl(buildApiUrl(continuing ? '/compound-shop/checkout' : '/compound-shop/quote'), {
     method: 'POST', signal,
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
     body: JSON.stringify(continuing ? {
-      items, expectedTotalCents: reviewed.quote.totalCents, priceBookVersion: reviewed.quote.priceBookVersion,
-      idempotencyKey: checkoutAttempt(storage, signature, randomId),
-    } : { items }),
+      items, currency, expectedTotalCents: reviewed.quote.totalCents, priceBookVersion: reviewed.quote.priceBookVersion,
+      // USD keeps the original key namespace so in-flight attempts survive this release.
+      idempotencyKey: checkoutAttempt(storage, currency === 'usd' ? signature : `${currency}:${signature}`, randomId),
+    } : { items, currency }),
   });
   const result = await response.json();
   if (signal?.aborted) throw new DOMException('Request canceled', 'AbortError');

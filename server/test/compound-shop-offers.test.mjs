@@ -86,6 +86,13 @@ check('server identity, workbook price and integer cents override untrusted cart
   assert.equal(quote.priceBookVersion, PRICE_BOOK_VERSION);
   assert.equal(quote.currency, 'usd');
 });
+check('EUR quotes charge the exact workbook euro value in cents', () => {
+  const quote = quoteCompoundCart([line(real, 2, 3), line(stock, 1, 2)], { ...options, currency: 'eur' });
+  assert.equal(quote.currency, 'eur');
+  assert.deepEqual(quote.items.map((item) => [item.eur, item.unitAmountCents, item.lineTotalCents, item.currency]), [[365, 36500, 109500, 'eur'], [226, 22600, 45200, 'eur']]);
+  assert.equal(quote.totalCents, 154700);
+  rejects([line(real, 2)], 'INVALID_COMPOUND_CURRENCY', { currency: 'gbp' });
+});
 check('signed identity, quantity, price-book version and purpose cannot be tampered with', () => {
   const item = line();
   const [encoded, sig] = item.offerToken.split('.');

@@ -43,6 +43,21 @@ export const COMPOUND_PRICE_GUIDE = freeze({
   },
 });
 
+/**
+ * Checkout currencies. EUR charges the workbook's euro value exactly; USD charges
+ * the fixed conversion below. The browser picks one automatically (EU visitors
+ * EUR, everyone else USD); both are approved list prices, and the server prices
+ * whichever is requested.
+ */
+export const SHOP_CURRENCIES = Object.freeze(['eur', 'usd']);
+
+/** Charged unit amount in minor units of `currency` for a workbook pack. */
+export function packUnitCents(pack, currency) {
+  if (currency === 'eur') return pack.eur * 100;
+  if (currency === 'usd') return pack.unitAmountCents;
+  throw new TypeError('Unsupported shop currency.');
+}
+
 /** Virtual collections are made to order: no snapshot quantity limits a pack. */
 export const MADE_TO_ORDER_SOURCES = Object.freeze(['virtual', 'smallvirtual']);
 // Small-molecule virtual IDs have no prefix: digit groups joined by "-".

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 
 export const COMPOUND_ORDER_ID = /^pc_[a-f0-9]{64}$/;
 export const CHECKOUT_SESSION_ID = /^cs_(?:test_|live_)?[A-Za-z0-9]{8,240}$/;
-export const SHIPPING_NOTE = 'Shipping is included in the listed USD price.';
+export const SHIPPING_NOTE = 'Shipping is included in the listed price.';
 
 export class CompoundOrderError extends Error {
   constructor(status, code, message) {

@@ -105,9 +105,12 @@ when a path or trap moves.
   index (file named Asinex_Virtual, not a supplier route), never part of `both`.
   Result selection never overwrites query text; docking uses selected rows, with
   query fallback only when none are selected and explicit DiffDock ligand precedence.
-  Structure previews depict exact SMILES with browser RDKit; workbook price displays
-  preserve original EUR alongside fixed USD prices (1–3 tier only, at most three
-  distinct compounds per order). Shipping is included; Stripe charges immediately.
+  Structure previews depict exact SMILES with browser RDKit. Checkout currency is
+  automatic from the browser time zone: EU visitors pay the workbook EUR value,
+  everyone else the fixed-rate USD price (USD displays keep the EUR list value);
+  the server prices only `eur`/`usd` and a checkout key never switches currency
+  (1–3 tier only, at most three distinct compounds per order). Shipping is
+  included; Stripe charges immediately.
   Owned results omit Formula/MW/SMILES columns but retain exact identifier previews.
   Selected pack additions are atomic and open `/dashboard/review-order`, with
   server-quoted structures, quantities and approval CSV. Home retains its visited

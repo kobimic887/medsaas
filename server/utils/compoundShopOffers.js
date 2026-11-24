@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { MADE_TO_ORDER_SOURCES, PRICE_BOOK_VERSION, PRICE_GUIDE_EUR_USD, workbookPacksForRow } from '../../shared/compoundPriceBook.js';
+import { MADE_TO_ORDER_SOURCES, PRICE_BOOK_VERSION, PRICE_GUIDE_EUR_USD, SHOP_CURRENCIES, packUnitCents, workbookPacksForRow } from '../../shared/compoundPriceBook.js';
 
 const madeToOrder = (source) => MADE_TO_ORDER_SOURCES.includes(source);
 
@@ -96,9 +96,12 @@ function verifyOffer(token, secret, now) {
   return payload;
 }
 
-export function quoteCompoundCart(items, { secret, now = Date.now() } = {}) {
+// unitAmountCents/lineTotalCents/totalCents are minor units of `currency`;
+// `eur` is always the workbook's whole-euro list value.
+export function quoteCompoundCart(items, { secret, now = Date.now(), currency = 'usd' } = {}) {
   signingKey(secret);
   if (!Number.isSafeInteger(now) || now < 0) throw new TypeError('now must be epoch milliseconds.');
+  if (!SHOP_CURRENCIES.includes(currency)) fail('INVALID_COMPOUND_CURRENCY', 'Choose EUR or USD.');
   if (!Array.isArray(items) || !items.length || items.length > MAX_CART_LINES) fail('INVALID_COMPOUND_CART', 'Choose between 1 and 24 compound packs.');
   const compounds = new Map();
   const seenPacks = new Set();
@@ -122,11 +125,12 @@ export function quoteCompoundCart(items, { secret, now = Date.now() } = {}) {
       requestedMg: (existing?.requestedMg || 0) + pack.mg * item.quantity,
       availableMg: madeToOrder(offer.source) ? null : Math.min(existing?.availableMg ?? Infinity, offer.availableMg),
     });
+    const unitAmountCents = packUnitCents(pack, currency);
     return {
       key, source: offer.source, rowId: offer.rowId, code: offer.code, smiles: offer.smiles,
       amountMg: pack.mg, quantity: item.quantity, eur: pack.eur,
-      unitAmountCents: pack.unitAmountCents, lineTotalCents: pack.unitAmountCents * item.quantity,
-      currency: 'usd', offerToken: item.offerToken, leadTime: offer.leadTime, availableMg: offer.availableMg,
+      unitAmountCents, lineTotalCents: unitAmountCents * item.quantity,
+      currency, offerToken: item.offerToken, leadTime: offer.leadTime, availableMg: offer.availableMg,
     };
   });
   if (compounds.size > 3) fail('COMPOUND_TIER_LIMIT', 'The approved price tier allows at most 3 distinct compounds per order.');
@@ -136,6 +140,6 @@ export function quoteCompoundCart(items, { secret, now = Date.now() } = {}) {
   return {
     items: canonicalItems,
     totalCents: canonicalItems.reduce((sum, item) => sum + item.lineTotalCents, 0),
-    currency: 'usd', priceBookVersion: PRICE_BOOK_VERSION, fx: PRICE_GUIDE_EUR_USD,
+    currency, priceBookVersion: PRICE_BOOK_VERSION, fx: PRICE_GUIDE_EUR_USD,
   };
 }

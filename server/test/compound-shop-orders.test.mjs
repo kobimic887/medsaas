@@ -47,7 +47,7 @@ const stripe = { checkout: { sessions: {
     const id = `cs_test_${String(creations.size + 1).padStart(16, '0')}`;
     const session = {
       id, url: `https://checkout.stripe.com/c/pay/${id}`, mode: params.mode,
-      status: 'open', payment_status: 'unpaid', currency: 'usd',
+      status: 'open', payment_status: 'unpaid', currency: params.line_items[0].price_data.currency,
       amount_total: params.line_items.reduce((sum, item) => sum + item.price_data.unit_amount * item.quantity, 0),
       metadata: params.metadata, client_reference_id: params.client_reference_id,
     };
@@ -59,16 +59,17 @@ const stripe = { checkout: { sessions: {
   async retrieve(id) { retrieveCalls++; if (failNextRetrieve) { failNextRetrieve = false; throw new Error('Stripe unavailable'); } return structuredClone(sessions.get(id)); },
 } } };
 let offersExpired = false;
-const quoteCart = async (items) => {
+const quoteCart = async (items, { currency = 'usd' } = {}) => {
+  const unit = currency === 'eur' ? 31700 : 36033;
   if (offersExpired) throw Object.assign(new Error('Offer expired'), { status: 400, code: 'COMPOUND_OFFER_EXPIRED' });
   if (!Array.isArray(items) || !items.length) throw Object.assign(new Error('Invalid items'), { status: 400, code: 'SHOP_INVALID_REQUEST' });
   const canonical = items.map((item) => ({
     key: `real:${item.offerToken}`, source: 'real', rowId: item.offerToken,
     code: 'RPX123', smiles: 'CCO', amountMg: item.amountMg, quantity: item.quantity,
-    eur: 317, unitAmountCents: 36033, lineTotalCents: 36033 * item.quantity,
+    eur: 317, unitAmountCents: unit, lineTotalCents: unit * item.quantity, currency,
     offerToken: item.offerToken, availableMg: 50, leadTime: '14 days',
   }));
-  return { items: canonical, totalCents: canonical.reduce((sum, item) => sum + item.lineTotalCents, 0), currency: 'usd', priceBookVersion: PRICE_BOOK_VERSION, fx: { rate: 1.1367 } };
+  return { items: canonical, totalCents: canonical.reduce((sum, item) => sum + item.lineTotalCents, 0), currency, priceBookVersion: PRICE_BOOK_VERSION, fx: { rate: 1.1367 } };
 };
 const app = express();
 app.use(express.json());
@@ -98,7 +99,7 @@ try {
   ok(version.status === 409 && createCalls === 0, 'stale price book requires review');
   const missingKey = await request('/checkout', basket({ idempotencyKey: 'bad' }));
   ok(missingKey.status === 400 && createCalls === 0, 'checkout requires UUID retry key');
-  const firstBody = basket({ amount: 1, username: 'mallory', currency: 'eur' });
+  const firstBody = basket({ amount: 1, username: 'mallory' });
   const [first, concurrent] = await Promise.all([request('/checkout', firstBody), request('/checkout', firstBody)]);
   ok(first.status === 200 && concurrent.status === 200 && first.body.orderId === concurrent.body.orderId, 'concurrent retries share an order');
   ok(creations.size === 1 && records.size === 1, 'concurrent retries create one Stripe payment');
@@ -185,6 +186,24 @@ try {
   ok(records.get(pending._id).status === 'awaiting_payment', 'free-payment state cannot fulfill a positive-price order');
   await handleCompoundShopSession(pendingSession, { orders, eventType: 'checkout.session.async_payment_failed' });
   ok(records.get(pending._id).status === 'payment_failed', 'payment failure recorded without treating completion as paid');
+  // EU customers pay the workbook EUR value; the order, Stripe line items and webhook check all use EUR.
+  const badCurrency = await request('/quote', { items: basket().items, currency: 'gbp' });
+  ok(badCurrency.status === 400 && badCurrency.body.code === 'INVALID_COMPOUND_CURRENCY', 'unsupported currencies are refused');
+  const eurQuote = await request('/quote', { items: basket().items, currency: 'eur' });
+  ok(eurQuote.body.currency === 'eur' && eurQuote.body.totalCents === 31700, 'EUR quote charges the workbook euro value');
+  const eurBody = basket({ currency: 'eur', expectedTotalCents: 31700 });
+  const eurCheckout = await request('/checkout', eurBody);
+  const eurOrder = records.get(eurCheckout.body.orderId);
+  const eurParams = creations.get(eurOrder._id).params;
+  ok(eurCheckout.status === 200 && eurOrder.currency === 'eur' && eurOrder.totalCents === 31700, 'EUR checkout saves an EUR order');
+  ok(eurParams.line_items.every((line) => line.price_data.currency === 'eur' && line.price_data.unit_amount === 31700), 'Stripe is asked to charge EUR');
+  const switched = await request('/checkout', { ...eurBody, currency: 'usd', expectedTotalCents: 36033 });
+  ok(switched.status === 409 && switched.body.code === 'SHOP_CHECKOUT_KEY_REUSED', 'one checkout key cannot switch currency');
+  const eurSession = sessions.get(eurCheckout.body.sessionId);
+  eurSession.status = 'complete'; eurSession.payment_status = 'paid';
+  await assert.rejects(handleCompoundShopSession({ ...eurSession, currency: 'usd' }, { orders }), /does not match/);
+  await handleCompoundShopSession(eurSession, { orders, eventType: 'checkout.session.completed' });
+  ok(records.get(eurOrder._id).status === 'paid', 'verified EUR payment marks the EUR order paid');
   const malformedId = await request('/orders/not-an-order');
   ok(malformedId.status === 400, 'malformed order IDs cannot reach database lookup');
   console.log(`compound shop orders: ${assertions} checks passed`);

@@ -12,11 +12,11 @@
 3. Open the cart and **Review order** to visit `/dashboard/review-order`. Adjust
    quantities there and check exact structure drawings, packs and the authoritative
    server quote. Basket changes invalidate the previous quote. **Download quote CSV**
-   exports ID, SMILES, source, pack size, quantity and EUR/USD prices for approval
+   exports ID, SMILES, source, pack size, quantity, EUR list and charged prices for approval
    before payment; signed offer tokens are excluded. Spreadsheet-sensitive values
    receive a leading apostrophe; raw chemical-file consumers must remove that guard.
 4. Continue to Stripe, enter billing and delivery information, and pay by card.
-   **The card is charged immediately. Shipping is included in listed USD prices.**
+   **The card is charged immediately, in EUR for EU visitors and USD otherwise. Shipping is included in listed prices.**
 5. Return to **Compound orders** for payment status, structure drawings and a CSV
    of the saved line items.
    Only verified payment clears the purchased basket entries. A failed or canceled
@@ -30,9 +30,11 @@ line. Multiple pack sizes of one compound count as one distinct compound.
 ## Price and availability policy
 
 `shared/compoundPriceBook.js` is the shared price book. Only the supplied workbook's
-**1–3 compounds** tier is used. Original EUR cells remain visible alongside fixed
-USD prices calculated at 1 EUR = 1.1367 USD, with each pack rounded to integer cents.
-The resulting USD amount is the sale price, not an informational estimate. Changes
+**1–3 compounds** tier is used. Visitors whose browser time zone is in an EU member
+state are charged the workbook EUR value exactly; everyone else pays USD calculated
+at 1 EUR = 1.1367 USD, with each pack rounded to integer cents (USD displays keep the
+EUR list value beside it). There is no customer currency switch and no live exchange
+rate. Both are sale prices, not estimates. Changes
 to the price book require a version change and an explicit review before payment.
 No Asinex catalog or supplier repricing endpoint participates.
 
@@ -48,7 +50,7 @@ and the offline weekly availability snapshot.
 
 The application stores `compound_orders` in its existing Mongo database, separately
 from credit purchases. Each order preserves canonical item/source/row/SMILES/pack,
-quantity, original EUR price, USD cents, FX version, Stripe IDs, billing and shipping
+quantity, original EUR price, charged currency and cents, FX version, Stripe IDs, billing and shipping
 contact information, and payment timestamps. The browser only reads orders owned
 by its username and company; tenant owner roles do not grant global shop access.
 
