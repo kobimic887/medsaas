@@ -4,17 +4,39 @@ Pyxis Discovery is a molecular research platform for compound search, docking,
 protein folding, molecule generation, and molecular visualization. This repository
 contains the web app, API, and supporting scientific services.
 
-## Get started
+## Set up a new machine
 
-Use Bun (the version used in CI is pinned in
-[ci.yml](.github/workflows/ci.yml)) and Node.js 24 for scripts that invoke Node.
+Install Git, [Bun](https://bun.sh) and Node.js 24. CI pins Bun in
+[ci.yml](.github/workflows/ci.yml); match that version if a check behaves
+differently on your machine. Node is only needed for the `:node` fallback commands
+and a few scripts. Server-boot tests look for Bun at `~/.bun/bin/bun` (the
+installer's default) unless `BUN_PATH` points elsewhere.
 
 ```bash
+git clone https://github.com/kobimic887/medsaas.git
+cd medsaas
 bun run install:all
 ```
 
-Configure the API with the project maintainer before starting it. The normal app
-requires these environment variables:
+### What works without credentials
+
+These need no database, payment, or provider access, so run them first to confirm
+the machine is set up:
+
+```bash
+bun run check        # compile the API and build the frontend
+bun run lint
+bun run test:brand
+bun --cwd=client run dev   # frontend only, at http://localhost:5173
+```
+
+Most server tests also run without credentials; they use an isolated MongoDB test
+process (see [CI and verification](docs/CI-CD.md)). The frontend alone cannot sign
+in or load data, because the API is not running.
+
+### Running the full app
+
+The API refuses to start without these environment variables:
 
 | Variable | Purpose |
 | --- | --- |
@@ -23,24 +45,26 @@ requires these environment variables:
 | `STRIPE_SECRET_KEY` | Stripe key for the intended environment; use test mode for development |
 | `FRONTEND_URL` | `http://localhost:5173` for local email links |
 
-The server accepts environment variables or a private root `.env`. Keep credentials
-out of Git. Confirm the target database: signup, history, orders, and credit changes
-write to it. The legacy local-Mongo defaults in `.env.example` and `services:up`
-are not the supported project setup.
+This repository does not provide these values or point to a secret store. Ask the
+project maintainer for them, and for the Atlas database you should use. Put them
+in the environment or in a private root `.env`, which Git ignores; never commit
+them. `.env.example` lists the variable names, but its local-Mongo defaults and
+`services:up` are legacy, not the supported setup.
 
-Start the API and frontend:
+Starting the API connects to the configured database straight away, and signup,
+history, orders, and credit changes write to it. Confirm the target before you
+start:
 
 ```bash
 bun run dev:bun
 ```
 
-Open **http://localhost:5173**. Vite forwards API requests to port 3000. Use
-`dev:bun` because the older `dev` bootstrap can create an environment file and
-attempt to start local MongoDB.
+Open **http://localhost:5173**. Vite forwards API requests to port 3000. Prefer
+`dev:bun`: `dev` runs the same processes after an informational `predev` message,
+and neither creates configuration files or starts MongoDB.
 
-For frontend-only work, `bun --cwd=client run dev` starts Vite; authenticated
-features still need a configured API. Email and scientific features require their
-respective providers. See the [service map](REPOS.md) for individual setup guides.
+Email and scientific features also need their own providers. See the
+[repository map](REPOS.md) for each service's setup guide.
 
 ## Everyday commands
 
@@ -51,6 +75,7 @@ respective providers. See the [service map](REPOS.md) for individual setup guide
 | `bun run test` | Run the server test suite |
 | `bun run ci` | Run the full Bun validation suite |
 | `bun run start` | Build the frontend and serve it through the API |
+| `bun run test:*` | Focused checks; the [CI guide](docs/CI-CD.md) maps changes to checks |
 
 Choose the nearest existing test for the change; a documentation edit does not
 need a full application build. [CI and verification](docs/CI-CD.md) explains what

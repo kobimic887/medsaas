@@ -1,6 +1,6 @@
 # Documentation
 
-Start with the [project README](../README.md) for setup and commands. These guides
+Start with the [project README](../README.md) for [new-machine setup](../README.md#set-up-a-new-machine) and commands. These guides
 cover behavior and maintenance; private deployment records are kept separately.
 
 ## Development
@@ -8,6 +8,7 @@ cover behavior and maintenance; private deployment records are kept separately.
 | Guide | Use it for |
 | --- | --- |
 | [Repository map](../REPOS.md) | Finding the app and scientific services |
+| [Product direction](../GOAL.md) | What to improve, and what needs explicit scope |
 | [CI and verification](CI-CD.md) | Choosing checks and understanding GitHub Actions |
 | [Staging](STAGING.md) | Build modes, shared data, and environment boundaries |
 | [Browser compatibility](KNOWN-BROWSER-ISSUES.md) | Molstar compatibility and result restoration |
@@ -24,18 +25,22 @@ cover behavior and maintenance; private deployment records are kept separately.
 | [Insights agent](../services/insights-agent/README.md) | Automated blog: PubMed paper → grounded Insights draft in WordPress |
 | [Macrocycles](DATA-MACROCYCLES.md) | Real/virtual sources and index formats |
 | [Link Fragments](LINK-FRAGMENTS.md) | Two-fragment 3D matching, attachment rules and scientific limits |
+| [Compound shop](COMPOUND-SHOP.md) | Buying compounds, signed offers, and orders |
+| [Owned-source search](../services/owned-search/README.md) | ID, exact, and substructure search service and routes |
+| [SQL catalog](../services/catalog-sql/README.md) | Inspecting stock and macrocycle catalogs in a database client |
 | [Open compounds](DATA-OPEN-COMPOUNDS.md) | ChEMBL search and optional AI assistance |
 | [Fingerprint metrics](REFERENCE-STOCK-FP-METRICS.md) | Comparing engines and similarity scores |
 | [Docking](DOCKING-CONTRACT.md) | Request/response format and result verification |
 | [Protein folding](OPENFOLD-UI-CONTRACT.md) | OpenFold requests and viewer behavior |
 | [Protein complex + glue](PROTEIN-COMPLEX-FOLDING.md) | Multi-protein sequences plus a candidate ligand, provider limits |
 | [Blog editorial guidelines](../services/insights-agent/EDITORIAL-GUIDELINES.md) | Macrocycle relevance, short drafts and conceptual illustrations |
-| [MCP tools](../services/mcp-server/README.md) | Connecting a compatible assistant |
+| [MCP tools](../services/mcp-server/README.md) | Connecting a compatible assistant (also [MCP integration notes](CLAUDE-LIFE-SCIENCES.md)) |
 
 ## Operations and security
 
 - [Operations](OPERATIONS.md): release checks and access to private operator records.
-- [Compute architecture](BOX-ARCHITECTURE.md) and [cutover checklist](ARRIVAL-RUNBOOK.md).
+- [Compute architecture](BOX-ARCHITECTURE.md), [host requirements](BOX-SPEC.md), and [cutover checklist](ARRIVAL-RUNBOOK.md).
+- [Compute services](../deploy/box/BRIEF-SERVICES.md) and the [RTX 3060 workstation guide](../deploy/box/WORKSTATION-3060.md).
 - [Billing integration](STRIPE_LIVE_CUTOVER.md).
 - [Security conventions](SECURITY-FINDINGS.md).
 - [Rollback requirements](../ROLLBACK.md).
