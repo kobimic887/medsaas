@@ -99,3 +99,23 @@ vectors. Run the database mode in the scientific API runtime and compare both
 JSON results. It uses a bounded, read-only server cursor. The legacy SQL_ASCII
 database stores UTF-8 bytes; the importer explicitly uses UTF-8 and nonescaped
 Unicode JSON, without changing the shared database encoding.
+
+## Browse shop pack prices
+
+In DBeaver open **pricing → Views → pack_prices → Data**. Each row gives one
+category and pack size, both checkout prices, the workbook currency and cell,
+and the release's price-book version. Stock “not LAS” is the default stock
+column after the separate LAS and PRO rules. Prices do not establish availability.
+
+Refresh this reporting view when releasing a changed price book. Generate SQL
+from the exact trusted deployed module (a standalone copy can use the extension
+`.mjs`), then apply as the pricing schema owner:
+
+```sh
+node services/catalog-sql/export-pack-prices.mjs /path/to/released/compoundPriceBook.mjs > prices.sql &&
+psql -X -1 -v ON_ERROR_STOP=1 -f prices.sql
+```
+
+Use the configured scientific database connection. Reapplying replaces the
+managed view atomically. To roll back a refresh, regenerate from the preceding
+release. To undo first installation, drop only `pricing.pack_prices`.

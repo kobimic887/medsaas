@@ -5,6 +5,8 @@ offline tool for a recurring stock availability feed. Checkout rules are in
 [compound shop](COMPOUND-SHOP.md); search sources in
 [the search/checkout contract](../.agents/skills/pyxis-feature-slice/references/search-and-checkout.md).
 
+DBeaver exposes released pack prices in `pricing.pack_prices`. Refresh the reporting view from the deployed price book on pricing releases (see `services/catalog-sql/README.md`).
+
 ## Current pricing behavior
 
 The signed-in shop uses two source workbooks in `shared/compoundPriceBook.js`.

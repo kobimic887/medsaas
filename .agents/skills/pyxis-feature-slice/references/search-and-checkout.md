@@ -4,6 +4,8 @@ Read before changing Simulation sources, similarity metrics, offers, basket or
 checkout. Runtime identity comes from measured state and the private operator
 record described in `docs/OPERATIONS.md`.
 
+DBeaver exposes released pack prices in `pricing.pack_prices`. Refresh the reporting view from the deployed price book on pricing releases (see `services/catalog-sql/README.md`).
+
 ## Owned compound sources
 
 Simulation starts on Pyxis stock in every build. Its picker groups Small molecules

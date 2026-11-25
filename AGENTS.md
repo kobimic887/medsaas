@@ -122,6 +122,8 @@ when a path or trap moves.
   `shared/compoundPriceBook.js` in server releases. See `docs/COMPOUND-SHOP.md`.
   Price/availability source mapping and the offline weekly stock snapshot tool:
   `docs/STOCK-AVAILABILITY.md`; activating a validated snapshot on the scientific host and configuring the app lookup enables stock checks on search, new quotes and checkout. See `services/owned-search/README.md` for activation and rollback. Live since 2026-11-24 on 84; `stockAvailability.mjs deactivate` is the no-restart rollback, and the weekly timer (`docs/STOCK-AVAILABILITY.md`) must never override a guard or a deactivation.
+- DBeaver exposes released pack prices in `pricing.pack_prices`. Refresh the reporting view from the deployed price book on pricing releases (see `services/catalog-sql/README.md`).
+
 - Scientific SQL inspection: `services/catalog-sql/README.md`. The additive
   `pyxis_catalog` schema combines stock views with all RPX/VPX source rows and
   copied vectors. Never ingest these into the legacy public search tables;
