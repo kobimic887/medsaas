@@ -120,6 +120,8 @@ when a path or trap moves.
   (`server/utils/compoundSearchStore.js`): one entry per user AND company and
   distinct collection + search type + queries; re-runs update recency, not
   duplicates. Restoring refills the form and never runs a search by itself.
+  Include `server/routes/compoundSearches.js` and `server/utils/compoundSearchStore.js`
+  in server releases; `server/index.js` imports them at startup.
   Selected pack additions are atomic and open `/dashboard/review-order`, with
   server-quoted structures, quantities and approval CSV. Home retains its visited
   workspace until the authenticated layout unmounts; hidden Home must not paginate

@@ -2367,7 +2367,9 @@ export function Simulation({ active = true }) {
       const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
       const link = document.createElement('a');
       link.href = url;
-      link.download = `pyxis-${source}-results-${stamp}.csv`;
+      // Descriptor provenance: the browser RDKit build that produced the values.
+      const rdkitVersion = typeof window.rdkitModule?.version === 'function' ? window.rdkitModule.version() : '';
+      link.download = `pyxis-${source}-results-${stamp}${rdkitVersion ? `-rdkit${rdkitVersion}` : ''}.csv`;
       document.body.appendChild(link);
       link.click();
       link.remove();
