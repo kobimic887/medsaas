@@ -1,20 +1,19 @@
 import {
-  CloudIcon,
+  ChevronDownIcon,
   EyeIcon,
+  MagnifyingGlassIcon,
 } from "@heroicons/react/24/outline";
 import { ShoppingCartIcon } from '@heroicons/react/24/solid';
 import {
   Alert,
-  Button,
   Card,
   CardBody,
-  CardHeader,
-  Input,
   Spinner,
   Typography,
 } from "@material-tailwind/react";
 import {
   useEffect,
+  useId,
   useRef,
   useState,
 } from 'react';
@@ -92,22 +91,84 @@ function stockChoiceLabel(options, value, fallback) {
 
 const plural = (count, singular, pluralForm = `${singular}s`) => `${count} ${count === 1 ? singular : pluralForm}`;
 
-function CompoundQueryField({ value, onChange, catalog, mode = 'similarity' }) {
+const queryFieldLabel = (catalog, mode) => (catalog ? 'ID, SMILES, or name' : mode === 'id' ? 'Compound IDs' : mode === 'substructure' ? 'Query SMILES or SMARTS' : 'Query SMILES');
+
+// The visible caption sits in the query header next to the Paste/Draw switch.
+function CompoundQueryField({ value, onChange, catalog, mode = 'similarity', describedBy }) {
+  const id = useId();
   return (
-    <label className="flex w-full flex-col gap-2 text-lg font-semibold text-blue-gray-900 dark:text-white">
-      {catalog ? 'ID, SMILES, or name' : mode === 'id' ? 'Compound IDs' : mode === 'substructure' ? 'Query SMILES or SMARTS' : 'Query SMILES'}
+    <div className="flex w-full flex-col gap-1.5">
+      <label htmlFor={id} className="sr-only">{queryFieldLabel(catalog, mode)}</label>
       <textarea
+        id={id}
         value={value}
         onChange={onChange}
         rows={3}
         spellCheck={false}
         autoCapitalize="none"
+        aria-describedby={describedBy}
         placeholder={catalog ? 'Paste an identifier or structure here…' : mode === 'id' ? 'One compound ID per line, or separated by commas…' : 'One structure per line, or separated by commas…'}
-        className="min-h-[112px] w-full resize-y rounded-xl border-2 border-teal-600 bg-white p-3 font-mono text-base font-normal leading-relaxed text-slate-900 placeholder:text-slate-500 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/40 dark:border-teal-400 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-400"
+        className="min-h-[96px] w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm leading-relaxed text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-600 dark:text-slate-50"
       />
-    </label>
+    </div>
   );
 }
+
+// Radio group drawn as a segmented control. The inputs stay real radios
+// (keyboard arrows, form semantics); only the visuals change.
+function SegmentedControl({ legend, name, value, options, onChange, size = 'md', describedBy }) {
+  const pad = size === 'sm' ? 'px-2.5 py-1 text-xs' : 'px-2 py-1.5 text-xs sm:px-[0.625rem] sm:text-sm';
+  return (
+    <fieldset className="m-0 min-w-0 border-0 p-0" aria-describedby={describedBy}>
+      <legend className="sr-only">{legend}</legend>
+      <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-950">
+        {options.map((option) => (
+          <label key={option.value} title={option.title} className="relative min-w-0 flex-auto" {...(option.labelProps || {})}>
+            <input
+              type="radio"
+              name={name}
+              value={option.value}
+              checked={value === option.value}
+              disabled={option.disabled}
+              onChange={() => onChange(option.value)}
+              className="peer sr-only"
+              {...(option.inputProps || {})}
+            />
+            <span className={`block cursor-pointer whitespace-nowrap rounded-lg text-center font-medium text-slate-600 transition-colors hover:text-slate-900 peer-checked:bg-slate-900 peer-checked:text-white peer-checked:shadow-sm peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500 peer-disabled:cursor-not-allowed peer-disabled:opacity-40 peer-disabled:hover:text-slate-600 dark:text-slate-300 dark:hover:text-white dark:peer-checked:bg-brand-500 dark:peer-checked:text-slate-950 ${pad}`}>
+              {option.label}
+            </span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+// Small score readout with a proportional bar, so a ranked column reads at a glance.
+function SimilarityScore({ value }) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return <span className="text-slate-400">—</span>;
+  const score = Number(value);
+  return (
+    <span className="inline-flex flex-col items-start gap-1">
+      <span className="font-mono text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-50">{score.toFixed(3)}</span>
+      <span aria-hidden="true" className="block h-1 w-12 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+        <span className="block h-full rounded-full bg-brand-500" style={{ width: `${Math.max(0, Math.min(1, score)) * 100}%` }} />
+      </span>
+    </span>
+  );
+}
+
+// Compact labels for the search-type control; the full names stay in OWNED_SEARCH_MODES.
+const SHORT_MODE_LABELS = Object.freeze({ id: 'ID', exact: 'Exact', substructure: 'Substructure' });
+
+// ⚠ Bootstrap 5's stylesheet is loaded app-wide (index.html, for the marketing
+// pages). Its spacing utilities share Tailwind's names with !important and a
+// different scale: p-3/px-3/gap-3 = 1rem, p-4/gap-4/mb-4 = 1.5rem, p-5 = 3rem,
+// and `.border` forces Bootstrap's border colour. Values 0–2 and fractional steps
+// match; use an arbitrary value (p-[1rem]) when an exact 3/4/5 step matters.
+const SECONDARY_BUTTON = 'inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 transition-colors hover:border-slate-400 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800';
+const FIELD_INPUT = 'h-10 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-600 dark:text-slate-50';
+const FIELD_LABEL = 'mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300';
 
 function CompoundShopPacks({ offer, onAdded, amountMg, onPackChange }) {
   const [error, setError] = useState('');
@@ -123,27 +184,30 @@ function CompoundShopPacks({ offer, onAdded, amountMg, onPackChange }) {
     const timer = setTimeout(() => setJustAdded(false), 2200);
     return () => clearTimeout(timer);
   }, [addCount]);
-  if (!offer?.token || !selected) return <span className="text-xs text-blue-gray-500">No purchase offer available</span>;
+  if (!offer?.token || !selected) return <span className="text-xs text-slate-500 dark:text-slate-400">No purchase offer available</span>;
   return (
-    <div className="min-w-[13rem] space-y-2 text-xs tabular-nums">
-      <label className="flex flex-col gap-1">Pack size for {offer.code}
-        <select aria-label={`Pack size for ${offer.code}`} value={selected.mg} onChange={(event) => { onPackChange(Number(event.target.value)); setError(''); }} className="rounded border border-slate-400 bg-white p-2 text-slate-900 dark:bg-slate-900 dark:text-white">
-          {packs.map((pack) => <option key={pack.mg} value={pack.mg}>{pack.mg} mg · {shopMoney(shopUnitCents(pack, currency), currency)}</option>)}
-        </select>
-      </label>
-      <div><strong>{shopMoney(shopUnitCents(selected, currency), currency)}</strong>{currency === 'usd' && <span> · {shopMoney(shopUnitCents(selected, 'eur'), 'eur')}</span>}</div>
-      <button type="button" className="rounded-lg bg-teal-700 px-3 py-2 font-semibold text-white hover:bg-teal-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-500" onClick={() => {
-        try {
-          const nextItems = addShopPack(readShopCart(localStorage), offer, selected.mg);
-          writeShopCart(localStorage, nextItems);
-          window.dispatchEvent(new Event('cartUpdated'));
-          setError('');
-          setAddCount((count) => count + 1);
-          const line = nextItems.find((item) => isOwnedCartItem(item) && cartLineKey(item) === `${offer.source}:${offer.rowId}:${selected.mg}`);
-          const quantity = line?.quantity || 1;
-          onAdded(quantity > 1 ? `Added another ${selected.mg} mg pack of ${offer.code} — ${quantity} in cart` : `Added ${selected.mg} mg of ${offer.code} to cart`);
-        } catch (error) { setError(error.message); }
-      }}>{justAdded ? '✓ Added to cart' : 'Add to cart'}</button>
+    <div className="min-w-[14rem] space-y-1 text-xs tabular-nums">
+      <div className="flex items-center gap-2">
+        <label className="min-w-0 flex-1">
+          <span className="sr-only">Pack size for {offer.code}</span>
+          <select aria-label={`Pack size for ${offer.code}`} value={selected.mg} onChange={(event) => { onPackChange(Number(event.target.value)); setError(''); }} className="h-8 w-full rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-slate-600 dark:text-slate-50">
+            {packs.map((pack) => <option key={pack.mg} value={pack.mg}>{pack.mg} mg · {shopMoney(shopUnitCents(pack, currency), currency)}</option>)}
+          </select>
+        </label>
+        <button type="button" className={`h-8 shrink-0 rounded-lg px-3 font-semibold text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-500 ${justAdded ? 'bg-green-600' : 'bg-teal-700 hover:bg-teal-800'}`} onClick={() => {
+          try {
+            const nextItems = addShopPack(readShopCart(localStorage), offer, selected.mg);
+            writeShopCart(localStorage, nextItems);
+            window.dispatchEvent(new Event('cartUpdated'));
+            setError('');
+            setAddCount((count) => count + 1);
+            const line = nextItems.find((item) => isOwnedCartItem(item) && cartLineKey(item) === `${offer.source}:${offer.rowId}:${selected.mg}`);
+            const quantity = line?.quantity || 1;
+            onAdded(quantity > 1 ? `Added another ${selected.mg} mg pack of ${offer.code} — ${quantity} in cart` : `Added ${selected.mg} mg of ${offer.code} to cart`);
+          } catch (error) { setError(error.message); }
+        }}>{justAdded ? '✓ Added to cart' : 'Add to cart'}</button>
+      </div>
+      {currency === 'usd' && <div className="text-slate-500 dark:text-slate-400">{shopMoney(shopUnitCents(selected, 'eur'), 'eur')} · shipping included</div>}
       {error && <p role="alert" className="max-w-xs text-red-700 dark:text-red-300">{error}</p>}
     </div>
   );
@@ -2275,6 +2339,24 @@ export function Simulation({ active = true }) {
     checkReady();
   };
 
+  // One quiet status line in the query header instead of a full-width banner.
+  // Unavailable states stay as explicit alerts below it.
+  let availability = null;
+  if (isMultiSource(searchSource)) {
+    if (activeOwnedStatus?.state === 'loading') availability = { loading: true, text: 'Checking availability…' };
+    else if (activeOwnedStatus?.state === 'available') availability = { text: `${collectionsForSource(searchSource).map(collectionLabel).join(' + ')} · searched together${activeOwnedStatus.modes?.length === 1 ? ' · similarity only for this selection' : ''}` };
+  } else if (searchSource === 'stock' && stockStatus) {
+    if (stockStatus.state === 'loading') availability = { loading: true, text: 'Checking availability…' };
+    else if (stockStatus.state === 'available') availability = { text: `Stock compounds · ${stockStatus.dataset.rowCount ? `${stockStatus.dataset.rowCount.toLocaleString()} searchable` : 'ready'}` };
+  } else if (MACROCYCLE_SOURCES[searchSource]) {
+    const status = macrocycleStatus[searchSource];
+    if (status?.state === 'loading') availability = { loading: true, text: 'Checking availability…' };
+    else if (status?.state === 'available') availability = { text: `${(status.dataset?.rowCount || MACROCYCLE_SOURCES[searchSource].count).toLocaleString()} searchable ${searchSource === 'both' ? '· real RPX + virtual VPX' : searchSource === 'real' ? '· current stock unverified' : '· virtual designs'}` };
+  } else if (searchSource === 'open' && openStatus) {
+    if (openStatus.state === 'loading') availability = { loading: true, text: 'Checking availability…' };
+    else if (openStatus.state === 'available') availability = { text: 'ChEMBL · queries leave Pyxis' };
+  }
+
   return (
     <div className="min-h-screen flex flex-col pt-4 pb-4 bg-gray-50 w-full px-2 sm:px-4">
       {active && message && (
@@ -2290,32 +2372,32 @@ export function Simulation({ active = true }) {
       )}
       {active && <MoleculePreviewTooltip preview={structurePreview} id={structurePreviewId} />}
 
-      <fieldset className="mb-4 min-w-0 rounded-2xl border border-blue-gray-100 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950 sm:p-4">
+      <fieldset className="mb-4 min-w-0 rounded-2xl border border-slate-200 bg-white p-[1rem] shadow-sm dark:border-slate-700 sm:p-[1.25rem]">
         <legend className="sr-only">Compound collection</legend>
-        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-1">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-brand-600 dark:text-brand-300">Compound search</p>
-            <h1 className="text-xl font-semibold text-blue-gray-900 dark:text-slate-50">Pyxis compound catalog</h1>
-          </div>
-          <p className="text-xs text-blue-gray-500 dark:text-slate-400">{sourceBlurb(searchSource)}</p>
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">Pyxis compound catalog</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">{sourceBlurb(searchSource)}</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-3">
           {COLLECTION_GROUPS.map(({ title, detail, collections }) => {
             const selectedList = collectionsForSource(searchSource);
             const selectedCount = collections.filter((value) => selectedList.includes(value)).length;
             return (
-              <fieldset key={title} className={`min-w-0 rounded-xl border px-3 py-3 transition-colors ${selectedCount ? 'border-brand-500 bg-brand-50 text-brand-900 dark:bg-brand-900/30 dark:text-brand-100' : 'border-blue-gray-100 bg-blue-gray-50/50 text-blue-gray-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'}`}>
+              <fieldset key={title} className={`min-w-0 rounded-xl border px-3 py-2.5 transition-colors ${selectedCount ? 'bg-brand-50 ring-2 ring-brand-500' : 'border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600'}`}>
                 <legend className="sr-only">{title}</legend>
-                <label className="flex cursor-pointer items-start gap-3">
+                <label className="flex cursor-pointer items-start gap-2.5">
                   <input type="checkbox" aria-label={`All ${title.toLowerCase()}`} checked={selectedCount === collections.length}
                     ref={(el) => { if (el) el.indeterminate = selectedCount > 0 && selectedCount < collections.length; }}
-                    onChange={(e) => handleCollectionsChange(collections, e.target.checked)} className="mt-1 accent-teal-700" />
-                  <span className="min-w-0"><span className="block font-semibold leading-5">{title}</span><span className="mt-1 block text-xs opacity-75">{detail}</span></span>
+                    onChange={(e) => handleCollectionsChange(collections, e.target.checked)} className="mt-0.5 h-4 w-4 accent-teal-700" />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold leading-5 text-slate-900 dark:text-slate-50">{title}</span>
+                    <span className="block text-xs text-slate-500 dark:text-slate-400">{detail}</span>
+                  </span>
                 </label>
-                <div className="mt-2 flex flex-wrap gap-2 pl-7">
+                <div className="mt-2 flex flex-wrap gap-1.5 pl-6">
                   {OWNED_COLLECTIONS.filter((entry) => collections.includes(entry.value)).map((entry) => (
-                    <label key={entry.value} className="flex cursor-pointer items-center gap-2 rounded-full border border-teal-300 bg-white/60 px-3 py-1 text-sm dark:border-teal-800 dark:bg-slate-950/40">
-                      <input type="checkbox" aria-label={entry.fullLabel} checked={selectedList.includes(entry.value)} onChange={(e) => handleCollectionsChange([entry.value], e.target.checked)} className="accent-teal-700" />
+                    <label key={entry.value} className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors ${selectedList.includes(entry.value) ? 'border-slate-900 bg-slate-900 text-white dark:border-brand-500 dark:bg-brand-500 dark:text-slate-950' : 'border-slate-300 text-slate-700 hover:border-slate-400 dark:border-slate-600 dark:text-slate-200'}`}>
+                      <input type="checkbox" aria-label={entry.fullLabel} checked={selectedList.includes(entry.value)} onChange={(e) => handleCollectionsChange([entry.value], e.target.checked)} className="sr-only" />
                       {entry.label}
                     </label>
                   ))}
@@ -2323,55 +2405,38 @@ export function Simulation({ active = true }) {
               </fieldset>
             );
           })}
-          <label className={`flex min-w-0 cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 transition-colors ${searchSource === 'open' ? 'border-brand-500 bg-brand-50 text-brand-900 dark:bg-brand-900/30 dark:text-brand-100' : 'border-blue-gray-100 bg-blue-gray-50/50 text-blue-gray-800 hover:border-brand-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'}`}>
-            <input type="radio" name="searchSource" value="open" checked={searchSource === 'open'} onChange={() => handleSourceChange('open')} className="mt-1 accent-teal-700" />
-            <span className="min-w-0"><span className="block font-semibold leading-5">Open compounds</span><span className="mt-1 block text-xs opacity-75">ChEMBL discovery · searched on its own</span></span>
+          <label className={`flex min-w-0 cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5 transition-colors ${searchSource === 'open' ? 'bg-brand-50 ring-2 ring-brand-500' : 'border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600'}`}>
+            <input type="radio" name="searchSource" value="open" checked={searchSource === 'open'} onChange={() => handleSourceChange('open')} className="mt-0.5 h-4 w-4 accent-teal-700" />
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold leading-5 text-slate-900 dark:text-slate-50">Open compounds</span>
+              <span className="block text-xs text-slate-500 dark:text-slate-400">ChEMBL discovery · searched on its own</span>
+            </span>
           </label>
         </div>
       </fieldset>
 
       <div className="grid w-full min-w-0 gap-4 lg:grid-cols-[minmax(25rem,29rem)_minmax(0,1fr)] 2xl:grid-cols-[minmax(27rem,31rem)_minmax(0,1fr)] lg:items-start">
-      <div id="query-panel" className="min-w-0 rounded-2xl border border-blue-gray-100 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950 sm:p-4">
-      <div className="mb-4 flex flex-col gap-2 w-full">
-        <div className="mb-1">
-          <h2 className="text-lg font-semibold text-blue-gray-900 dark:text-slate-50">Find compounds</h2>
-          <p className="text-xs text-blue-gray-500 dark:text-slate-400">Enter or draw a structure to search this collection.</p>
+      <div id="query-panel" className="flex min-w-0 flex-col gap-[1.125rem] rounded-2xl border border-slate-200 bg-white p-[1rem] shadow-sm dark:border-slate-700 sm:p-[1.25rem]">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Find compounds</h2>
+          {availability && (
+            <p className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400" role="status" aria-live="polite">
+              {availability.loading
+                ? <Spinner className="h-3 w-3" />
+                : <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-green-500" />}
+              {availability.text}
+            </p>
+          )}
         </div>
 
-        {isMultiSource(searchSource) && activeOwnedStatus?.state === 'loading' && (
-          <div className="mb-2 flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/70 px-4 py-3" role="status" aria-live="polite">
-            <Spinner className="h-4 w-4 text-blue-500" />
-            <Typography variant="small" color="blue-gray">Checking search availability for the selected collections…</Typography>
-          </div>
-        )}
-        {isMultiSource(searchSource) && activeOwnedStatus?.state === 'available' && (
-          <div className="mb-2 rounded-lg border border-teal-100 bg-teal-50/70 px-4 py-3 dark:border-teal-800 dark:bg-teal-950/60">
-            <Typography variant="small" color="blue-gray" className="dark:!text-slate-100">
-              {collectionsForSource(searchSource).map(collectionLabel).join(' + ')} · searched together{activeOwnedStatus.modes?.length === 1 ? ' · similarity only for this selection' : ''}
-            </Typography>
-          </div>
-        )}
         {isMultiSource(searchSource) && activeOwnedStatus?.state === 'unavailable' && (
-          <Alert color="amber" className="mb-2">
+          <Alert color="amber">
             <Typography variant="small">Search is not available for this selection: {activeOwnedStatus.reason} No other collection was searched.</Typography>
           </Alert>
         )}
         {/* Stock-compound availability: a clear state, never a silent corpus switch. */}
-        {searchSource === "stock" && stockStatus && stockStatus.state === "loading" && (
-          <div className="mb-2 flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/70 px-4 py-3" role="status" aria-live="polite">
-            <Spinner className="h-4 w-4 text-blue-500" />
-            <Typography variant="small" color="blue-gray">Checking stock-compound search availability…</Typography>
-          </div>
-        )}
-        {searchSource === "stock" && stockStatus && stockStatus.state === "available" && (
-          <div className="mb-2 rounded-lg border border-teal-100 bg-teal-50/70 px-4 py-3 dark:border-teal-800 dark:bg-teal-950/60">
-            <Typography variant="small" color="blue-gray" className="dark:!text-slate-100">
-              Stock compounds · {stockStatus.dataset.rowCount ? `${stockStatus.dataset.rowCount.toLocaleString()} searchable` : "ready"}
-            </Typography>
-          </div>
-        )}
         {searchSource === "stock" && !usesOwnedSearch && stockStatus && stockStatus.state === "unavailable" && (
-          <Alert color="amber" className="mb-2">
+          <Alert color="amber">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               <Typography variant="small">
                 Stock-compound search is not available yet: {stockStatus.reason} Please try again later or choose another collection.
@@ -2386,98 +2451,16 @@ export function Simulation({ active = true }) {
             </div>
           </Alert>
         )}
-
-        {MACROCYCLE_SOURCES[searchSource] && macrocycleStatus[searchSource]?.state === 'loading' && (
-          <div className="mb-2 flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/70 px-4 py-3" role="status" aria-live="polite">
-            <Spinner className="h-4 w-4 text-blue-500" />
-            <Typography variant="small" color="blue-gray">Checking {MACROCYCLE_SOURCES[searchSource].label.toLowerCase()} search availability…</Typography>
-          </div>
-        )}
-        {MACROCYCLE_SOURCES[searchSource] && macrocycleStatus[searchSource]?.state === 'available' && (
-          <div className="mb-2 rounded-lg border border-teal-100 bg-teal-50/70 px-4 py-3 text-sm text-blue-gray-800 dark:border-teal-800 dark:bg-teal-950/60 dark:text-slate-100">
-              {MACROCYCLE_SOURCES[searchSource].label} · {(macrocycleStatus[searchSource].dataset?.rowCount || MACROCYCLE_SOURCES[searchSource].count).toLocaleString()} searchable {searchSource === 'both' ? '· real RPX + virtual VPX' : searchSource === 'real' ? '· current stock unverified' : '· virtual designs'}
-          </div>
-        )}
         {MACROCYCLE_SOURCES[searchSource] && !usesOwnedSearch && macrocycleStatus[searchSource]?.state === 'unavailable' && (
-          <Alert color="amber" className="mb-2">
+          <Alert color="amber">
             <div className="flex items-center justify-between gap-2">
               <span>{MACROCYCLE_SOURCES[searchSource].label} search is unavailable: {macrocycleStatus[searchSource].reason}</span>
               <button type="button" className="shrink-0 text-sm font-semibold underline" onClick={() => fetchMacrocycleStatus(searchSource)}>Check again</button>
             </div>
           </Alert>
         )}
-
-        {searchSource === "open" && openStatus && openStatus.state === "loading" && (
-          <div className="mb-2 flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/70 px-4 py-3" role="status" aria-live="polite">
-            <Spinner className="h-4 w-4 text-blue-500" />
-            <Typography variant="small" color="blue-gray">Checking open-compounds search availability…</Typography>
-          </div>
-        )}
-        {searchSource === "open" && !usesOwnedSearch && openStatus && openStatus.state === "available" && (
-          <div className="mb-2 rounded-lg border border-indigo-100 bg-indigo-50/70 px-4 py-3 space-y-2">
-            <Typography variant="small" color="blue-gray">
-              Open compounds sends your query to external providers
-              {openStatus.externalDestination ? ` (${openStatus.externalDestination})` : ''}.
-              Scores are always calculated with RDKit Morgan radius&nbsp;2 / 2048-bit Tanimoto (chirality off), never by the model.
-              Results are ranked among retrieved candidates, not guaranteed exhaustive database-wide top-N.
-            </Typography>
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-              <label className="flex items-center gap-1">
-                <input
-                  type="radio"
-                  name="openSearchMode"
-                  checked={openUseAi}
-                  disabled={!openStatus.ai?.enabled}
-                  onChange={() => setOpenUseAi(true)}
-                />
-                <span>AI search{openStatus.ai?.enabled ? '' : ' (unavailable)'}</span>
-              </label>
-              <label className="flex items-center gap-1">
-                <input
-                  type="radio"
-                  name="openSearchMode"
-                  checked={!openUseAi}
-                  onChange={() => setOpenUseAi(false)}
-                />
-                <span>Search without AI</span>
-              </label>
-            </div>
-            {openUseAi && openStatus.ai?.enabled && (
-              <div className="space-y-1">
-                <Typography variant="small" className="font-semibold text-blue-gray-700">
-                  Optional instruction
-                </Typography>
-                <textarea
-                  value={openInstruction}
-                  onChange={(e) => setOpenInstruction(e.target.value.slice(0, 500))}
-                  rows={2}
-                  placeholder="e.g. Prefer compact benzothiazoles if present among hits. Do not change the query SMILES."
-                  className="w-full rounded-lg border border-indigo-200 bg-white px-3 py-2 text-sm"
-                />
-                <Typography variant="small" className="text-blue-gray-500">
-                  Instructions cannot silently change the SMILES, threshold, or result count — conflicts are explained.
-                </Typography>
-              </div>
-            )}
-            {!openStatus.ai?.enabled && (
-              <Typography variant="small" className="text-blue-gray-500">
-                AI: {openStatus.ai?.reason || 'not configured'}. Deterministic “Search without AI” still works.
-              </Typography>
-            )}
-            {openAiStage && (
-              <Typography variant="small" className="text-indigo-800" role="status" aria-live="polite">
-                {openAiStage}
-              </Typography>
-            )}
-            {openAiExplanation && (
-              <Typography variant="small" className="text-blue-gray-700 whitespace-pre-wrap">
-                {openAiExplanation}
-              </Typography>
-            )}
-          </div>
-        )}
         {searchSource === "open" && !usesOwnedSearch && openStatus && openStatus.state === "unavailable" && (
-          <Alert color="amber" className="mb-2">
+          <Alert color="amber">
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
               <Typography variant="small">
                 Open compounds search is not available: {openStatus.reason} Choose another collection above or try again later.
@@ -2492,178 +2475,169 @@ export function Simulation({ active = true }) {
             </div>
           </Alert>
         )}
-        
-        {/* Query type radio buttons above search box */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2 w-full">
-          <Typography variant="small" color="blue-gray" className="mr-2">Query:</Typography>
-          <label className="flex items-center gap-1 w-auto">
-            <input
-              type="radio"
-              name="queryType"
-              value="draw"
-              disabled={searchType === 'id'}
-              checked={queryType === "draw"}
-              onFocus={() => setEditorVisited(true)}
-              onPointerEnter={() => setEditorVisited(true)}
-              onChange={() => { setEditorVisited(true); setQueryType("draw"); }}
-            />
-            <span>Draw molecule</span>
-          </label>
-          <label className="flex items-center gap-1 w-auto">
-            <input
-              type="radio"
-              name="queryType"
-              value="text"
-              checked={queryType === "text"}
-              onChange={() => setQueryType("text")}
-            />
-            <span>{searchType === 'id' ? 'Paste identifiers' : searchSource === 'asinex' ? 'Paste identifier or SMILES' : 'Paste structures'}</span>
-          </label>
-        </div>
+
         {/* New methods are enabled only by the selected source's live capability response. */}
-        <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-2 w-full min-w-0 border-0 p-0 m-0" aria-describedby={searchSource !== 'asinex' ? 'search-type-status' : undefined}>
-          <legend className="sr-only">Search type</legend>
-          <Typography variant="small" color="blue-gray" className="mr-2" aria-hidden="true">Search type:</Typography>
-          <label className="flex items-center gap-1 w-auto">
-            <input
-              type="radio"
-              name="searchType"
-              value="similarity"
-              checked={searchType === "similarity"}
-              onChange={() => handleSearchModeChange("similarity")}
+        <SegmentedControl
+          legend="Search type"
+          name="searchType"
+          value={searchType}
+          describedBy={searchSource !== 'asinex' ? 'search-type-status' : undefined}
+          onChange={(next) => (searchSource === 'asinex' ? setSearchType(next) : handleSearchModeChange(next))}
+          options={searchSource === 'asinex'
+            ? [
+              { value: 'similarity', label: 'Similarity' },
+              { value: 'substructure', label: 'Substructure' },
+              { value: 'structure', label: 'Structure' },
+              { value: 'bas', label: 'BAS' },
+              { value: 'molweight', label: 'Mol weight' },
+            ]
+            : OWNED_SEARCH_MODES.map((option) => ({
+              value: option.value,
+              label: SHORT_MODE_LABELS[option.value] || option.label,
+              disabled: option.value !== 'similarity' && !ownedModes.includes(option.value),
+              title: option.value !== 'similarity' && !ownedModes.includes(option.value) ? 'Not available for this collection' : option.label,
+            }))}
+        />
+
+        {searchSource === "open" && !usesOwnedSearch && openStatus && openStatus.state === "available" && (
+          <div className="space-y-2 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700">
+            <SegmentedControl
+              legend="Open compounds search mode"
+              name="openSearchMode"
+              size="sm"
+              value={openUseAi ? 'ai' : 'plain'}
+              onChange={(next) => setOpenUseAi(next === 'ai')}
+              options={[
+                { value: 'ai', label: `AI search${openStatus.ai?.enabled ? '' : ' (unavailable)'}`, disabled: !openStatus.ai?.enabled },
+                { value: 'plain', label: 'Search without AI' },
+              ]}
             />
-            <span>Similarity</span>
-          </label>
-          {searchSource !== 'asinex' && OWNED_SEARCH_MODES.filter((option) => option.value !== 'similarity').map((option) => (
-            <label key={option.value} className="flex items-center gap-1 w-auto">
-              <input type="radio" name="searchType" value={option.value} checked={searchType === option.value}
-                disabled={!ownedModes.includes(option.value)} onChange={() => handleSearchModeChange(option.value)} />
-              <span title={!ownedModes.includes(option.value) ? 'Not available for this collection' : undefined} className={!ownedModes.includes(option.value) ? 'text-blue-gray-400' : undefined}>{option.label}</span>
-            </label>
-          ))}
-          {searchSource === "asinex" && (
-            <>
-              <label className="flex items-center gap-1 w-auto">
-                <input
-                  type="radio"
-                  name="searchType"
-                  value="substructure"
-                  checked={searchType === "substructure"}
-                  onChange={() => setSearchType("substructure")}
+            {openUseAi && openStatus.ai?.enabled && (
+              <label className="block">
+                <span className={FIELD_LABEL}>Optional instruction</span>
+                <textarea
+                  value={openInstruction}
+                  onChange={(e) => setOpenInstruction(e.target.value.slice(0, 500))}
+                  rows={2}
+                  placeholder="e.g. Prefer compact benzothiazoles if present among hits. Do not change the query SMILES."
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600"
                 />
-                <span>Substructure</span>
+                <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+                  Instructions cannot silently change the SMILES, threshold, or result count — conflicts are explained.
+                </span>
               </label>
-              <label className="flex items-center gap-1">
-                <input
-                  type="radio"
-                  name="searchType"
-                  value="structure"
-                  checked={searchType === "structure"}
-                  onChange={() => setSearchType("structure")}
-                />
-                <span>Structure</span>
-              </label>
-              <label className="flex items-center gap-1 w-auto">
-                <input
-                  type="radio"
-                  name="searchType"
-                  value="bas"
-                  checked={searchType === "bas"}
-                  onChange={() => setSearchType("bas")}
-                />
-                <span>BAS</span>
-              </label>
-              <label className="flex items-center gap-1 w-auto">
-                <input
-                  type="radio"
-                  name="searchType"
-                  value="molweight"
-                  checked={searchType === "molweight"}
-                  onChange={() => setSearchType("molweight")}
-                />
-                <span>Mol weight</span>
-              </label>
-            </>
-          )}
-        </fieldset>
-        {searchSource !== 'asinex' && (
-          <div id="search-type-status" className="mb-3 text-xs text-blue-gray-600 dark:text-slate-300" aria-live="polite">
-            {searchNotice ? <span className="block mb-1">{searchNotice}</span> : null}
-            {activeOwnedStatus?.state === 'loading' ? 'Checking additional search methods…' : null}
-            {activeOwnedStatus?.state === 'unavailable' ? activeOwnedStatus.reason : null}
-            {activeOwnedStatus?.state === 'available' ? `Up to ${activeOwnedStatus.maxQueries || 20} queries: one per line or comma-separated. Matches are combined by compound, with each matching query recorded. ${searchType === 'id' ? 'IDs are looked up only in the selected collection.' : searchType === 'exact' ? 'Exact structure compares canonical chemistry, including stereochemistry.' : searchType === 'substructure' ? 'Use a SMILES fragment or SMARTS pattern. Chirality is respected where specified.' : queryCount > 1 ? 'Batch similarity uses the deterministic search, without AI.' : ''}${searchSource === 'open' ? ' Queries are sent to ChEMBL; open compounds are discovery-only.' : ''}` : null}
+            )}
+            {!openStatus.ai?.enabled && (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                AI: {openStatus.ai?.reason || 'not configured'}. Deterministic “Search without AI” still works.
+              </p>
+            )}
+            <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+              Your query is sent to external providers{openStatus.externalDestination ? ` (${openStatus.externalDestination})` : ''}.
+              Scores are always calculated with RDKit Morgan radius&nbsp;2 / 2048-bit Tanimoto (chirality off), never by the model.
+              Results are ranked among retrieved candidates, not guaranteed exhaustive database-wide top-N.
+              Open compounds are not stocked or priced here — selection is for docking handoff only.
+            </p>
+            {openAiStage && (
+              <p className="text-xs font-medium text-slate-700 dark:text-slate-200" role="status" aria-live="polite">
+                {openAiStage}
+              </p>
+            )}
+            {openAiExplanation && (
+              <p className="whitespace-pre-wrap text-xs text-slate-700 dark:text-slate-200">
+                {openAiExplanation}
+              </p>
+            )}
           </div>
         )}
-        {searchSource === "stock" && searchType === 'similarity' && (
-          <div className="mb-2 w-full space-y-3 rounded-lg border border-teal-100 bg-teal-50/40 p-4">
-            <div className="flex flex-col gap-3">
-              <label className="block min-w-0 flex-1">
-                <span className="mb-1 block text-xs font-semibold text-blue-gray-700">Fingerprint</span>
-                <select
-                  aria-label="Stock fingerprint"
-                  value={stockFingerprintType}
-                  onChange={(e) => handleStockMethodChange('fingerprint', e.target.value)}
-                  className="h-10 w-full rounded-lg border border-teal-200 bg-white px-3 text-sm text-blue-gray-800 outline-none"
-                >
-                  {stockFpOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="block min-w-0 flex-1">
-                <span className="mb-1 block text-xs font-semibold text-blue-gray-700">Metric</span>
-                <select
-                  aria-label="Stock metric"
-                  value={stockSimilarityMetric}
-                  onChange={(e) => handleStockMethodChange('metric', e.target.value)}
-                  className="h-10 w-full rounded-lg border border-teal-200 bg-white px-3 text-sm text-blue-gray-800 outline-none"
-                >
-                  {stockMetricOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-              </label>
+
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-semibold text-slate-900 dark:text-slate-50">{queryFieldLabel(searchSource === "asinex", searchType)}</span>
+            <div className="w-36 shrink-0">
+              <SegmentedControl
+                legend="Query input"
+                name="queryType"
+                size="sm"
+                value={queryType}
+                onChange={(next) => { if (next === 'draw') setEditorVisited(true); setQueryType(next); }}
+                options={[
+                  { value: 'text', label: 'Paste' },
+                  {
+                    value: 'draw',
+                    label: 'Draw',
+                    disabled: searchType === 'id',
+                    title: searchType === 'id' ? 'Compound ID lookup takes typed IDs' : undefined,
+                    inputProps: { onFocus: () => setEditorVisited(true) },
+                    labelProps: { onPointerEnter: () => setEditorVisited(true) },
+                  },
+                ]}
+              />
             </div>
-            <details className="text-xs text-blue-gray-600 dark:text-slate-300">
-              <summary className="cursor-pointer">How stock scores work</summary>
-              <p className="mt-2">RDKit {stockFpLabel} and {stockMetricLabel} compare the query with each stock structure. These are binary fingerprints. A score of 1 is not proof of exact chemical identity. Choose Exact structure for that comparison.</p>
-            </details>
           </div>
-        )}
-        {MACROCYCLE_SOURCES[searchSource] && searchType === 'similarity' && activeMacrocycleStatus?.state === 'available' && (
-          <div className="mb-2 w-full space-y-3 rounded-lg border border-teal-100 bg-teal-50/40 p-4">
-            <label className="block min-w-0 max-w-sm">
-              <span className="mb-1 block text-xs font-semibold text-blue-gray-700">Similarity method</span>
-              <select
-                aria-label="Macrocycle similarity method"
-                value={macrocycleSimilarityMetric}
-                onChange={(e) => handleMacrocycleMethodChange(e.target.value)}
-                className="h-10 w-full rounded-lg border border-teal-200 bg-white px-3 text-sm text-blue-gray-800 outline-none"
-              >
-                {macrocycleMetricOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </label>
-            <details className="text-xs text-blue-gray-600 dark:text-slate-300">
-              <summary className="cursor-pointer">How macrocycle scores work</summary>
-              <p className="mt-2">Each method compares RDKit Morgan (ECFP4) environments. Frequency-weighted metrics are a Pyxis method, not MOE ctanimoto; those scores are not comparable with MOE. {macrocycleCountMetricsAvailable ? '' : 'Count metrics require a rebuilt index.'}</p>
-            </details>
+
+          {editorVisited && (
+            <div id="editor" hidden={queryType === "text"} className={`${queryType === 'text' ? 'hidden' : 'flex'} w-full min-w-0 flex-col gap-2`}>
+              <div className={`${editorExpanded ? 'h-[min(75vh,42rem)]' : 'h-[min(48vh,26rem)]'} relative overflow-hidden rounded-xl border border-slate-300 bg-white transition-colors focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20 dark:border-slate-600`}>
+                {editorState !== 'ready' && (
+                  <div role="status" aria-live="polite" className="absolute inset-0 flex items-center justify-center gap-3 p-4 text-sm text-slate-600 dark:text-slate-300">
+                    {editorState === 'loading' ? <><Spinner className="h-5 w-5" />Loading molecule editor…</> : (
+                      <span className="flex flex-col items-center gap-2 text-center">
+                        The molecule editor could not start.
+                        <button type="button" className="font-medium text-slate-900 underline dark:text-brand-300" onClick={() => { setEditorState('loading'); setEditorReloadKey((key) => key + 1); }}>Retry</button>
+                      </span>
+                    )}
+                  </div>
+                )}
+                <iframe
+                  key={editorReloadKey}
+                  ref={ketcherIframeRef}
+                  src={withAppBase("/ketcher/index.html")}
+                  title="Ketcher 2D Chemical Editor"
+                  onLoad={handleEditorLoad}
+                  onError={() => setEditorState('error')}
+                  hidden={editorState !== 'ready'}
+                  style={editorState === 'ready' ? undefined : { display: 'none' }}
+                  tabIndex={editorState === 'ready' ? 0 : -1}
+                  className="h-full w-full border-0 bg-white"
+                  allowFullScreen
+                />
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <button type="button" onClick={handleCopySmiles} disabled={editorState !== 'ready'} className={SECONDARY_BUTTON}>
+                  Use drawing as query
+                </button>
+                <button type="button" className="text-xs font-medium text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100" onClick={() => setEditorExpanded((value) => !value)}>
+                  {editorExpanded ? 'Compact editor' : 'Expand editor'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div id="molecule-search" className="flex flex-col gap-1.5">
+            <CompoundQueryField
+              catalog={searchSource === "asinex"}
+              mode={searchType}
+              value={searchCode}
+              onChange={e => setSearchCode(e.target.value)}
+              describedBy={searchSource !== 'asinex' ? 'search-type-status' : undefined}
+            />
+            {searchSource === "asinex" && <p className="text-xs text-slate-500 dark:text-slate-400">CAS, IUPAC name, InChI, and InChIKey also work.</p>}
+            {searchSource !== 'asinex' && (
+              <div id="search-type-status" className="text-xs leading-relaxed text-slate-500 dark:text-slate-400" aria-live="polite">
+                {searchNotice ? <span className="mb-1 block text-slate-700 dark:text-slate-200">{searchNotice}</span> : null}
+                {activeOwnedStatus?.state === 'loading' ? 'Checking additional search methods…' : null}
+                {activeOwnedStatus?.state === 'unavailable' ? activeOwnedStatus.reason : null}
+                {activeOwnedStatus?.state === 'available' ? `Up to ${activeOwnedStatus.maxQueries || 20} queries, one per line or comma-separated. ${searchType === 'id' ? 'IDs are looked up only in the selected collection.' : searchType === 'exact' ? 'Exact structure compares canonical chemistry, including stereochemistry.' : searchType === 'substructure' ? 'Use a SMILES fragment or SMARTS pattern. Chirality is respected where specified.' : queryCount > 1 ? 'Batch similarity uses the deterministic search, without AI.' : ''}${searchSource === 'open' ? ' Queries are sent to ChEMBL; open compounds are discovery-only.' : ''}` : null}
+              </div>
+            )}
           </div>
-        )}
-        {searchSource === "open" && !usesOwnedSearch && (
-          <p className="mb-2 text-sm text-blue-gray-500">
-            Open compounds uses an AI tool loop when enabled (model requests the chemical-search tool; RDKit scores). Use “Search without AI” for the deterministic ChEMBL path. Open compounds are not stocked or priced here — selection is for docking handoff only.
-          </p>
-        )}
-        
-        {/* Similarity Threshold Slider */}
+        </div>
+
         {searchType === "similarity" && (
-          <div className="flex flex-col items-start gap-2 mb-2 w-full p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <Typography variant="small" color="blue-gray" className="font-semibold min-w-fit">
-              Similarity Threshold:
-            </Typography>
-            <div className="flex items-center gap-2 w-full min-w-0">
+          <div className="flex flex-col gap-2">
+            <label className="flex items-center gap-3 text-sm">
+              <span className="shrink-0 font-medium text-slate-700 dark:text-slate-200">Min. similarity</span>
               <input
                 type="range"
                 min={searchSource === "stock" || isMultiSource(searchSource) ? "0.1" : searchSource === "open" ? "0.4" : MACROCYCLE_SOURCES[searchSource] ? "0.1" : "0"}
@@ -2671,454 +2645,310 @@ export function Simulation({ active = true }) {
                 step="0.1"
                 value={similarityThreshold}
                 onChange={(e) => handleThresholdChange(parseFloat(e.target.value))}
-                className="min-w-0 flex-1 h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                className="h-1.5 min-w-0 flex-1 cursor-pointer accent-slate-900 dark:accent-brand-500"
               />
-              <div className="flex items-center justify-center min-w-[60px] px-3 py-1 bg-blue-600 text-white rounded-lg font-bold text-lg">
+              <output className="w-11 shrink-0 rounded-md bg-slate-100 py-0.5 text-center font-mono text-sm font-semibold tabular-nums text-slate-900 dark:bg-slate-950 dark:text-slate-50">
                 {similarityThreshold.toFixed(1)}
-              </div>
-            </div>
+              </output>
+            </label>
+
+            {searchSource === "stock" && (
+              <details className="group rounded-xl border border-slate-200 dark:border-slate-700">
+                <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-sm [&::-webkit-details-marker]:hidden">
+                  <span className="font-medium text-slate-700 dark:text-slate-200">Method</span>
+                  <span className="min-w-0 flex-1 truncate text-right text-xs text-slate-500 dark:text-slate-400">{stockFpLabel} · {stockMetricLabel}</span>
+                  <ChevronDownIcon className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" aria-hidden="true" />
+                </summary>
+                <div className="grid gap-3 border-t border-slate-200 p-3 dark:border-slate-700 sm:grid-cols-2">
+                  <label className="block min-w-0">
+                    <span className={FIELD_LABEL}>Fingerprint</span>
+                    <select
+                      aria-label="Stock fingerprint"
+                      value={stockFingerprintType}
+                      onChange={(e) => handleStockMethodChange('fingerprint', e.target.value)}
+                      className={FIELD_INPUT}
+                    >
+                      {stockFpOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block min-w-0">
+                    <span className={FIELD_LABEL}>Metric</span>
+                    <select
+                      aria-label="Stock metric"
+                      value={stockSimilarityMetric}
+                      onChange={(e) => handleStockMethodChange('metric', e.target.value)}
+                      className={FIELD_INPUT}
+                    >
+                      {stockMetricOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2">These are binary fingerprints. A score of 1 is not proof of exact chemical identity — use Exact structure for that.</p>
+                </div>
+              </details>
+            )}
+            {MACROCYCLE_SOURCES[searchSource] && activeMacrocycleStatus?.state === 'available' && (
+              <details className="group rounded-xl border border-slate-200 dark:border-slate-700">
+                <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-sm [&::-webkit-details-marker]:hidden">
+                  <span className="font-medium text-slate-700 dark:text-slate-200">Method</span>
+                  <span className="min-w-0 flex-1 truncate text-right text-xs text-slate-500 dark:text-slate-400">Morgan (ECFP4) · {macrocycleMetricLabel}</span>
+                  <ChevronDownIcon className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-open:rotate-180" aria-hidden="true" />
+                </summary>
+                <div className="space-y-2 border-t border-slate-200 p-3 dark:border-slate-700">
+                  <label className="block min-w-0">
+                    <span className={FIELD_LABEL}>Similarity method</span>
+                    <select
+                      aria-label="Macrocycle similarity method"
+                      value={macrocycleSimilarityMetric}
+                      onChange={(e) => handleMacrocycleMethodChange(e.target.value)}
+                      className={FIELD_INPUT}
+                    >
+                      {macrocycleMetricOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Each method compares RDKit Morgan (ECFP4) environments. Frequency-weighted metrics are a Pyxis method, not MOE ctanimoto; those scores are not comparable with MOE. {macrocycleCountMetricsAvailable ? '' : 'Count metrics require a rebuilt index.'}</p>
+                </div>
+              </details>
+            )}
+            {searchSource === "open" && (
+              <label className="flex items-center gap-3 text-sm">
+                <span className="shrink-0 font-medium text-slate-700 dark:text-slate-200">Max results</span>
+                <select
+                  value={openMaxResults}
+                  onChange={(e) => {
+                    const next = Number(e.target.value);
+                    setOpenMaxResults(next);
+                    openMaxResultsRef.current = next;
+                    if (searchSourceRef.current === 'open') {
+                      handleThresholdChange(similarityThresholdRef.current);
+                    }
+                  }}
+                  className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-sm dark:border-slate-600"
+                  title="Bounded requested count (server cap 100). Pagination stays inside this ranked set."
+                >
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </label>
+            )}
           </div>
         )}
 
-        {searchSource === "open" && searchType === "similarity" && (
-          <div className="flex flex-col items-start gap-2 mb-2 w-full p-4 bg-indigo-50 rounded-lg border border-indigo-200">
-            <Typography variant="small" color="blue-gray" className="font-semibold min-w-fit">
-              Max results:
-            </Typography>
-            <select
-              value={openMaxResults}
-              onChange={(e) => {
-                const next = Number(e.target.value);
-                setOpenMaxResults(next);
-                openMaxResultsRef.current = next;
-                if (searchSourceRef.current === 'open') {
-                  handleThresholdChange(similarityThresholdRef.current);
-                }
-              }}
-              className="px-3 py-2 border border-indigo-200 rounded-lg bg-white"
-            >
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
-            <Typography variant="small" className="text-blue-gray-500">
-              Bounded requested count (server cap 100). Pagination stays inside this ranked set.
-            </Typography>
-          </div>
-        )}
-
-        {/* Molecular Weight Range Sliders */}
+        {/* Molecular weight range (legacy catalog only) */}
         {searchType === "molweight" && (
-          <div className="flex flex-col gap-3 mb-2 w-full p-4 bg-brand-50 rounded-lg border border-brand-200 molecular-weight-range">
-            <Typography variant="small" color="blue-gray" className="font-semibold">
-              Molecular Weight Range:
-            </Typography>
-            
-            <div className="flex flex-col gap-3 w-full">
-              {/* Min value display */}
-              <div className="flex items-center justify-center min-w-[80px] px-3 py-1 bg-brand-600 text-white rounded-lg font-bold text-lg">
-                {parseFloat(molWeightMin).toFixed(2)}
-              </div>
-              
-              {/* Dual range slider container */}
-              <div className="w-full min-w-0 relative h-6">
-                {/* Background track */}
-                <div className="absolute w-full h-2 bg-brand-200 rounded-lg" style={{ top: '50%', transform: 'translateY(-50%)' }}></div>
-                
-                {/* Active range highlight */}
-                <div 
-                  className="absolute h-2 bg-brand-600 rounded-lg"
-                  style={{ 
-                    left: `${(molWeightMin / 1000) * 100}%`,
-                    width: `${((molWeightMax - molWeightMin) / 1000) * 100}%`,
-                    top: '50%',
-                    transform: 'translateY(-50%)'
-                  }}
-                ></div>
-                
-                {/* Max slider (placed first, lower z-index) */}
-                <input
-                  type="range"
-                  min="0"
-                  max="1000"
-                  step="0.01"
-                  value={molWeightMax}
-                  onChange={(e) => {
-                    const newMax = parseFloat(e.target.value);
-                    if (newMax >= molWeightMin) {
-                      setMolWeightMax(newMax);
-                    }
-                  }}
-                  className="absolute w-full appearance-none bg-transparent cursor-pointer"
-                  style={{
-                    zIndex: 3,
-                    height: '24px',
-                    top: '50%',
-                    transform: 'translateY(-50%)'
-                  }}
-                />
-                
-                {/* Min slider (placed second, higher z-index) */}
-                <input
-                  type="range"
-                  min="0"
-                  max="1000"
-                  step="0.01"
-                  value={molWeightMin}
-                  onChange={(e) => {
-                    const newMin = parseFloat(e.target.value);
-                    if (newMin <= molWeightMax) {
-                      setMolWeightMin(newMin);
-                    }
-                  }}
-                  className="absolute w-full appearance-none bg-transparent cursor-pointer"
-                  style={{
-                    zIndex: 4,
-                    height: '24px',
-                    top: '50%',
-                    transform: 'translateY(-50%)'
-                  }}
-                />
-              </div>
-              
-              {/* Max value display */}
-              <div className="flex items-center justify-center min-w-[80px] px-3 py-1 bg-brand-600 text-white rounded-lg font-bold text-lg">
-                {parseFloat(molWeightMax).toFixed(2)}
-              </div>
+          <div className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3 molecular-weight-range dark:border-slate-700">
+            <div className="flex items-center justify-between text-sm font-medium text-slate-700 dark:text-slate-200">
+              <span>Molecular weight</span>
+              <span className="font-mono tabular-nums">{parseFloat(molWeightMin).toFixed(2)} – {parseFloat(molWeightMax).toFixed(2)}</span>
             </div>
-            
+            <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">Min
+              <input type="range" min="0" max="1000" step="0.01" value={molWeightMin}
+                onChange={(e) => { const newMin = parseFloat(e.target.value); if (newMin <= molWeightMax) setMolWeightMin(newMin); }}
+                className="min-w-0 flex-1 accent-slate-900 dark:accent-brand-500" />
+            </label>
+            <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">Max
+              <input type="range" min="0" max="1000" step="0.01" value={molWeightMax}
+                onChange={(e) => { const newMax = parseFloat(e.target.value); if (newMax >= molWeightMin) setMolWeightMax(newMax); }}
+                className="min-w-0 flex-1 accent-slate-900 dark:accent-brand-500" />
+            </label>
           </div>
         )}
-        
-        {queryType !== "draw" && (
-        <div className="flex flex-col gap-4 w-full">
-          {/* Search section */}
-          <div id="molecule-search" className="flex flex-col items-stretch gap-2 w-full">
-            <CompoundQueryField
-              catalog={searchSource === "asinex"}
-              mode={searchType}
-              value={searchCode}
-              onChange={e => setSearchCode(e.target.value)}
-            />
-            {searchSource === "asinex" && <p className="text-xs text-blue-gray-500">CAS, IUPAC name, InChI, and InChIKey also work.</p>}
-            <Button
-              size="lg"
-              onClick={handleSearch}
-              disabled={searchLoading || !searchCode.trim() || sourceSearchDisabled}
-              className="flex items-center gap-3 px-6 py-3 text-lg font-semibold whitespace-nowrap bg-brand-500 text-white focus:opacity-[0.85] active:opacity-[0.85]"
-            >
-              {searchLoading ? <Spinner className="h-5 w-5" /> : <CloudIcon className="h-5 w-5" />}
-              {searchLoading ? 'Searching...' : 'Search'}
-            </Button>
-          </div>
-   
 
-          {/* Docking section */}
-          <div className="w-full flex flex-col gap-4 p-4 rounded-lg bg-gradient-to-br from-blue-50 via-blue-100 to-blue-200 border border-blue-300 self-start">
-            <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
-              <button
-                type="button"
-                className="text-blue-700 underline text-left w-fit focus:outline-none hover:text-blue-900 transition-colors"
-                tabIndex={0}
-                onClick={() => setShowSimInputs(v => !v)}
-              >
-                Run 1 Click Docking
-              </button>
-              <button
-                type="button"
-                className="text-purple-700 underline text-left w-fit focus:outline-none hover:text-purple-900 transition-colors font-semibold"
-                tabIndex={0}
-                onClick={() => setShowDiffDockInputs(v => !v)}
-              >
-                DiffDock
-              </button>
-            </div>
-            {showSimInputs && (
-              <div id="simulation-inputs" className="flex items-center gap-0">
-                <Input
-                  label="PDB ID"
-                  value={simPdbId}
-                  onChange={e => setSimPdbId(e.target.value)}
-                  className="w-full max-w-xs"
-                />
-                <Button
-                  size="md"
-                  color="blue"
-                  onClick={handleSimulation}
-                  disabled={simLoading || !simPdbId || !dockingInput}
-                  className="items-center gap-2"
-                >
-                  {simLoading ? 'Simulating…' : 'Simulate'}
-                </Button>
-              </div>
-            )}
-            {showDiffDockInputs && (
-              <div id="diffdock-inputs" className="flex flex-col gap-2">
-                <Input
-                  label="PDB ID"
-                  value={diffDockPdbId}
-                  onChange={e => setDiffDockPdbId(e.target.value)}
-                  className="w-full"
-                />
-                <Input
-                  label="Ligand ID"
-                  value={diffDockLigandId}
-                  onChange={e => setDiffDockLigandId(e.target.value)}
-                  className="w-full"
-                />
-                <Button
-                  size="md"
-                  color="purple"
-                  onClick={handleDiffDock}
-                  disabled={diffDockLoading || !diffDockPdbId || (!diffDockLigandId.trim() && !dockingInput)}
-                  className="items-center gap-2 w-full"
-                >
-                  {diffDockLoading ? 'Running DiffDock...' : 'Run'}
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={handleSearch}
+          disabled={searchLoading || !searchCode.trim() || sourceSearchDisabled}
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-brand-500 px-4 text-base font-semibold text-slate-950 shadow-sm transition-colors hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {searchLoading ? <Spinner className="h-4 w-4" /> : <MagnifyingGlassIcon className="h-5 w-5" aria-hidden="true" />}
+          {searchLoading ? 'Searching…' : 'Search'}
+        </button>
+
+        {searchError && (
+          <Alert color="amber">
+            <Typography variant="small">{searchError}</Typography>
+          </Alert>
         )}
-      </div>
-
-      {/* Simulating Status Message */}
-      {simLoading && (
-        <Card className="mb-6 !shadow-none" style={{ boxShadow: 'none' }} role="status" aria-live="polite">
-          <CardBody className="text-center py-8">
-            <div className="flex flex-col items-center gap-4">
-              <Spinner className="h-8 w-8" color="blue" />
-              <Typography variant="h6" color="blue-gray" className="mb-2">
-                Docking in progress · {simElapsedSeconds}s elapsed
-              </Typography>
-              <Typography variant="small" color="gray" className="max-w-md">
-                Docking can take a few minutes. Keep this tab open; the result viewer will open automatically when the stored artifacts are ready.
-              </Typography>
-            </div>
-          </CardBody>
-        </Card>
-      )}
-
-      {searchError && (
-        <Alert color="yellow" className="mb-6">
-          <Typography>{searchError}</Typography>
-        </Alert>
-      )}
-      {searchResult && (
-        <Card className="mb-6 !shadow-none" style={{ boxShadow: 'none' }}>
-          <CardHeader
-            variant="gradient"
-            className="mb-4 grid h-12 place-items-center bg-transparent bg-gradient-to-tr from-brand-600 to-brand-400"
-          >
-            <Typography variant="h6" color="white">
-              Search Result
-            </Typography>
-          </CardHeader>
-          <CardBody>
-            <pre className="whitespace-pre-wrap text-sm font-mono bg-white p-4 rounded border overflow-auto max-h-96">
+        {searchResult && (
+          <details className="rounded-xl border border-slate-200 text-sm dark:border-slate-700">
+            <summary className="cursor-pointer px-3 py-2 font-medium">Search result</summary>
+            <pre className="max-h-96 overflow-auto whitespace-pre-wrap border-t border-slate-200 p-3 font-mono text-xs dark:border-slate-700">
               {JSON.stringify(searchResult, null, 2)}
             </pre>
-          </CardBody>
-        </Card>
-      )}
+          </details>
+        )}
 
-      {editorVisited && (
-        <div id="editor" hidden={queryType === "text"} className={`${queryType === 'text' ? 'hidden' : 'flex'} w-full min-w-0 flex-col gap-3`}>
-          {/* Ketcher Editor - responsive primary pane */}
-          <div className="min-w-0 flex-1 rounded-2xl border-2 border-blue-gray-200 bg-blue-gray-50 p-1.5 transition-colors focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-950 dark:focus-within:border-brand-500">
-            <div className="flex items-center justify-between px-2 py-1 text-sm font-semibold text-blue-gray-700 dark:text-slate-200">
-              <span>Draw a structure</span>
-              <button type="button" className="text-brand-700 underline dark:text-brand-300" onClick={() => setEditorExpanded((value) => !value)}>
-                {editorExpanded ? 'Compact editor' : 'Expand editor'}
-              </button>
-            </div>
-            <div className={`${editorExpanded ? 'h-[min(75vh,42rem)]' : 'h-[min(48vh,26rem)]'} relative overflow-hidden rounded-xl border border-blue-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900`}>
-              {editorState !== 'ready' && (
-                <div role="status" aria-live="polite" className="absolute inset-0 flex items-center justify-center gap-3 p-4 text-sm text-blue-gray-600 dark:text-slate-300">
-                  {editorState === 'loading' ? <><Spinner className="h-5 w-5" />Loading molecule editor…</> : (
-                    <span className="flex flex-col items-center gap-2 text-center">
-                      The molecule editor could not start.
-                      <button type="button" className="text-brand-700 underline dark:text-brand-300" onClick={() => { setEditorState('loading'); setEditorReloadKey((key) => key + 1); }}>Retry</button>
-                    </span>
-                  )}
-                </div>
-              )}
-              <iframe
-                key={editorReloadKey}
-                ref={ketcherIframeRef}
-                src={withAppBase("/ketcher/index.html")}
-                title="Ketcher 2D Chemical Editor"
-                onLoad={handleEditorLoad}
-                onError={() => setEditorState('error')}
-                hidden={editorState !== 'ready'}
-                style={editorState === 'ready' ? undefined : { display: 'none' }}
-                tabIndex={editorState === 'ready' ? 0 : -1}
-                className="h-full w-full border-0 bg-white dark:bg-slate-900"
-                allowFullScreen
-              />
-            </div>
+        <section aria-labelledby="docking-heading" className="flex flex-col gap-3 border-t border-slate-200 pt-4 dark:border-slate-700">
+          <div>
+            <h3 id="docking-heading" className="text-sm font-semibold text-slate-900 dark:text-slate-50">Docking</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Docks the selected results, or the query when nothing is selected.</p>
           </div>
-          
-          {/* Controls Panel - Half width */}
-          <div id="controls-panel" className="flex min-w-0 w-full flex-col gap-4 rounded-lg bg-white p-2 dark:bg-slate-900">
-            {/* Copy SMILES Button */}
-            <Button 
-              onClick={handleCopySmiles}
-              disabled={editorState !== 'ready'}
-              color="orange"
-              size="lg"
-              className="w-full"
-            >
-              Copy SMILES from Drawing
-            </Button>
-            
-            {/* Search section */}
-            <div className="flex flex-col gap-2">
-              <Typography variant="h6" color="blue-gray">Search Molecules</Typography>
-              <CompoundQueryField
-                catalog={searchSource === "asinex"}
-                mode={searchType}
-                value={searchCode}
-                onChange={e => setSearchCode(e.target.value)}
-              />
-              {searchSource === "asinex" && <p className="text-xs text-blue-gray-500">CAS, IUPAC name, InChI, and InChIKey also work.</p>}
-              <Button
-                size="lg"
-                onClick={handleSearch}
-                disabled={searchLoading || !searchCode.trim() || sourceSearchDisabled}
-                className="flex items-center justify-center gap-3 w-full bg-brand-500 text-white focus:opacity-[0.85] active:opacity-[0.85]"
-              >
-                {searchLoading ? <Spinner className="h-5 w-5" /> : <CloudIcon className="h-5 w-5" />}
-                {searchLoading ? 'Searching...' : 'Search'}
-              </Button>
-            </div>
-
-            {/* Docking section */}
-            <div className="flex flex-col gap-4 p-4 rounded-lg bg-gradient-to-br from-blue-50 via-blue-100 to-blue-200 border border-blue-300">
-              <div className="flex flex-wrap gap-x-4 gap-y-2 items-center">
-                <button
-                  type="button"
-                  className="text-blue-700 underline text-left w-fit focus:outline-none hover:text-blue-900 transition-colors"
-                  tabIndex={0}
-                  onClick={() => setShowSimInputs(v => !v)}
-                >
-                  Run 1 Click Docking
-                </button>
-                <button
-                  type="button"
-                  className="text-purple-700 underline text-left w-fit focus:outline-none hover:text-purple-900 transition-colors font-semibold"
-                  tabIndex={0}
-                  onClick={() => setShowDiffDockInputs(v => !v)}
-                >
-                  DiffDock
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" aria-expanded={showSimInputs} aria-controls="simulation-inputs" onClick={() => setShowSimInputs(v => !v)}
+              className={`${SECONDARY_BUTTON} ${showSimInputs ? '!border-slate-900 !bg-slate-900 !text-white dark:!border-brand-500 dark:!bg-brand-500 dark:!text-slate-950' : ''}`}>
+              1-click docking
+            </button>
+            <button type="button" aria-expanded={showDiffDockInputs} aria-controls="diffdock-inputs" onClick={() => setShowDiffDockInputs(v => !v)}
+              className={`${SECONDARY_BUTTON} ${showDiffDockInputs ? '!border-slate-900 !bg-slate-900 !text-white dark:!border-brand-500 dark:!bg-brand-500 dark:!text-slate-950' : ''}`}>
+              DiffDock
+            </button>
+          </div>
+          {showSimInputs && (
+            <div id="simulation-inputs" className="flex flex-col gap-2 rounded-xl bg-slate-100 p-3 dark:bg-slate-950">
+              <span className="text-xs font-medium text-slate-600 dark:text-slate-300">1-click docking (AutoDock Vina)</span>
+              <div className="flex gap-2">
+                <input aria-label="PDB ID" placeholder="PDB ID, e.g. 6LU7" value={simPdbId} onChange={e => setSimPdbId(e.target.value)} className={FIELD_INPUT} />
+                <button type="button" onClick={handleSimulation} disabled={simLoading || !simPdbId || !dockingInput}
+                  className="h-10 shrink-0 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-brand-500 dark:text-slate-950 dark:hover:bg-brand-400">
+                  {simLoading ? 'Simulating…' : 'Run docking'}
                 </button>
               </div>
-              {showSimInputs && (
-                <div className="flex flex-col gap-2">
-                  <Input
-                    label="PDB ID"
-                    value={simPdbId}
-                    onChange={e => setSimPdbId(e.target.value)}
-                    className="w-full"
-                  />
-                  <Button
-                    size="md"
-                    color="blue"
-                    onClick={handleSimulation}
-                    disabled={simLoading || !simPdbId || !dockingInput}
-                    className="flex items-center justify-center gap-2 w-full"
+            </div>
+          )}
+          {showDiffDockInputs && (
+            <div id="diffdock-inputs" className="flex flex-col gap-2 rounded-xl bg-slate-100 p-3 dark:bg-slate-950">
+              <span className="text-xs font-medium text-slate-600 dark:text-slate-300">DiffDock</span>
+              <div className="grid grid-cols-2 gap-2">
+                <input aria-label="PDB ID" placeholder="PDB ID" value={diffDockPdbId} onChange={e => setDiffDockPdbId(e.target.value)} className={FIELD_INPUT} />
+                <input aria-label="Ligand ID" placeholder="Ligand ID (optional)" value={diffDockLigandId} onChange={e => setDiffDockLigandId(e.target.value)} className={FIELD_INPUT} />
+              </div>
+              <button type="button" onClick={handleDiffDock} disabled={diffDockLoading || !diffDockPdbId || (!diffDockLigandId.trim() && !dockingInput)}
+                className="h-10 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-brand-500 dark:text-slate-950 dark:hover:bg-brand-400">
+                {diffDockLoading ? 'Running DiffDock...' : 'Run DiffDock'}
+              </button>
+            </div>
+          )}
+          {simLoading && (
+            <div className="flex items-start gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700" role="status" aria-live="polite">
+              <Spinner className="mt-0.5 h-5 w-5" />
+              <div>
+                <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">Docking in progress · {simElapsedSeconds}s elapsed</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Docking can take a few minutes. Keep this tab open; the result viewer will open automatically when the stored artifacts are ready.</p>
+              </div>
+            </div>
+          )}
+          {diffDockLoading && (
+            <div className="flex items-start gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700" role="status" aria-live="polite">
+              <Spinner className="mt-0.5 h-5 w-5" />
+              <div>
+                <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">Running DiffDock</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Please wait while DiffDock processes your protein-ligand docking…</p>
+              </div>
+            </div>
+          )}
+          {simError && (
+            <Alert color="red">
+              <Typography variant="small"><strong>Docking failed:</strong> {simError}</Typography>
+            </Alert>
+          )}
+          {diffDockError && (
+            <Alert color="red">
+              <Typography variant="small"><strong>DiffDock failed:</strong> {diffDockError}</Typography>
+            </Alert>
+          )}
+          {simResult && (
+            <div className="space-y-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">Docking result</p>
+              {simResult.simulationKey && (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={Boolean(resultDownloadKind)}
+                    className={SECONDARY_BUTTON}
+                    onClick={() => downloadAuthedSimulationFile('pdb')}
                   >
-                    {simLoading ? 'Simulating…' : 'Simulate'}
-                  </Button>
+                    {resultDownloadKind === 'pdb' ? 'Downloading PDB…' : 'Download Sanitized PDB'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={Boolean(resultDownloadKind)}
+                    className={SECONDARY_BUTTON}
+                    onClick={() => downloadAuthedSimulationFile('sdf')}
+                  >
+                    {resultDownloadKind === 'sdf' ? 'Downloading SDF…' : 'Download Sanitized SDF'}
+                  </button>
                 </div>
               )}
-              {showDiffDockInputs && (
-                <div className="flex flex-col gap-2">
-                  <Input
-                    label="PDB ID"
-                    value={diffDockPdbId}
-                    onChange={e => setDiffDockPdbId(e.target.value)}
-                    className="w-full"
-                  />
-                   <Input
-                    label="LIGAND ID"
-                    value={diffDockLigandId}
-                    onChange={e => setDiffDockLigandId(e.target.value)}
-                    className="w-full"
-                  />
-                  <Button
-                    size="md"
-                    color="purple"
-                    onClick={handleDiffDock}
-                    disabled={diffDockLoading || !diffDockPdbId || (!diffDockLigandId.trim() && !dockingInput)}
-                    className="flex items-center justify-center gap-2 w-full"
-                  >
-                    {diffDockLoading ? 'Running DiffDock...' : 'Run'}
-                  </Button>
-                </div>
-              )}
+              <details className="text-xs">
+                <summary className="cursor-pointer text-slate-500 dark:text-slate-400">Raw response</summary>
+                <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-100 p-3 font-mono dark:bg-slate-950">
+                  {JSON.stringify(simResult, null, 2)}
+                </pre>
+              </details>
             </div>
-            
-            {/* Page Size Selector */}
-            <div className="flex flex-col gap-2 p-3 rounded-lg bg-gray-50 border border-gray-200">
-              <Typography variant="small" color="blue-gray" className="font-semibold">
-                Results per page:
-              </Typography>
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  // Reset to first page when changing page size
-                  setCurrentPage(0);
-                  setAllMolecules([]);
-                  setTopMolecules([]);
-                  setHasMore(true);
-                  // Refetch with new page size
-                  if (!isSearchActive) {
-                    const nextPageSize = Number(e.target.value);
-                    pageSizeRef.current = nextPageSize;
-                    fetchAllMolecules(0, false, nextPageSize);
-                  }
-                }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer"
-              >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      )}
+          )}
+          {diffDockResult && (
+            <details className="rounded-xl border border-slate-200 p-3 text-xs dark:border-slate-700">
+              <summary className="cursor-pointer text-sm font-semibold text-slate-900 dark:text-slate-50">DiffDock result</summary>
+              <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-100 p-3 font-mono dark:bg-slate-950">
+                {JSON.stringify(diffDockResult, null, 2)}
+              </pre>
+            </details>
+          )}
+        </section>
       </div>
       <section aria-labelledby="results-heading" className="min-w-0">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 id="results-heading" className="text-xl font-semibold text-blue-gray-900 dark:text-slate-50">Results</h2>
-          <span className="text-sm text-blue-gray-600 dark:text-slate-300">{visibleSmartsIndices.length} shown{smartsFiltering ? ` of ${topMolecules.length} loaded` : ''}{hasMore && (searchSource === 'asinex' || isSearchActive) ? ' · more available' : ''}</span>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-baseline gap-3">
+            <h2 id="results-heading" className="text-lg font-semibold text-slate-900 dark:text-slate-50">Results</h2>
+            <span className="text-sm text-slate-500 dark:text-slate-400">{visibleSmartsIndices.length} shown{smartsFiltering ? ` of ${topMolecules.length} loaded` : ''}{hasMore && (searchSource === 'asinex' || isSearchActive) ? ' · more available' : ''}</span>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+            Per page
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                const nextPageSize = Number(e.target.value);
+                setPageSize(nextPageSize);
+                // Reset to first page when changing page size
+                setCurrentPage(0);
+                setAllMolecules([]);
+                setTopMolecules([]);
+                setHasMore(true);
+                // Refetch with new page size
+                if (!isSearchActive) {
+                  pageSizeRef.current = nextPageSize;
+                  fetchAllMolecules(0, false, nextPageSize);
+                }
+              }}
+              className="h-8 cursor-pointer rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900 dark:border-slate-600 dark:text-slate-50"
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+            </select>
+          </label>
         </div>
-        {(['stock', 'smallvirtual', 'both', 'real', 'virtual', 'open'].includes(searchSource) || isMultiSource(searchSource)) && (
-          <MultiSmartsFilter rows={topMolecules} active={active} onChange={setSmartsResult} onFilteringChange={setSmartsFiltering} />
-        )}
-        {smartsSnapshot && smartsFiltering && visibleSmartsIndices.length === 0 && (
-          <p role="status" className="mb-3 text-sm text-blue-gray-700 dark:text-slate-300">No loaded results satisfy this SMARTS filter. Unknown structures are not treated as no-match; switch to all rows with annotations to inspect them, or load more results.</p>
-        )}
-        {smartsSnapshot && smartsFiltering && selectedMolecules.size > 0 && (
-          <p className="mb-3 text-xs text-blue-gray-600 dark:text-slate-300">{topMolecules.filter((mol, index) => !isSmartsRowVisible(index) && selectedMolecules.has(moleculeSelectionId(mol, index))).length} selected rows are hidden by this filter and remain included in docking/orders.</p>
-        )}
         {(['stock', 'both', 'real', 'virtual'].includes(searchSource) || isMultiSource(searchSource)) && topMolecules.length > 0 && (
-          <p className="mb-3 text-xs text-blue-gray-600 dark:text-slate-300">
-            Orders support up to 3 distinct compounds. Prices include shipping. You can review shipping and terms before checkout.
-          </p>
-        )}
-        {(['stock', 'both', 'real', 'virtual'].includes(searchSource) || isMultiSource(searchSource)) && topMolecules.length > 0 && (
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-blue-gray-700 dark:text-slate-300">{selectedMolecules.size} selected</span>
-            <button type="button" disabled={!selectedMolecules.size || searchLoading || topLoading} onClick={orderSelectedCompounds} className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Order selected</button>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700">
+            <p className="min-w-0 flex-1 text-xs text-slate-500 dark:text-slate-400">
+              <span className="mr-2 text-sm font-semibold text-slate-900 dark:text-slate-50">{selectedMolecules.size} selected</span>
+              Orders support up to 3 distinct compounds. Prices include shipping. You can review shipping and terms before checkout.
+            </p>
+            <button type="button" disabled={!selectedMolecules.size || searchLoading || topLoading} onClick={orderSelectedCompounds} className="h-9 shrink-0 rounded-lg bg-teal-700 px-4 text-sm font-semibold text-white transition-colors hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-40">Order selected</button>
           </div>
         )}
-        <div id="results" className="w-full bg-slate-100 dark:bg-slate-900">
+        {(['stock', 'smallvirtual', 'both', 'real', 'virtual', 'open'].includes(searchSource) || isMultiSource(searchSource)) && (
+          // Kept mounted while empty so a configured filter survives a new search.
+          <div hidden={topMolecules.length === 0}>
+            <MultiSmartsFilter rows={topMolecules} active={active} onChange={setSmartsResult} onFilteringChange={setSmartsFiltering} />
+          </div>
+        )}
+        {smartsSnapshot && smartsFiltering && visibleSmartsIndices.length === 0 && (
+          <p role="status" className="mb-3 text-sm text-slate-700 dark:text-slate-300">No loaded results satisfy this SMARTS filter. Unknown structures are not treated as no-match; switch to all rows with annotations to inspect them, or load more results.</p>
+        )}
+        {smartsSnapshot && smartsFiltering && selectedMolecules.size > 0 && (
+          <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">{topMolecules.filter((mol, index) => !isSmartsRowVisible(index) && selectedMolecules.has(moleculeSelectionId(mol, index))).length} selected rows are hidden by this filter and remain included in docking/orders.</p>
+        )}
+        <div id="results" className="w-full">
           {ownedSearchSummary && (
-            <div className="mb-3 rounded-lg border border-teal-100 bg-white p-3 text-sm dark:border-slate-800 dark:bg-slate-950" role="status">
+            <div className="mb-3 rounded-xl border border-slate-200 bg-white p-3 text-sm dark:border-slate-700" role="status">
               <p className="font-semibold">{OWNED_SEARCH_MODES.find((option) => option.value === ownedSearchSummary.mode)?.label} · {plural(ownedSearchSummary.queries?.length || queryCount, 'query', 'queries')} · {ownedSearchSummary.totalExact === false ? 'at least ' : ''}{plural(ownedSearchSummary.total ?? topMolecules.length, 'matching compound')}</p>
               {ownedSearchSummary.truncated && <p className="mt-1 text-amber-800 dark:text-amber-300">Results reached the search limit. Counts are lower bounds; narrow the query to retrieve more complete matches.</p>}
               <details className="mt-2"><summary className="cursor-pointer">Results for each query</summary>
@@ -3136,29 +2966,29 @@ export function Simulation({ active = true }) {
             <Typography as="h5" variant="h5" color="blue-gray">Top {topMolecules.length} Molecules</Typography>
           </div> */}
           {(initialLoading || (topLoading && topMolecules.length === 0)) && (
-            <div className="mb-4 flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/70 px-4 py-3" role="status" aria-live="polite">
-              <Spinner className="h-5 w-5 text-blue-500" />
-              <Typography color="blue-gray">{searchSource === 'asinex' ? 'Loading catalog molecules...' : 'Loading search results...'}</Typography>
+            <div className="mb-4 flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-6 text-sm text-slate-600 dark:border-slate-700 dark:text-slate-300" role="status" aria-live="polite">
+              <Spinner className="h-5 w-5" />
+              <Typography variant="small" className="text-slate-600 dark:text-slate-300">{searchSource === 'asinex' ? 'Loading catalog molecules...' : 'Loading search results...'}</Typography>
             </div>
           )}
           {topError && (
             <Alert color="red" className="mb-4">{topError}</Alert>
           )}
           {!initialLoading && !topError && topMolecules.length > 0 && (isMultiSource(searchSource) ? (
-            <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
+            <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto !rounded-xl border border-slate-200 !shadow-none dark:border-slate-700">
               <CardBody className="p-0">
-                <div className="border-b border-teal-100 bg-teal-50/60 px-4 py-3 text-xs text-blue-gray-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+                <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs leading-relaxed text-slate-500 dark:border-slate-700 dark:text-slate-400">
                   {collectionsForSource(searchSource).map(collectionLabel).join(' + ')} · {ownedSearchSummary ? OWNED_SEARCH_MODES.find((option) => option.value === ownedSearchSummary.mode)?.label : 'Similarity'}{searchType === 'similarity' ? ' · one list ranked by Morgan (ECFP4) binary Tanimoto, each score from its collection\'s engine' : ''} · every row keeps its collection · amounts and lead times are dated. Select rows for docking or ordering.
                 </div>
                 <table className="w-full min-w-[680px] table-fixed text-left text-sm">
-                  <thead className="sticky top-0 z-10 bg-white dark:bg-slate-900">
+                  <thead className="sticky top-0 z-10 bg-white text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_rgb(0_0_0/0.08)] dark:text-slate-400">
                     <tr>
-                      <th className="w-10 p-2"><input type="checkbox" aria-label="Select all compounds" checked={getSelectAllState().checked} ref={(el) => { if (el) el.indeterminate = getSelectAllState().indeterminate; }} onChange={(e) => handleSelectAll(e.target.checked)} /></th>
-                      <th className="w-10 p-2">#</th>
-                      <th className="w-48 p-2">IDNUMBER · collection</th>
-                      <th className="w-28 p-2">Lead time</th>
-                      <th className="w-48 p-2">Pack size · price <span className="block text-xs font-normal">EUR / USD</span></th>
-                      <th className="w-20 p-2">{searchType === 'similarity' ? 'Similarity' : 'Match'}</th>
+                      <th className="w-10 px-3 py-2.5 font-semibold"><input type="checkbox" className="h-4 w-4 cursor-pointer accent-teal-700" aria-label="Select all compounds" checked={getSelectAllState().checked} ref={(el) => { if (el) el.indeterminate = getSelectAllState().indeterminate; }} onChange={(e) => handleSelectAll(e.target.checked)} /></th>
+                      <th className="w-10 px-3 py-2.5 font-semibold">#</th>
+                      <th className="w-48 px-3 py-2.5 font-semibold">IDNUMBER · collection</th>
+                      <th className="w-28 px-3 py-2.5 font-semibold">Lead time</th>
+                      <th className="w-48 px-3 py-2.5 font-semibold">Pack size · price <span className="block text-xs font-normal">EUR / USD</span></th>
+                      <th className="w-20 px-3 py-2.5 font-semibold">{searchType === 'similarity' ? 'Similarity' : 'Match'}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3172,19 +3002,19 @@ export function Simulation({ active = true }) {
                         ? (mol.STOCK_MG === null ? '' : formatSnapshotMg(mol.STOCK_MG))
                         : [mol.snapshotMg && `${mol.snapshotMg} mg`, mol.snapshotUm && `${mol.snapshotUm} µmol`].filter(Boolean).join(' · ');
                       return (
-                        <tr key={`${id}-${idx}`} className="border-b border-blue-gray-100 dark:border-slate-800">
-                          <td className="p-2"><input type="checkbox" aria-label={`Select ${code}`} checked={selectedMolecules.has(id)} onChange={(e) => handleCheckboxChange(mol, idx, e.target.checked)} /></td>
-                          <td className="p-2">{idx + 1}</td>
-                          <td className="p-2 text-xs">
-                            <button type="button" className="font-mono font-semibold break-all underline decoration-dotted" aria-label={`Preview ${code}`} {...structurePreviewTrigger(mol.SMILES_STRING, code)}>{code}</button>
+                        <tr key={`${id}-${idx}`} className="border-b border-slate-100 transition-colors hover:bg-slate-50/70 dark:border-slate-800 dark:hover:bg-slate-800/40">
+                          <td className="px-3 py-2.5"><input type="checkbox" className="h-4 w-4 cursor-pointer accent-teal-700" aria-label={`Select ${code}`} checked={selectedMolecules.has(id)} onChange={(e) => handleCheckboxChange(mol, idx, e.target.checked)} /></td>
+                          <td className="px-3 py-2.5">{idx + 1}</td>
+                          <td className="px-3 py-2.5 text-xs">
+                            <button type="button" className="font-mono text-sm font-semibold break-all text-slate-900 underline decoration-slate-300 decoration-dotted underline-offset-4 hover:decoration-slate-900 dark:text-slate-50 dark:decoration-slate-500 dark:hover:decoration-slate-50" aria-label={`Preview ${code}`} {...structurePreviewTrigger(mol.SMILES_STRING, code)}>{code}</button>
                             {mol.matchedQueryIndices?.length > 0 && <div className="mt-1 text-xs text-teal-700 dark:text-teal-300">Queries {mol.matchedQueryIndices.map((index) => index + 1).join(', ')}</div>}
                             <SmartsAnnotation result={smartsSnapshot} index={idx} />
-                            <div className="mt-1 font-semibold text-teal-700 dark:text-teal-300">{collectionLabel(collection)}</div>
-                            <div className="mt-1 text-blue-gray-500" title="Dated supplier export; amount and lead time are unverified now">{madeToOrder ? 'made to order' : `${amount || 'No export amount'} · snapshot`}</div>
+                            <div className="mt-1 text-xs font-medium text-teal-700 dark:text-teal-300">{collectionLabel(collection)}</div>
+                            <div className="mt-0.5 text-slate-500 dark:text-slate-400" title="Dated supplier export; amount and lead time are unverified now">{madeToOrder ? 'made to order' : `${amount || 'No export amount'} · snapshot`}</div>
                           </td>
-                          <td className="p-2 text-xs" title="Dated supplier export; amount and lead time are unverified now">{mol.snapshotLeadTime || '—'}</td>
-                          <td className="p-2"><CompoundShopPacks offer={mol.shopOffer} onAdded={showMessage} amountMg={mol.shopOffer ? selectedPacks[offerSelectionKey(mol.shopOffer)] : undefined} onPackChange={(mg) => setSelectedPacks((previous) => ({ ...previous, [offerSelectionKey(mol.shopOffer)]: mg }))} /></td>
-                          <td className="p-2 font-semibold">{searchType !== 'similarity' ? '✓' : mol.SIMILARITY === null || mol.SIMILARITY === undefined ? '—' : Number(mol.SIMILARITY).toFixed(3)}</td>
+                          <td className="px-3 py-2.5 text-xs" title="Dated supplier export; amount and lead time are unverified now">{mol.snapshotLeadTime || '—'}</td>
+                          <td className="px-3 py-2.5"><CompoundShopPacks offer={mol.shopOffer} onAdded={showMessage} amountMg={mol.shopOffer ? selectedPacks[offerSelectionKey(mol.shopOffer)] : undefined} onPackChange={(mg) => setSelectedPacks((previous) => ({ ...previous, [offerSelectionKey(mol.shopOffer)]: mg }))} /></td>
+                          <td className="px-3 py-2.5">{searchType !== 'similarity' ? <span className="font-semibold text-green-600 dark:text-green-400">✓</span> : <SimilarityScore value={mol.SIMILARITY} />}</td>
                         </tr>
                       );
                     })}
@@ -3193,20 +3023,20 @@ export function Simulation({ active = true }) {
               </CardBody>
             </Card>
           ) : MACROCYCLE_SOURCES[searchSource] ? (
-            <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
+            <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto !rounded-xl border border-slate-200 !shadow-none dark:border-slate-700">
               <CardBody className="p-0">
-                <div className="border-b border-teal-100 bg-teal-50/60 px-4 py-3 text-xs text-blue-gray-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+                <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs leading-relaxed text-slate-500 dark:border-slate-700 dark:text-slate-400">
                   {MACROCYCLE_SOURCES[searchSource].label} · {ownedSearchSummary ? OWNED_SEARCH_MODES.find((option) => option.value === ownedSearchSummary.mode)?.label : `globally ranked by ${macrocycleResultMethodLabel} over Morgan (ECFP4)`} · RPX/VPX rows keep their source · export amounts and lead times are dated. Select rows for docking or ordering.
                 </div>
                 <table className="w-full min-w-[680px] table-fixed text-left text-sm">
-                  <thead className="sticky top-0 z-10 bg-white dark:bg-slate-900">
+                  <thead className="sticky top-0 z-10 bg-white text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_rgb(0_0_0/0.08)] dark:text-slate-400">
                     <tr>
-                      <th className="w-10 p-2"><input type="checkbox" aria-label="Select all macrocycles" checked={getSelectAllState().checked} ref={(el) => { if (el) el.indeterminate = getSelectAllState().indeterminate; }} onChange={(e) => handleSelectAll(e.target.checked)} /></th>
-                      <th className="w-10 p-2">#</th>
-                      <th className="w-44 p-2">IDNUMBER</th>
-                      <th className="w-28 p-2">Lead time</th>
-                      <th className="w-48 p-2">Pack size · price <span className="block text-xs font-normal">EUR / USD</span></th>
-                      <th className="w-20 p-2">{searchType === 'similarity' ? 'Similarity' : 'Match'}</th>
+                      <th className="w-10 px-3 py-2.5 font-semibold"><input type="checkbox" className="h-4 w-4 cursor-pointer accent-teal-700" aria-label="Select all macrocycles" checked={getSelectAllState().checked} ref={(el) => { if (el) el.indeterminate = getSelectAllState().indeterminate; }} onChange={(e) => handleSelectAll(e.target.checked)} /></th>
+                      <th className="w-10 px-3 py-2.5 font-semibold">#</th>
+                      <th className="w-44 px-3 py-2.5 font-semibold">IDNUMBER</th>
+                      <th className="w-28 px-3 py-2.5 font-semibold">Lead time</th>
+                      <th className="w-48 px-3 py-2.5 font-semibold">Pack size · price <span className="block text-xs font-normal">EUR / USD</span></th>
+                      <th className="w-20 px-3 py-2.5 font-semibold">{searchType === 'similarity' ? 'Similarity' : 'Match'}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3218,19 +3048,19 @@ export function Simulation({ active = true }) {
                         mol.snapshotUm && `${mol.snapshotUm} µmol`,
                       ].filter(Boolean).join(' · ');
                       return (
-                        <tr key={`${mol.macrocycleSource}-${mol.macrocycleRowId}-${idx}`} className="border-b border-blue-gray-100 dark:border-slate-800">
-                          <td className="p-2"><input type="checkbox" aria-label={`Select ${mol.macrocycleCode}`} checked={selectedMolecules.has(id)} onChange={(e) => handleCheckboxChange(mol, idx, e.target.checked)} /></td>
-                          <td className="p-2">{idx + 1}</td>
-                          <td className="p-2 text-xs">
-                            <button type="button" className="font-mono font-semibold break-all underline decoration-dotted" aria-label={`Preview ${mol.macrocycleCode}`} {...structurePreviewTrigger(mol.SMILES_STRING, mol.macrocycleCode)}>{mol.macrocycleCode}</button>
+                        <tr key={`${mol.macrocycleSource}-${mol.macrocycleRowId}-${idx}`} className="border-b border-slate-100 transition-colors hover:bg-slate-50/70 dark:border-slate-800 dark:hover:bg-slate-800/40">
+                          <td className="px-3 py-2.5"><input type="checkbox" className="h-4 w-4 cursor-pointer accent-teal-700" aria-label={`Select ${mol.macrocycleCode}`} checked={selectedMolecules.has(id)} onChange={(e) => handleCheckboxChange(mol, idx, e.target.checked)} /></td>
+                          <td className="px-3 py-2.5">{idx + 1}</td>
+                          <td className="px-3 py-2.5 text-xs">
+                            <button type="button" className="font-mono text-sm font-semibold break-all text-slate-900 underline decoration-slate-300 decoration-dotted underline-offset-4 hover:decoration-slate-900 dark:text-slate-50 dark:decoration-slate-500 dark:hover:decoration-slate-50" aria-label={`Preview ${mol.macrocycleCode}`} {...structurePreviewTrigger(mol.SMILES_STRING, mol.macrocycleCode)}>{mol.macrocycleCode}</button>
                             {mol.matchedQueryIndices?.length > 0 && <div className="mt-1 text-xs text-teal-700 dark:text-teal-300">Queries {mol.matchedQueryIndices.map((index) => index + 1).join(', ')}</div>}
                             <SmartsAnnotation result={smartsSnapshot} index={idx} />
-                            <div className="mt-1 font-semibold text-teal-700 dark:text-teal-300">{mol.macrocycleSource === 'real' ? 'Real RPX' : 'Virtual VPX'}</div>
-                            <div className="mt-1 text-blue-gray-500" title="Dated supplier export; amount and lead time are unverified now">{exportDetails || 'No export amount'} · {mol.macrocycleSource === 'real' ? 'stock unverified' : 'virtual'}</div>
+                            <div className="mt-1 text-xs font-medium text-teal-700 dark:text-teal-300">{mol.macrocycleSource === 'real' ? 'Real RPX' : 'Virtual VPX'}</div>
+                            <div className="mt-0.5 text-slate-500 dark:text-slate-400" title="Dated supplier export; amount and lead time are unverified now">{exportDetails || 'No export amount'} · {mol.macrocycleSource === 'real' ? 'stock unverified' : 'virtual'}</div>
                           </td>
-                          <td className="p-2 text-xs" title="Dated supplier export; amount and lead time are unverified now">{mol.snapshotLeadTime || '—'}</td>
-                          <td className="p-2"><CompoundShopPacks offer={mol.shopOffer} onAdded={showMessage} amountMg={mol.shopOffer ? selectedPacks[offerSelectionKey(mol.shopOffer)] : undefined} onPackChange={(mg) => setSelectedPacks((previous) => ({ ...previous, [offerSelectionKey(mol.shopOffer)]: mg }))} /></td>
-                          <td className="p-2 font-semibold">{searchType !== 'similarity' ? '✓' : mol.SIMILARITY === null ? '—' : mol.SIMILARITY.toFixed(3)}</td>
+                          <td className="px-3 py-2.5 text-xs" title="Dated supplier export; amount and lead time are unverified now">{mol.snapshotLeadTime || '—'}</td>
+                          <td className="px-3 py-2.5"><CompoundShopPacks offer={mol.shopOffer} onAdded={showMessage} amountMg={mol.shopOffer ? selectedPacks[offerSelectionKey(mol.shopOffer)] : undefined} onPackChange={(mg) => setSelectedPacks((previous) => ({ ...previous, [offerSelectionKey(mol.shopOffer)]: mg }))} /></td>
+                          <td className="px-3 py-2.5">{searchType !== 'similarity' ? <span className="font-semibold text-green-600 dark:text-green-400">✓</span> : <SimilarityScore value={mol.SIMILARITY} />}</td>
                         </tr>
                       );
                     })}
@@ -3239,15 +3069,15 @@ export function Simulation({ active = true }) {
               </CardBody>
             </Card>
           ) : searchSource === "stock" ? (
-            <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
+            <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto !rounded-xl border border-slate-200 !shadow-none dark:border-slate-700">
               <CardBody className="p-0">
-                <div className="border-b border-blue-gray-100 bg-blue-gray-50/60 px-4 py-2 text-xs text-blue-gray-600 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-400">
+                <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs leading-relaxed text-slate-500 dark:border-slate-700 dark:text-slate-400">
                   Stock compounds · {ownedSearchSummary ? OWNED_SEARCH_MODES.find((option) => option.value === ownedSearchSummary.mode)?.label : `ranked by ${snapFpLabel} ${snapMetricLabel} similarity`} · quantities and lead times are dated snapshots. Select rows for docking or ordering.
                 </div>
                 <table className="w-full min-w-[680px] text-left text-sm">
-                  <thead className="sticky top-0 z-10 bg-white">
+                  <thead className="sticky top-0 z-10 bg-white text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_rgb(0_0_0/0.08)] dark:text-slate-400">
                     <tr>
-                      <th className="p-2 font-bold bg-white">
+                      <th className="px-3 py-2.5 font-semibold bg-white">
                         <div className="flex items-center gap-2">
                           <input
                             type="checkbox"
@@ -3257,16 +3087,15 @@ export function Simulation({ active = true }) {
                               if (el) el.indeterminate = getSelectAllState().indeterminate;
                             }}
                             onChange={(e) => handleSelectAll(e.target.checked)}
-                            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                            className="h-4 w-4 cursor-pointer accent-teal-700"
                           />
-                          <span>Select</span>
                         </div>
                       </th>
-                      <th className="p-2 font-bold bg-white">#</th>
-                      <th className="p-2 font-bold bg-white">IDNUMBER</th>
-                      <th className="p-2 font-bold bg-white">Lead time</th>
-                      <th className="p-2 font-bold bg-white">Pack size · price <span className="block text-xs font-normal">EUR / USD</span></th>
-                      <th className="p-2 font-bold bg-white">{searchType === 'similarity' ? 'Similarity' : 'Match'}</th>
+                      <th className="px-3 py-2.5 font-semibold bg-white">#</th>
+                      <th className="px-3 py-2.5 font-semibold bg-white">IDNUMBER</th>
+                      <th className="px-3 py-2.5 font-semibold bg-white">Lead time</th>
+                      <th className="px-3 py-2.5 font-semibold bg-white">Pack size · price <span className="block text-xs font-normal">EUR / USD</span></th>
+                      <th className="px-3 py-2.5 font-semibold bg-white">{searchType === 'similarity' ? 'Similarity' : 'Match'}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3278,21 +3107,21 @@ export function Simulation({ active = true }) {
                       const isChecked = selectedMolecules.has(stockMoleculeId);
                       const stockSmiles = mol.SMILES_STRING || "";
                       return (
-                        <tr key={`${stockMoleculeId}-${idx}`} className="border-b">
-                          <td className="p-2">
+                        <tr key={`${stockMoleculeId}-${idx}`} className="border-b border-slate-100 transition-colors hover:bg-slate-50/70 dark:border-slate-800 dark:hover:bg-slate-800/40">
+                          <td className="px-3 py-2.5">
                             <input
                               type="checkbox"
                               aria-label={`Select ${mol.stockCode}`}
                               checked={isChecked}
                               onChange={(e) => handleCheckboxChange(mol, idx, e.target.checked)}
-                              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                              className="h-4 w-4 cursor-pointer accent-teal-700"
                             />
                           </td>
-                          <td className="p-2">{idx + 1}</td>
+                          <td className="px-3 py-2.5">{idx + 1}</td>
                           <td className="p-0 font-mono text-xs whitespace-nowrap">
                             <button
                               type="button"
-                              className="w-full p-2 text-left underline decoration-dotted hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 dark:hover:bg-slate-800"
+                              className="w-full px-3 pt-2.5 text-left text-sm font-semibold text-slate-900 underline decoration-slate-300 decoration-dotted underline-offset-4 hover:decoration-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 dark:text-slate-50 dark:decoration-slate-500"
                               title={mol.stockCode}
                               aria-label={`Preview ${mol.stockCode}`}
                               {...structurePreviewTrigger(stockSmiles, mol.stockCode)}
@@ -3301,12 +3130,12 @@ export function Simulation({ active = true }) {
                             </button>
                             {mol.matchedQueryIndices?.length > 0 && <div className="mt-1 text-xs text-teal-700 dark:text-teal-300">Queries {mol.matchedQueryIndices.map((index) => index + 1).join(', ')}</div>}
                             <SmartsAnnotation result={smartsSnapshot} index={idx} />
-                            <div className="px-2 pb-2 text-xs text-blue-gray-500" title="Dated snapshot quantity from the supplier export — not live availability">{mol.STOCK_MG === null ? '—' : formatSnapshotMg(mol.STOCK_MG)} · snapshot</div>
+                            <div className="px-3 pb-2.5 font-sans text-xs text-slate-500 dark:text-slate-400" title="Dated snapshot quantity from the supplier export — not live availability">{mol.STOCK_MG === null ? '—' : formatSnapshotMg(mol.STOCK_MG)} · snapshot</div>
                           </td>
-                          <td className="p-2 text-xs" title="Dated supplier export lead time; unverified now">{mol.snapshotLeadTime || '—'}</td>
-                          <td className="p-2"><CompoundShopPacks offer={mol.shopOffer} onAdded={showMessage} amountMg={mol.shopOffer ? selectedPacks[offerSelectionKey(mol.shopOffer)] : undefined} onPackChange={(mg) => setSelectedPacks((previous) => ({ ...previous, [offerSelectionKey(mol.shopOffer)]: mg }))} /></td>
-                          <td className="p-2 font-bold text-blue-600" title={mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? `Similarity: ${mol.SIMILARITY}` : "N/A"}>
-                            {searchType !== 'similarity' ? '✓' : mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? parseFloat(mol.SIMILARITY).toFixed(3) : 'N/A'}
+                          <td className="px-3 py-2.5 text-xs" title="Dated supplier export lead time; unverified now">{mol.snapshotLeadTime || '—'}</td>
+                          <td className="px-3 py-2.5"><CompoundShopPacks offer={mol.shopOffer} onAdded={showMessage} amountMg={mol.shopOffer ? selectedPacks[offerSelectionKey(mol.shopOffer)] : undefined} onPackChange={(mg) => setSelectedPacks((previous) => ({ ...previous, [offerSelectionKey(mol.shopOffer)]: mg }))} /></td>
+                          <td className="px-3 py-2.5" title={mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? `Similarity: ${mol.SIMILARITY}` : "N/A"}>
+                            {searchType !== 'similarity' ? <span className="font-semibold text-green-600 dark:text-green-400">✓</span> : <SimilarityScore value={mol.SIMILARITY} />}
                           </td>
                         </tr>
                       );
@@ -3316,9 +3145,9 @@ export function Simulation({ active = true }) {
               </CardBody>
             </Card>
           ) : searchSource === "open" ? (
-            <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
+            <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto !rounded-xl border border-slate-200 !shadow-none dark:border-slate-700">
               <CardBody className="p-0">
-                <div className="border-b border-indigo-100 bg-indigo-50/60 px-4 py-2 text-xs text-blue-gray-600 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs leading-relaxed text-slate-500 dark:border-slate-700 dark:text-slate-400 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <span>
                     ChEMBL open compounds · {ownedSearchSummary ? OWNED_SEARCH_MODES.find((option) => option.value === ownedSearchSummary.mode)?.label : 'local RDKit Morgan (r=2, 2048-bit, chirality off) Tanimoto'} · not stocked or priced. Select rows for docking handoff. Attribution: ChEMBL / EMBL-EBI.
                   </span>
@@ -3342,9 +3171,9 @@ export function Simulation({ active = true }) {
                   </div>}
                 </div>
                 <table className="w-full text-left">
-                  <thead className="sticky top-0 z-10 bg-white">
+                  <thead className="sticky top-0 z-10 bg-white text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_rgb(0_0_0/0.08)] dark:text-slate-400">
                     <tr>
-                      <th className="p-2 font-bold bg-white">
+                      <th className="px-3 py-2.5 font-semibold bg-white">
                         <div className="flex items-center gap-2">
                           <input
                             type="checkbox"
@@ -3353,16 +3182,15 @@ export function Simulation({ active = true }) {
                               if (el) el.indeterminate = getSelectAllState().indeterminate;
                             }}
                             onChange={(e) => handleSelectAll(e.target.checked)}
-                            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                            className="h-4 w-4 cursor-pointer accent-teal-700"
                           />
-                          <span>Select</span>
                         </div>
                       </th>
-                      <th className="p-2 font-bold bg-white">#</th>
-                      <th className="p-2 font-bold bg-white">{searchType === 'similarity' ? 'Similarity' : 'Match'}</th>
-                      <th className="p-2 font-bold bg-white">ChEMBL ID</th>
-                      <th className="p-2 font-bold bg-white">SMILES</th>
-                      <th className="p-2 font-bold bg-white">Source</th>
+                      <th className="px-3 py-2.5 font-semibold bg-white">#</th>
+                      <th className="px-3 py-2.5 font-semibold bg-white">{searchType === 'similarity' ? 'Similarity' : 'Match'}</th>
+                      <th className="px-3 py-2.5 font-semibold bg-white">ChEMBL ID</th>
+                      <th className="px-3 py-2.5 font-semibold bg-white">SMILES</th>
+                      <th className="px-3 py-2.5 font-semibold bg-white">Source</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3372,18 +3200,18 @@ export function Simulation({ active = true }) {
                       const isChecked = selectedMolecules.has(openMoleculeId);
                       const openSmiles = mol.SMILES_STRING || "";
                       return (
-                        <tr key={`${openMoleculeId}-${idx}`} className="border-b">
-                          <td className="p-2">
+                        <tr key={`${openMoleculeId}-${idx}`} className="border-b border-slate-100 transition-colors hover:bg-slate-50/70 dark:border-slate-800 dark:hover:bg-slate-800/40">
+                          <td className="px-3 py-2.5">
                             <input
                               type="checkbox"
                               checked={isChecked}
                               onChange={(e) => handleCheckboxChange(mol, idx, e.target.checked)}
-                              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                              className="h-4 w-4 cursor-pointer accent-teal-700"
                             />
                           </td>
-                          <td className="p-2">{mol.rank || (idx + 1)}</td>
-                          <td className="p-2 font-bold text-indigo-700" title={mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? `Morgan Tanimoto: ${mol.SIMILARITY}` : "N/A"}>
-                            {searchType !== 'similarity' ? '✓' : mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? parseFloat(mol.SIMILARITY).toFixed(3) : 'N/A'}
+                          <td className="px-3 py-2.5">{mol.rank || (idx + 1)}</td>
+                          <td className="px-3 py-2.5" title={mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? `Morgan Tanimoto: ${mol.SIMILARITY}` : "N/A"}>
+                            {searchType !== 'similarity' ? <span className="font-semibold text-green-600 dark:text-green-400">✓</span> : <SimilarityScore value={mol.SIMILARITY} />}
                           </td>
                           <td
                             className="p-2 font-mono text-xs whitespace-nowrap"
@@ -3396,14 +3224,14 @@ export function Simulation({ active = true }) {
                                 href={mol.sourceUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-indigo-700 underline"
+                                className="font-semibold text-slate-900 underline decoration-slate-300 underline-offset-4 dark:text-slate-50"
                               >
                                 {mol.chemblId}
                               </a>
                             ) : mol.chemblId}
                             <button
                               type="button"
-                              className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded align-middle text-indigo-700 hover:bg-indigo-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500"
+                              className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded align-middle text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500"
                               aria-label={`Preview ${mol.chemblId} structure`}
                               {...structurePreviewTrigger(openSmiles, mol.chemblId, { hover: false })}
                             >
@@ -3415,7 +3243,7 @@ export function Simulation({ active = true }) {
                           <td className="p-0 font-mono text-xs">
                             <button
                               type="button"
-                              className="w-full p-2 text-left hover:bg-indigo-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500"
+                              className="w-full px-3 py-2.5 text-left hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500"
                               title={openSmiles || "N/A"}
                               onClick={async () => {
                                 setSearchCode(openSmiles);
@@ -3436,7 +3264,7 @@ export function Simulation({ active = true }) {
                               {(openSmiles || "N/A").toString().slice(0, moleculeLimit)}{(openSmiles || "N/A").toString().length > moleculeLimit ? "..." : ""}
                             </button>
                           </td>
-                          <td className="p-2 text-xs text-blue-gray-600">{mol.sourceLabel || "ChEMBL"}</td>
+                          <td className="px-3 py-2.5 text-xs text-blue-gray-600">{mol.sourceLabel || "ChEMBL"}</td>
                         </tr>
                       );
                     })}
@@ -3445,12 +3273,12 @@ export function Simulation({ active = true }) {
               </CardBody>
             </Card>
           ) : (
-            <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto">
+            <Card className="mb-4 max-h-[min(70vh,44rem)] overflow-auto !rounded-xl border border-slate-200 !shadow-none dark:border-slate-700">
               <CardBody className="p-0">
                 <table className="w-full text-left">
-                  <thead className="sticky top-0 z-10 bg-white">
+                  <thead className="sticky top-0 z-10 bg-white text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_rgb(0_0_0/0.08)] dark:text-slate-400">
                     <tr>
-                      <th className="p-2 font-bold bg-white">
+                      <th className="px-3 py-2.5 font-semibold bg-white">
                         <div className="flex items-center gap-2">
                           <input
                             type="checkbox"
@@ -3459,24 +3287,23 @@ export function Simulation({ active = true }) {
                               if (el) el.indeterminate = getSelectAllState().indeterminate;
                             }}
                             onChange={(e) => handleSelectAll(e.target.checked)}
-                            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                            className="h-4 w-4 cursor-pointer accent-teal-700"
                           />
-                          <span>Select</span>
                         </div>
                       </th>
-                      <th className="p-2 font-bold bg-white">#</th>
-                      {searchType === "similarity" && <th className="p-2 font-bold bg-white">{searchType === 'similarity' ? 'Similarity' : 'Match'}</th>}
-                      <th className="p-2 font-bold bg-white">ID</th>
-                      <th className="p-2 font-bold bg-white">IUPAC Name</th>
-                      <th className="p-2 font-bold bg-white">SMILES</th>
-                      <th className="p-2 font-bold bg-white">InChI</th>
-                      <th className="p-2 font-bold bg-white">InChIKey</th>
-                      <th className="p-2 font-bold bg-white">Formula</th>
-                      <th className="p-2 font-bold bg-white">MW</th>
-                      <th className="p-2 font-bold bg-white">Available (mg)</th>
-                      <th className="p-2 font-bold bg-white">Price 1mg</th>
-                      <th className="p-2 font-bold bg-white">Price 5mg</th>
-                      <th className="p-2 font-bold bg-white">Price 10mg</th>
+                      <th className="px-3 py-2.5 font-semibold bg-white">#</th>
+                      {searchType === "similarity" && <th className="px-3 py-2.5 font-semibold bg-white">{searchType === 'similarity' ? 'Similarity' : 'Match'}</th>}
+                      <th className="px-3 py-2.5 font-semibold bg-white">ID</th>
+                      <th className="px-3 py-2.5 font-semibold bg-white">IUPAC Name</th>
+                      <th className="px-3 py-2.5 font-semibold bg-white">SMILES</th>
+                      <th className="px-3 py-2.5 font-semibold bg-white">InChI</th>
+                      <th className="px-3 py-2.5 font-semibold bg-white">InChIKey</th>
+                      <th className="px-3 py-2.5 font-semibold bg-white">Formula</th>
+                      <th className="px-3 py-2.5 font-semibold bg-white">MW</th>
+                      <th className="px-3 py-2.5 font-semibold bg-white">Available (mg)</th>
+                      <th className="px-3 py-2.5 font-semibold bg-white">Price 1mg</th>
+                      <th className="px-3 py-2.5 font-semibold bg-white">Price 5mg</th>
+                      <th className="px-3 py-2.5 font-semibold bg-white">Price 10mg</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3487,18 +3314,18 @@ export function Simulation({ active = true }) {
                       const isChecked = selectedMolecules.has(moleculeId);
                       
                       return (
-                        <tr key={uniqueKey} className="border-b">
-                          <td className="p-2">
+                        <tr key={uniqueKey} className="border-b border-slate-100 transition-colors hover:bg-slate-50/70 dark:border-slate-800 dark:hover:bg-slate-800/40">
+                          <td className="px-3 py-2.5">
                           <input
                             type="checkbox"
                             checked={isChecked}
                             onChange={(e) => handleCheckboxChange(mol, idx, e.target.checked)}
-                              className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                              className="h-4 w-4 cursor-pointer accent-teal-700"
                             />
                           </td>
-                          <td className="p-2">{idx + 1}</td>
+                          <td className="px-3 py-2.5">{idx + 1}</td>
                           {searchType === "similarity" && (
-                            <td className="p-2 font-bold text-blue-600" title={mol.SIMILARITY ? `Similarity: ${mol.SIMILARITY}` : "N/A"}>
+                            <td className="px-3 py-2.5 font-mono font-semibold tabular-nums" title={mol.SIMILARITY ? `Similarity: ${mol.SIMILARITY}` : "N/A"}>
                               {searchType !== 'similarity' ? '✓' : mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? parseFloat(mol.SIMILARITY).toFixed(3) : 'N/A'}
                             </td>
                           )}
@@ -3594,9 +3421,9 @@ export function Simulation({ active = true }) {
                             {(mol.INCHIKEY || "N/A").toString().slice(0,moleculeLimit)}{(mol.INCHIKEY || "N/A").toString().length > moleculeLimit ? '...' : ''}
                           </button>
                         </td>
-                        <td className="p-2" title={mol.BRUTTO_FORMULA || "N/A"}>{(mol.BRUTTO_FORMULA || "N/A").toString().slice(0,moleculeLimit)}{(mol.BRUTTO_FORMULA || "N/A").toString().length > moleculeLimit ? '...' : ''}</td>
-                        <td className="p-2" title={formatNumericValue(mol.MW_STRUCTURE)}>{formatNumericValue(mol.MW_STRUCTURE).toString().slice(0,moleculeLimit)}{formatNumericValue(mol.MW_STRUCTURE).toString().length > moleculeLimit ? '...' : ''}</td>
-                        <td className="p-2" title={formatNumericValue(mol.AVAILABLE_MG)}>{formatNumericValue(mol.AVAILABLE_MG).toString().slice(0,moleculeLimit)}{formatNumericValue(mol.AVAILABLE_MG).toString().length > moleculeLimit ? '...' : ''}</td>
+                        <td className="px-3 py-2.5" title={mol.BRUTTO_FORMULA || "N/A"}>{(mol.BRUTTO_FORMULA || "N/A").toString().slice(0,moleculeLimit)}{(mol.BRUTTO_FORMULA || "N/A").toString().length > moleculeLimit ? '...' : ''}</td>
+                        <td className="px-3 py-2.5" title={formatNumericValue(mol.MW_STRUCTURE)}>{formatNumericValue(mol.MW_STRUCTURE).toString().slice(0,moleculeLimit)}{formatNumericValue(mol.MW_STRUCTURE).toString().length > moleculeLimit ? '...' : ''}</td>
+                        <td className="px-3 py-2.5" title={formatNumericValue(mol.AVAILABLE_MG)}>{formatNumericValue(mol.AVAILABLE_MG).toString().slice(0,moleculeLimit)}{formatNumericValue(mol.AVAILABLE_MG).toString().length > moleculeLimit ? '...' : ''}</td>
                         <td className="p-0" title={mol.PRICE_1MG ? formatPriceWithCurrency(mol.PRICE_1MG) : "-"}>
                           <button type="button" disabled={!mol.PRICE_1MG} className="group w-full p-2 text-left hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 disabled:cursor-default dark:hover:bg-slate-800" onClick={() => addToCart(mol, 1, mol.PRICE_1MG)} aria-label={mol.PRICE_1MG ? `Add 1 mg to cart for ${formatPriceWithCurrency(mol.PRICE_1MG)}` : "1 mg unavailable"}>
                             <span>{(mol.PRICE_1MG ? formatPriceWithCurrency(mol.PRICE_1MG) : "-").toString().slice(0,moleculeLimit)}{(mol.PRICE_1MG ? formatPriceWithCurrency(mol.PRICE_1MG) : "-").toString().length > moleculeLimit ? '...' : ''}</span>
@@ -3632,7 +3459,7 @@ export function Simulation({ active = true }) {
             </div>
           )}
           {isSearchActive && hasMore && !topLoading && topMolecules.length > 0 && (
-            <button type="button" className="mb-4 w-full rounded-lg border border-brand-300 bg-white px-4 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50" onClick={loadMoreSearchResults}>
+            <button type="button" className={`${SECONDARY_BUTTON} mb-4 w-full`} onClick={loadMoreSearchResults}>
               Load more results
             </button>
           )}
@@ -3648,8 +3475,9 @@ export function Simulation({ active = true }) {
           
           {/* No Data State */}
           {(!isSearchActive ? catalogSettled : !searchLoading) && !initialLoading && !topLoading && !topError && !searchError && topMolecules.length === 0 && (
-            <div className="text-center py-8" role="status" aria-live="polite">
-              <Typography variant="small" color="gray">
+            <div className="rounded-xl border-2 border-dashed border-slate-200 px-6 py-14 text-center dark:border-slate-700" role="status" aria-live="polite">
+              <MagnifyingGlassIcon className="mx-auto mb-3 h-8 w-8 text-slate-300 dark:text-slate-600" aria-hidden="true" />
+              <Typography variant="small" className="mx-auto max-w-md text-slate-500 dark:text-slate-400">
                 {searchSource === "stock"
                   ? isSearchActive
                     ? `No stock compounds matched this structure at the current ${stockMetricLabel} threshold (${similarityThreshold.toFixed(1)}) with ${stockFpLabel}. Lower the similarity threshold or try another molecule.`
@@ -3679,94 +3507,8 @@ export function Simulation({ active = true }) {
       </div>
       {active && showClipboardPopup && (
         <Alert color="green" className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-fit px-6 py-3 text-center">
-          Ctrl+V into Draw molecule
+          SMILES copied and placed in the query
         </Alert>
-      )}
-      {simError && (
-        <Alert color="red" className="mb-6">
-          <div className="flex items-center gap-2">
-            <Typography variant="h6">Simulation Error:</Typography>
-            <Typography>{simError}</Typography>
-          </div>
-        </Alert>
-      )}
-      {simResult && (
-        <Card className="mb-6 !shadow-none" style={{ boxShadow: 'none' }}>
-          <CardHeader
-            variant="gradient"
-            className="mb-4 grid h-12 place-items-center"
-          >
-            <Typography variant="h6" color="black" className="dark:text-slate-50">
-              Simulation Result
-            </Typography>
-          </CardHeader>
-          <CardBody>
-            <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded border bg-white p-4 font-mono text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-              {JSON.stringify(simResult, null, 2)}
-            </pre>
-            {simResult.simulationKey && (
-              <div className="mt-4 flex gap-2">
-                <button
-                  type="button"
-                  disabled={Boolean(resultDownloadKind)}
-                  className="inline-block rounded border border-blue-500 px-4 py-2 text-blue-500 transition hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60 dark:border-blue-400 dark:text-blue-300 dark:hover:bg-slate-800"
-                  onClick={() => downloadAuthedSimulationFile('pdb')}
-                >
-                  {resultDownloadKind === 'pdb' ? 'Downloading PDB…' : 'Download Sanitized PDB'}
-                </button>
-                <button
-                  type="button"
-                  disabled={Boolean(resultDownloadKind)}
-                  className="inline-block rounded border border-brand-500 px-4 py-2 text-brand-500 transition hover:bg-brand-50 disabled:cursor-wait disabled:opacity-60 dark:hover:bg-slate-800"
-                  onClick={() => downloadAuthedSimulationFile('sdf')}
-                >
-                  {resultDownloadKind === 'sdf' ? 'Downloading SDF…' : 'Download Sanitized SDF'}
-                </button>
-              </div>
-            )}
-          </CardBody>
-        </Card>
-      )}
-      {diffDockLoading && (
-        <Card className="mb-6 !shadow-none" style={{ boxShadow: 'none' }}>
-          <CardBody className="text-center py-8">
-            <div className="flex flex-col items-center gap-4">
-              <Spinner className="h-8 w-8" color="purple" />
-              <Typography variant="h6" color="blue-gray" className="mb-2">
-                Running DiffDock Simulation
-              </Typography>
-              <Typography variant="small" color="gray" className="max-w-md">
-                Please wait while DiffDock processes your protein-ligand docking...
-              </Typography>
-            </div>
-          </CardBody>
-        </Card>
-      )}
-      {diffDockError && (
-        <Alert color="red" className="mb-6">
-          <div className="flex items-center gap-2">
-            <Typography variant="h6">DiffDock Error:</Typography>
-            <Typography>{diffDockError}</Typography>
-          </div>
-        </Alert>
-      )}
-      {diffDockResult && (
-        <Card className="mb-6 !shadow-none" style={{ boxShadow: 'none' }}>
-          <CardHeader
-            variant="gradient"
-            color="purple"
-            className="mb-4 grid h-12 place-items-center"
-          >
-            <Typography variant="h6" color="white">
-              DiffDock Result
-            </Typography>
-          </CardHeader>
-          <CardBody>
-            <pre className="whitespace-pre-wrap text-sm font-mono bg-white p-4 rounded border overflow-auto max-h-48">
-              {JSON.stringify(diffDockResult, null, 2)}
-            </pre>
-          </CardBody>
-        </Card>
       )}
     </div>
   );

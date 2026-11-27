@@ -398,7 +398,7 @@ const { parseSearchQueries, searchModesFromStatus, ownedRowsFromPayload, appendU
   checks.push(
     ['owned search mapping preserves signed offer, row identity and matching inputs', rows[0].shopOffer === offer && rows[0].stockRowId === 9 && eq(rows[0].matchedQueryIndices, [0, 2])],
     ['owned search append preserves unique source rows', appendUniqueOwnedRows(rows, [rows[0], { ...rows[0], stockRowId: 10 }], 'stock').length === 1],
-    ['owned methods remain backed by capability discovery', simulation.includes('/owned-search/status') && simulation.includes('disabled={!ownedModes.includes(option.value)}')],
+    ['owned methods remain backed by capability discovery', simulation.includes('/owned-search/status') && simulation.includes("disabled: option.value !== 'similarity' && !ownedModes.includes(option.value)")],
     ['new owned requests preserve explicit source and chemistry mode', simulation.includes("API_CONFIG.buildApiUrl('/owned-search')") && simulation.includes('payload?.source !== request.source || payload?.mode !== request.mode')],
     ['query outcome and truncation are visible', simulation.includes('Results for each query') && simulation.includes('Counts are lower bounds') && simulation.includes('matchedQueryIndices.map')],
   );

@@ -230,6 +230,15 @@
     background-color: #143430 !important;
   }
 
+  /* Bootstrap 5's stylesheet (kept for the marketing pages, see index.html) ships
+     `.border { border: … var(--bs-border-color) !important }`. Every Tailwind
+     `border` element therefore drew Bootstrap's light-mode #dee2e6 hairline in dark
+     mode too — the bright outlines around Home's panels — and no Tailwind
+     border-colour utility could override it. Retint Bootstrap's own variable. */
+  html.dark {
+    --bs-border-color: #234440;
+  }
+
   html.dark .border-blue-gray-50,
   html.dark .border-blue-gray-100,
   html.dark .border-blue-gray-200,
