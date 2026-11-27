@@ -1,4 +1,5 @@
 import {
+  ArrowDownTrayIcon,
   ChevronDownIcon,
   EyeIcon,
   MagnifyingGlassIcon,
@@ -18,7 +19,9 @@ import {
   useState,
 } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { PolarSurfaceValue } from '@/components/CompoundDescriptorCells';
 import { MoleculePreviewTooltip, useStructurePreview } from '@/components/MoleculePreview';
+import { SearchHistory, recordCompoundSearch } from '@/components/SearchHistory';
 import { MultiSmartsFilter, SmartsAnnotation } from '@/components/MultiSmartsFilter';
 import { selectVisibleSmartsRows, smartsVisibleIndices } from '@/utils/multiSmarts';
 import { convertPriceToEuro, formatPrice } from '@/utils/algo/algo';
@@ -27,6 +30,8 @@ import { addShopPack, cartLineKey, isOwnedCartItem, readShopCart, shopCurrency, 
 import { addSelectedShopPacks, offerSelectionKey } from '@/utils/compoundSelection';
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 import { copyToClipboard } from '@/utils/copyToClipboard';
+import { loadCompoundDescriptors } from '@/utils/compoundDescriptors';
+import { buildResultsCsv } from '@/utils/resultsExport';
 import { appendUniqueMacrocycleRows, macrocycleResultsFromPayload } from '@/utils/macrocycleResults';
 import { openResultsFromPayload } from '@/utils/openResults';
 import { OWNED_COLLECTIONS, OWNED_SEARCH_MODES, appendUniqueOwnedRows, collectionLabel, collectionsForSource, isMultiSource, ownedRowsFromPayload, ownedSearchSourceParams, parseSearchQueries, searchModesFromStatus, sourceForCollections } from '@/utils/ownedSearch';
@@ -330,6 +335,7 @@ export function Simulation({ active = true }) {
   const [openMaxResults, setOpenMaxResults] = useState(100);
   const openMaxResultsRef = useRef(100);
   const [openExportKind, setOpenExportKind] = useState(''); // '' | 'csv' | 'sdf'
+  const [resultsExporting, setResultsExporting] = useState(false);
   const [openUseAi, setOpenUseAi] = useState(true);
   const openUseAiRef = useRef(true);
   const [openInstruction, setOpenInstruction] = useState('');
@@ -1336,6 +1342,47 @@ export function Simulation({ active = true }) {
     }
   };
 
+  // Successful Home searches go to the owner's search history (one entry per
+  // distinct collection + type + queries); a failed save never affects the search.
+  const rememberSearch = (source, mode, queries) => {
+    if (source === 'asinex' || !queries?.length) return;
+    recordCompoundSearch({
+      source,
+      mode,
+      queries,
+      settings: {
+        threshold: similarityThresholdRef.current,
+        ...(source === 'stock' ? { fingerprint: stockFingerprintTypeRef.current, metric: stockSimilarityMetricRef.current } : {}),
+        ...(MACROCYCLE_SOURCES[source] ? { metric: macrocycleSimilarityMetricRef.current } : {}),
+        ...(source === 'open' ? { openUseAi: openUseAiRef.current } : {}),
+      },
+    });
+  };
+
+  // Refill the form from a saved search; the researcher reviews it and presses Search.
+  const restoreSavedSearch = (entry) => {
+    handleSourceChange(entry.source);
+    const mode = OWNED_SEARCH_MODES.some((option) => option.value === entry.mode) ? entry.mode : 'similarity';
+    searchTypeRef.current = mode;
+    setSearchType(mode);
+    ownedSearchRequestRef.current = null;
+    setOwnedSearchSummary(null);
+    setSearchNotice('');
+    setQueryType('text');
+    setSearchCode(entry.queries.join('\n'));
+    const settings = entry.settings || {};
+    if (Number.isFinite(settings.threshold)) handleThresholdChange(settings.threshold);
+    if (entry.source === 'stock') {
+      if (settings.fingerprint) handleStockMethodChange('fingerprint', settings.fingerprint);
+      if (settings.metric) handleStockMethodChange('metric', settings.metric);
+    } else if (MACROCYCLE_SOURCES[entry.source] && settings.metric) {
+      handleMacrocycleMethodChange(settings.metric);
+    } else if (entry.source === 'open' && typeof settings.openUseAi === 'boolean') {
+      setOpenUseAi(settings.openUseAi);
+    }
+    showMessage('Saved search loaded. Press Search to run it again.');
+  };
+
   const handleSearch = async () => {
     browseControllerRef.current?.abort();
     // Invalidate any response that was already past fetch cancellation before
@@ -1396,6 +1443,7 @@ export function Simulation({ active = true }) {
         isSearchActiveRef.current = true;
         setIsSearchActive(true);
         setLastSearchQuery(rawQuery);
+        rememberSearch(source, mode, queries);
         return;
       }
 
@@ -1409,6 +1457,7 @@ export function Simulation({ active = true }) {
         isSearchActiveRef.current = true;
         setIsSearchActive(true);
         setLastSearchQuery(rawQuery);
+        rememberSearch(source, mode, queries);
         return;
       }
 
@@ -1418,6 +1467,7 @@ export function Simulation({ active = true }) {
         isSearchActiveRef.current = true;
         setIsSearchActive(true);
         setLastSearchQuery(rawQuery);
+        rememberSearch(source, mode, queries);
         return;
       }
 
@@ -1432,6 +1482,7 @@ export function Simulation({ active = true }) {
         isSearchActiveRef.current = true;
         setIsSearchActive(true);
         setLastSearchQuery(rawQuery);
+        rememberSearch(source, mode, queries);
         return;
       }
 
@@ -2297,6 +2348,37 @@ export function Simulation({ active = true }) {
     ? !ownedModes.includes(searchType)
     : stockSearchDisabled || openSearchDisabled || macrocycleSearchDisabled;
 
+  // Shown rows (after any SMARTS filter) with RDKit attributes, as a CSV file.
+  const downloadResultsCsv = async () => {
+    const indices = visibleSmartsIndices;
+    const rows = indices.map((index) => topMolecules[index]);
+    if (!rows.length) return;
+    setResultsExporting(true);
+    try {
+      const descriptors = await Promise.all(rows.map((mol) => (mol.SMILES_STRING
+        ? loadCompoundDescriptors(mol.SMILES_STRING).catch(() => null)
+        : Promise.resolve(null))));
+      const csv = buildResultsCsv(rows, descriptors, {
+        similarity: searchType === 'similarity',
+        ranks: indices.map((index) => topMolecules[index]?.rank || index + 1),
+      });
+      const stamp = new Date().toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-');
+      const source = isMultiSource(searchSource) ? collectionsForSource(searchSource).join('+') : searchSource;
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `pyxis-${source}-results-${stamp}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      showMessage(`Results could not be exported: ${error.message}`, 'error');
+    } finally {
+      setResultsExporting(false);
+    }
+  };
+
   const handleCopySmiles = async () => {
     if (ketcherIframeRef.current) {
       try {
@@ -2416,6 +2498,7 @@ export function Simulation({ active = true }) {
       </fieldset>
 
       <div className="grid w-full min-w-0 gap-4 lg:grid-cols-[minmax(25rem,29rem)_minmax(0,1fr)] 2xl:grid-cols-[minmax(27rem,31rem)_minmax(0,1fr)] lg:items-start">
+      <div className="flex min-w-0 flex-col gap-[1rem]">
       <div id="query-panel" className="flex min-w-0 flex-col gap-[1.125rem] rounded-2xl border border-slate-200 bg-white p-[1rem] shadow-sm dark:border-slate-700 sm:p-[1.25rem]">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Find compounds</h2>
@@ -2893,12 +2976,23 @@ export function Simulation({ active = true }) {
           )}
         </section>
       </div>
+      <SearchHistory active={active} onRestore={restoreSavedSearch} />
+      </div>
       <section aria-labelledby="results-heading" className="min-w-0">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-baseline gap-3">
             <h2 id="results-heading" className="text-lg font-semibold text-slate-900 dark:text-slate-50">Results</h2>
             <span className="text-sm text-slate-500 dark:text-slate-400">{visibleSmartsIndices.length} shown{smartsFiltering ? ` of ${topMolecules.length} loaded` : ''}{hasMore && (searchSource === 'asinex' || isSearchActive) ? ' · more available' : ''}</span>
           </div>
+          <div className="flex items-center gap-2">
+          {topMolecules.length > 0 && searchSource !== 'asinex' && (
+            <button type="button" onClick={downloadResultsCsv} disabled={resultsExporting || visibleSmartsIndices.length === 0}
+              title="Shown rows with ID, SMILES, score, TPSA, MW, formula, cLogP, H-bond donors/acceptors, rotatable bonds and snapshot fields, calculated with RDKit"
+              className={`${SECONDARY_BUTTON} h-8 !py-0 text-xs`}>
+              <ArrowDownTrayIcon className="h-4 w-4" aria-hidden="true" />
+              {resultsExporting ? 'Preparing CSV…' : 'Download CSV'}
+            </button>
+          )}
           <label className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
             Per page
             <select
@@ -2924,6 +3018,7 @@ export function Simulation({ active = true }) {
               <option value={50}>50</option>
             </select>
           </label>
+          </div>
         </div>
         {(['stock', 'both', 'real', 'virtual'].includes(searchSource) || isMultiSource(searchSource)) && topMolecules.length > 0 && (
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700">
@@ -2980,7 +3075,7 @@ export function Simulation({ active = true }) {
                 <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs leading-relaxed text-slate-500 dark:border-slate-700 dark:text-slate-400">
                   {collectionsForSource(searchSource).map(collectionLabel).join(' + ')} · {ownedSearchSummary ? OWNED_SEARCH_MODES.find((option) => option.value === ownedSearchSummary.mode)?.label : 'Similarity'}{searchType === 'similarity' ? ' · one list ranked by Morgan (ECFP4) binary Tanimoto, each score from its collection\'s engine' : ''} · every row keeps its collection · amounts and lead times are dated. Select rows for docking or ordering.
                 </div>
-                <table className="w-full min-w-[680px] table-fixed text-left text-sm">
+                <table className="w-full min-w-[760px] table-fixed text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-white text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_rgb(0_0_0/0.08)] dark:text-slate-400">
                     <tr>
                       <th className="w-10 px-3 py-2.5 font-semibold"><input type="checkbox" className="h-4 w-4 cursor-pointer accent-teal-700" aria-label="Select all compounds" checked={getSelectAllState().checked} ref={(el) => { if (el) el.indeterminate = getSelectAllState().indeterminate; }} onChange={(e) => handleSelectAll(e.target.checked)} /></th>
@@ -2988,6 +3083,7 @@ export function Simulation({ active = true }) {
                       <th className="w-48 px-3 py-2.5 font-semibold">IDNUMBER · collection</th>
                       <th className="w-28 px-3 py-2.5 font-semibold">Lead time</th>
                       <th className="w-48 px-3 py-2.5 font-semibold">Pack size · price <span className="block text-xs font-normal">EUR / USD</span></th>
+                      <th className="w-20 px-3 py-2.5 font-semibold" title="Topological polar surface area, Å², calculated with RDKit">TPSA <span className="block text-xs font-normal normal-case">Å²</span></th>
                       <th className="w-20 px-3 py-2.5 font-semibold">{searchType === 'similarity' ? 'Similarity' : 'Match'}</th>
                     </tr>
                   </thead>
@@ -3014,6 +3110,7 @@ export function Simulation({ active = true }) {
                           </td>
                           <td className="px-3 py-2.5 text-xs" title="Dated supplier export; amount and lead time are unverified now">{mol.snapshotLeadTime || '—'}</td>
                           <td className="px-3 py-2.5"><CompoundShopPacks offer={mol.shopOffer} onAdded={showMessage} amountMg={mol.shopOffer ? selectedPacks[offerSelectionKey(mol.shopOffer)] : undefined} onPackChange={(mg) => setSelectedPacks((previous) => ({ ...previous, [offerSelectionKey(mol.shopOffer)]: mg }))} /></td>
+                          <td className="px-3 py-2.5"><PolarSurfaceValue smiles={mol.SMILES_STRING} /></td>
                           <td className="px-3 py-2.5">{searchType !== 'similarity' ? <span className="font-semibold text-green-600 dark:text-green-400">✓</span> : <SimilarityScore value={mol.SIMILARITY} />}</td>
                         </tr>
                       );
@@ -3028,7 +3125,7 @@ export function Simulation({ active = true }) {
                 <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs leading-relaxed text-slate-500 dark:border-slate-700 dark:text-slate-400">
                   {MACROCYCLE_SOURCES[searchSource].label} · {ownedSearchSummary ? OWNED_SEARCH_MODES.find((option) => option.value === ownedSearchSummary.mode)?.label : `globally ranked by ${macrocycleResultMethodLabel} over Morgan (ECFP4)`} · RPX/VPX rows keep their source · export amounts and lead times are dated. Select rows for docking or ordering.
                 </div>
-                <table className="w-full min-w-[680px] table-fixed text-left text-sm">
+                <table className="w-full min-w-[760px] table-fixed text-left text-sm">
                   <thead className="sticky top-0 z-10 bg-white text-xs uppercase tracking-wide text-slate-500 shadow-[0_1px_0_rgb(0_0_0/0.08)] dark:text-slate-400">
                     <tr>
                       <th className="w-10 px-3 py-2.5 font-semibold"><input type="checkbox" className="h-4 w-4 cursor-pointer accent-teal-700" aria-label="Select all macrocycles" checked={getSelectAllState().checked} ref={(el) => { if (el) el.indeterminate = getSelectAllState().indeterminate; }} onChange={(e) => handleSelectAll(e.target.checked)} /></th>
@@ -3036,6 +3133,7 @@ export function Simulation({ active = true }) {
                       <th className="w-44 px-3 py-2.5 font-semibold">IDNUMBER</th>
                       <th className="w-28 px-3 py-2.5 font-semibold">Lead time</th>
                       <th className="w-48 px-3 py-2.5 font-semibold">Pack size · price <span className="block text-xs font-normal">EUR / USD</span></th>
+                      <th className="w-20 px-3 py-2.5 font-semibold" title="Topological polar surface area, Å², calculated with RDKit">TPSA <span className="block text-xs font-normal normal-case">Å²</span></th>
                       <th className="w-20 px-3 py-2.5 font-semibold">{searchType === 'similarity' ? 'Similarity' : 'Match'}</th>
                     </tr>
                   </thead>
@@ -3060,6 +3158,7 @@ export function Simulation({ active = true }) {
                           </td>
                           <td className="px-3 py-2.5 text-xs" title="Dated supplier export; amount and lead time are unverified now">{mol.snapshotLeadTime || '—'}</td>
                           <td className="px-3 py-2.5"><CompoundShopPacks offer={mol.shopOffer} onAdded={showMessage} amountMg={mol.shopOffer ? selectedPacks[offerSelectionKey(mol.shopOffer)] : undefined} onPackChange={(mg) => setSelectedPacks((previous) => ({ ...previous, [offerSelectionKey(mol.shopOffer)]: mg }))} /></td>
+                          <td className="px-3 py-2.5"><PolarSurfaceValue smiles={mol.SMILES_STRING} /></td>
                           <td className="px-3 py-2.5">{searchType !== 'similarity' ? <span className="font-semibold text-green-600 dark:text-green-400">✓</span> : <SimilarityScore value={mol.SIMILARITY} />}</td>
                         </tr>
                       );
@@ -3095,6 +3194,7 @@ export function Simulation({ active = true }) {
                       <th className="px-3 py-2.5 font-semibold bg-white">IDNUMBER</th>
                       <th className="px-3 py-2.5 font-semibold bg-white">Lead time</th>
                       <th className="px-3 py-2.5 font-semibold bg-white">Pack size · price <span className="block text-xs font-normal">EUR / USD</span></th>
+                      <th className="px-3 py-2.5 font-semibold bg-white" title="Topological polar surface area, Å², calculated with RDKit">TPSA <span className="block text-xs font-normal normal-case">Å²</span></th>
                       <th className="px-3 py-2.5 font-semibold bg-white">{searchType === 'similarity' ? 'Similarity' : 'Match'}</th>
                     </tr>
                   </thead>
@@ -3134,6 +3234,7 @@ export function Simulation({ active = true }) {
                           </td>
                           <td className="px-3 py-2.5 text-xs" title="Dated supplier export lead time; unverified now">{mol.snapshotLeadTime || '—'}</td>
                           <td className="px-3 py-2.5"><CompoundShopPacks offer={mol.shopOffer} onAdded={showMessage} amountMg={mol.shopOffer ? selectedPacks[offerSelectionKey(mol.shopOffer)] : undefined} onPackChange={(mg) => setSelectedPacks((previous) => ({ ...previous, [offerSelectionKey(mol.shopOffer)]: mg }))} /></td>
+                          <td className="px-3 py-2.5"><PolarSurfaceValue smiles={mol.SMILES_STRING} /></td>
                           <td className="px-3 py-2.5" title={mol.SIMILARITY !== null && mol.SIMILARITY !== undefined ? `Similarity: ${mol.SIMILARITY}` : "N/A"}>
                             {searchType !== 'similarity' ? <span className="font-semibold text-green-600 dark:text-green-400">✓</span> : <SimilarityScore value={mol.SIMILARITY} />}
                           </td>
@@ -3190,6 +3291,7 @@ export function Simulation({ active = true }) {
                       <th className="px-3 py-2.5 font-semibold bg-white">{searchType === 'similarity' ? 'Similarity' : 'Match'}</th>
                       <th className="px-3 py-2.5 font-semibold bg-white">ChEMBL ID</th>
                       <th className="px-3 py-2.5 font-semibold bg-white">SMILES</th>
+                      <th className="px-3 py-2.5 font-semibold bg-white" title="Topological polar surface area, Å², calculated with RDKit">TPSA <span className="block text-xs font-normal normal-case">Å²</span></th>
                       <th className="px-3 py-2.5 font-semibold bg-white">Source</th>
                     </tr>
                   </thead>
@@ -3264,7 +3366,8 @@ export function Simulation({ active = true }) {
                               {(openSmiles || "N/A").toString().slice(0, moleculeLimit)}{(openSmiles || "N/A").toString().length > moleculeLimit ? "..." : ""}
                             </button>
                           </td>
-                          <td className="px-3 py-2.5 text-xs text-blue-gray-600">{mol.sourceLabel || "ChEMBL"}</td>
+                          <td className="px-3 py-2.5"><PolarSurfaceValue smiles={openSmiles} /></td>
+                          <td className="px-3 py-2.5 text-xs text-slate-500 dark:text-slate-400">{mol.sourceLabel || "ChEMBL"}</td>
                         </tr>
                       );
                     })}

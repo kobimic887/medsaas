@@ -145,6 +145,8 @@ export const routes = [
         icon: <Square2StackIcon {...icon} />,
         name: "dashboard",
         path: "/dashboardHome",
+        // Hidden from the menu by owner request (2026-11); the route stays for links.
+        hideFromMenu: true,
         element: <DashboardHome />,
       },
       {
@@ -158,6 +160,8 @@ export const routes = [
         icon: <InformationCircleIcon {...icon} />,
         name: "notifications",
         path: "/notifications",
+        // Hidden from the menu by owner request (2026-11); the route stays for links.
+        hideFromMenu: true,
         element: <Notifications />,
       },
       {

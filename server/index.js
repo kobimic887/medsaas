@@ -38,6 +38,8 @@ import { createOwnedSearch } from './utils/ownedSearch.js';
 import { precompressedAssets } from './utils/precompressedAssets.js';
 import { FoldMongoStore } from './utils/foldMongoStore.js';
 import { createFoldingHistoryRouter } from './routes/foldingHistory.js';
+import { createCompoundSearchesRouter } from './routes/compoundSearches.js';
+import { CompoundSearchStore } from './utils/compoundSearchStore.js';
 import { completeNvidiaFoldResponse, hasFoldCoordinates } from './utils/nvidiaFoldResponse.js';
 import { configuredDiffDockPoseCount, completedDiffDockResult, resolveDiffDockUrl, resolveDockingUrl, persistedLigandServiceConfig, completedDockingResult, diffDockFailureResponse } from './utils/diffdockResult.js';
 import {
@@ -776,6 +778,11 @@ app.post("/api/openfold3/predict", ensureMongoConnected, authenticateToken, requ
 if (!DEMO_MODE) {
   app.use('/api/folding-history', createFoldingHistoryRouter({
     store: new FoldMongoStore(() => client.db().collection('folding_history')),
+    middleware: [ensureMongoConnected, authenticateToken, requireActiveUser],
+  }));
+  // Home search history: one entry per owner and distinct collection/type/query.
+  app.use('/api/compound-searches', createCompoundSearchesRouter({
+    store: new CompoundSearchStore(() => client.db().collection('compound_searches')),
     middleware: [ensureMongoConnected, authenticateToken, requireActiveUser],
   }));
 }

@@ -30,9 +30,22 @@ export function calculateCompoundDescriptors(rdkit, smiles) {
     molecule = rdkit.get_mol(smiles);
     if (!molecule?.is_valid()) throw new Error('Invalid structure');
     const formula = formulaFromRdkitJson(JSON.parse(molecule.get_json()));
-    const mw = JSON.parse(molecule.get_descriptors()).amw;
+    const descriptors = JSON.parse(molecule.get_descriptors());
+    const mw = descriptors.amw;
     if (!formula || !Number.isFinite(mw) || mw <= 0) throw new Error('Descriptors unavailable');
-    return { formula, mw };
+    const finite = (value) => (Number.isFinite(value) ? value : null);
+    // tpsa is RDKit's Ertl topological polar surface area (N and O only; S and P
+    // excluded, RDKit's default). Optional so an older runtime still yields MW.
+    return {
+      formula,
+      mw,
+      tpsa: finite(descriptors.tpsa),
+      clogp: finite(descriptors.CrippenClogP),
+      hbd: finite(descriptors.NumHBD),
+      hba: finite(descriptors.NumHBA),
+      rotatableBonds: finite(descriptors.NumRotatableBonds),
+      heavyAtoms: finite(descriptors.NumHeavyAtoms),
+    };
   } finally {
     molecule?.delete();
   }

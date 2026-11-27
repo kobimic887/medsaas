@@ -697,6 +697,28 @@ editorRef.current.contentWindow.ketcher = { getSmiles() {} };
 editorWindow.tick();
 checks.push(['editor unlocks only after its API is usable', editorStates.length === 1 && editorStates[0] === 'ready']);
 checks.push(['editor releases startup focus before revealing its fixed-height frame', startupFocusReleased && simulation.includes("style={editorState === 'ready' ? undefined : { display: 'none' }}")]);
+// ── TPSA, attribute CSV export and search history (owner request 2026-11) ──
+{
+  const { buildResultsCsv, csvCell, resultRowIdentity } = await import(
+    pathToFileURL(path.join(root, 'client/src/utils/resultsExport.js')).href
+  );
+  const descriptorWithTpsa = calculateCompoundDescriptors({ get_mol: () => ({ is_valid: () => true, get_json: () => JSON.stringify(ethanolJson), get_descriptors: () => JSON.stringify({ amw: 46.069, tpsa: 20.23, CrippenClogP: -0.0014, NumHBD: 1, NumHBA: 1, NumRotatableBonds: 0, NumHeavyAtoms: 3 }), delete: () => {} }) }, 'CCO');
+  const stockRow = { isStockRow: true, stockCode: 'BAS 1', SMILES_STRING: 'CCO', SIMILARITY: 0.91234, STOCK_MG: 12, snapshotLeadTime: '1 week' };
+  const csv = buildResultsCsv([stockRow, { macrocycleCode: '=HYPERLINK("x")', macrocycleSource: 'real', SMILES_STRING: 'bad', SIMILARITY: null }], [descriptorWithTpsa, null], { similarity: true });
+  const csvLines = csv.replace(/^\uFEFF/, '').trim().split('\r\n');
+  const libraryHistory = readFileSync(path.join(root, 'client/src/components/SearchHistory.jsx'), 'utf8');
+  checks.push(
+    ['RDKit TPSA and Lipinski-style attributes come from the same exact-SMILES parse', descriptorWithTpsa.tpsa === 20.23 && descriptorWithTpsa.hbd === 1 && descriptorWithTpsa.clogp === -0.0014 && ethanolDescriptors.tpsa === null],
+    ['every owned and open result table shows a TPSA column', (simulation.match(/<PolarSurfaceValue smiles=/g) || []).length === 4 && !simulation.includes('<CompoundDescriptorCells')],
+    ['CSV rows carry identity, collection, score and descriptors without inventing values', csvLines[0].startsWith('rank,id,collection,smiles,score,tpsa_A2') && csvLines[1] === '1,BAS 1,Stock,CCO,0.9123,20.23,46.069,C2H6O,-0.001,1,1,0,3,12 mg,1 week' && csvLines[2].startsWith('2,"\'=HYPERLINK(""x"")",Real RPX,bad,,,,')],
+    ['CSV text cells cannot become spreadsheet formulas, numbers stay numeric', csvCell('+SUM(A1)') === "'+SUM(A1)" && csvCell(-1.5) === '-1.5' && resultRowIdentity({ chemblId: 'CHEMBL25' }).collection === 'open'],
+    ['CSV export covers the shown rows only, after the SMARTS filter', simulation.includes('const indices = visibleSmartsIndices;') && simulation.includes('buildResultsCsv(rows, descriptors')],
+    ['every successful search path is remembered, and only after success', (simulation.match(/setLastSearchQuery\(rawQuery\);\n        rememberSearch\(source, mode, queries\);/g) || []).length === 4],
+    ['saving history never blocks the search and unavailable history hides itself', libraryHistory.includes('Fire-and-forget') && libraryHistory.includes("state.status === 'unavailable'")],
+    ['restoring a saved search fills the form without running it', simulation.includes('const restoreSavedSearch = (entry) =>') && !/const restoreSavedSearch[\s\S]{0,1500}handleSearch\(/.test(simulation)],
+  );
+}
+
 checks.push(['Draw preserves the iframe after switching to text', simulation.includes('{editorVisited && (') && simulation.includes('hidden={queryType === "text"}')]);
 
 {

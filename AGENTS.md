@@ -113,6 +113,13 @@ when a path or trap moves.
   currency and each order allows at most three distinct compounds. Shipping is
   included; Stripe charges immediately.
   Owned results omit Formula/MW/SMILES columns but retain exact identifier previews.
+  Every owned/open result table shows TPSA (browser RDKit, exact SMILES; Ertl N/O
+  default), and "Download CSV" exports the shown rows (after any SMARTS filter)
+  with RDKit attributes; unparseable structures leave empty cells, never guesses.
+  Successful Home searches are saved to Atlas `compound_searches`
+  (`server/utils/compoundSearchStore.js`): one entry per user AND company and
+  distinct collection + search type + queries; re-runs update recency, not
+  duplicates. Restoring refills the form and never runs a search by itself.
   Selected pack additions are atomic and open `/dashboard/review-order`, with
   server-quoted structures, quantities and approval CSV. Home retains its visited
   workspace until the authenticated layout unmounts; hidden Home must not paginate
@@ -209,7 +216,8 @@ when a path or trap moves.
   same stereo product via symmetry-aware unaligned heavy-atom RMSD; it disables
   top-K deferral and is shown only when the service advertises
   `capabilities.duplicateWindow`. It never merges different chemistry.
-- Client routes: `client/src/routes.jsx`. Use `API_CONFIG.buildApiUrl()` for `/api/*`
+- Client routes: `client/src/routes.jsx`. Dashboard and Notifications are `hideFromMenu`
+  (owner request); their routes stay for existing links. Use `API_CONFIG.buildApiUrl()` for `/api/*`
   and `API_CONFIG.buildUrl()` for top-level routes.
 - Auth state: `client/src/context/auth.jsx`. Session logout interceptor:
   `client/src/utils/authInterceptor.js`.
@@ -274,6 +282,7 @@ bun run test:stock-availability # offline CompChem stock availability snapshot: 
 bun run test:macrocycle-index # macrocycle index contract: RDKit parity, format-1/2, count stream
 bun run test:count-morgan    # count-Morgan support parity vs RDKit + count Tanimoto/Dice math
 bun --cwd=server run test:folding-history # normal-app history, privacy and restart durability
+bun --cwd=server run test:compound-searches # Home search history: uniqueness, ownership, 400/503
 bun --cwd=server run test:owned-search # owned ID/exact/substructure/batch merge + precompressed assets
 ```
 

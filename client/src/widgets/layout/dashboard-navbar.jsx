@@ -40,7 +40,6 @@ const PAGE_DESTINATIONS = [
   { label: "Home", path: "/dashboard/simulation" },
   { label: "History", path: "/dashboard/controlpanel" },
   { label: "Scaffolding Hop", path: "/dashboard/link-fragments" },
-  { label: "Dashboard", path: "/dashboard/dashboardHome" },
   { label: "Simulation Results", path: "/dashboard/molstar3d" },
   { label: "Molecule Viewer", path: "/dashboard/moleculeviewer" },
   { label: "Generate Molecules", path: "/dashboard/generate-molecules" },
@@ -48,7 +47,6 @@ const PAGE_DESTINATIONS = [
   { label: "Deep Similarity", path: "/dashboard/deep-similarity" },
   { label: "Literature", path: "/dashboard/literature" },
   { label: "SAR Explorer", path: "/dashboard/sar-explorer" },
-  { label: "Notifications", path: "/dashboard/notifications" },
   { label: "Compound orders", path: "/dashboard/compound-orders" },
   { label: "Plans & Credits", path: "/dashboard/paid-plans" },
 ];
