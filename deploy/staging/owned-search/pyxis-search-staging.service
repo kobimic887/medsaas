@@ -29,7 +29,10 @@ RestartSec=5
 Nice=10
 # Sum of the two units it replaces (80% + 80%, 1500M + 1G).
 CPUQuota=160%
-MemoryMax=2500M
+# 7G since 2026-11-27: the 6.7M-row smallvirtual index (1.8 GB fingerprints + 2 GB
+# graph, read through the page cache) sits beside RPX/VPX. At 2500M every scan
+# re-reads from disk once smallvirtual is installed.
+MemoryMax=7G
 NoNewPrivileges=true
 
 [Install]
