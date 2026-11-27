@@ -2801,7 +2801,7 @@ export function Simulation({ active = true }) {
           </div>
           {showSimInputs && (
             <div id="simulation-inputs" className="flex flex-col gap-2 rounded-xl bg-slate-100 p-3 dark:bg-slate-950">
-              <span className="text-xs font-medium text-slate-600 dark:text-slate-300">1-click docking (AutoDock Vina)</span>
+              <span className="text-xs font-medium text-slate-600 dark:text-slate-300">1-click docking</span>
               <div className="flex gap-2">
                 <input aria-label="PDB ID" placeholder="PDB ID, e.g. 6LU7" value={simPdbId} onChange={e => setSimPdbId(e.target.value)} className={FIELD_INPUT} />
                 <button type="button" onClick={handleSimulation} disabled={simLoading || !simPdbId || !dockingInput}

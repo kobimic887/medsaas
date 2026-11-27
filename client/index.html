@@ -29,6 +29,14 @@
       (`btn`, `card border-*`, `badge bg-*`, `col-md-*`), with overrides in
       tailwind.css that target those same classes. Removing it breaks those four
       pages. Re-measure before believing any older note that says otherwise.
+
+      ⚠ It is global, so it also styles the dashboard. Its utilities share
+      Tailwind names with !important and a different scale: p-3/px-3/gap-3/mb-3
+      = 1rem, p-4/gap-4/mb-4 = 1.5rem, p-5 = 3rem; `.border` forces
+      --bs-border-color (retinted for dark mode in tailwind.css); `.shadow-sm`
+      and `.bg-white` win too. Use 0–2, fractional steps or arbitrary values
+      (p-[1rem]) where an exact 3/4/5 step matters. Loading this file only on
+      the marketing routes would remove the collision.
     -->
 
     <!--
