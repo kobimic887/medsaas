@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { API_CONFIG, getAuthToken } from '@/utils/constants';
 import { OWNED_SEARCH_MODES, collectionsForSource } from '@/utils/ownedSearch';
@@ -26,6 +27,16 @@ export function recordCompoundSearch(entry) {
   }).catch((error) => console.warn('Search history was not updated:', error.message));
 }
 
+// History hands a saved search to Home, which may not be mounted yet (first
+// visit) or may be mounted but hidden. Home takes it once when it becomes active.
+let queuedRestore = null;
+export function queueSavedSearchRestore(entry) { queuedRestore = entry; }
+export function takeQueuedSavedSearch() {
+  const entry = queuedRestore;
+  queuedRestore = null;
+  return entry;
+}
+
 const SOURCE_LABELS = Object.freeze({ both: 'RPX + VPX', open: 'ChEMBL' });
 const COLLECTION_SHORT = Object.freeze({ stock: 'Stock', smallvirtual: 'Virtual', real: 'RPX', virtual: 'VPX' });
 export function searchSourceLabel(source) {
@@ -47,9 +58,12 @@ function relativeTime(iso) {
   return new Date(then).toLocaleDateString();
 }
 
-export function SearchHistory({ active = true, onRestore }) {
+// variant "card": compact list beside the Home query form (hidden while empty).
+// variant "page": the History tab section, always shown so the store is findable.
+export function SearchHistory({ active = true, onRestore, variant = 'card' }) {
+  const isPage = variant === 'page';
   const [state, setState] = useState({ status: 'loading', items: [], total: 0 });
-  const [limit, setLimit] = useState(8);
+  const [limit, setLimit] = useState(isPage ? 20 : 8);
   const [filter, setFilter] = useState('');
   const [deleting, setDeleting] = useState('');
 
@@ -93,15 +107,30 @@ export function SearchHistory({ active = true, onRestore }) {
     }
   };
 
-  // No history store (demo build) or nothing saved yet without a filter: stay out of the way.
-  if (state.status === 'unavailable' || (state.status === 'ready' && state.total === 0 && !filter)) return null;
+  const empty = state.status === 'ready' && state.total === 0 && !filter;
+  if (!isPage && (state.status === 'unavailable' || empty)) return null;
 
+  const headingId = isPage ? 'compound-search-history-heading' : 'search-history-heading';
   return (
-    <section aria-labelledby="search-history-heading" className="rounded-2xl border border-slate-200 bg-white p-[1rem] shadow-sm dark:border-slate-700 sm:p-[1.25rem]">
-      <div className="mb-2 flex items-baseline justify-between gap-2">
-        <h2 id="search-history-heading" className="text-sm font-semibold text-slate-900 dark:text-slate-50">Search history</h2>
-        {state.status === 'ready' && <span className="text-xs text-slate-500 dark:text-slate-400">{state.total} saved</span>}
+    <section
+      id={isPage ? 'compound-search-history' : undefined}
+      aria-labelledby={headingId}
+      className={isPage
+        ? 'mb-8 scroll-mt-24 rounded-xl border border-blue-gray-100 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900'
+        : 'rounded-2xl border border-slate-200 bg-white p-[1rem] shadow-sm dark:border-slate-700 sm:p-[1.25rem]'}
+    >
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+        {isPage
+          ? <h2 id={headingId} className="text-lg font-semibold text-blue-gray-900 dark:text-white">Compound searches</h2>
+          : <h2 id={headingId} className="text-sm font-semibold text-slate-900 dark:text-slate-50">Search history</h2>}
+        <div className="flex items-baseline gap-4">
+          {state.status === 'ready' && <span className="text-xs text-slate-500 dark:text-slate-400">{state.total} saved</span>}
+          {isPage && <Link to="/dashboard/simulation" className="text-sm font-semibold text-brand-600 underline dark:text-brand-200">New search</Link>}
+        </div>
       </div>
+      {isPage && <p className="-mt-1 mb-3 text-xs text-slate-500 dark:text-slate-300">Every Home search is saved automatically: your 100 most recent distinct searches. Choose one to load it into Home.</p>}
+      {isPage && state.status === 'unavailable' && <p role="alert" className="text-sm text-red-700 dark:text-red-300">Saved searches could not be loaded. Try again later.</p>}
+      {isPage && empty && <p className="text-sm text-slate-600 dark:text-slate-300">No saved searches yet. Searches you run on Home appear here.</p>}
       {(state.total > 5 || filter) && (
         <input
           type="search"
@@ -127,14 +156,14 @@ export function SearchHistory({ active = true, onRestore }) {
                 </span>
               </button>
               <button type="button" aria-label={`Delete saved search ${item.queries[0]}`} disabled={deleting === item.searchId} onClick={() => remove(item.searchId)}
-                className="shrink-0 rounded p-1 text-slate-400 opacity-0 transition-opacity hover:text-slate-900 focus:opacity-100 group-hover:opacity-100 disabled:opacity-40 dark:hover:text-slate-50">
+                className={`shrink-0 rounded p-1 text-slate-400 transition-opacity hover:text-slate-900 disabled:opacity-40 dark:hover:text-slate-50 ${isPage ? '' : 'opacity-0 focus:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100'}`}>
                 <XMarkIcon className="h-3.5 w-3.5" aria-hidden="true" />
               </button>
             </li>
           );
         })}
       </ul>
-      {state.status === 'ready' && state.total > state.items.length && (
+      {state.status === 'ready' && state.total > state.items.length && limit < 100 && (
         <button type="button" onClick={() => setLimit((value) => Math.min(100, value + 20))} className="mt-1 text-xs font-medium text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-50">
           Show more
         </button>

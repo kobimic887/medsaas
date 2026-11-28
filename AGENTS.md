@@ -119,7 +119,8 @@ when a path or trap moves.
   Successful Home searches are saved to Atlas `compound_searches`
   (`server/utils/compoundSearchStore.js`): one entry per user AND company and
   distinct collection + search type + queries; re-runs update recency, not
-  duplicates. Each owner keeps at most 100 distinct searches (least recently run drop first). Restoring refills the form and never runs a search by itself.
+  duplicates. Each owner keeps at most 100 distinct searches (least recently run drop first). History (`/dashboard/controlpanel`) lists them as "Compound searches";
+  choosing one opens Home with it filled in. Restoring refills the form and never runs a search by itself.
   Include `server/routes/compoundSearches.js` and `server/utils/compoundSearchStore.js`
   in server releases; `server/index.js` imports them at startup.
   Selected pack additions are atomic and open `/dashboard/review-order`, with

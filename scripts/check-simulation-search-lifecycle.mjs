@@ -716,6 +716,9 @@ checks.push(['editor releases startup focus before revealing its fixed-height fr
     ['every successful search path is remembered, and only after success', (simulation.match(/setLastSearchQuery\(rawQuery\);\n        rememberSearch\(source, mode, queries\);/g) || []).length === 4],
     ['saving history never blocks the search and unavailable history hides itself', libraryHistory.includes('Fire-and-forget') && libraryHistory.includes("state.status === 'unavailable'")],
     ['restoring a saved search fills the form without running it', simulation.includes('const restoreSavedSearch = (entry) =>') && !/const restoreSavedSearch[\s\S]{0,1500}handleSearch\(/.test(simulation)],
+    ['the History tab lists saved compound searches and opens them in Home', controlPanel.includes('<SearchHistory\n        variant="page"') && /queueSavedSearchRestore\(entry\);\s*navigate\("\/dashboard\/simulation"\)/.test(controlPanel)],
+    ['Home applies a History pick once, only when it is the visible page', /if \(!active\) return;\s*const queued = takeQueuedSavedSearch\(\);\s*if \(queued\) restoreSavedSearch\(queued\);\s*\}, \[active\]\);/.test(simulation) && libraryHistory.includes('queuedRestore = null;')],
+    ['the History section stays visible when empty or unavailable', libraryHistory.includes("if (!isPage && (state.status === 'unavailable' || empty)) return null;")],
   );
 }
 

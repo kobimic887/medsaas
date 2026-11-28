@@ -23,6 +23,7 @@ import {
 import { ClockIcon } from "@heroicons/react/24/solid";
 import { API_CONFIG, getAuthToken } from "@/utils/constants";
 import { LinkFragmentHistory } from "@/components/LinkFragmentHistory";
+import { SearchHistory, queueSavedSearchRestore } from "@/components/SearchHistory";
 
 const CONTROL_PANEL_FETCH_TIMEOUT_MS = 15_000;
 
@@ -265,6 +266,13 @@ export function ControlPanel() {
 
   return (
     <div className="mt-12">
+      <SearchHistory
+        variant="page"
+        onRestore={(entry) => {
+          queueSavedSearchRestore(entry);
+          navigate("/dashboard/simulation");
+        }}
+      />
       <LinkFragmentHistory />
 
       {loading ? (

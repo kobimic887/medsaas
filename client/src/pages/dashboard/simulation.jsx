@@ -21,7 +21,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { PolarSurfaceValue } from '@/components/CompoundDescriptorCells';
 import { MoleculePreviewTooltip, useStructurePreview } from '@/components/MoleculePreview';
-import { SearchHistory, recordCompoundSearch } from '@/components/SearchHistory';
+import { SearchHistory, recordCompoundSearch, takeQueuedSavedSearch } from '@/components/SearchHistory';
 import { MultiSmartsFilter, SmartsAnnotation } from '@/components/MultiSmartsFilter';
 import { selectVisibleSmartsRows, smartsVisibleIndices } from '@/utils/multiSmarts';
 import { convertPriceToEuro, formatPrice } from '@/utils/algo/algo';
@@ -1382,6 +1382,13 @@ export function Simulation({ active = true }) {
     }
     showMessage('Saved search loaded. Press Search to run it again.');
   };
+
+  // A search chosen in the History tab is applied when Home becomes visible.
+  useEffect(() => {
+    if (!active) return;
+    const queued = takeQueuedSavedSearch();
+    if (queued) restoreSavedSearch(queued);
+  }, [active]);
 
   const handleSearch = async () => {
     browseControllerRef.current?.abort();
