@@ -46,7 +46,6 @@ const PAGE_DESTINATIONS = [
   { label: "Protein Folding", path: "/dashboard/protein-folding" },
   { label: "Deep Similarity", path: "/dashboard/deep-similarity" },
   { label: "Literature", path: "/dashboard/literature" },
-  { label: "SAR Explorer", path: "/dashboard/sar-explorer" },
   { label: "Compound orders", path: "/dashboard/compound-orders" },
   { label: "Plans & Credits", path: "/dashboard/paid-plans" },
 ];

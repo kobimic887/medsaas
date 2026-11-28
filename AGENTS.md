@@ -174,7 +174,7 @@ when a path or trap moves.
 - Pyxis SAR Explorer is a separate desktop program (a GPL-licensed, modified DataWarrior
   with Pyxis scaffold/R-group analysis), built and released from its own repository
   `kobimic887/pyxis-sar-explorer`; it is not part of this repo and is not an 84 artifact.
-  The app only links to it: `/dashboard/sar-explorer` (`client/src/pages/dashboard/sar-explorer.jsx`,
+  The app only links to it: `/dashboard/sar-explorer`, out of the menus since 2026-11 (owner) but still reachable by URL (`client/src/pages/dashboard/sar-explorer.jsx`,
   links and installer names in `client/src/utils/sarExplorer.js`). Installer file names
   must match that repository's `pyxis/stable-installer-names.sh`. Buttons download
   the newest release directly (`SAR_EXPLORER_DIRECT_DOWNLOADS`; first release `pyxis-v1.0.0`).
@@ -218,7 +218,7 @@ when a path or trap moves.
   same stereo product via symmetry-aware unaligned heavy-atom RMSD; it disables
   top-K deferral and is shown only when the service advertises
   `capabilities.duplicateWindow`. It never merges different chemistry.
-- Client routes: `client/src/routes.jsx`. Dashboard and Notifications are `hideFromMenu`
+- Client routes: `client/src/routes.jsx`. Dashboard, Notifications and SAR Explorer are `hideFromMenu`
   (owner request); their routes stay for existing links. Use `API_CONFIG.buildApiUrl()` for `/api/*`
   and `API_CONFIG.buildUrl()` for top-level routes.
 - Auth state: `client/src/context/auth.jsx`. Session logout interceptor:

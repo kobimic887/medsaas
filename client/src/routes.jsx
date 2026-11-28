@@ -210,10 +210,12 @@ export const routes = [
       },
       {
         // The desktop SAR program is downloaded, not run here; the page only links to it.
+        // Hidden from the menu by owner request (2026-11); the route stays for links.
         icon: <Square2StackIcon {...icon} />,
         name: "SAR Explorer",
         path: "/sar-explorer",
         element: <SarExplorer />,
+        hideFromMenu: true,
       },
       {
         icon: <CreditCardIcon {...icon} />,

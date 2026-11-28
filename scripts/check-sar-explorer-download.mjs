@@ -60,8 +60,10 @@ const checks = [
   ['page is lazy-routed at /sar-explorer',
     routes.includes('lazy(() => import("@/pages/dashboard/sar-explorer"))')
     && /name: "SAR Explorer",\s*path: "\/sar-explorer",\s*element: <SarExplorer \/>/.test(routes)],
-  ['navigation lists the page and labels it',
-    navbar.includes('{ label: "SAR Explorer", path: "/dashboard/sar-explorer" }')
+  // Owner request (2026-11): out of the menus, but direct links still open and are labelled.
+  ['page is hidden from both menus but keeps its header label',
+    /element: <SarExplorer \/>,\s*hideFromMenu: true,/.test(routes)
+    && !navbar.includes('path: "/dashboard/sar-explorer"')
     && navbar.includes('"sar-explorer": "SAR Explorer"')],
   ['page renders every installer through the shared link builder',
     page.includes('SAR_EXPLORER_INSTALLERS.map(') && page.includes('sarExplorerDownloadUrl(installer)')],
