@@ -7,7 +7,8 @@
 import crypto from 'node:crypto';
 import { buildOwnerFilter, ownerIdentity } from './foldHistory.js';
 
-export const SEARCH_HISTORY_MAX_PER_OWNER = 500;
+// Owner request (2026-11): at most 100 distinct searches per user; the oldest-run entry drops first.
+export const SEARCH_HISTORY_MAX_PER_OWNER = 100;
 export const SEARCH_HISTORY_MAX_QUERIES = 20;
 export const SEARCH_HISTORY_MAX_QUERY_LENGTH = 4000;
 const MODES = new Set(['similarity', 'id', 'exact', 'substructure']);
